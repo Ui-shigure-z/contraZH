@@ -650,6 +650,10 @@ public:
 	Bool m_weaponScatterOnWaterSurfaceDefault;	///< default for WeaponTemplate ScatterOnWaterSurface when not set per-weapon
 	Bool m_reverseMoveIgnoreAngleThreshold;	///< if true, a manual REVERSE_MOVE order reverses regardless of heading; if false, only when the goal is behind us
 	Real m_smartGarrisonRange;	///< radius searched for additional transports by the Smart Garrison command
+	Real m_transportLoadSpeedPenalty;	///< default fraction of speed a container loses at a full load
+	Real m_transportLoadTurnRatePenalty;	///< likewise for turn rate
+	Real m_transportLoadAccelerationPenalty;	///< likewise for acceleration
+	Real m_transportLoadLiftPenalty;	///< likewise for lift
 
 	// the trailing '\' is included!
   const AsciiString &getPath_UserData() const { return m_userDataDir; }

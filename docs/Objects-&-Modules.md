@@ -494,6 +494,49 @@ sight, muzzle effects and projectiles are unchanged.
 sit at whichever entrance they used rather than on a bone of the container.
 
 
+### Load slowdown from occupants
+
+A container can be slowed by what it carries. The penalty scales with how full it is, so each
+passenger costs a share of it and leaving gives that share back; an emptied container returns to
+exactly its original speed. Fullness is measured in slots, not bodies, so a unit that takes three
+slots slows the transport three times as much as one that takes a single slot.
+
+The defaults come from GameData's `TransportLoadSpeedPenalty` and friends, and these four override
+them per container. Each is the fraction of that value lost at a full load.
+
+* `LoadSpeedPenalty = 0%` - (Fraction of `Speed` lost at a full load.)
+* `LoadTurnRatePenalty = 0%` - (Fraction of `TurnRate` lost at a full load.)
+* `LoadAccelerationPenalty = 0%` - (Fraction of `Acceleration` lost at a full load.)
+* `LoadLiftPenalty = 0%` - (Fraction of `Lift` lost at a full load.)
+* `LoadPenaltyEnabled = Yes` - (`No` exempts this container entirely, whatever GameData sets. Use it
+to keep one transport at full speed without restating every percentage.)
+* `LoadPenaltyKindOf = <KindOf list>` - (If set, only occupants with one of these KindOfs count
+toward the load. Everything counts by default.)
+* `LoadPenaltyForbidKindOf = <KindOf list>` - (Occupants with any of these KindOfs never count
+toward the load. Nothing is excluded by default.)
+
+Example - a transport that is dragged down by vehicles but not by the infantry it carries:
+```
+Behavior = TransportContain ModuleTag_07
+  Slots                   = 8
+  LoadSpeedPenalty        = 40%
+  LoadAccelerationPenalty = 25%
+  LoadPenaltyForbidKindOf = INFANTRY
+End
+```
+
+Behaviour notes:
+* Each penalty covers the damaged variant of its value, so `SpeedDamaged` scales by the same
+percentage as `Speed`.
+* The penalty follows the container across locomotor sets, so an upgrade that grants
+`SET_NORMAL_UPGRADED`, or a switch to `SET_PANIC`, keeps it in effect.
+* A container that cannot move ignores all of this. The keys parse on every contain module, but a
+garrisoned building has no locomotor to slow down.
+* Slot counts come from the occupant's `TransportSlotCount`, so a bunker riding an Overlord is
+weighed by what is inside it.
+* A loaded transport moving with a group slows the whole group, the same way any slow unit does.
+* Leaving every penalty at `0%` is the previous behavior exactly, so existing INI is unaffected.
+
 ### Filtering by object name
 
 `AllowInsideKindOf` and `ForbidInsideKindOf` can only speak in whole KindOfs. These two name

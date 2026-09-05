@@ -36,6 +36,7 @@
 #include "Common/BitFlagsIO.h"
 #include "Common/GameAudio.h"
 #include "Common/GameState.h"
+#include "Common/GlobalData.h"
 #include "Common/Module.h"
 #include "Common/Player.h"
 #include "Common/RandomValue.h"
@@ -46,6 +47,7 @@
 #include "GameClient/InGameUI.h"
 #include "GameClient/ControlBar.h"
 
+#include "GameLogic/AI.h"
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/OpenContain.h"
@@ -85,6 +87,14 @@ OpenContainModuleData::OpenContainModuleData()
  	m_allowEnemiesInside = TRUE;
  	m_allowNeutralInside = TRUE;
 	m_passengerWeaponBonusVec.clear();
+
+	m_loadPenaltyEnabled = TRUE;
+	m_loadSpeedPenalty = TheGlobalData ? TheGlobalData->m_transportLoadSpeedPenalty : 0.0f;
+	m_loadTurnRatePenalty = TheGlobalData ? TheGlobalData->m_transportLoadTurnRatePenalty : 0.0f;
+	m_loadAccelerationPenalty = TheGlobalData ? TheGlobalData->m_transportLoadAccelerationPenalty : 0.0f;
+	m_loadLiftPenalty = TheGlobalData ? TheGlobalData->m_transportLoadLiftPenalty : 0.0f;
+	m_loadPenaltyKindOf.clear(); m_loadPenaltyKindOf.flip();	// everything counts
+	m_loadPenaltyForbidKindOf.clear();	// nothing is excluded
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -115,6 +125,13 @@ OpenContainModuleData::OpenContainModuleData()
  		{ "AllowEnemiesInside",				INI::parseBool,	nullptr, offsetof( OpenContainModuleData, m_allowEnemiesInside ) },
  		{ "AllowNeutralInside",				INI::parseBool,	nullptr, offsetof( OpenContainModuleData, m_allowNeutralInside ) },
 		{ "PassengerWeaponBonusList",       INI::parseWeaponBonusVectorKeepDefault, NULL, offsetof(OpenContainModuleData, m_passengerWeaponBonusVec) },
+		{ "LoadPenaltyEnabled",			INI::parseBool, nullptr, offsetof( OpenContainModuleData, m_loadPenaltyEnabled ) },
+		{ "LoadSpeedPenalty",			INI::parsePercentToReal, nullptr, offsetof( OpenContainModuleData, m_loadSpeedPenalty ) },
+		{ "LoadTurnRatePenalty",		INI::parsePercentToReal, nullptr, offsetof( OpenContainModuleData, m_loadTurnRatePenalty ) },
+		{ "LoadAccelerationPenalty",	INI::parsePercentToReal, nullptr, offsetof( OpenContainModuleData, m_loadAccelerationPenalty ) },
+		{ "LoadLiftPenalty",			INI::parsePercentToReal, nullptr, offsetof( OpenContainModuleData, m_loadLiftPenalty ) },
+		{ "LoadPenaltyKindOf",			KindOfMaskType::parseFromINI, nullptr, offsetof( OpenContainModuleData, m_loadPenaltyKindOf ) },
+		{ "LoadPenaltyForbidKindOf",	KindOfMaskType::parseFromINI, nullptr, offsetof( OpenContainModuleData, m_loadPenaltyForbidKindOf ) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
@@ -815,6 +832,8 @@ void OpenContain::onContaining( Object *rider, Bool wasSelected )
 		rider->setWeaponBonusCondition(d->m_passengerWeaponBonusVec[i]);
 	}
 
+	recomputeLoadPenalty();
+
 	// Play audio
 	if( m_loadSoundsEnabled )
 	{
@@ -843,6 +862,8 @@ void OpenContain::onRemoving( Object *rider)
 			rider->clearWeaponBonusCondition(d->m_passengerWeaponBonusVec[i]);
 		}
 	}
+
+	recomputeLoadPenalty();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1006,6 +1027,98 @@ Bool OpenContainModuleData::isObjectAllowedInside( const Object *obj ) const
 	}
 
 	return FALSE;
+}
+
+// ------------------------------------------------------------------------------------------------
+Bool OpenContainModuleData::hasLoadPenalty() const
+{
+	if( !m_loadPenaltyEnabled )
+	{
+		return FALSE;
+	}
+
+	return m_loadSpeedPenalty != 0.0f
+		|| m_loadTurnRatePenalty != 0.0f
+		|| m_loadAccelerationPenalty != 0.0f
+		|| m_loadLiftPenalty != 0.0f;
+}
+
+// ------------------------------------------------------------------------------------------------
+Bool OpenContainModuleData::doesObjectCountTowardLoad( const Object *obj ) const
+{
+	if( obj == nullptr )
+	{
+		return FALSE;
+	}
+
+	return obj->isAnyKindOf( m_loadPenaltyKindOf ) && !obj->isAnyKindOf( m_loadPenaltyForbidKindOf );
+}
+
+// ------------------------------------------------------------------------------------------------
+/** A full load costs the whole penalty, an empty one none of it. Floored so a 100% penalty
+	leaves the container crawling rather than frozen. */
+// ------------------------------------------------------------------------------------------------
+static Real calcLoadFactor( Real penalty, Real load )
+{
+	const Real MIN_LOAD_FACTOR = 0.01f;
+
+	Real factor = 1.0f - penalty * load;
+	if( factor < MIN_LOAD_FACTOR )
+	{
+		factor = MIN_LOAD_FACTOR;
+	}
+	return factor;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Slow ourselves down in proportion to how full we are. Recomputed from the current occupants
+	rather than adjusted per passenger, so an emptied container returns to exactly full speed. */
+// ------------------------------------------------------------------------------------------------
+void OpenContain::recomputeLoadPenalty()
+{
+	const OpenContainModuleData *d = getOpenContainModuleData();
+	if( !d->hasLoadPenalty() )
+	{
+		return;
+	}
+
+	Object *self = getObject();
+	AIUpdateInterface *ai = self ? self->getAIUpdateInterface() : nullptr;
+	if( ai == nullptr )
+	{
+		return;
+	}
+
+	const Int capacity = getContainMax();
+	Real load = 0.0f;
+	if( capacity > 0 )
+	{
+		Int occupied = 0;
+		for( ContainedItemsList::const_iterator it = m_containList.begin(); it != m_containList.end(); ++it )
+		{
+			if( d->doesObjectCountTowardLoad( *it ) )
+			{
+				occupied += (*it)->getTransportSlotCount();
+			}
+		}
+
+		load = (Real)occupied / (Real)capacity;
+		if( load > 1.0f )
+		{
+			load = 1.0f;
+		}
+	}
+
+	ai->setLoadFactors( calcLoadFactor( d->m_loadSpeedPenalty, load ),
+		calcLoadFactor( d->m_loadTurnRatePenalty, load ),
+		calcLoadFactor( d->m_loadAccelerationPenalty, load ),
+		calcLoadFactor( d->m_loadLiftPenalty, load ) );
+
+	// the group caches its slowest member's speed, so it must be asked to look again
+	if( ai->getGroup() )
+	{
+		ai->getGroup()->recomputeGroupSpeed();
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2062,5 +2175,8 @@ void OpenContain::loadPostProcess()
 
 	// clear the list as we don't need it anymore
 	m_xferContainIDList.clear();
+
+	// the occupants are only back on the list now, so the load slowdown has to be worked out again
+	recomputeLoadPenalty();
 
 }
