@@ -443,6 +443,8 @@ void OpenContain::addToContainList( Object *rider )
 	{
 		m_heroUnitsContained++;
 	}
+
+	recomputeLoadPenalty();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -767,6 +769,8 @@ void OpenContain::removeFromContainViaIterator( ContainedItemsList::iterator it,
 	DEBUG_ASSERTCRASH(getObject()->getContain() == this, ("hmm, wrong container 2"));
 	rider->onRemovedFrom( getObject() );
 
+	recomputeLoadPenalty();
+
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -832,8 +836,6 @@ void OpenContain::onContaining( Object *rider, Bool wasSelected )
 		rider->setWeaponBonusCondition(d->m_passengerWeaponBonusVec[i]);
 	}
 
-	recomputeLoadPenalty();
-
 	// Play audio
 	if( m_loadSoundsEnabled )
 	{
@@ -862,8 +864,6 @@ void OpenContain::onRemoving( Object *rider)
 			rider->clearWeaponBonusCondition(d->m_passengerWeaponBonusVec[i]);
 		}
 	}
-
-	recomputeLoadPenalty();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1032,15 +1032,11 @@ Bool OpenContainModuleData::isObjectAllowedInside( const Object *obj ) const
 // ------------------------------------------------------------------------------------------------
 Bool OpenContainModuleData::hasLoadPenalty() const
 {
-	if( !m_loadPenaltyEnabled )
-	{
-		return FALSE;
-	}
-
-	return m_loadSpeedPenalty != 0.0f
+	return m_loadPenaltyEnabled
+		&& ( m_loadSpeedPenalty != 0.0f
 		|| m_loadTurnRatePenalty != 0.0f
 		|| m_loadAccelerationPenalty != 0.0f
-		|| m_loadLiftPenalty != 0.0f;
+		|| m_loadLiftPenalty != 0.0f );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1051,39 +1047,27 @@ Bool OpenContainModuleData::doesObjectCountTowardLoad( const Object *obj ) const
 		return FALSE;
 	}
 
-	return obj->isAnyKindOf( m_loadPenaltyKindOf ) && !obj->isAnyKindOf( m_loadPenaltyForbidKindOf );
+	return obj->isKindOfMulti( m_loadPenaltyKindOf, m_loadPenaltyForbidKindOf );
 }
 
 // ------------------------------------------------------------------------------------------------
-/** A full load costs the whole penalty, an empty one none of it. Floored so a 100% penalty
-	leaves the container crawling rather than frozen, and capped so a negative penalty in the INI
-	cannot turn a load into a speed bonus. */
+/** Capped so a negative penalty in the INI cannot turn a load into a speed bonus, and
+	floored so a 100% one leaves the container crawling rather than frozen. */
 // ------------------------------------------------------------------------------------------------
 static Real calcLoadFactor( Real penalty, Real load )
 {
 	const Real MIN_LOAD_FACTOR = 0.01f;
 
-	Real factor = 1.0f - penalty * load;
-	if( factor < MIN_LOAD_FACTOR )
-	{
-		factor = MIN_LOAD_FACTOR;
-	}
-	else if( factor > 1.0f )
-	{
-		factor = 1.0f;
-	}
-	return factor;
+	return clamp( MIN_LOAD_FACTOR, 1.0f - penalty * load, 1.0f );
 }
 
 // ------------------------------------------------------------------------------------------------
-/** Slow ourselves down in proportion to how full we are. Recomputed from the current occupants
-	rather than adjusted per passenger, so an emptied container returns to exactly full speed.
-	A container with no penalty configured writes 1.0 rather than leaving the last value behind. */
+/** Recomputed from the current occupants rather than adjusted per passenger, so an emptied
+	container returns to exactly full speed. */
 // ------------------------------------------------------------------------------------------------
 void OpenContain::recomputeLoadPenalty()
 {
-	Object *self = getObject();
-	AIUpdateInterface *ai = self ? self->getAIUpdateInterface() : nullptr;
+	AIUpdateInterface *ai = getObject()->getAIUpdateInterface();
 	if( ai == nullptr )
 	{
 		return;
@@ -1109,11 +1093,7 @@ void OpenContain::recomputeLoadPenalty()
 				}
 			}
 
-			load = (Real)occupied / (Real)capacity;
-			if( load > 1.0f )
-			{
-				load = 1.0f;
-			}
+			load = clamp( 0.0f, (Real)occupied / (Real)capacity, 1.0f );
 		}
 	}
 
@@ -1122,19 +1102,15 @@ void OpenContain::recomputeLoadPenalty()
 	const Real accelFactor = calcLoadFactor( d->m_loadAccelerationPenalty, load );
 	const Real liftFactor = calcLoadFactor( d->m_loadLiftPenalty, load );
 
-	// a container that is not slowed and never was has nothing to say, so it costs nothing
-	if( speedFactor == ai->getLoadSpeedFactor()
-		&& turnRateFactor == ai->getLoadTurnRateFactor()
-		&& accelFactor == ai->getLoadAccelFactor()
-		&& liftFactor == ai->getLoadLiftFactor() )
-	{
-		return;
-	}
+	const Bool changed = speedFactor != ai->getLoadSpeedFactor()
+		|| turnRateFactor != ai->getLoadTurnRateFactor()
+		|| accelFactor != ai->getLoadAccelFactor()
+		|| liftFactor != ai->getLoadLiftFactor();
 
 	ai->setLoadFactors( speedFactor, turnRateFactor, accelFactor, liftFactor );
 
 	// the group caches its slowest member's speed, so it must be asked to look again
-	if( ai->getGroup() )
+	if( changed && ai->getGroup() )
 	{
 		ai->getGroup()->recomputeGroupSpeed();
 	}
@@ -2194,8 +2170,5 @@ void OpenContain::loadPostProcess()
 
 	// clear the list as we don't need it anymore
 	m_xferContainIDList.clear();
-
-	// the occupants are only back on the list now, so the load slowdown has to be worked out again
-	recomputeLoadPenalty();
 
 }

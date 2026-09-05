@@ -169,9 +169,6 @@ public:
 
 	virtual void onContaining( Object *obj, Bool wasSelected ) override;		///< object now contains 'obj'
 
-	/// Recompute how much our current occupants slow us down, and tell our locomotor.
-	void recomputeLoadPenalty();
-
 	virtual void onRemoving( Object *obj ) override;			///< object no longer contains 'obj'
 	virtual void onSelling() override;///< Container is being sold.  Open responds by kicking people out
 
@@ -299,6 +296,9 @@ protected:
 	ContainedItemsList	m_containList;						///< the list of contained objects
 	UnsignedInt					m_containListSize;							///< size of contained list
 private:
+
+	/// Recompute how much our current occupants slow us down, and tell our locomotor.
+	void recomputeLoadPenalty();
 
 	typedef std::map< ObjectID, ObjectEnterExitType, std::less<ObjectID>/**/> ObjectEnterExitMap;
 
