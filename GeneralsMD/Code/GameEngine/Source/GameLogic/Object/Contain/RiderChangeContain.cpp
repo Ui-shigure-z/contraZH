@@ -304,6 +304,8 @@ void RiderChangeContain::onRemoving( Object *rider )
 	if( bike->isEffectivelyDead() )
 	{
 		TheGameLogic->destroyObject( rider );
+		// the base class is skipped here, so the load slowdown has to be dropped by hand
+		recomputeLoadPenalty();
 		return;
 	}
 
@@ -311,6 +313,11 @@ void RiderChangeContain::onRemoving( Object *rider )
 	{
 		//Extend base class
 		TransportContain::onRemoving( rider );
+	}
+	else
+	{
+		// likewise when the base class is not extended at all
+		recomputeLoadPenalty();
 	}
 
 	//Find the rider in the list and clear various data.

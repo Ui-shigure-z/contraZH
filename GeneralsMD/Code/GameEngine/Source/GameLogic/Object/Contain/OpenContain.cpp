@@ -1056,7 +1056,8 @@ Bool OpenContainModuleData::doesObjectCountTowardLoad( const Object *obj ) const
 
 // ------------------------------------------------------------------------------------------------
 /** A full load costs the whole penalty, an empty one none of it. Floored so a 100% penalty
-	leaves the container crawling rather than frozen. */
+	leaves the container crawling rather than frozen, and capped so a negative penalty in the INI
+	cannot turn a load into a speed bonus. */
 // ------------------------------------------------------------------------------------------------
 static Real calcLoadFactor( Real penalty, Real load )
 {
@@ -1067,21 +1068,20 @@ static Real calcLoadFactor( Real penalty, Real load )
 	{
 		factor = MIN_LOAD_FACTOR;
 	}
+	else if( factor > 1.0f )
+	{
+		factor = 1.0f;
+	}
 	return factor;
 }
 
 // ------------------------------------------------------------------------------------------------
 /** Slow ourselves down in proportion to how full we are. Recomputed from the current occupants
-	rather than adjusted per passenger, so an emptied container returns to exactly full speed. */
+	rather than adjusted per passenger, so an emptied container returns to exactly full speed.
+	A container with no penalty configured writes 1.0 rather than leaving the last value behind. */
 // ------------------------------------------------------------------------------------------------
 void OpenContain::recomputeLoadPenalty()
 {
-	const OpenContainModuleData *d = getOpenContainModuleData();
-	if( !d->hasLoadPenalty() )
-	{
-		return;
-	}
-
 	Object *self = getObject();
 	AIUpdateInterface *ai = self ? self->getAIUpdateInterface() : nullptr;
 	if( ai == nullptr )
@@ -1089,30 +1089,49 @@ void OpenContain::recomputeLoadPenalty()
 		return;
 	}
 
-	const Int capacity = getContainMax();
-	Real load = 0.0f;
-	if( capacity > 0 )
-	{
-		Int occupied = 0;
-		for( ContainedItemsList::const_iterator it = m_containList.begin(); it != m_containList.end(); ++it )
-		{
-			if( d->doesObjectCountTowardLoad( *it ) )
-			{
-				occupied += (*it)->getTransportSlotCount();
-			}
-		}
+	const OpenContainModuleData *d = getOpenContainModuleData();
 
-		load = (Real)occupied / (Real)capacity;
-		if( load > 1.0f )
+	Real load = 0.0f;
+	if( d->hasLoadPenalty() )
+	{
+		// both halves of the ratio must come from the same container, and a redirecting one
+		// (OverlordContain) or a shared one (TunnelContain) answers these two for its own list
+		const Int capacity = getContainMax();
+		const ContainedItemsList *items = getContainedItemsList();
+		if( capacity > 0 && items )
 		{
-			load = 1.0f;
+			Int occupied = 0;
+			for( ContainedItemsList::const_iterator it = items->begin(); it != items->end(); ++it )
+			{
+				if( d->doesObjectCountTowardLoad( *it ) )
+				{
+					occupied += (*it)->getTransportSlotCount();
+				}
+			}
+
+			load = (Real)occupied / (Real)capacity;
+			if( load > 1.0f )
+			{
+				load = 1.0f;
+			}
 		}
 	}
 
-	ai->setLoadFactors( calcLoadFactor( d->m_loadSpeedPenalty, load ),
-		calcLoadFactor( d->m_loadTurnRatePenalty, load ),
-		calcLoadFactor( d->m_loadAccelerationPenalty, load ),
-		calcLoadFactor( d->m_loadLiftPenalty, load ) );
+	const Real speedFactor = calcLoadFactor( d->m_loadSpeedPenalty, load );
+	const Real turnRateFactor = calcLoadFactor( d->m_loadTurnRatePenalty, load );
+	const Real accelFactor = calcLoadFactor( d->m_loadAccelerationPenalty, load );
+	const Real liftFactor = calcLoadFactor( d->m_loadLiftPenalty, load );
+
+	// a container that is not slowed and never was has nothing to say, so it costs nothing
+	if( speedFactor == ai->getLoadSpeedFactor()
+		&& turnRateFactor == ai->getLoadTurnRateFactor()
+		&& accelFactor == ai->getLoadAccelFactor()
+		&& liftFactor == ai->getLoadLiftFactor() )
+	{
+		return;
+	}
+
+	ai->setLoadFactors( speedFactor, turnRateFactor, accelFactor, liftFactor );
 
 	// the group caches its slowest member's speed, so it must be asked to look again
 	if( ai->getGroup() )

@@ -647,6 +647,10 @@ public:
 
 	/// Occupant load slowdown, kept here so it survives a locomotor set being rebuilt.
 	void setLoadFactors(Real speed, Real turnRate, Real accel, Real lift);
+	inline Real getLoadSpeedFactor(void) const { return m_loadSpeedFactor; }
+	inline Real getLoadTurnRateFactor(void) const { return m_loadTurnRateFactor; }
+	inline Real getLoadAccelFactor(void) const { return m_loadAccelFactor; }
+	inline Real getLoadLiftFactor(void) const { return m_loadLiftFactor; }
 
 protected:
 
