@@ -304,6 +304,48 @@ target is what changes, not a deliberate shot.
 * Turning this on changes the simulation, so a replay must be played back with the same setting it
 was recorded with.
 
+## Transport load slowdown
+
+* `TransportLoadSpeedPenalty = 0%` - (Default. The fraction of its `Speed` a container loses when it
+is completely full.)
+* `TransportLoadTurnRatePenalty = 0%` - (Default. The same for `TurnRate`.)
+* `TransportLoadAccelerationPenalty = 0%` - (Default. The same for `Acceleration`.)
+* `TransportLoadLiftPenalty = 0%` - (Default. The same for `Lift`.)
+
+A transport in retail moves at exactly the same speed whether it is empty or packed, so there is no
+cost to filling one up and no reason to send a half-loaded one anywhere. These make a container
+heavier the more it is carrying: at a full load it loses the whole percentage, at half a load it
+loses half of it, and as passengers leave it gets the speed back.
+
+The penalty is worked out from what is inside at that moment rather than tallied up as passengers
+come and go, so an emptied transport is back to exactly its original speed with nothing left over.
+
+Fullness is counted in slots rather than bodies, so a unit that takes three slots weighs three times
+as much as one that takes a single slot.
+
+```
+GameData
+  TransportLoadSpeedPenalty        = 40%
+  TransportLoadAccelerationPenalty = 25%
+End
+```
+
+Individual containers can override any of these, exclude particular passengers from counting, or opt
+out of the whole thing - see
+[Load slowdown from occupants](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#load-slowdown-from-occupants).
+
+Notes:
+* Each percentage covers the damaged variant of its value, so `SpeedDamaged` is scaled by the same
+amount as `Speed`. A damaged transport is slowed once, not twice.
+* The slowdown survives a change of locomotor, so an upgrade that grants `SET_NORMAL_UPGRADED`, or a
+unit falling back to `SET_PANIC`, keeps it.
+* Containers that cannot move are unaffected. A garrisoned building has no locomotor, so the keys
+parse but do nothing there.
+* A loaded transport travelling with a group holds the group to its speed, exactly as any other slow
+unit does.
+* Turning this on changes the simulation, so a replay must be played back with the same setting it
+was recorded with. Left at the `0%` default nothing changes at all.
+
 # SpecialPower.ini
 
 ## StartCooldownOnFirstShot

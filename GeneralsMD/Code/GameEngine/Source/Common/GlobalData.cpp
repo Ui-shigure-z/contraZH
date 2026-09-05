@@ -107,6 +107,10 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "WeaponScatterOnWaterSurfaceDefault",	INI::parseBool,			nullptr,			offsetof( GlobalData, m_weaponScatterOnWaterSurfaceDefault ) },
 	{ "ReverseMoveIgnoreAngleThreshold",	INI::parseBool,			nullptr,			offsetof( GlobalData, m_reverseMoveIgnoreAngleThreshold ) },
 	{ "SmartGarrisonRange",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_smartGarrisonRange ) },
+	{ "TransportLoadSpeedPenalty",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_transportLoadSpeedPenalty ) },
+	{ "TransportLoadTurnRatePenalty",	INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_transportLoadTurnRatePenalty ) },
+	{ "TransportLoadAccelerationPenalty",	INI::parsePercentToReal,	nullptr,		offsetof( GlobalData, m_transportLoadAccelerationPenalty ) },
+	{ "TransportLoadLiftPenalty",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_transportLoadLiftPenalty ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
 	{ "MaxShellScreens",					INI::parseInt,				nullptr,			offsetof( GlobalData, m_maxShellScreens ) },
@@ -699,6 +703,10 @@ GlobalData::GlobalData()
 	m_weaponScatterOnWaterSurfaceDefault = FALSE;
 	m_reverseMoveIgnoreAngleThreshold = FALSE;
 	m_smartGarrisonRange = 100.0f;
+	m_transportLoadSpeedPenalty = 0.0f;
+	m_transportLoadTurnRatePenalty = 0.0f;
+	m_transportLoadAccelerationPenalty = 0.0f;
+	m_transportLoadLiftPenalty = 0.0f;
 	m_dumpAssetUsage = FALSE;
 	m_framesPerSecondLimit = 0;
 	m_chipSetType = 0;

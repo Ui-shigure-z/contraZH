@@ -382,6 +382,10 @@ AIUpdateInterface::AIUpdateInterface( Thing *thing, const ModuleData* moduleData
 	m_isInUpdate = FALSE;
 	m_fixLocoInPostProcess = FALSE;
 	m_speedMultiplier = 1.0;
+	m_loadSpeedFactor = 1.0f;
+	m_loadTurnRateFactor = 1.0f;
+	m_loadAccelFactor = 1.0f;
+	m_loadLiftFactor = 1.0f;
 
 	// ---------------------------------------------
 
@@ -1037,6 +1041,10 @@ void AIUpdateInterface::chooseGoodLocomotorFromCurrentSet()
 		// Add speed multiplier to loco
 		if (m_speedMultiplier != 1.0)
 			m_curLocomotor->applySpeedMultiplier(m_speedMultiplier);
+
+		// Restore the occupant load slowdown, which the new loco knows nothing about
+		if (m_loadSpeedFactor != 1.0f || m_loadTurnRateFactor != 1.0f || m_loadAccelFactor != 1.0f || m_loadLiftFactor != 1.0f)
+			m_curLocomotor->setLoadFactors(m_loadSpeedFactor, m_loadTurnRateFactor, m_loadAccelFactor, m_loadLiftFactor);
 
 		// Reset drawable transforms
 		if (prevLoco != NULL && prevLoco->getAppearance() != m_curLocomotor->getAppearance()) {
@@ -4866,6 +4874,17 @@ void AIUpdateInterface::applySpeedMultiplier(Real scalar) {
 	m_speedMultiplier *= scalar;
 	if (m_curLocomotor)
 		m_curLocomotor->applySpeedMultiplier(scalar); // Use Set instead of Apply?
+}
+
+//----------------------------------------------------------------------------------------------
+void AIUpdateInterface::setLoadFactors(Real speed, Real turnRate, Real accel, Real lift)
+{
+	m_loadSpeedFactor = speed;
+	m_loadTurnRateFactor = turnRate;
+	m_loadAccelFactor = accel;
+	m_loadLiftFactor = lift;
+	if (m_curLocomotor)
+		m_curLocomotor->setLoadFactors(speed, turnRate, accel, lift);
 }
 
 
