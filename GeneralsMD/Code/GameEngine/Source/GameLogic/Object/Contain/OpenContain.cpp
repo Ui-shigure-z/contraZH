@@ -1047,7 +1047,8 @@ Bool OpenContainModuleData::doesObjectCountTowardLoad( const Object *obj ) const
 		return FALSE;
 	}
 
-	return obj->isKindOfMulti( m_loadPenaltyKindOf, m_loadPenaltyForbidKindOf );
+	// not isKindOfMulti: that wants every bit of the allow mask, and this one means any of them
+	return obj->isAnyKindOf( m_loadPenaltyKindOf ) && !obj->isAnyKindOf( m_loadPenaltyForbidKindOf );
 }
 
 // ------------------------------------------------------------------------------------------------
