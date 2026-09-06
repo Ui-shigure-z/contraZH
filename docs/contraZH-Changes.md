@@ -209,7 +209,9 @@ first and silently drops the other.
 ## Smart selection
 
 Shows a row of half size cameos above the command bar, one per selected unit type, each with
-a count of how many are selected.
+a count of how many are selected. Only objects of the exact same type share a cameo, so a reskin or
+build variation gets one of its own. A cameo standing for a single object shows a small health bar
+instead of a count.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
 
@@ -217,8 +219,8 @@ a count of how many are selected.
 so orders still go to everyone. A command off that card which not every selected type carries is
 issued to the focused type alone; one they all carry, like Stop or Guard, still goes to everyone.
 Click the pushed in cameo again to go back to the group's common commands.
-* Ctrl+click a cameo to drop that type from the selection. Right click is left alone, so it
-still deselects like anywhere else on screen.
+* Right click a cameo to drop that type from the selection.
+* Ctrl+Shift+click a cameo to keep only that type and drop every other type from the selection.
 * Tab and Shift+Tab (`SMART_SELECTION_NEXT_TYPE` / `SMART_SELECTION_PREV_TYPE` in
 CommandMap.ini) step the focused type through the row.
 

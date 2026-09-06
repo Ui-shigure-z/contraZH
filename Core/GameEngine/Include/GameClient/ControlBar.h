@@ -754,8 +754,9 @@ public:
 
 	// TheSuperHackers @feature Smart selection: one cameo per selected unit type above the
 	// command bar. Left click and Tab pick which type's command set the bar shows while the
-	// whole group stays selected, Ctrl click drops the type from the selection.
-	void processSmartSelectionClick( GameWindow *button );
+	// whole group stays selected, right click drops the type from the selection and
+	// Ctrl+Shift click keeps only that type.
+	void processSmartSelectionClick( GameWindow *button, Bool rightClick );
 	void smartSelectionCycle( Int direction );
 	const ThingTemplate *getSmartSelectionFocusTemplate() const;
 	Bool isSmartSelectionFocused( const Object *obj ) const;
@@ -955,7 +956,7 @@ protected:
 	void refreshSmartSelectionButtons();
 	Int getSmartSelectionRowWidth() const;
 	void smartSelectionFocus( Int groupIndex );
-	void smartSelectionRemove( Int groupIndex );
+	void smartSelectionRemove( Int groupIndex, Bool keepGroup );
 
 	static const Image* calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate );
 	static const Image* calculateVeterancyOverlayForObject( const Object *obj );
@@ -1023,6 +1024,7 @@ protected:
 	{
 		const ThingTemplate *thingTemplate;
 		Int count;
+		ObjectID soleObject;	///< the one member when count is 1, for its health bar
 	};
 	std::vector<SmartSelectionGroup> m_smartSelectionGroups;	///< one per unit type in the selection
 	GameWindow *m_smartSelectionParent;												///< top level container for the row, created in code
