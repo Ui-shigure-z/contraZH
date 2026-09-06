@@ -81,6 +81,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "UseTrees",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_useTrees ) },
 	{ "UseFPSLimit",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_useFpsLimit ) },
 	{ "QueueReorder",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_queueReorder ) },
+	{ "BatchParticles",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_batchParticles ) },
 	{ "DumpAssetUsage",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_dumpAssetUsage ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
@@ -566,6 +567,7 @@ GlobalData::GlobalData()
 
   m_TiVOFastMode = FALSE;
   m_queueReorder = FALSE;
+  m_batchParticles = FALSE;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_radarBlipSize = RadarBlipSize_Default;
