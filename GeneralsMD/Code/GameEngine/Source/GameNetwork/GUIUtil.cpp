@@ -241,6 +241,28 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 
 // -----------------------------------------------------------------------------
 
+// Same gates as the random pick in GameLogic.cpp and the preference load in UserPreferences.cpp
+static Bool isSelectablePlayerTemplate(const PlayerTemplate *fac, const GameInfo *myGame)
+{
+	if (!fac)
+		return FALSE;
+
+	if (fac->getStartingBuilding().isEmpty())
+		return FALSE;
+
+	if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )
+		return FALSE;
+
+	// @todo: unlock these when something rad happens
+	Bool disallowLockedGenerals = TRUE;
+	const GeneralPersona *general = TheChallengeGenerals->getGeneralByTemplateName(fac->getName());
+	Bool startsLocked = general ? !general->isStartingEnabled() : FALSE;
+	if (disallowLockedGenerals && startsLocked)
+		return FALSE;
+
+	return TRUE;
+}
+
 void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGame, Bool allowObservers)
 {
 	Int numPlayerTemplates = ThePlayerTemplateStore->getPlayerTemplateCount();
@@ -253,26 +275,31 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 	GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)PLAYERTEMPLATE_RANDOM);
 
 	std::set<AsciiString> seenSides;
+	std::set<AsciiString> selectableBaseSides;
 
 	for (Int c=0; c<numPlayerTemplates; ++c)
 	{
 		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
-		if (!fac)
+		if (isSelectablePlayerTemplate(fac, myGame))
+		{
+			selectableBaseSides.insert(fac->getBaseSide());
+		}
+	}
+
+	for (Int n = 0; n < GetRandomBaseSideCount(); ++n)
+	{
+		if (selectableBaseSides.find(GetRandomBaseSide(n)) == selectableBaseSides.end())
 			continue;
 
-		if (fac->getStartingBuilding().isEmpty())
-			continue;
+		Int randomSide = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - n;
+		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], GetRandomPlayerTemplateDisplayName(randomSide), def->getColor());
+		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)randomSide);
+	}
 
-		if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )
-		  continue;
-
-		// Prevent players from selecting the disabled Generals for use.
-		// This is also enforced at game loading (GameLogic.cpp and UserPreferences.cpp).
-		// @todo: unlock these when something rad happens
-		Bool disallowLockedGenerals = TRUE;
-		const GeneralPersona *general = TheChallengeGenerals->getGeneralByTemplateName(fac->getName());
-		Bool startsLocked = general ? !general->isStartingEnabled() : FALSE;
-		if (disallowLockedGenerals && startsLocked)
+	for (Int c=0; c<numPlayerTemplates; ++c)
+	{
+		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
+		if (!isSelectablePlayerTemplate(fac, myGame))
 			continue;
 
 

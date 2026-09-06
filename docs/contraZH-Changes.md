@@ -110,6 +110,24 @@ Notes:
 * The twelve retail personas are untouched, and a layout that still carries exactly twelve buttons
 behaves as it always did.
 
+# Game Setup
+
+## Random army per faction
+
+The army list in Skirmish, LAN and online game setup gains one `Random <faction>` entry per base
+faction, listed right after `Random`: with the retail generals that is `Random USA`, `Random China`
+and `Random GLA`. Picking one starts the game as a random general of that faction only, for a human
+slot or an AI slot alike. Which generals belong to a faction comes from the `BaseSide` line of their
+`PlayerTemplate.ini` entry, so a mod that adds a faction gets its own entry without a code change.
+
+Notes:
+* The labels are string table lookups named `GUI:Random<BaseSide>` (`GUI:RandomUSA`,
+`GUI:RandomChina`, `GUI:RandomGLA`). A missing key falls back to `Random <BaseSide>`.
+* Limit Armies still applies: the random pick only considers generals the checkbox allows, and an
+entry disappears when none of its generals are allowed.
+* The choice travels in the game options like plain `Random` does. All players in a LAN or online
+game need this build, and a replay made with one of these entries needs it too.
+
 # Options.ini
 
 These are read once at startup. Changing them needs a restart.

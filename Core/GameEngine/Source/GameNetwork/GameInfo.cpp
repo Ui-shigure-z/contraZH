@@ -125,12 +125,81 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 	return FALSE;
 }
 
+// Base sides of the playable templates, in first-appearance order
+static Int findRandomBaseSide( Int n, AsciiString *baseSide )
+{
+	Int count = 0;
+	for (Int i = 0; i < ThePlayerTemplateStore->getPlayerTemplateCount() && count < PLAYERTEMPLATE_MAX_RANDOM_SIDES; ++i)
+	{
+		const PlayerTemplate *pt = ThePlayerTemplateStore->getNthPlayerTemplate(i);
+		if (!pt || pt->getStartingBuilding().isEmpty() || pt->getBaseSide().isEmpty())
+		{
+			continue;
+		}
+		Bool seen = FALSE;
+		for (Int j = 0; j < i && !seen; ++j)
+		{
+			const PlayerTemplate *prev = ThePlayerTemplateStore->getNthPlayerTemplate(j);
+			seen = prev && !prev->getStartingBuilding().isEmpty() && prev->getBaseSide() == pt->getBaseSide();
+		}
+		if (seen)
+		{
+			continue;
+		}
+		if (count == n)
+		{
+			*baseSide = pt->getBaseSide();
+			return count;
+		}
+		++count;
+	}
+	return count;
+}
+
+Int GetRandomBaseSideCount()
+{
+	AsciiString unused;
+	return findRandomBaseSide(-1, &unused);
+}
+
+AsciiString GetRandomBaseSide( Int n )
+{
+	AsciiString baseSide;
+	findRandomBaseSide(n, &baseSide);
+	return baseSide;
+}
+
+Bool IsRandomBaseSidePlayerTemplate( Int playerTemplate )
+{
+	Int n = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - playerTemplate;
+	return n >= 0 && n < GetRandomBaseSideCount();
+}
+
+Bool IsRandomPlayerTemplate( Int playerTemplate )
+{
+	return playerTemplate == PLAYERTEMPLATE_RANDOM || IsRandomBaseSidePlayerTemplate(playerTemplate);
+}
+
+UnicodeString GetRandomPlayerTemplateDisplayName( Int playerTemplate )
+{
+	if (!IsRandomBaseSidePlayerTemplate(playerTemplate))
+	{
+		return TheGameText->fetch("GUI:Random");
+	}
+	AsciiString baseSide = GetRandomBaseSide(PLAYERTEMPLATE_RANDOM_SIDE_FIRST - playerTemplate);
+	AsciiString label;
+	label.format("GUI:Random%s", baseSide.str());
+	UnicodeString substitute;
+	substitute.format(L"Random %hs", baseSide.str());
+	return TheGameText->fetchOrSubstitute(label.str(), substitute.str());
+}
+
 UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 {
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
-		m_origPlayerTemplate == PLAYERTEMPLATE_RANDOM && !isSlotLocalAlly(this))
+		IsRandomPlayerTemplate(m_origPlayerTemplate) && !isSlotLocalAlly(this))
 	{
-		return TheGameText->fetch("GUI:Random");
+		return GetRandomPlayerTemplateDisplayName(m_origPlayerTemplate);
 	}
 	else if (m_origPlayerTemplate == PLAYERTEMPLATE_OBSERVER)
 	{
@@ -140,7 +209,7 @@ UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 		m_playerTemplate, m_origPlayerTemplate));
 	if (m_playerTemplate < 0)
 	{
-		return TheGameText->fetch("GUI:Random");
+		return GetRandomPlayerTemplateDisplayName(m_playerTemplate);
 	}
 	return ThePlayerTemplateStore->getNthPlayerTemplate(m_playerTemplate)->getDisplayName();
 }
