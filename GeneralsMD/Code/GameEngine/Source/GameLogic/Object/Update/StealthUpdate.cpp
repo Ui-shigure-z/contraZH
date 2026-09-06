@@ -141,6 +141,7 @@ StealthUpdate::StealthUpdate( Thing *thing, const ModuleData* moduleData ) : Upd
 	m_disguiseTransitionFrames	= 0;
 	m_disguiseHalfpointReached  = false;
 	m_nextBlackMarketCheckFrame = 0;
+	m_lastUnitCreatedFrame = 0;
 	m_framesGranted = 0;
 
 	m_stealthLevelOverride = 0;
@@ -403,6 +404,31 @@ Bool StealthUpdate::allowedToStealth( Object *stealthOwner ) const
 
     }
   }
+
+	if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_WEAPON )
+	{
+		ContainModuleInterface *myContain = self->getContain();
+		if( myContain && myContain->isPassengerAllowedToFire() )
+		{
+			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_PRIMARY && myContain->isAnyRiderFiringWeaponSlot( PRIMARY_WEAPON ) )
+			{
+				return FALSE;
+			}
+			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_SECONDARY && myContain->isAnyRiderFiringWeaponSlot( SECONDARY_WEAPON ) )
+			{
+				return FALSE;
+			}
+			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_TERTIARY && myContain->isAnyRiderFiringWeaponSlot( TERTIARY_WEAPON ) )
+			{
+				return FALSE;
+			}
+		}
+	}
+
+	if( flags & STEALTH_NOT_WHILE_UNIT_CREATED && m_lastUnitCreatedFrame != 0 && m_lastUnitCreatedFrame >= now - 1 )
+	{
+		return FALSE;
+	}
 
 
 
@@ -867,6 +893,12 @@ void setWakeupIfInRange( Object *obj, void *userData)
 
 
 //-------------------------------------------------------------------------------------------------
+void StealthUpdate::notifyUnitCreated()
+{
+	m_lastUnitCreatedFrame = TheGameLogic->getFrame();
+}
+
+//-------------------------------------------------------------------------------------------------
 void StealthUpdate::markAsDetected(UnsignedInt numFrames)
 {
 	Object *self = getObject();
@@ -1136,13 +1168,15 @@ void StealthUpdate::crc( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
 	* Version Info:
-	* 1: Initial version */
+	* 1: Initial version
+	* 2: Added m_framesGranted
+	* 3: Added m_lastUnitCreatedFrame */
 // ------------------------------------------------------------------------------------------------
 void StealthUpdate::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 2;
+	XferVersion currentVersion = 3;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1208,6 +1242,11 @@ void StealthUpdate::xfer( Xfer *xfer )
 	}
 
 	xfer->xferUnsignedInt( &m_stealthLevelOverride );
+
+	if( version >= 3 )
+	{
+		xfer->xferUnsignedInt( &m_lastUnitCreatedFrame );
+	}
 
 }  // end xfer
 

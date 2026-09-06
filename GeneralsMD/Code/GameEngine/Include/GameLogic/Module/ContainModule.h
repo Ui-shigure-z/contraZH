@@ -40,6 +40,7 @@ class ExitInterface;
 class Matrix3D;
 class Weapon;
 enum CommandSourceType CPP_11(: Int);
+enum WeaponSlotType CPP_11(: Int);
 
 //-------------------------------------------------------------------------------------------------
 enum ObjectEnterExitType CPP_11(: Int)
@@ -101,6 +102,7 @@ public:
 	virtual Bool isImmuneToClearBuildingAttacks() const = 0;
   virtual Bool isSpecialOverlordStyleContainer() const = 0;
   virtual Bool isAnyRiderAttacking() const = 0;
+  virtual Bool isAnyRiderFiringWeaponSlot( WeaponSlotType slot ) const = 0;
 
 	///< if my object gets selected, then my visible passengers should, too
 	///< this gets called from

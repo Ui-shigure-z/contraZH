@@ -529,6 +529,28 @@ attack" warning.
 * Damage types outside `DamageTypes`, and hits below `DamageAmount`, are unaffected and drain health
 normally.
 
+# StealthUpdate
+
+## New StealthForbiddenConditions
+
+Four new values for `StealthForbiddenConditions` (and `OverrideStealthForbiddenConditions` on
+`StealthUpgrade`), alongside the retail set of `ATTACKING`, `MOVING`, `USING_ABILITY`,
+`FIRING_PRIMARY`, `FIRING_SECONDARY`, `FIRING_TERTIARY`, `NO_BLACK_MARKET`, `TAKING_DAMAGE`,
+`RIDERS_ATTACKING` and `FIRING_WEAPON_FOUR` to `FIRING_WEAPON_EIGHT`.
+
+* `RIDERS_FIRING_PRIMARY`, `RIDERS_FIRING_SECONDARY`, `RIDERS_FIRING_TERTIARY` - the transport
+cannot stealth while any passenger fired the named weapon slot this frame or the last. They work
+like the transport's own `FIRING_*` conditions but look at the riders, and, like `RIDERS_ATTACKING`,
+only apply to a container whose `PassengersAllowedToFire = Yes`. `RIDERS_ATTACKING` reveals for as
+long as a rider holds an attack order, even between shots; these reveal only on the shots
+themselves, so a container with a slow-firing rider can re-cloak in between.
+* `UNIT_CREATED` - the object cannot stealth in the frame it finishes producing a unit. This covers
+a `ProductionUpdate` queue completing, a spawner or drone carrier releasing a spawn, and a dozer
+finishing a structure.
+
+As with `TAKING_DAMAGE`, each of these breaks stealth for a single frame; the object's `StealthDelay`
+then decides how long it stays visible before it may cloak again.
+
 # New CommandButton Commands
 
 ## HOLD_FIRE

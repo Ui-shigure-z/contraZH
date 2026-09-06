@@ -237,6 +237,7 @@ public:
 	virtual Bool isImmuneToClearBuildingAttacks() const override { return true; }
   virtual Bool isSpecialOverlordStyleContainer() const override { return false; }
   virtual Bool isAnyRiderAttacking() const override;
+  virtual Bool isAnyRiderFiringWeaponSlot( WeaponSlotType slot ) const override;
 
 	/**
 		this is used for containers that must do something to allow people to enter or exit...
