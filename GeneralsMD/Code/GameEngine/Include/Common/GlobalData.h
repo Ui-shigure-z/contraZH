@@ -38,6 +38,7 @@
 #include "GameClient/TintStatus.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
+#include "Common/KindOf.h"
 
 // FORWARD DECLARATIONS ///////////////////////////////////////////////////////////////////////////
 struct FieldParse;
@@ -655,6 +656,8 @@ public:
 	Real m_transportLoadTurnRatePenalty;	///< likewise for turn rate
 	Real m_transportLoadAccelerationPenalty;	///< likewise for acceleration
 	Real m_transportLoadLiftPenalty;	///< likewise for lift
+	KindOfMaskType m_transportLoadPenaltyKindOf;	///< default: only occupants with one of these kind of bits count toward the load
+	KindOfMaskType m_transportLoadPenaltyForbidKindOf;	///< default: occupants with any of these kind of bits do not count toward the load
 
 	// the trailing '\' is included!
   const AsciiString &getPath_UserData() const { return m_userDataDir; }
