@@ -301,6 +301,21 @@ terrain fit, which is not visible on the effects that actually reach that size.
 
 # GameData.ini
 
+## BatchParticles
+
+* `BatchParticles = No` - (Default. `Yes` draws consecutive particle systems that share a texture,
+blend mode and billboard mode in a single call.)
+
+Every particle system used to be its own draw call. With `BatchParticles = Yes`, plain particle
+systems that look alike are gathered into one 512-point buffer and drawn together, which
+TheSuperHackers measured at 15 to 30 percent cheaper particle rendering. Streak, volume and
+terrain-conforming systems are never batched and draw exactly as before.
+
+Notes:
+* Independent of the option, a particle system with nothing on screen is now skipped outright
+instead of being walked and drawn empty.
+* Ported from TheSuperHackers commit `de20ae0cb` (Ronin and Mauller).
+
 ## NoOccupantFriendlyFire
 
 * `NoOccupantFriendlyFire = No` - (Default. `Yes` spares the container a passenger is riding in from
