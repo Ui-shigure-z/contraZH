@@ -48,7 +48,7 @@ enum
 	PLAYERTEMPLATE_RANDOM = -1,
 	PLAYERTEMPLATE_OBSERVER = -2,
 	PLAYERTEMPLATE_RANDOM_SIDE_FIRST = -3,	// -3 - n picks a random general of the nth base side
-	PLAYERTEMPLATE_MAX_RANDOM_SIDES = 8,
+	PLAYERTEMPLATE_MAX_RANDOM_SIDES = 32,
 	PLAYERTEMPLATE_MIN = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - PLAYERTEMPLATE_MAX_RANDOM_SIDES + 1
 };
 
@@ -56,6 +56,7 @@ Int GetRandomBaseSideCount();
 AsciiString GetRandomBaseSide( Int n );
 Bool IsRandomBaseSidePlayerTemplate( Int playerTemplate );
 Bool IsRandomPlayerTemplate( Int playerTemplate );
+Bool IsValidSlotPlayerTemplate( Int playerTemplate );
 UnicodeString GetRandomPlayerTemplateDisplayName( Int playerTemplate );
 
 /**

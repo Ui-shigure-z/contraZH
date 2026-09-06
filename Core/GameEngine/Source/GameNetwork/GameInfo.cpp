@@ -125,59 +125,59 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 	return FALSE;
 }
 
-// Base sides of the playable templates, in first-appearance order
-static Int findRandomBaseSide( Int n, AsciiString *baseSide )
+// Base sides of the playable templates in first-appearance order, built once the store is loaded
+static const std::vector<AsciiString> &getRandomBaseSides()
 {
-	Int count = 0;
-	for (Int i = 0; i < ThePlayerTemplateStore->getPlayerTemplateCount() && count < PLAYERTEMPLATE_MAX_RANDOM_SIDES; ++i)
+	static std::vector<AsciiString> baseSides;
+	if (baseSides.empty())
 	{
-		const PlayerTemplate *pt = ThePlayerTemplateStore->getNthPlayerTemplate(i);
-		if (!pt || pt->getStartingBuilding().isEmpty() || pt->getBaseSide().isEmpty())
+		for (Int i = 0; i < ThePlayerTemplateStore->getPlayerTemplateCount() && baseSides.size() < PLAYERTEMPLATE_MAX_RANDOM_SIDES; ++i)
 		{
-			continue;
+			const PlayerTemplate *pt = ThePlayerTemplateStore->getNthPlayerTemplate(i);
+			if (!pt || pt->getStartingBuilding().isEmpty() || pt->getBaseSide().isEmpty())
+			{
+				continue;
+			}
+			if (std::find(baseSides.begin(), baseSides.end(), pt->getBaseSide()) == baseSides.end())
+			{
+				baseSides.push_back(pt->getBaseSide());
+			}
 		}
-		Bool seen = FALSE;
-		for (Int j = 0; j < i && !seen; ++j)
-		{
-			const PlayerTemplate *prev = ThePlayerTemplateStore->getNthPlayerTemplate(j);
-			seen = prev && !prev->getStartingBuilding().isEmpty() && prev->getBaseSide() == pt->getBaseSide();
-		}
-		if (seen)
-		{
-			continue;
-		}
-		if (count == n)
-		{
-			*baseSide = pt->getBaseSide();
-			return count;
-		}
-		++count;
 	}
-	return count;
+	return baseSides;
 }
 
 Int GetRandomBaseSideCount()
 {
-	AsciiString unused;
-	return findRandomBaseSide(-1, &unused);
+	return getRandomBaseSides().size();
 }
 
 AsciiString GetRandomBaseSide( Int n )
 {
-	AsciiString baseSide;
-	findRandomBaseSide(n, &baseSide);
-	return baseSide;
+	return getRandomBaseSides()[n];
 }
 
 Bool IsRandomBaseSidePlayerTemplate( Int playerTemplate )
 {
-	Int n = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - playerTemplate;
-	return n >= 0 && n < GetRandomBaseSideCount();
+	if (playerTemplate > PLAYERTEMPLATE_RANDOM_SIDE_FIRST || playerTemplate < PLAYERTEMPLATE_MIN)
+	{
+		return FALSE;
+	}
+	return PLAYERTEMPLATE_RANDOM_SIDE_FIRST - playerTemplate < GetRandomBaseSideCount();
 }
 
 Bool IsRandomPlayerTemplate( Int playerTemplate )
 {
 	return playerTemplate == PLAYERTEMPLATE_RANDOM || IsRandomBaseSidePlayerTemplate(playerTemplate);
+}
+
+Bool IsValidSlotPlayerTemplate( Int playerTemplate )
+{
+	if (playerTemplate >= 0)
+	{
+		return playerTemplate < ThePlayerTemplateStore->getPlayerTemplateCount();
+	}
+	return playerTemplate == PLAYERTEMPLATE_OBSERVER || IsRandomPlayerTemplate(playerTemplate);
 }
 
 UnicodeString GetRandomPlayerTemplateDisplayName( Int playerTemplate )
@@ -191,7 +191,7 @@ UnicodeString GetRandomPlayerTemplateDisplayName( Int playerTemplate )
 	label.format("GUI:Random%s", baseSide.str());
 	UnicodeString substitute;
 	substitute.format(L"Random %hs", baseSide.str());
-	return TheGameText->fetchOrSubstitute(label.str(), substitute.str());
+	return TheGameText->FETCH_OR_SUBSTITUTE(label.str(), substitute.str());
 }
 
 UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
@@ -1324,7 +1324,7 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
 								break;
 							}
 							Int playerTemplate = atoi(slotValue.str());
-							if (playerTemplate < PLAYERTEMPLATE_MIN || playerTemplate >= ThePlayerTemplateStore->getPlayerTemplateCount())
+							if (!IsValidSlotPlayerTemplate(playerTemplate))
 							{
 								optionsOk = false;
 								DEBUG_LOG(("ParseAsciiStringToGameInfo - player template value is invalid, quitting"));
@@ -1456,7 +1456,7 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
 								break;
 							}
 							Int playerTemplate = atoi(slotValue.str());
-							if (playerTemplate < PLAYERTEMPLATE_MIN || playerTemplate >= ThePlayerTemplateStore->getPlayerTemplateCount())
+							if (!IsValidSlotPlayerTemplate(playerTemplate))
 							{
 								optionsOk = false;
 								DEBUG_LOG(("ParseAsciiStringToGameInfo - player template value is invalid, quitting"));

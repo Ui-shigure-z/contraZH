@@ -722,7 +722,6 @@ static void checkForDuplicateColors( GameInfo *game )
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-// The logic RNG barely mixes its seed in the first draws, so hash the seed before a per-slot pick
 static UnsignedInt mixRandomSeed( UnsignedInt seed, Int slot )
 {
 	UnsignedInt h = seed ^ (UnsignedInt)(slot * 0x9E3779B9);

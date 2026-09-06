@@ -247,7 +247,7 @@ Int SkirmishPreferences::getPreferredFaction()
 	}
 
 	ret = atoi(it->second.str());
-	if (ret < PLAYERTEMPLATE_MIN || ret >= ThePlayerTemplateStore->getPlayerTemplateCount())
+	if (!IsValidSlotPlayerTemplate(ret))
 		ret = PLAYERTEMPLATE_RANDOM;
 
 	if (ret >= 0)

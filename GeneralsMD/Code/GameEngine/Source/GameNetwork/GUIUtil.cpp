@@ -245,20 +245,28 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 static Bool isSelectablePlayerTemplate(const PlayerTemplate *fac, const GameInfo *myGame)
 {
 	if (!fac)
+	{
 		return FALSE;
+	}
 
 	if (fac->getStartingBuilding().isEmpty())
+	{
 		return FALSE;
+	}
 
 	if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )
+	{
 		return FALSE;
+	}
 
 	// @todo: unlock these when something rad happens
 	Bool disallowLockedGenerals = TRUE;
 	const GeneralPersona *general = TheChallengeGenerals->getGeneralByTemplateName(fac->getName());
 	Bool startsLocked = general ? !general->isStartingEnabled() : FALSE;
 	if (disallowLockedGenerals && startsLocked)
+	{
 		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -286,10 +294,13 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 		}
 	}
 
-	for (Int n = 0; n < GetRandomBaseSideCount(); ++n)
+	const Int baseSideCount = GetRandomBaseSideCount();
+	for (Int n = 0; n < baseSideCount; ++n)
 	{
 		if (selectableBaseSides.find(GetRandomBaseSide(n)) == selectableBaseSides.end())
+		{
 			continue;
+		}
 
 		Int randomSide = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - n;
 		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], GetRandomPlayerTemplateDisplayName(randomSide), def->getColor());
@@ -300,7 +311,9 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 	{
 		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
 		if (!isSelectablePlayerTemplate(fac, myGame))
+		{
 			continue;
+		}
 
 
 		AsciiString side;
