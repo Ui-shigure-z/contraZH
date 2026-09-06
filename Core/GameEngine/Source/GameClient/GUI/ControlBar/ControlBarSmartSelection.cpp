@@ -17,10 +17,11 @@
 */
 
 // TheSuperHackers @feature Smart selection (Options.ini: SmartSelection). A row of half size
-// cameos above the command bar, one per selected object, each with its health bar. Left click
-// and Tab focus a type: the whole group stays selected, but the bar shows that type's command
-// set instead of the group's common subset. Right click drops the object from the selection,
-// Ctrl+Shift click keeps only that object.
+// cameos above the command bar. A mixed selection gets one cameo per type with a count; a
+// selection of one type gets one cameo per object. A cameo for a single object shows its health
+// bar. Left click and Tab focus a type: the whole group stays selected, but the bar shows that
+// type's command set instead of the group's common subset. Right click drops the cameo's units
+// from the selection, Ctrl+Shift click keeps only them.
 //
 // The row is built in code rather than from ControlBar.wnd, which ships in the game data.
 // The container is a top level window because the hit test only descends into a top level
@@ -188,7 +189,7 @@ void ControlBar::initSmartSelectionBar( const ICoord2D &commandButtonSize )
 
 		GameWindow *button = TheWindowManager->gogoGadgetPushButton( m_smartSelectionParent,
 			WIN_STATUS_ENABLED | WIN_STATUS_IMAGE | WIN_STATUS_USE_OVERLAY_STATES |
-			WIN_STATUS_RIGHT_CLICK | WIN_STATUS_HIDDEN,
+			WIN_STATUS_COUNT_BADGE | WIN_STATUS_RIGHT_CLICK | WIN_STATUS_HIDDEN,
 			i * stride, 0, m_smartSelectionButtonSize.x, m_smartSelectionButtonSize.y,
 			&instData, font, FALSE );
 		if( button == nullptr )
@@ -276,7 +277,8 @@ void ControlBar::populateSmartSelection()
 		return;
 	}
 
-	std::vector<SmartSelectionGroup> groups;
+	std::vector<Object *> objects;
+	Bool mixed = FALSE;
 	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
@@ -285,21 +287,55 @@ void ControlBar::populateSmartSelection()
 		{
 			continue;
 		}
+		mixed = mixed || ( !objects.empty() && objects[ 0 ]->getTemplate() != obj->getTemplate() );
+		objects.push_back( obj );
+	}
 
-		if( groups.size() >= MAX_SMART_SELECTION_BUTTONS )
+	// a mixed selection merges each type behind a count, a selection of one type spreads out
+	std::vector<SmartSelectionGroup> groups;
+	for( size_t o = 0; o < objects.size(); o++ )
+	{
+		Object *obj = objects[ o ];
+		size_t g = 0;
+		if( mixed )
 		{
-			break;
+			for( ; g < groups.size(); g++ )
+			{
+				if( groups[ g ].thingTemplate == obj->getTemplate() )
+				{
+					break;
+				}
+			}
 		}
-		SmartSelectionGroup group;
-		group.thingTemplate = obj->getTemplate();
-		group.objectID = obj->getID();
-		groups.push_back( group );
+		else
+		{
+			g = groups.size();
+		}
+		if( g == groups.size() )
+		{
+			if( g >= MAX_SMART_SELECTION_BUTTONS )
+			{
+				continue;
+			}
+			SmartSelectionGroup group;
+			group.thingTemplate = obj->getTemplate();
+			group.count = 0;
+			group.objectID = obj->getID();
+			groups.push_back( group );
+		}
+		groups[ g ].count++;
+		if( groups[ g ].count > 1 )
+		{
+			groups[ g ].objectID = INVALID_ID;
+		}
 	}
 
 	Bool same = groups.size() == m_smartSelectionGroups.size();
 	for( size_t g = 0; same && g < groups.size(); g++ )
 	{
-		same = groups[ g ].objectID == m_smartSelectionGroups[ g ].objectID;
+		same = groups[ g ].thingTemplate == m_smartSelectionGroups[ g ].thingTemplate &&
+					 groups[ g ].count == m_smartSelectionGroups[ g ].count &&
+					 groups[ g ].objectID == m_smartSelectionGroups[ g ].objectID;
 	}
 	if( same )
 	{
@@ -368,7 +404,7 @@ void ControlBar::updateSmartSelection()
 	m_smartSelectionParent->winSetPosition( commandPos.x, rowY );
 	m_smartSelectionParent->winHide( FALSE );
 
-	// the bar is one shot on the button, so the health goes on every frame
+	// the bar is one shot on the button, so a lone member's health goes on every frame
 	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
 	{
 		const Object *obj = TheGameLogic->findObjectByID( m_smartSelectionGroups[ g ].objectID );
@@ -385,7 +421,7 @@ void ControlBar::updateSmartSelection()
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Put the objects on the cameos, with every one of the focused type pushed in. */
+/** Put the groups on the cameos, with every one of the focused type pushed in. */
 //-------------------------------------------------------------------------------------------------
 void ControlBar::refreshSmartSelectionButtons()
 {
@@ -413,6 +449,13 @@ void ControlBar::refreshSmartSelectionButtons()
 		}
 		GadgetButtonSetEnabledImage( button, image );
 
+		// a lone member shows its health bar instead of a count
+		UnicodeString count;
+		if( group.count > 1 )
+		{
+			count.format( L"%d", group.count );
+		}
+		GadgetButtonSetText( button, count );
 		button->winSetTooltip( group.thingTemplate->getDisplayName() );
 		GadgetCheckLikeButtonSetVisualCheck( button, group.thingTemplate == focus );
 		button->winHide( FALSE );
@@ -485,13 +528,13 @@ void ControlBar::smartSelectionFocus( Int groupIndex )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Drop one object from the selection, or every other object for keepGroup. Client side
-	* deselect plus one remove message, the same shape as a shift click on a selected unit. The
-	* selection change rebuilds the row. */
+/** Drop a cameo's units from the selection, or every other unit for keepGroup. A cameo stands
+	* for one object or for a whole type. Client side deselect plus one remove message, the same
+	* shape as a shift click on a selected unit. The selection change rebuilds the row. */
 //-------------------------------------------------------------------------------------------------
 void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 {
-	const ObjectID objectID = m_smartSelectionGroups[ groupIndex ].objectID;
+	const SmartSelectionGroup &group = m_smartSelectionGroups[ groupIndex ];
 
 	// gathered first, since deselecting walks the very list being read
 	std::vector<Drawable *> members;
@@ -499,7 +542,12 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
 		Object *obj = getSmartSelectionObject( *it );
-		if( obj && ( obj->getID() == objectID ) != keepGroup )
+		if( obj == nullptr )
+		{
+			continue;
+		}
+		const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate() == group.thingTemplate;
+		if( inGroup != keepGroup )
 		{
 			members.push_back( *it );
 		}
@@ -516,7 +564,7 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 		TheInGameUI->deselectDrawable( members[ i ] );
 	}
 
-	// a lone object shows its own command set, so it needs no focus either
+	// what is kept is one type, which shows its own command set, so it needs no focus either
 	if( groupIndex == m_smartSelectionActive || keepGroup )
 	{
 		m_smartSelectionActive = -1;

@@ -752,10 +752,10 @@ public:
 	/// is the drawable the currently selected drawable for the context sensitive UI?
 	Bool isDrivingContextUI( Drawable *draw ) const { return draw == m_currentSelectedDrawable; }
 
-	// TheSuperHackers @feature Smart selection: one cameo per selected object above the command
-	// bar. Left click and Tab pick which type's command set the bar shows while the whole group
-	// stays selected, right click drops the object from the selection and Ctrl+Shift click keeps
-	// only that object.
+	// TheSuperHackers @feature Smart selection: cameos above the command bar, one per type with
+	// a count in a mixed selection, one per object when all are the same type. Left click and Tab
+	// pick which type's command set the bar shows while the whole group stays selected, right
+	// click drops the cameo's units from the selection and Ctrl+Shift click keeps only them.
 	void processSmartSelectionClick( GameWindow *button, Bool rightClick );
 	void smartSelectionCycle( Int direction );
 	const ThingTemplate *getSmartSelectionFocusTemplate() const;
@@ -1023,9 +1023,10 @@ protected:
 	struct SmartSelectionGroup
 	{
 		const ThingTemplate *thingTemplate;
-		ObjectID objectID;
+		Int count;
+		ObjectID objectID;	///< the one member when count is 1, else INVALID_ID
 	};
-	std::vector<SmartSelectionGroup> m_smartSelectionGroups;	///< one per selected object, in selection order
+	std::vector<SmartSelectionGroup> m_smartSelectionGroups;	///< one per type in a mixed selection, one per object otherwise
 	GameWindow *m_smartSelectionParent;												///< top level container for the row, created in code
 	GameWindow *m_smartSelectionMoneyWindow;									///< the money display the row must not run into
 	GameWindow *m_smartSelectionButtons[ MAX_SMART_SELECTION_BUTTONS ];
