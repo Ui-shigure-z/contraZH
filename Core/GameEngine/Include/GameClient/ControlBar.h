@@ -755,7 +755,7 @@ public:
 	// TheSuperHackers @feature Smart selection: cameos above the command bar, one per type with
 	// a count in a mixed selection, one per object when all are the same type. Left click and Tab
 	// pick which type's command set the bar shows while the whole group stays selected, right
-	// click drops the cameo's units from the selection and Ctrl+Shift click keeps only them.
+	// click drops the cameo's units from the selection and double click keeps only them.
 	void processSmartSelectionClick( GameWindow *button, Bool rightClick );
 	void smartSelectionCycle( Int direction );
 	const ThingTemplate *getSmartSelectionFocusTemplate() const;
@@ -1033,6 +1033,8 @@ protected:
 	ICoord2D m_smartSelectionButtonSize;
 	Int m_smartSelectionActive;																///< cameo whose type's command set the bar shows, or -1 for the common set
 	Bool m_smartSelectionNarrowed;														///< the logic side group is narrowed to the focused type for a command in flight
+	Int m_smartSelectionLastClickSlot;												///< cameo of the last left click, for double click detection
+	UnsignedInt m_smartSelectionLastClickTime;
 
 	GameWindow *m_commandWindows[ MAX_COMMANDS_PER_SET ];			///< command window controls for easy access
 	const CommandButton *m_commonCommands[ MAX_COMMANDS_PER_SET ];	///< shared commands we will use for multi-selection

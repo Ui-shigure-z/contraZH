@@ -21,7 +21,7 @@
 // selection of one type gets one cameo per object. A cameo for a single object shows its health
 // bar. Left click and Tab focus a type: the whole group stays selected, but the bar shows that
 // type's command set instead of the group's common subset. Right click drops the cameo's units
-// from the selection, Ctrl+Shift click keeps only them.
+// from the selection, double click keeps only them.
 //
 // The row is built in code rather than from ControlBar.wnd, which ships in the game data.
 // The container is a top level window because the hit test only descends into a top level
@@ -44,7 +44,6 @@
 #include "GameClient/GameWindowManager.h"
 #include "GameClient/GlobalLanguage.h"
 #include "GameClient/InGameUI.h"
-#include "GameClient/Keyboard.h"
 #include "GameClient/WinInstanceData.h"
 
 static const Int SMART_SELECTION_GAP = 2;
@@ -480,10 +479,16 @@ void ControlBar::processSmartSelectionClick( GameWindow *button, Bool rightClick
 	if( rightClick )
 	{
 		smartSelectionRemove( groupIndex, FALSE );
+		return;
 	}
-	// Ctrl and Shift together, because Shift+Tab cycles the row: a click landing while that
-	// Shift is still held must not throw the rest of the selection away.
-	else if( TheKeyboard && TheKeyboard->isCtrl() && TheKeyboard->isShift() )
+
+	// The window layer folds a double click into a plain press, so it is found here as a second
+	// press on the same cameo within the system double click time.
+	const UnsignedInt now = timeGetTime();
+	const Bool doubleClick = groupIndex == m_smartSelectionLastClickSlot && now - m_smartSelectionLastClickTime <= GetDoubleClickTime();
+	m_smartSelectionLastClickSlot = doubleClick ? -1 : groupIndex;
+	m_smartSelectionLastClickTime = now;
+	if( doubleClick )
 	{
 		smartSelectionRemove( groupIndex, TRUE );
 	}
