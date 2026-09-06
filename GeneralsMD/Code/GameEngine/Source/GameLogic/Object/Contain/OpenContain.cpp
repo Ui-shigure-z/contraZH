@@ -1913,41 +1913,6 @@ Bool OpenContain::isAnyRiderAttacking() const
   return wellIsHe;
 }
 
-//-------------------------------------------------------------------------------------------------
-struct RiderFiringSlotInfo
-{
-	WeaponSlotType slot;
-	Bool firing;
-};
-
-//-------------------------------------------------------------------------------------------------
-static void testForFiringSlotProc( Object *obj, void *userData )
-{
-	RiderFiringSlotInfo *info = (RiderFiringSlotInfo*)userData;
-	if( info->firing )
-	{
-		return;
-	}
-
-	const Weapon *weapon = obj->getWeaponInWeaponSlot( info->slot );
-	if( weapon && weapon->getLastShotFrame() >= TheGameLogic->getFrame() - 1 )
-	{
-		info->firing = TRUE;
-	}
-}
-
-//-------------------------------------------------------------------------------------------------
-Bool OpenContain::isAnyRiderFiringWeaponSlot( WeaponSlotType slot ) const
-{
-	RiderFiringSlotInfo info;
-	info.slot = slot;
-	info.firing = FALSE;
-
-	((ContainModuleInterface*)this)->iterateContained( testForFiringSlotProc, &info, FALSE );
-
-	return info.firing;
-}
-
 
 
 

@@ -248,6 +248,39 @@ void StealthUpdate::receiveGrant( Bool active, UnsignedInt frames )
 
 
 //-------------------------------------------------------------------------------------------------
+struct RiderFiringInfo
+{
+	UnsignedInt flags;
+	UnsignedInt lastFrame;
+	Bool firing;
+};
+
+//-------------------------------------------------------------------------------------------------
+static void testForRiderFiringProc( Object *obj, void *userData )
+{
+	RiderFiringInfo *info = (RiderFiringInfo*)userData;
+	if( info->firing )
+	{
+		return;
+	}
+
+	// the three rider flags are contiguous bits in slot order
+	for( Int slot = PRIMARY_WEAPON; slot <= TERTIARY_WEAPON; ++slot )
+	{
+		if( (info->flags & (STEALTH_NOT_WHILE_RIDERS_FIRING_PRIMARY << slot)) == 0 )
+		{
+			continue;
+		}
+		const Weapon *weapon = obj->getWeaponInWeaponSlot( (WeaponSlotType)slot );
+		if( weapon && weapon->getLastShotFrame() >= info->lastFrame )
+		{
+			info->firing = TRUE;
+			return;
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool StealthUpdate::allowedToStealth( Object *stealthOwner ) const
 {
 	const Object *self = getObject();
@@ -410,15 +443,12 @@ Bool StealthUpdate::allowedToStealth( Object *stealthOwner ) const
 		ContainModuleInterface *myContain = self->getContain();
 		if( myContain && myContain->isPassengerAllowedToFire() )
 		{
-			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_PRIMARY && myContain->isAnyRiderFiringWeaponSlot( PRIMARY_WEAPON ) )
-			{
-				return FALSE;
-			}
-			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_SECONDARY && myContain->isAnyRiderFiringWeaponSlot( SECONDARY_WEAPON ) )
-			{
-				return FALSE;
-			}
-			if( flags & STEALTH_NOT_WHILE_RIDERS_FIRING_TERTIARY && myContain->isAnyRiderFiringWeaponSlot( TERTIARY_WEAPON ) )
+			RiderFiringInfo info;
+			info.flags = flags;
+			info.lastFrame = now - 1;
+			info.firing = FALSE;
+			myContain->iterateContained( testForRiderFiringProc, &info, FALSE );
+			if( info.firing )
 			{
 				return FALSE;
 			}
