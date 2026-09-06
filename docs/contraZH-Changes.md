@@ -214,6 +214,8 @@ per object. A cameo standing for one object shows a small health bar instead of 
 holds 16 cameos; anything beyond that gets none.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
+* `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on
+Ctrl+Shift+click.)
 
 * Left click a cameo to show its type's command set in the bar; every cameo of that type pushes
 in. The whole group stays selected, so orders still go to everyone. A command off that card which
@@ -221,7 +223,8 @@ not every selected type carries is issued to the focused type alone; one they al
 or Guard, still goes to everyone. Click a pushed in cameo again to go back to the group's common
 commands.
 * Right click a cameo to drop its unit, or its whole type, from the selection.
-* Double click a cameo to keep only its unit, or its whole type, and drop everything else.
+* Double click a cameo (or Ctrl+Shift+click it with `SmartSelectionUseMouse = No`) to keep only its
+unit, or its whole type, and drop everything else.
 * Tab and Shift+Tab (`SMART_SELECTION_NEXT_TYPE` / `SMART_SELECTION_PREV_TYPE` in
 CommandMap.ini) step the focused type through the row, skipping cameos of the type already focused.
 
