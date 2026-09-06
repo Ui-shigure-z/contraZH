@@ -75,9 +75,7 @@ static WindowMsgHandledType SmartSelectionBarInput( GameWindow *window, Unsigned
 	{
 		return MSG_IGNORED;
 	}
-	const Int mouseX = mData1 & 0xFFFF;
-	const Int mouseY = mData1 >> 16;
-	GameWindow *child = window->winPointInChild( mouseX, mouseY );
+	GameWindow *child = window->winPointInChild( LOLONGTOSHORT( mData1 ), HILONGTOSHORT( mData1 ) );
 	return ( child && child != window ) ? MSG_HANDLED : MSG_IGNORED;
 }
 
@@ -277,8 +275,8 @@ void ControlBar::populateSmartSelection()
 		return;
 	}
 
-	std::vector<Object *> objects;
-	Bool mixed = FALSE;
+	// one cameo per type, then a selection of a single type spreads into one cameo per object
+	std::vector<SmartSelectionGroup> groups;
 	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
@@ -287,29 +285,15 @@ void ControlBar::populateSmartSelection()
 		{
 			continue;
 		}
-		mixed = mixed || ( !objects.empty() && objects[ 0 ]->getTemplate() != obj->getTemplate() );
-		objects.push_back( obj );
-	}
 
-	// a mixed selection merges each type behind a count, a selection of one type spreads out
-	std::vector<SmartSelectionGroup> groups;
-	for( size_t o = 0; o < objects.size(); o++ )
-	{
-		Object *obj = objects[ o ];
+		const ThingTemplate *thingTemplate = obj->getTemplate();
 		size_t g = 0;
-		if( mixed )
+		for( ; g < groups.size(); g++ )
 		{
-			for( ; g < groups.size(); g++ )
+			if( groups[ g ].thingTemplate == thingTemplate )
 			{
-				if( groups[ g ].thingTemplate == obj->getTemplate() )
-				{
-					break;
-				}
+				break;
 			}
-		}
-		else
-		{
-			g = groups.size();
 		}
 		if( g == groups.size() )
 		{
@@ -318,7 +302,7 @@ void ControlBar::populateSmartSelection()
 				continue;
 			}
 			SmartSelectionGroup group;
-			group.thingTemplate = obj->getTemplate();
+			group.thingTemplate = thingTemplate;
 			group.count = 0;
 			group.objectID = obj->getID();
 			groups.push_back( group );
@@ -327,6 +311,21 @@ void ControlBar::populateSmartSelection()
 		if( groups[ g ].count > 1 )
 		{
 			groups[ g ].objectID = INVALID_ID;
+		}
+	}
+	if( groups.size() == 1 && groups[ 0 ].count > 1 )
+	{
+		SmartSelectionGroup group = groups[ 0 ];
+		group.count = 1;
+		groups.clear();
+		for( DrawableListCIt it = selected->begin(); it != selected->end() && groups.size() < MAX_SMART_SELECTION_BUTTONS; ++it )
+		{
+			Object *obj = getSmartSelectionObject( *it );
+			if( obj )
+			{
+				group.objectID = obj->getID();
+				groups.push_back( group );
+			}
 		}
 	}
 
@@ -348,11 +347,12 @@ void ControlBar::populateSmartSelection()
 	const ThingTemplate *focus = TheInGameUI->getSelectCount() > 1 ? getSmartSelectionFocusTemplate() : nullptr;
 	m_smartSelectionGroups.swap( groups );
 	m_smartSelectionActive = -1;
-	for( size_t g = 0; focus && m_smartSelectionActive < 0 && g < m_smartSelectionGroups.size(); g++ )
+	for( size_t g = 0; focus && g < m_smartSelectionGroups.size(); g++ )
 	{
 		if( m_smartSelectionGroups[ g ].thingTemplate == focus )
 		{
 			m_smartSelectionActive = (Int)g;
+			break;
 		}
 	}
 
@@ -407,8 +407,12 @@ void ControlBar::updateSmartSelection()
 	// the bar is one shot on the button, so a lone member's health goes on every frame
 	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
 	{
+		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID || m_smartSelectionButtons[ g ] == nullptr )
+		{
+			continue;
+		}
 		const Object *obj = TheGameLogic->findObjectByID( m_smartSelectionGroups[ g ].objectID );
-		if( obj == nullptr || m_smartSelectionButtons[ g ] == nullptr )
+		if( obj == nullptr )
 		{
 			continue;
 		}
@@ -449,9 +453,8 @@ void ControlBar::refreshSmartSelectionButtons()
 		}
 		GadgetButtonSetEnabledImage( button, image );
 
-		// a lone member shows its health bar instead of a count
 		UnicodeString count;
-		if( group.count > 1 )
+		if( group.objectID == INVALID_ID )
 		{
 			count.format( L"%d", group.count );
 		}
@@ -504,10 +507,17 @@ void ControlBar::smartSelectionCycle( Int direction )
 	}
 
 	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
-	Int next = m_smartSelectionActive < 0 ? ( direction > 0 ? -1 : groupCount ) : m_smartSelectionActive;
+	Int next = m_smartSelectionActive;
 	for( Int step = 0; step < groupCount; step++ )
 	{
-		next = ( next + direction + groupCount ) % groupCount;
+		if( next < 0 )
+		{
+			next = direction > 0 ? 0 : groupCount - 1;
+		}
+		else
+		{
+			next = ( next + direction + groupCount ) % groupCount;
+		}
 		if( m_smartSelectionGroups[ next ].thingTemplate != focus )
 		{
 			smartSelectionFocus( next );

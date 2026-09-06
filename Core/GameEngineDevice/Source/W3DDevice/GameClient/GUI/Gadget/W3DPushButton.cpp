@@ -188,9 +188,9 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 	window->winGetSize( &size.x, &size.y );
 
 	const Int inset = 2;
-	const Int barHeight = 3;
+	const Int frameHeight = 5;
 	const Int barX = origin.x + inset;
-	const Int barY = origin.y + size.y - inset - barHeight - 2;
+	const Int barY = origin.y + size.y - inset - frameHeight;
 	const Int barWidth = size.x - inset * 2;
 	if( barWidth <= 2 )
 		return;
@@ -207,8 +207,8 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 		green = ratio / 0.5f;
 	}
 
-	TheDisplay->drawOpenRect( barX, barY, barWidth, barHeight + 2, 1.0f, GameMakeColor( red * 128, green * 128, 0, 255 ) );
-	TheDisplay->drawFillRect( barX + 1, barY + 1, ( barWidth - 2 ) * ratio, barHeight, GameMakeColor( red * 255, green * 255, 0, 255 ) );
+	TheDisplay->drawOpenRect( barX, barY, barWidth, frameHeight, 1.0f, GameMakeColor( red * 128, green * 128, 0, 255 ) );
+	TheDisplay->drawFillRect( barX + 1, barY + 1, ( barWidth - 2 ) * ratio, frameHeight - 2, GameMakeColor( red * 255, green * 255, 0, 255 ) );
 }
 
 // TheSuperHackers @feature Command bar hotkey overlay (Options.ini: KeyboardOverlay).
