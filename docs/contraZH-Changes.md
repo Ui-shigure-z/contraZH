@@ -344,6 +344,10 @@ is completely full.)
 * `TransportLoadTurnRatePenalty = 0%` - (Default. The same for `TurnRate`.)
 * `TransportLoadAccelerationPenalty = 0%` - (Default. The same for `Acceleration`.)
 * `TransportLoadLiftPenalty = 0%` - (Default. The same for `Lift`.)
+* `TransportLoadPenaltyKindOf` - (Default: every kind. Only occupants with at least one of these
+`KindOf` bits count toward the load.)
+* `TransportLoadPenaltyForbidKindOf` - (Default: none. Occupants with any of these `KindOf` bits
+never count toward the load.)
 
 A transport in retail moves at exactly the same speed whether it is empty or packed, so there is no
 cost to filling one up and no reason to send a half-loaded one anywhere. These make a container
@@ -362,6 +366,10 @@ GameData
   TransportLoadAccelerationPenalty = 25%
 End
 ```
+
+The two `KindOf` keys set the game-wide default for which passengers weigh anything, so a mod can
+exclude, say, `INFANTRY` everywhere without touching each transport. A container's own
+`LoadPenaltyKindOf` and `LoadPenaltyForbidKindOf` replace the global values for that container.
 
 Individual containers can override any of these, exclude particular passengers from counting, or opt
 out of the whole thing - see

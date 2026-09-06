@@ -112,6 +112,8 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "TransportLoadTurnRatePenalty",	INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_transportLoadTurnRatePenalty ) },
 	{ "TransportLoadAccelerationPenalty",	INI::parsePercentToReal,	nullptr,		offsetof( GlobalData, m_transportLoadAccelerationPenalty ) },
 	{ "TransportLoadLiftPenalty",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_transportLoadLiftPenalty ) },
+	{ "TransportLoadPenaltyKindOf",		KindOfMaskType::parseFromINI,	nullptr,		offsetof( GlobalData, m_transportLoadPenaltyKindOf ) },
+	{ "TransportLoadPenaltyForbidKindOf",	KindOfMaskType::parseFromINI,	nullptr,		offsetof( GlobalData, m_transportLoadPenaltyForbidKindOf ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
 	{ "MaxShellScreens",					INI::parseInt,				nullptr,			offsetof( GlobalData, m_maxShellScreens ) },
@@ -709,6 +711,8 @@ GlobalData::GlobalData()
 	m_transportLoadTurnRatePenalty = 0.0f;
 	m_transportLoadAccelerationPenalty = 0.0f;
 	m_transportLoadLiftPenalty = 0.0f;
+	m_transportLoadPenaltyKindOf.clear(); m_transportLoadPenaltyKindOf.flip();	// everything counts
+	m_transportLoadPenaltyForbidKindOf.clear();	// nothing is excluded
 	m_dumpAssetUsage = FALSE;
 	m_framesPerSecondLimit = 0;
 	m_chipSetType = 0;
