@@ -423,6 +423,19 @@ middle when `NumberOfShots` is larger than `ClipSize`. A weapon that runs dry wi
 * Firing the power again replaces the queue: new target point, count reset.
 * A dying unit drops its remaining shots. The queue survives a save and load.
 
+# Turret modules
+
+## MaxPhysicalPitch
+
+* `MaxPhysicalPitch = 90` - (Default. The highest pitch a turret with `AllowsPitch = Yes` will aim at,
+in degrees.)
+
+The counterpart of `MinPhysicalPitch`. A turret's pitch is the angle to its target plus the arc from
+`GroundUnitPitch`, and retail only clamps the low end. On a Fire Base that is fine, since a building
+never aims at anything past its range, but a vehicle can be ordered to attack a target far outside
+its range, so nothing stopped its cannon from climbing skyward on the way. `MaxPhysicalPitch` caps the
+aim at the given angle; the default of straight up leaves data that does not mention it exactly as before.
+
 # RiderChangeContain
 
 Two opt-in fields on the combat bike contain module. Both default to `No`, so data that does not
