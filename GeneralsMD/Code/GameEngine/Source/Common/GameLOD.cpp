@@ -70,7 +70,7 @@ static const FieldParse TheStaticGameLODFieldParseTable[] =
 	{ "UseTreeSway",					INI::parseBool,					nullptr,	offsetof( StaticGameLODInfo, m_useTreeSway ) },
 	{ "UseEmissiveNightMaterials",		INI::parseBool,					nullptr,	offsetof( StaticGameLODInfo, m_useEmissiveNightMaterials ) },
 	{ "UseHeatEffects",					INI::parseBool,					nullptr,	offsetof( StaticGameLODInfo, m_useHeatEffects ) },
-	{ "SortTranslucency",				INI::parseBool,					nullptr,	offsetof( StaticGameLODInfo, m_sortTranslucency ) },
+	{ "SkipTranslucencySort",		INI::parseBool,					nullptr,	offsetof( StaticGameLODInfo, m_skipTranslucencySort ) },
 	{ "TextureReductionFactor",		INI::parseInt,					nullptr,	offsetof( StaticGameLODInfo, m_textureReduction ) },
 };
 
@@ -105,7 +105,7 @@ StaticGameLODInfo::StaticGameLODInfo()
 	m_useTreeSway=TRUE;
 	m_useEmissiveNightMaterials=TRUE;
 	m_useHeatEffects=TRUE;
-	m_sortTranslucency=TRUE;
+	m_skipTranslucencySort=FALSE;
 	m_textureReduction = 0;	//none
 	m_useFpsLimit = TRUE;
 	m_enableDynamicLOD = TRUE;
@@ -268,7 +268,7 @@ void GameLODManager::initStaticLODLevels()
 	veryhigh.m_useTreeSway = TRUE;
 	veryhigh.m_useEmissiveNightMaterials = TRUE;
 	veryhigh.m_useHeatEffects = TRUE;
-	veryhigh.m_sortTranslucency = TRUE;
+	veryhigh.m_skipTranslucencySort = FALSE;
 	veryhigh.m_textureReduction = 0;
 	veryhigh.m_useFpsLimit = TRUE;
 	veryhigh.m_enableDynamicLOD = TRUE;
@@ -415,7 +415,7 @@ void GameLODManager::refreshCustomStaticLODLevel()
 	lodInfo->m_maxTankTrackFadeDelay=TheGlobalData->m_maxTankTrackFadeDelay;
 	lodInfo->m_useBuildupScaffolds=!TheGlobalData->m_useDrawModuleLOD;
 	lodInfo->m_useHeatEffects = TheGlobalData->m_useHeatEffects;
-	lodInfo->m_sortTranslucency = TheGlobalData->m_sortTranslucency;
+	lodInfo->m_skipTranslucencySort = TheGlobalData->m_skipTranslucencySort;
 	lodInfo->m_useTreeSway=lodInfo->m_useBuildupScaffolds;// Borrow same setting. //TheGlobalData->m_useTreeSway;
 	lodInfo->m_textureReduction=TheGlobalData->m_textureReductionFactor;
 	lodInfo->m_useFpsLimit = TheGlobalData->m_useFpsLimit;
@@ -622,8 +622,8 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_enableDynamicLOD = lodInfo->m_enableDynamicLOD;
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
-		TheWritableGlobalData->m_sortTranslucency = lodInfo->m_sortTranslucency;
-		WW3D::Enable_Sorting(TheGlobalData->m_sortTranslucency);
+		TheWritableGlobalData->m_skipTranslucencySort = lodInfo->m_skipTranslucencySort;
+		WW3D::Enable_Sorting(!TheGlobalData->m_skipTranslucencySort);
 
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;

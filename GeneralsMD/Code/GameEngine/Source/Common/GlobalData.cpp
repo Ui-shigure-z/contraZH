@@ -103,7 +103,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "QueueReorder",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_queueReorder ) },
 	{ "NoOccupantFriendlyFire",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_noOccupantFriendlyFire ) },
 	{ "BatchParticles",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_batchParticles ) },
-	{ "SortTranslucency",					INI::parseBool,				nullptr,			offsetof( GlobalData, m_sortTranslucency ) },
+	{ "SkipTranslucencySort",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_skipTranslucencySort ) },
 	{ "BackToFront",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_backToFront ) },
 	{ "DumpAssetUsage",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_dumpAssetUsage ) },
 	{ "EnableSingleplayerChatwindow",	INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableSingleplayerChatWindow ) },
@@ -640,7 +640,7 @@ GlobalData::GlobalData()
   m_queueReorder = FALSE;
   m_noOccupantFriendlyFire = FALSE;
   m_batchParticles = FALSE;
-  m_sortTranslucency = TRUE;
+  m_skipTranslucencySort = FALSE;
   m_backToFront = FALSE;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
