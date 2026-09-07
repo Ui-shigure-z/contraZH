@@ -38,6 +38,8 @@
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 #include "WW3D2/camera.h"
+#include "WW3D2/ww3d.h"
+#include <algorithm>
 
 
 //------------------------------------------------------------------------------ Performance Timers
@@ -188,6 +190,12 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	UnsignedInt pointCount = 0;
 
 	const Bool batchParticles = TheGlobalData->m_batchParticles;
+	// without the triangle sorter, draw order is the only depth cue, so order whole systems far to near
+	const Bool backToFront = TheGlobalData->m_backToFront && !WW3D::Is_Sorting_Enabled();
+	Matrix3D viewMatrix;
+	rinfo.Camera.Get_View_Matrix(&viewMatrix);
+
+	m_drawOrder.clear();
 
 	ParticleSystemManager::ParticleSystemList &particleSysList = TheParticleSystemManager->getAllParticleSystems();
 	for( ParticleSystemManager::ParticleSystemListIt it = particleSysList.begin(); it != particleSysList.end(); ++it)
@@ -203,6 +211,7 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 
 		// TheSuperHackers @performance Mauller 16/08/2026 Skip processing particle system if no particles are in view.
 		UnsignedInt particleCount = 0;
+		Vector3 visibleSum(0.0f, 0.0f, 0.0f);
 		for (Particle* vp = sys->getFirstParticle(); vp; vp = vp->m_systemNext)
 		{
 			const Coord3D* pos = vp->getPosition();
@@ -219,11 +228,35 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 
 			vp->setIsCulled(false);
 			particleCount++;
+			visibleSum.X += pos->x;
+			visibleSum.Y += pos->y;
+			visibleSum.Z += pos->z;
 		}
 
 		// Particle system has no particles on screen
 		if (particleCount == 0)
 			continue;
+
+		DrawEntry entry;
+		entry.sys = sys;
+		entry.depth = 0.0f;
+		if (backToFront)
+		{
+			Vector3 viewPos;
+			Matrix3D::Transform_Vector(viewMatrix, visibleSum * (1.0f / particleCount), &viewPos);
+			entry.depth = viewPos.Z;
+		}
+		m_drawOrder.push_back(entry);
+	}
+
+	if (backToFront)
+	{
+		std::stable_sort(m_drawOrder.begin(), m_drawOrder.end(), isFarther);
+	}
+
+	for (std::vector<DrawEntry>::iterator entry = m_drawOrder.begin(); entry != m_drawOrder.end(); ++entry)
+	{
+		ParticleSystem *sys = entry->sys;
 
 		// Handle smudge type particles
 		if (sys->isUsingSmudge())
@@ -446,6 +479,12 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	{
 		((W3DSmudgeManager *)TheSmudgeManager)->render(rinfo);
 	}
+}
+
+// the camera looks down -Z, so the smallest view Z is the farthest system
+Bool W3DParticleSystemManager::isFarther(const DrawEntry &a, const DrawEntry &b)
+{
+	return a.depth < b.depth;
 }
 
 Bool W3DParticleSystemManager::finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture)

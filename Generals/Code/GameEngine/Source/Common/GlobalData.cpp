@@ -82,6 +82,8 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "UseFPSLimit",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_useFpsLimit ) },
 	{ "QueueReorder",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_queueReorder ) },
 	{ "BatchParticles",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_batchParticles ) },
+	{ "SortTranslucency",					INI::parseBool,				nullptr,			offsetof( GlobalData, m_sortTranslucency ) },
+	{ "BackToFront",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_backToFront ) },
 	{ "DumpAssetUsage",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_dumpAssetUsage ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
@@ -568,6 +570,8 @@ GlobalData::GlobalData()
   m_TiVOFastMode = FALSE;
   m_queueReorder = FALSE;
   m_batchParticles = FALSE;
+  m_sortTranslucency = TRUE;
+  m_backToFront = FALSE;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_smartSelectionUseMouse = TRUE;

@@ -498,6 +498,8 @@ public:
   Bool m_TiVOFastMode;            ///< When true, the client speeds up the framerate... set by HOTKEY!
   Bool m_queueReorder;            ///< Ctrl+click moves a build queue entry one position earlier; off unless GameData enables it
   Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
+  Bool m_sortTranslucency;        ///< depth-sorts translucent triangles each frame; GameData or the LOD level can turn it off
+  Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
 
 	// TheSuperHackers @feature Outline the radar blips and the shoreline, at double radar
 	// resolution. Client side only; the radar never feeds game logic.

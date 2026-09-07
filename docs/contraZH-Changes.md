@@ -322,6 +322,40 @@ Notes:
 instead of being walked and drawn empty.
 * Ported from TheSuperHackers commit `de20ae0cb` (Ronin and Mauller).
 
+## SortTranslucency
+
+* `SortTranslucency = Yes` - (Default. `No` draws translucent triangles in submission order instead
+of depth-sorting them every frame.)
+
+Every frame the renderer copies every translucent triangle on screen (particles, tank tracks, water,
+roads and all other blended surfaces), computes its depth, sorts the whole set and resubmits it in
+back-to-front order. With thousands of particle systems in view that CPU pass is a real share of
+the frame. `No` skips it entirely, so translucent things draw in the order the engine happens to
+submit them. The cost is layering errors where translucent effects overlap: smoke can appear behind
+an explosion glow that is really in front of it. Opaque and alpha-tested geometry is unaffected.
+
+Notes:
+* The same key exists per detail level in GameLOD.ini (`StaticGameLOD` blocks), so `Low` and
+`Medium` can turn sorting off while `High` keeps it. The GameLOD value wins whenever a detail level
+is applied; the GameData value is the starting point and what a `Custom` level keeps.
+* There is no Options menu checkbox for this.
+
+## BackToFront
+
+* `BackToFront = No` - (Default. `Yes` draws whole particle systems farthest first when
+`SortTranslucency = No`.)
+
+Without the sorter, particle systems draw in the order they were created, so a new explosion glow
+lands on top of the older smoke that is really in front of it. With `BackToFront = Yes` the renderer
+takes the mean position of each system's visible particles, which it already visits to cull them,
+and draws the systems farthest from the camera first. That removes most of the layering errors
+between different effects. Particles inside one system still draw in list order, and streaks, tank
+tracks and water are not reordered.
+
+Notes:
+* Does nothing while `SortTranslucency = Yes`; the sorter already orders every triangle.
+* Depth ordering interleaves textures more, so `BatchParticles` gathers slightly smaller batches.
+
 ## NoOccupantFriendlyFire
 
 * `NoOccupantFriendlyFire = No` - (Default. `Yes` spares the container a passenger is riding in from
