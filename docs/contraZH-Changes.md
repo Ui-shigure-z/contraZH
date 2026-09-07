@@ -336,8 +336,8 @@ an explosion glow that is really in front of it. Opaque and alpha-tested geometr
 
 Notes:
 * The same key exists per detail level in GameLOD.ini (`StaticGameLOD` blocks), so `Low` and
-`Medium` can skip sorting while `High` keeps it. The GameLOD value wins whenever a detail level
-is applied; the GameData value is the starting point and what a `Custom` level keeps.
+`Medium` can skip sorting while `High` keeps it. A detail level can only add the skip: sorting is
+skipped when either the GameData key or the applied level says `Yes`.
 * There is no Options menu checkbox for this.
 
 ## BackToFront

@@ -616,8 +616,12 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_enableDynamicLOD = lodInfo->m_enableDynamicLOD;
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
-		TheWritableGlobalData->m_skipTranslucencySort = lodInfo->m_skipTranslucencySort;
-		WW3D::Enable_Sorting(!TheGlobalData->m_skipTranslucencySort);
+		// GameData is the baseline a detail level can only add to, and re-enabling costs a mesh cache rebuild
+		const Bool skipSort = lodInfo->m_skipTranslucencySort || TheGlobalData->m_skipTranslucencySort;
+		if (WW3D::Is_Sorting_Enabled() == skipSort)
+		{
+			WW3D::Enable_Sorting(!skipSort);
+		}
 
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;

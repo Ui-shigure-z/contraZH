@@ -192,8 +192,6 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	const Bool batchParticles = TheGlobalData->m_batchParticles;
 	// without the triangle sorter, draw order is the only depth cue, so order whole systems far to near
 	const Bool backToFront = TheGlobalData->m_backToFront && !WW3D::Is_Sorting_Enabled();
-	Matrix3D viewMatrix;
-	rinfo.Camera.Get_View_Matrix(&viewMatrix);
 
 	m_drawOrder.clear();
 
@@ -242,9 +240,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		entry.depth = 0.0f;
 		if (backToFront)
 		{
-			Vector3 viewPos;
-			Matrix3D::Transform_Vector(viewMatrix, visibleSum * (1.0f / particleCount), &viewPos);
-			entry.depth = viewPos.Z;
+			// only the view Z row matters, and the row's translation is the same for every system
+			const Vector4 &viewZ = rinfo.Camera.Get_View_Matrix()[2];
+			entry.depth = (viewZ.X * visibleSum.X + viewZ.Y * visibleSum.Y + viewZ.Z * visibleSum.Z) / particleCount;
 		}
 		m_drawOrder.push_back(entry);
 	}
