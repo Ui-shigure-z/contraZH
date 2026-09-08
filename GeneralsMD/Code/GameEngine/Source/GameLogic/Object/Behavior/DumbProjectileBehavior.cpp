@@ -45,6 +45,7 @@
 #include "GameLogic/Module/DumbProjectileBehavior.h"
 #include "GameLogic/Module/MissileAIUpdate.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ThermiteBehavior.h"
 #include "GameLogic/Weapon.h"
 
 
@@ -567,7 +568,7 @@ Bool DumbProjectileBehavior::projectileHandleCollision( Object *other )
 	}
 
 	// collided with something... blow'd up!
-	detonate();
+	detonate( other );
 
 	// mark ourself as "no collisions" (since we might still exist in slow death mode)
 	getObject()->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_NO_COLLISIONS ) );
@@ -575,7 +576,7 @@ Bool DumbProjectileBehavior::projectileHandleCollision( Object *other )
 }
 
 //-------------------------------------------------------------------------------------------------
-void DumbProjectileBehavior::detonate()
+void DumbProjectileBehavior::detonate( Object *victim )
 {
   if ( m_hasDetonated )
     return;
@@ -585,7 +586,11 @@ void DumbProjectileBehavior::detonate()
 	{
 		TheWeaponStore->handleProjectileDetonation(m_detonationWeaponTmpl, obj, obj->getPosition(), m_extraBonusFlags);
 
-		if ( getDumbProjectileBehaviorModuleData()->m_detonateCallsKill )
+		if ( ThermiteBehavior::tryIgnite( obj, victim ) )
+		{
+			// the thermite owns the object now, so it must not die here
+		}
+		else if ( getDumbProjectileBehaviorModuleData()->m_detonateCallsKill )
 		{
 			// don't call kill(); do it manually, so we can specify DEATH_DETONATED
 			DamageInfo damageInfo;
@@ -626,6 +631,11 @@ void DumbProjectileBehavior::detonate()
 UpdateSleepTime DumbProjectileBehavior::update()
 {
 	const DumbProjectileBehaviorModuleData* d = getDumbProjectileBehaviorModuleData();
+
+	if (m_hasDetonated)
+	{
+		return UPDATE_SLEEP_FOREVER;
+	}
 
 	if (m_lifespanFrame != 0 && TheGameLogic->getFrame() >= m_lifespanFrame)
 	{
@@ -832,10 +842,11 @@ void DumbProjectileBehavior::xfer( Xfer *xfer )
 
 	// version
 	// 2: Added m_launchVeterancy (for veterancy FX/OCL selection)
+	// 3: Added m_hasDetonated (a thermite projectile outlives its detonation)
 #if RETAIL_COMPATIBLE_XFER_SAVE
 	XferVersion currentVersion = 1;
 #else
-	XferVersion currentVersion = 2;
+	XferVersion currentVersion = 3;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -906,6 +917,11 @@ void DumbProjectileBehavior::xfer( Xfer *xfer )
 	if( version >= 2 )
 	{
 		xfer->xferInt( &m_currentFlightPathStep );
+	}
+
+	if( version >= 3 )
+	{
+		xfer->xferBool( &m_hasDetonated );
 	}
 
 }

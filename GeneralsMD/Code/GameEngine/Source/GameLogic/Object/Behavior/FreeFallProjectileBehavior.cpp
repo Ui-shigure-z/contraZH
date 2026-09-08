@@ -45,6 +45,7 @@
 #include "GameLogic/Module/FreeFallProjectileBehavior.h"
 #include "GameLogic/Module/MissileAIUpdate.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ThermiteBehavior.h"
 #include "GameLogic/Weapon.h"
 
 //-----------------------------------------------------------------------------
@@ -297,7 +298,7 @@ Bool FreeFallProjectileBehavior::projectileHandleCollision(Object* other)
 	}
 
 	// collided with something... blow'd up!
-	detonate();
+	detonate(other);
 
 	// mark ourself as "no collisions" (since we might still exist in slow death mode)
 	getObject()->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_NO_COLLISIONS));
@@ -305,7 +306,7 @@ Bool FreeFallProjectileBehavior::projectileHandleCollision(Object* other)
 }
 
 //-------------------------------------------------------------------------------------------------
-void FreeFallProjectileBehavior::detonate()
+void FreeFallProjectileBehavior::detonate(Object* victim)
 {
 	if (m_hasDetonated)
 		return;
@@ -315,7 +316,11 @@ void FreeFallProjectileBehavior::detonate()
 	{
 		TheWeaponStore->handleProjectileDetonation(m_detonationWeaponTmpl, obj, obj->getPosition(), m_extraBonusFlags);
 
-		if (getFreeFallProjectileBehaviorModuleData()->m_detonateCallsKill)
+		if (ThermiteBehavior::tryIgnite(obj, victim))
+		{
+			// the thermite owns the object now, so it must not die here
+		}
+		else if (getFreeFallProjectileBehaviorModuleData()->m_detonateCallsKill)
 		{
 			// don't call kill(); do it manually, so we can specify DEATH_DETONATED
 			DamageInfo damageInfo;
@@ -356,6 +361,11 @@ void FreeFallProjectileBehavior::detonate()
 UpdateSleepTime FreeFallProjectileBehavior::update()
 {
 	const FreeFallProjectileBehaviorModuleData* d = getFreeFallProjectileBehaviorModuleData();
+
+	if (m_hasDetonated)
+	{
+		return UPDATE_SLEEP_FOREVER;
+	}
 
 	if (m_lifespanFrame != 0 && TheGameLogic->getFrame() >= m_lifespanFrame)
 	{
@@ -434,7 +444,8 @@ void FreeFallProjectileBehavior::xfer(Xfer* xfer)
 	// version
 	// 2: Added m_launchPos (for DamageFactorAtMaxRange)
 	// 3: Added m_launchVeterancy (for veterancy FX/OCL selection)
-	XferVersion currentVersion = 3;
+	// 4: Added m_hasDetonated (a thermite projectile outlives its detonation)
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion(&version, currentVersion);
 
@@ -457,6 +468,11 @@ void FreeFallProjectileBehavior::xfer(Xfer* xfer)
 	// launch veterancy
 	if (version >= 3)
 		xfer->xferUser(&m_launchVeterancy, sizeof(m_launchVeterancy));
+
+	if (version >= 4)
+	{
+		xfer->xferBool(&m_hasDetonated);
+	}
 
 	// weapon template
 	AsciiString weaponTemplateName = AsciiString::TheEmptyString;
