@@ -588,9 +588,11 @@ void DumbProjectileBehavior::detonate( Object *victim )
 
 		if ( ThermiteBehavior::tryIgnite( obj, victim ) )
 		{
-			// the thermite owns the object now, so it must not die here
+			m_hasDetonated = TRUE;
+			return;
 		}
-		else if ( getDumbProjectileBehaviorModuleData()->m_detonateCallsKill )
+
+		if ( getDumbProjectileBehaviorModuleData()->m_detonateCallsKill )
 		{
 			// don't call kill(); do it manually, so we can specify DEATH_DETONATED
 			DamageInfo damageInfo;
@@ -632,6 +634,7 @@ UpdateSleepTime DumbProjectileBehavior::update()
 {
 	const DumbProjectileBehaviorModuleData* d = getDumbProjectileBehaviorModuleData();
 
+	// a thermite burn keeps the object alive after detonation, so stop flying it
 	if (m_hasDetonated)
 	{
 		return UPDATE_SLEEP_FOREVER;

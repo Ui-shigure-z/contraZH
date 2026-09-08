@@ -23,6 +23,7 @@
 #include "Common/Player.h"
 #include "Common/RandomValue.h"
 #include "Common/Xfer.h"
+#include "GameClient/Drawable.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/TerrainLogic.h"
@@ -60,13 +61,6 @@ ThermiteBehavior::ThermiteBehavior( Thing *thing, const ModuleData* moduleData )
 	m_victimID(INVALID_ID),
 	m_endFrame(0)
 {
-	const WeaponTemplate *tmpl = getThermiteBehaviorModuleData()->m_weaponTemplate;
-	if (tmpl)
-	{
-		m_weapon = TheWeaponStore->allocateNewWeapon(tmpl, PRIMARY_WEAPON);
-		m_weapon->loadAmmoNow( getObject() );
-	}
-
 	setWakeFrame( getObject(), UPDATE_SLEEP_FOREVER );
 }
 
@@ -97,6 +91,10 @@ Bool ThermiteBehavior::isTriggered() const
 
 	UpgradeMaskType activation, conflicting;
 	d->m_upgradeMuxData.getUpgradeActivationMasks( activation, conflicting );
+	if (!activation.any() && !conflicting.any())
+	{
+		return TRUE;
+	}
 
 	// the projectile is born without upgrades, so look at the player and the launcher too
 	UpgradeMaskType keyMask = obj->getObjectCompletedUpgradeMask();
@@ -118,23 +116,22 @@ Bool ThermiteBehavior::isTriggered() const
 	{
 		return TRUE;
 	}
-	if (d->m_upgradeMuxData.m_requiresAllTriggers)
-	{
-		return keyMask.testForAll( activation );
-	}
-	return keyMask.testForAny( activation );
+	return d->m_upgradeMuxData.m_requiresAllTriggers ? keyMask.testForAll( activation ) : keyMask.testForAny( activation );
 }
 
 //-------------------------------------------------------------------------------------------------
 Bool ThermiteBehavior::ignite( Object *victim )
 {
-	if (m_weapon == nullptr || m_endFrame != 0 || !isTriggered())
+	const ThermiteBehaviorModuleData *d = getThermiteBehaviorModuleData();
+	if (d->m_weaponTemplate == nullptr || m_endFrame != 0 || !isTriggered())
 	{
 		return FALSE;
 	}
 
-	const ThermiteBehaviorModuleData *d = getThermiteBehaviorModuleData();
 	Object *obj = getObject();
+
+	m_weapon = TheWeaponStore->allocateNewWeapon( d->m_weaponTemplate, PRIMARY_WEAPON );
+	m_weapon->loadAmmoNow( obj );
 
 	UnsignedInt lifetime = GameLogicRandomValue( d->m_minFrames, d->m_maxFrames );
 	if (lifetime < 1)
@@ -147,6 +144,10 @@ Bool ThermiteBehavior::ignite( Object *victim )
 	// held stops physics from pulling the burn off its victim
 	obj->setDisabled( DISABLED_HELD );
 	obj->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_NO_COLLISIONS ) );
+	if (obj->getDrawable())
+	{
+		obj->getDrawable()->setDrawableHidden( true );
+	}
 
 	if (victim == nullptr)
 	{
@@ -161,9 +162,8 @@ Bool ThermiteBehavior::ignite( Object *victim )
 void ThermiteBehavior::dropToGround()
 {
 	Object *obj = getObject();
-	Coord3D pos = *obj->getPosition();
-	pos.z = TheTerrainLogic->getGroundHeight( pos.x, pos.y );
-	obj->setPosition( &pos );
+	m_victimID = INVALID_ID;
+	obj->setPositionZ( TheTerrainLogic->getGroundHeight( obj->getPosition()->x, obj->getPosition()->y ) );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -182,12 +182,15 @@ UpdateSleepTime ThermiteBehavior::update()
 		return UPDATE_SLEEP_FOREVER;
 	}
 
-	Object *victim = TheGameLogic->findObjectByID( m_victimID );
-	if (victim && (victim->isEffectivelyDead() || victim->getContainedBy() != nullptr))
+	Object *victim = nullptr;
+	if (m_victimID != INVALID_ID)
 	{
-		m_victimID = INVALID_ID;
-		victim = nullptr;
-		dropToGround();
+		victim = TheGameLogic->findObjectByID( m_victimID );
+		if (victim == nullptr || victim->isEffectivelyDead() || victim->getContainedBy() != nullptr)
+		{
+			victim = nullptr;
+			dropToGround();
+		}
 	}
 
 	Bool follows = victim && !victim->isKindOf( KINDOF_IMMOBILE );
@@ -235,12 +238,18 @@ void ThermiteBehavior::xfer( Xfer *xfer )
 
 	UpdateModule::xfer( xfer );
 
-	if (m_weapon)
-	{
-		xfer->xferSnapshot( m_weapon );
-	}
 	xfer->xferObjectID( &m_victimID );
 	xfer->xferUnsignedInt( &m_endFrame );
+
+	// the weapon only exists once ignited
+	if (m_endFrame != 0)
+	{
+		if (m_weapon == nullptr)
+		{
+			m_weapon = TheWeaponStore->allocateNewWeapon( getThermiteBehaviorModuleData()->m_weaponTemplate, PRIMARY_WEAPON );
+		}
+		xfer->xferSnapshot( m_weapon );
+	}
 }
 
 //-------------------------------------------------------------------------------------------------

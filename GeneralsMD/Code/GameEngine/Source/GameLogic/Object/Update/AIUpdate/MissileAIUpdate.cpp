@@ -470,11 +470,6 @@ void MissileAIUpdate::detonate( Object *victim )
 
 		if( ThermiteBehavior::tryIgnite( obj, victim ) )
 		{
-			if (obj->getDrawable())
-			{
-				obj->getDrawable()->setDrawableHidden(true);
-			}
-
 			// the thermite owns the object now, so skip the kill-self state
 			switchToState(DEAD);
 			return;
