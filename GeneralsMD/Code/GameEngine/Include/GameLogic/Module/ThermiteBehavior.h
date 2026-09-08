@@ -63,6 +63,9 @@ public:
 
 	virtual UpdateSleepTime update() override;
 
+	/// the burn holds its object with DISABLED_HELD, and must keep ticking through any disable
+	virtual DisabledMaskType getDisabledTypesToProcess() const override { return DISABLEDMASK_ALL; }
+
 protected:
 
 	Bool ignite( Object *victim );
