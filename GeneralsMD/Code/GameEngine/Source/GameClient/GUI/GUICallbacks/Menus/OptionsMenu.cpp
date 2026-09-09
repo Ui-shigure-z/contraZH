@@ -61,6 +61,7 @@
 #include "GameClient/Mouse.h"
 #include "GameClient/GameText.h"
 #include "GameClient/Display.h"
+#include "GameClient/ControlBar.h"
 #include "GameClient/IMEManager.h"
 #include "GameClient/ShellHooks.h"
 #include "GameClient/GUICallbacks.h"
@@ -161,6 +162,62 @@ static GameWindow *   ButtonAdvancedAccept				= nullptr;
 static NameKeyType    ButtonAdvancedCancelID      = NAMEKEY_INVALID;
 static GameWindow *   ButtonAdvancedCancel				= nullptr;
 
+//Game Options Screen
+static NameKeyType    WinGameOptionsID            = NAMEKEY_INVALID;
+static GameWindow *   WinGameOptions              = nullptr;
+
+static NameKeyType    ButtonGameOptionsID         = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptions           = nullptr;
+
+static NameKeyType    ButtonGameOptionsAcceptID   = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptionsAccept     = nullptr;
+
+static NameKeyType    ButtonGameOptionsCancelID   = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptionsCancel     = nullptr;
+
+static GameWindow *   buttonMainAccept            = nullptr;
+static GameWindow *   buttonMainBack              = nullptr;
+static GameWindow *   buttonMainDefaults          = nullptr;
+
+static GameWindow *   comboBoxHealthBars          = nullptr;
+static GameWindow *   comboBoxBuildTimers         = nullptr;
+static GameWindow *   comboBoxCastMode            = nullptr;
+static GameWindow *   comboBoxTextureFilter       = nullptr;
+static GameWindow *   comboBoxAnisotropy          = nullptr;
+static GameWindow *   checkNumericalHealth        = nullptr;
+static GameWindow *   checkSmartPips              = nullptr;
+static GameWindow *   checkSelectionCircle        = nullptr;
+static GameWindow *   checkObjectDecals           = nullptr;
+static GameWindow *   checkEasyMilitaryDrag       = nullptr;
+static GameWindow *   checkSmartSelection         = nullptr;
+static GameWindow *   checkSmartSelectionUseMouse = nullptr;
+static GameWindow *   checkNewRadar               = nullptr;
+static GameWindow *   checkLargeBlips             = nullptr;
+static NameKeyType    checkGridHotkeysID          = NAMEKEY_INVALID;
+static GameWindow *   checkGridHotkeys            = nullptr;
+static GameWindow *   textEntryGridHotkeyLayout   = nullptr;
+static GameWindow *   textEntryGridHotkeyColumns  = nullptr;
+static GameWindow *   textEntryNonGridHotkeys     = nullptr;
+static GameWindow *   checkKeyboardOverlay        = nullptr;
+static NameKeyType    checkKeyboardOverlayBackdropID = NAMEKEY_INVALID;
+static GameWindow *   checkKeyboardOverlayBackdrop = nullptr;
+static GameWindow *   textEntryKeyboardOverlayRed   = nullptr;
+static GameWindow *   textEntryKeyboardOverlayGreen = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBlue  = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropRed     = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropGreen   = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropBlue    = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropOpacity = nullptr;
+
+// Options.ini spellings, indexed by the matching enum and combo box position
+static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
+static const char *const BuildTimerModeNames[] = { "None", "Seconds", "Auto" };
+static const char *const CastModeNames[] = { "Normal", "QuickCast", "QuickCastWithIndicator" };
+static const Int AnisotropyLevels[] = { 2, 4, 8, 16 };
+static_assert( ARRAY_SIZE(HealthBarModeNames) == HealthBarDisplayMode_Count, "HealthBarModeNames out of date" );
+static_assert( ARRAY_SIZE(BuildTimerModeNames) == BuildTimerDisplayMode_Count, "BuildTimerModeNames out of date" );
+static_assert( ARRAY_SIZE(CastModeNames) == CastMode_Count, "CastModeNames out of date" );
+
 static NameKeyType    sliderTextureResolutionID = NAMEKEY_INVALID;
 static GameWindow *   sliderTextureResolution = nullptr;
 
@@ -242,6 +299,219 @@ static void showMaxCameraHeight( Bool useCustom, Int height )
 	showMaxCameraHeightEntry( useCustom, height );
 }
 
+static void setCheck( GameWindow *check, Bool on )
+{
+	if (check)
+	{
+		GadgetCheckBoxSetChecked( check, on );
+	}
+}
+
+static Bool getCheck( GameWindow *check, Bool fallback )
+{
+	if (!check)
+	{
+		return fallback;
+	}
+	return GadgetCheckBoxIsChecked( check );
+}
+
+static void setComboPos( GameWindow *combo, Int pos )
+{
+	if (combo)
+	{
+		GadgetComboBoxSetSelectedPos( combo, pos );
+	}
+}
+
+static Int getComboPos( GameWindow *combo, Int fallback )
+{
+	if (!combo)
+	{
+		return fallback;
+	}
+	Int pos = -1;
+	GadgetComboBoxGetSelectedPos( combo, &pos );
+	return pos < 0 ? fallback : pos;
+}
+
+static void setEntryAscii( GameWindow *entry, const AsciiString &text )
+{
+	if (entry)
+	{
+		UnicodeString shown;
+		shown.translate( text );
+		GadgetTextEntrySetText( entry, shown );
+	}
+}
+
+static void setEntryInt( GameWindow *entry, Int value )
+{
+	if (entry)
+	{
+		UnicodeString shown;
+		shown.format( L"%d", value );
+		GadgetTextEntrySetText( entry, shown );
+	}
+}
+
+static AsciiString getEntryAscii( GameWindow *entry, const AsciiString &fallback )
+{
+	if (!entry)
+	{
+		return fallback;
+	}
+	AsciiString text;
+	text.translate( GadgetTextEntryGetText( entry ) );
+	return text;
+}
+
+// An empty field means the caller's fallback, so a cleared colour channel never reads as 0 by accident
+static Int getEntryInt( GameWindow *entry, Int minVal, Int maxVal, Int fallback )
+{
+	if (!entry)
+	{
+		return fallback;
+	}
+	AsciiString text;
+	text.translate( GadgetTextEntryGetText( entry ) );
+	if (text.isEmpty())
+	{
+		return fallback;
+	}
+	return clamp( minVal, atoi( text.str() ), maxVal );
+}
+
+static void showColorEntries( Color color, GameWindow *red, GameWindow *green, GameWindow *blue, GameWindow *alpha )
+{
+	UnsignedByte r, g, b, a;
+	GameGetColorComponents( color, &r, &g, &b, &a );
+	setEntryInt( red, r );
+	setEntryInt( green, g );
+	setEntryInt( blue, b );
+	setEntryInt( alpha, a );
+}
+
+static Int anisotropyIndex( Int level )
+{
+	for (Int i = 0; i < ARRAY_SIZE(AnisotropyLevels); ++i)
+	{
+		if (AnisotropyLevels[i] == level)
+		{
+			return i;
+		}
+	}
+	return 0;
+}
+
+// Fields that only matter while their checkbox is on stay greyed out otherwise
+static void updateGameOptionsEnables()
+{
+	const Bool grid = getCheck( checkGridHotkeys, FALSE );
+	if (textEntryGridHotkeyLayout)
+	{
+		textEntryGridHotkeyLayout->winEnable( grid );
+	}
+	if (textEntryGridHotkeyColumns)
+	{
+		textEntryGridHotkeyColumns->winEnable( grid );
+	}
+	if (textEntryNonGridHotkeys)
+	{
+		textEntryNonGridHotkeys->winEnable( grid );
+	}
+
+	const Bool backdrop = getCheck( checkKeyboardOverlayBackdrop, FALSE );
+	if (textEntryKeyboardOverlayBackdropRed)
+	{
+		textEntryKeyboardOverlayBackdropRed->winEnable( backdrop );
+	}
+	if (textEntryKeyboardOverlayBackdropGreen)
+	{
+		textEntryKeyboardOverlayBackdropGreen->winEnable( backdrop );
+	}
+	if (textEntryKeyboardOverlayBackdropBlue)
+	{
+		textEntryKeyboardOverlayBackdropBlue->winEnable( backdrop );
+	}
+	if (textEntryKeyboardOverlayBackdropOpacity)
+	{
+		textEntryKeyboardOverlayBackdropOpacity->winEnable( backdrop );
+	}
+}
+
+static void populateGameOptions()
+{
+	if (!WinGameOptions)
+	{
+		return;
+	}
+
+	setComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() );
+	setComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() );
+	setComboPos( comboBoxCastMode, pref->getCastMode() );
+	setComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
+	setComboPos( comboBoxAnisotropy, anisotropyIndex( pref->getTextureAnisotropyLevel() ) );
+
+	setCheck( checkNumericalHealth, pref->getNumericalHealthEnabled() );
+	setCheck( checkSmartPips, pref->getSmartPipsEnabled() );
+	setCheck( checkSelectionCircle, pref->getSelectionCircleEnabled() );
+	setCheck( checkObjectDecals, pref->getObjectDecalsEnabled() );
+	setCheck( checkEasyMilitaryDrag, pref->getEasyMilitaryDragEnabled() );
+	setCheck( checkSmartSelection, pref->getSmartSelectionEnabled() );
+	setCheck( checkSmartSelectionUseMouse, pref->getSmartSelectionUseMouse() );
+	setCheck( checkNewRadar, pref->getNewRadarEnabled() );
+	setCheck( checkLargeBlips, pref->getRadarBlipSize() == RadarBlipSize_Large );
+
+	setCheck( checkGridHotkeys, pref->getGridHotkeysEnabled() );
+	setEntryAscii( textEntryGridHotkeyLayout, pref->getGridHotkeyLayout() );
+	setEntryInt( textEntryGridHotkeyColumns, pref->getGridHotkeyColumns() );
+	setEntryAscii( textEntryNonGridHotkeys, pref->getNonGridHotkeys() );
+
+	setCheck( checkKeyboardOverlay, pref->getKeyboardOverlayEnabled() );
+	setCheck( checkKeyboardOverlayBackdrop, pref->getKeyboardOverlayBackdropEnabled() );
+	showColorEntries( pref->getKeyboardOverlayColor(), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
+	showColorEntries( pref->getKeyboardOverlayBackdropColor(), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+
+	updateGameOptionsEnables();
+}
+
+static void setGameOptionsDefaults()
+{
+	if (!WinGameOptions)
+	{
+		return;
+	}
+
+	setComboPos( comboBoxHealthBars, HealthBarDisplayMode_Default );
+	setComboPos( comboBoxBuildTimers, BuildTimerDisplayMode_Default );
+	setComboPos( comboBoxCastMode, CastMode_Default );
+	setComboPos( comboBoxTextureFilter, TextureFilterClass::TEXTURE_FILTER_BILINEAR );
+	setComboPos( comboBoxAnisotropy, anisotropyIndex( TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_2X ) );
+
+	setCheck( checkNumericalHealth, FALSE );
+	setCheck( checkSmartPips, FALSE );
+	setCheck( checkSelectionCircle, FALSE );
+	setCheck( checkObjectDecals, TRUE );
+	setCheck( checkEasyMilitaryDrag, FALSE );
+	setCheck( checkSmartSelection, TRUE );
+	setCheck( checkSmartSelectionUseMouse, TRUE );
+	setCheck( checkNewRadar, FALSE );
+	setCheck( checkLargeBlips, RadarBlipSize_Default == RadarBlipSize_Large );
+
+	setCheck( checkGridHotkeys, FALSE );
+	setEntryAscii( textEntryGridHotkeyLayout, "QWERTYUIOASDFGHJKL" );
+	setEntryInt( textEntryGridHotkeyColumns, 9 );
+	setEntryAscii( textEntryNonGridHotkeys, AsciiString::TheEmptyString );
+
+	setCheck( checkKeyboardOverlay, FALSE );
+	setCheck( checkKeyboardOverlayBackdrop, TRUE );
+	showColorEntries( GameMakeColor( 255, 255, 255, 255 ), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
+	showColorEntries( GameMakeColor( 0, 0, 0, 128 ), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+
+	updateGameOptionsEnables();
+}
+
 static void setDefaults()
 {
 	constexpr const Bool ModifyDisplaySettings = FALSE;
@@ -297,6 +567,7 @@ static void setDefaults()
 	GadgetSliderSetPosition( sliderScrollSpeed, scrollPos );
 
 	showMaxCameraHeight( FALSE, (Int)TheGlobalData->m_defaultMaxCameraHeight );
+	setGameOptionsDefaults();
 
 
 	Int valMin, valMax;
@@ -568,11 +839,13 @@ static void saveOptions()
 
 	//-------------------------------------------------------------------------------------------------
 	// texture filter mode
-	val = pref->getTextureFilterMode();
+	val = getComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
 	if (val >= 0)
 	{
 		val = clamp((int)TextureFilterClass::TEXTURE_FILTER_NONE, val, (int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
 
+		// W3DDisplay only pushes this at init, so a menu change has to reach the renderer here
+		WW3D::Set_Texture_Filter( val );
 		TheWritableGlobalData->m_textureFilteringMode = val;
 		AsciiString prefString;
 		prefString = TextureFilterClass::TextureFilterModeString[val];
@@ -581,11 +854,12 @@ static void saveOptions()
 
 	//-------------------------------------------------------------------------------------------------
 	// anisotropy level
-	val = pref->getTextureAnisotropyLevel();
+	val = comboBoxAnisotropy ? AnisotropyLevels[getComboPos( comboBoxAnisotropy, 0 )] : pref->getTextureAnisotropyLevel();
 	if (val >= 0)
 	{
 		val = clamp((int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_2X, val, (int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_16X);
 
+		WW3D::Set_Anisotropy_Level( val );
 		TheWritableGlobalData->m_textureAnisotropyLevel = val;
 		AsciiString prefString;
 		prefString.format("%d", val);
@@ -683,6 +957,123 @@ static void saveOptions()
 				TheTacticalView->setHeightAboveGround( TheTacticalView->getHeightAboveGround() );
 			}
 		}
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// game options
+	if (WinGameOptions)
+	{
+		Int idx = clamp( 0, getComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() ), (Int)HealthBarDisplayMode_Count - 1 );
+		(*pref)["HealthBarDisplayMode"] = HealthBarModeNames[idx];
+		TheWritableGlobalData->m_healthBarDisplayMode = idx;
+
+		idx = clamp( 0, getComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() ), (Int)BuildTimerDisplayMode_Count - 1 );
+		(*pref)["BuildTimerDisplayMode"] = BuildTimerModeNames[idx];
+		TheWritableGlobalData->m_buildTimerDisplayMode = idx;
+
+		idx = clamp( 0, getComboPos( comboBoxCastMode, pref->getCastMode() ), (Int)CastMode_Count - 1 );
+		(*pref)["CastMode"] = CastModeNames[idx];
+		TheWritableGlobalData->m_castMode = idx;
+
+		Bool on = getCheck( checkNumericalHealth, pref->getNumericalHealthEnabled() );
+		(*pref)["NumericalHealth"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_numericalHealth = on;
+
+		on = getCheck( checkSmartPips, pref->getSmartPipsEnabled() );
+		(*pref)["SmartPips"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_smartPips = on;
+
+		on = getCheck( checkSelectionCircle, pref->getSelectionCircleEnabled() );
+		(*pref)["SelectionCircle"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_selectionCircleEnabled = on;
+
+		on = getCheck( checkObjectDecals, pref->getObjectDecalsEnabled() );
+		(*pref)["ObjectDecals"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_objectDecalsEnabled = on;
+
+		on = getCheck( checkEasyMilitaryDrag, pref->getEasyMilitaryDragEnabled() );
+		(*pref)["EasyMilitaryDrag"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_easyMilitaryDrag = on;
+
+		on = getCheck( checkSmartSelection, pref->getSmartSelectionEnabled() );
+		(*pref)["SmartSelection"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_smartSelection = on;
+
+		on = getCheck( checkSmartSelectionUseMouse, pref->getSmartSelectionUseMouse() );
+		(*pref)["SmartSelectionUseMouse"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_smartSelectionUseMouse = on;
+
+		// The radar caches both of these when it is created, so they wait for the next launch
+		on = getCheck( checkNewRadar, pref->getNewRadarEnabled() );
+		(*pref)["NewRadar"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_newRadar = on;
+
+		on = getCheck( checkLargeBlips, pref->getRadarBlipSize() == RadarBlipSize_Large );
+		(*pref)["BlipSize"] = on ? "Large" : "Small";
+		TheWritableGlobalData->m_radarBlipSize = on ? RadarBlipSize_Large : RadarBlipSize_Small;
+
+		on = getCheck( checkGridHotkeys, pref->getGridHotkeysEnabled() );
+		(*pref)["GridHotkeys"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_gridHotkeysEnabled = on;
+
+		AsciiString layout = getEntryAscii( textEntryGridHotkeyLayout, pref->getGridHotkeyLayout() );
+		if (layout.isEmpty())
+		{
+			layout = "QWERTYUIOASDFGHJKL";
+		}
+		layout.toUpper();
+		(*pref)["GridHotkeyLayout"] = layout;
+		TheWritableGlobalData->m_gridHotkeyLayout = layout;
+
+		const Int columns = getEntryInt( textEntryGridHotkeyColumns, 0, 20, pref->getGridHotkeyColumns() );
+		AsciiString prefString;
+		prefString.format( "%d", columns );
+		(*pref)["GridHotkeyColumns"] = prefString;
+		TheWritableGlobalData->m_gridHotkeyColumns = columns;
+
+		AsciiString excluded = getEntryAscii( textEntryNonGridHotkeys, pref->getNonGridHotkeys() );
+		excluded.toUpper();
+		(*pref)["NonGridHotkeys"] = excluded;
+		TheWritableGlobalData->m_nonGridHotkeys = excluded;
+
+		// The command bar bakes the hotkeys in when it fills, so make it fill again
+		if (TheControlBar)
+		{
+			TheControlBar->markUIDirty();
+		}
+
+		on = getCheck( checkKeyboardOverlay, pref->getKeyboardOverlayEnabled() );
+		(*pref)["KeyboardOverlay"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_keyboardOverlayEnabled = on;
+
+		on = getCheck( checkKeyboardOverlayBackdrop, pref->getKeyboardOverlayBackdropEnabled() );
+		(*pref)["KeyboardOverlayBackdrop"] = on ? "yes" : "no";
+		TheWritableGlobalData->m_keyboardOverlayBackdrop = on;
+
+		Int red = getEntryInt( textEntryKeyboardOverlayRed, 0, 255, 255 );
+		Int green = getEntryInt( textEntryKeyboardOverlayGreen, 0, 255, 255 );
+		Int blue = getEntryInt( textEntryKeyboardOverlayBlue, 0, 255, 255 );
+		prefString.format( "%d", red );
+		(*pref)["KeyboardOverlayRed"] = prefString;
+		prefString.format( "%d", green );
+		(*pref)["KeyboardOverlayGreen"] = prefString;
+		prefString.format( "%d", blue );
+		(*pref)["KeyboardOverlayBlue"] = prefString;
+		TheWritableGlobalData->m_keyboardOverlayColor = GameMakeColor( red, green, blue, 255 );
+
+		red = getEntryInt( textEntryKeyboardOverlayBackdropRed, 0, 255, 0 );
+		green = getEntryInt( textEntryKeyboardOverlayBackdropGreen, 0, 255, 0 );
+		blue = getEntryInt( textEntryKeyboardOverlayBackdropBlue, 0, 255, 0 );
+		const Int alpha = getEntryInt( textEntryKeyboardOverlayBackdropOpacity, 0, 255, 128 );
+		prefString.format( "%d", red );
+		(*pref)["KeyboardOverlayBackdropRed"] = prefString;
+		prefString.format( "%d", green );
+		(*pref)["KeyboardOverlayBackdropGreen"] = prefString;
+		prefString.format( "%d", blue );
+		(*pref)["KeyboardOverlayBackdropBlue"] = prefString;
+		prefString.format( "%d", alpha );
+		(*pref)["KeyboardOverlayBackdropOpacity"] = prefString;
+		TheWritableGlobalData->m_keyboardOverlayBackdropColor = GameMakeColor( red, green, blue, alpha );
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -970,6 +1361,227 @@ static void cancelAdvancedOptions()
 	WinAdvancedDisplay->winHide(TRUE);
 }
 
+// The panel is not modal, so the buttons outside its rect are switched off while it is up
+static void enableMainButtons( Bool enable )
+{
+	if (buttonMainAccept)
+	{
+		buttonMainAccept->winEnable( enable );
+	}
+	if (buttonMainBack)
+	{
+		buttonMainBack->winEnable( enable );
+	}
+	if (buttonMainDefaults)
+	{
+		buttonMainDefaults->winEnable( enable );
+	}
+}
+
+static void showGameOptions()
+{
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide( FALSE );
+		enableMainButtons( FALSE );
+	}
+}
+
+static void acceptGameOptions()
+{
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide( TRUE );
+		enableMainButtons( TRUE );
+	}
+}
+
+static void cancelGameOptions()
+{
+	// setting the checkboxes re-sends GBM_SELECTED, which must not be taken as clicks
+	ignoreSelected = TRUE;
+	populateGameOptions();
+	ignoreSelected = FALSE;
+	acceptGameOptions();
+}
+
+static Bool isGameOptionsOpen()
+{
+	return WinGameOptions && !WinGameOptions->winIsHidden();
+}
+
+static GameWindow *findOptionsWindow( const char *name )
+{
+	return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( name ) );
+}
+
+static void setLabelText( const char *name, const char *label, const WideChar *fallback )
+{
+	GameWindow *window = findOptionsWindow( name );
+	if (window)
+	{
+		GadgetStaticTextSetText( window, TheGameText->FETCH_OR_SUBSTITUTE( label, fallback ) );
+	}
+}
+
+static void setCheckText( GameWindow *check, const char *label, const WideChar *fallback, const char *tip, const WideChar *tipFallback )
+{
+	if (check)
+	{
+		GadgetCheckBoxSetText( check, TheGameText->FETCH_OR_SUBSTITUTE( label, fallback ) );
+		check->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( tip, tipFallback ) );
+	}
+}
+
+static void setTooltip( GameWindow *window, const char *tip, const WideChar *fallback )
+{
+	if (window)
+	{
+		window->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( tip, fallback ) );
+	}
+}
+
+// maxDisplay stays one short of count so the list shows a scrollbar, as the Detail combo does
+static void addComboEntries( GameWindow *combo, const char *labelPrefix, const WideChar *const *fallbacks, Int count, Int maxDisplay )
+{
+	if (!combo)
+	{
+		return;
+	}
+	const Color white = GameMakeColor( 255, 255, 255, 255 );
+	GadgetComboBoxReset( combo );
+	GadgetComboBoxSetMaxDisplay( combo, maxDisplay );
+	for (Int i = 0; i < count; ++i)
+	{
+		AsciiString label;
+		label.format( "%s%d", labelPrefix, i );
+		GadgetComboBoxAddEntry( combo, TheGameText->FETCH_OR_SUBSTITUTE( label.str(), fallbacks[i] ), white );
+	}
+}
+
+// Finds the panel controls, gives them their words and fills the combo boxes
+static void initGameOptionsWindows()
+{
+	WinGameOptionsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:WinGameOptions" );
+	WinGameOptions = TheWindowManager->winGetWindowFromId( nullptr, WinGameOptionsID );
+	ButtonGameOptionsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonGameOptions" );
+	ButtonGameOptions = TheWindowManager->winGetWindowFromId( nullptr, ButtonGameOptionsID );
+
+	// A layout without the panel keeps the old menu, minus the button that would open it
+	if (!WinGameOptions)
+	{
+		if (ButtonGameOptions)
+		{
+			ButtonGameOptions->winHide( TRUE );
+		}
+		return;
+	}
+
+	ButtonGameOptionsAcceptID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonGameOptionsAccept" );
+	ButtonGameOptionsAccept = TheWindowManager->winGetWindowFromId( nullptr, ButtonGameOptionsAcceptID );
+	ButtonGameOptionsCancelID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonGameOptionsBack" );
+	ButtonGameOptionsCancel = TheWindowManager->winGetWindowFromId( nullptr, ButtonGameOptionsCancelID );
+	buttonMainAccept = findOptionsWindow( "OptionsMenu.wnd:ButtonAccept" );
+	buttonMainBack = findOptionsWindow( "OptionsMenu.wnd:ButtonBack" );
+	buttonMainDefaults = findOptionsWindow( "OptionsMenu.wnd:ButtonDefaults" );
+
+	comboBoxHealthBars = findOptionsWindow( "OptionsMenu.wnd:ComboBoxHealthBars" );
+	comboBoxBuildTimers = findOptionsWindow( "OptionsMenu.wnd:ComboBoxBuildTimers" );
+	comboBoxCastMode = findOptionsWindow( "OptionsMenu.wnd:ComboBoxCastMode" );
+	comboBoxTextureFilter = findOptionsWindow( "OptionsMenu.wnd:ComboBoxTextureFilter" );
+	comboBoxAnisotropy = findOptionsWindow( "OptionsMenu.wnd:ComboBoxAnisotropy" );
+	checkNumericalHealth = findOptionsWindow( "OptionsMenu.wnd:CheckNumericalHealth" );
+	checkSmartPips = findOptionsWindow( "OptionsMenu.wnd:CheckSmartPips" );
+	checkSelectionCircle = findOptionsWindow( "OptionsMenu.wnd:CheckSelectionCircle" );
+	checkObjectDecals = findOptionsWindow( "OptionsMenu.wnd:CheckObjectDecals" );
+	checkEasyMilitaryDrag = findOptionsWindow( "OptionsMenu.wnd:CheckEasyMilitaryDrag" );
+	checkSmartSelection = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelection" );
+	checkSmartSelectionUseMouse = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelectionUseMouse" );
+	checkNewRadar = findOptionsWindow( "OptionsMenu.wnd:CheckNewRadar" );
+	checkLargeBlips = findOptionsWindow( "OptionsMenu.wnd:CheckLargeBlips" );
+	checkGridHotkeysID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckGridHotkeys" );
+	checkGridHotkeys = TheWindowManager->winGetWindowFromId( nullptr, checkGridHotkeysID );
+	textEntryGridHotkeyLayout = findOptionsWindow( "OptionsMenu.wnd:TextEntryGridHotkeyLayout" );
+	textEntryGridHotkeyColumns = findOptionsWindow( "OptionsMenu.wnd:TextEntryGridHotkeyColumns" );
+	textEntryNonGridHotkeys = findOptionsWindow( "OptionsMenu.wnd:TextEntryNonGridHotkeys" );
+	checkKeyboardOverlay = findOptionsWindow( "OptionsMenu.wnd:CheckKeyboardOverlay" );
+	checkKeyboardOverlayBackdropID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckKeyboardOverlayBackdrop" );
+	checkKeyboardOverlayBackdrop = TheWindowManager->winGetWindowFromId( nullptr, checkKeyboardOverlayBackdropID );
+	textEntryKeyboardOverlayRed = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayRed" );
+	textEntryKeyboardOverlayGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayGreen" );
+	textEntryKeyboardOverlayBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBlue" );
+	textEntryKeyboardOverlayBackdropRed = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropRed" );
+	textEntryKeyboardOverlayBackdropGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropGreen" );
+	textEntryKeyboardOverlayBackdropBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropBlue" );
+	textEntryKeyboardOverlayBackdropOpacity = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropOpacity" );
+
+	if (ButtonGameOptions)
+	{
+		GadgetButtonSetText( ButtonGameOptions, TheGameText->FETCH_OR_SUBSTITUTE( "GUI:GameOptions", L"Game Options" ) );
+	}
+	setLabelText( "OptionsMenu.wnd:GameOptionsTitle", "GUI:GameOptions", L"Game Options" );
+	setLabelText( "OptionsMenu.wnd:DisplayGroupLabel", "GUI:GameOptionsDisplay", L"Display" );
+	setLabelText( "OptionsMenu.wnd:HealthBarsLabel", "GUI:HealthBars", L"Health bars" );
+	setLabelText( "OptionsMenu.wnd:BuildTimersLabel", "GUI:BuildTimers", L"Build timers" );
+	setLabelText( "OptionsMenu.wnd:InputGroupLabel", "GUI:GameOptionsInput", L"Input" );
+	setLabelText( "OptionsMenu.wnd:CastModeLabel", "GUI:CastMode", L"Special powers" );
+	setLabelText( "OptionsMenu.wnd:RadarGroupLabel", "GUI:GameOptionsRadar", L"Radar" );
+	setLabelText( "OptionsMenu.wnd:GraphicsGroupLabel", "GUI:GameOptionsGraphics", L"Graphics" );
+	setLabelText( "OptionsMenu.wnd:TextureFilterLabel", "GUI:TextureFilter", L"Texture filter" );
+	setLabelText( "OptionsMenu.wnd:AnisotropyLabel", "GUI:Anisotropy", L"Anisotropic" );
+	setLabelText( "OptionsMenu.wnd:CameraGroupLabel", "GUI:GameOptionsCamera", L"Camera" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeysGroupLabel", "GUI:GameOptionsGridHotkeys", L"Grid hotkeys" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeyLayoutLabel", "GUI:GridHotkeyLayout", L"Layout" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeyColumnsLabel", "GUI:GridHotkeyColumns", L"Columns" );
+	setLabelText( "OptionsMenu.wnd:NonGridHotkeysLabel", "GUI:NonGridHotkeys", L"Excluded keys" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayGroupLabel", "GUI:GameOptionsKeyboardOverlay", L"Hotkey letters" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayColorLabel", "GUI:KeyboardOverlayColor", L"Letter R G B" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropColorLabel", "GUI:KeyboardOverlayBackdropColor", L"Backdrop R G B" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropOpacityLabel", "GUI:KeyboardOverlayBackdropOpacity", L"Backdrop opacity" );
+
+	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
+	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
+	setCheckText( checkSelectionCircle, "GUI:SelectionCircle", L"Selection ring under units", "TOOLTIP:SelectionCircle", L"Draws a ring on the ground under selected units" );
+	setCheckText( checkObjectDecals, "GUI:ObjectDecals", L"Object decals", "TOOLTIP:ObjectDecals", L"Draws the ground decals objects ask for" );
+	setCheckText( checkEasyMilitaryDrag, "GUI:EasyMilitaryDrag", L"Drag select skips builders", "TOOLTIP:EasyMilitaryDrag", L"A drag box that holds combat units leaves dozers and workers out" );
+	setCheckText( checkSmartSelection, "GUI:SmartSelection", L"Smart selection", "TOOLTIP:SmartSelection", L"Selecting a mixed group shows the command bar of the unit type you pick" );
+	setCheckText( checkSmartSelectionUseMouse, "GUI:SmartSelectionUseMouse", L"Smart selection follows mouse", "TOOLTIP:SmartSelectionUseMouse", L"Right clicking a unit cameo also switches the command bar" );
+	setCheckText( checkNewRadar, "GUI:NewRadar", L"New radar (needs restart)", "TOOLTIP:NewRadar", L"Outlined blips and shoreline on the radar. Takes effect after a restart." );
+	setCheckText( checkLargeBlips, "GUI:LargeBlips", L"Large radar blips (needs restart)", "TOOLTIP:LargeBlips", L"Bigger blips on the new radar. Takes effect after a restart." );
+	setCheckText( checkGridHotkeys, "GUI:GridHotkeys", L"Use grid hotkeys", "TOOLTIP:GridHotkeys", L"Command bar slots use the layout keys instead of the retail hotkeys" );
+	setCheckText( checkKeyboardOverlay, "GUI:KeyboardOverlay", L"Show hotkey letters on cameos", "TOOLTIP:KeyboardOverlay", L"Draws each cameo's hotkey letter on the cameo" );
+	setCheckText( checkKeyboardOverlayBackdrop, "GUI:KeyboardOverlayBackdrop", L"Backdrop behind letter", "TOOLTIP:KeyboardOverlayBackdrop", L"Draws a plate behind the letter so it stays readable" );
+
+	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
+	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
+	setTooltip( comboBoxCastMode, "TOOLTIP:CastMode", L"How special power hotkeys fire" );
+	setTooltip( comboBoxTextureFilter, "TOOLTIP:TextureFilter", L"Texture filtering mode" );
+	setTooltip( comboBoxAnisotropy, "TOOLTIP:Anisotropy", L"Anisotropic filtering level" );
+	setTooltip( textEntryGridHotkeyLayout, "TOOLTIP:GridHotkeyLayout", L"One key per command bar slot, left to right, top to bottom" );
+	setTooltip( textEntryGridHotkeyColumns, "TOOLTIP:GridHotkeyColumns", L"Slots per row, 0 to 20. 0 keeps the retail order." );
+	setTooltip( textEntryNonGridHotkeys, "TOOLTIP:NonGridHotkeys", L"Letters that keep their retail binding, e.g. SG" );
+	setTooltip( textEntryKeyboardOverlayRed, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayGreen, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBlue, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropRed, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropGreen, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropBlue, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropOpacity, "TOOLTIP:ColorChannel", L"0 to 255" );
+
+	static const WideChar *const healthBarNames[] = { L"Classic", L"Damaged only", L"Always" };
+	static const WideChar *const buildTimerNames[] = { L"Off", L"Seconds", L"Auto (m:ss)" };
+	static const WideChar *const castModeNames[] = { L"Click then target", L"Quick cast", L"Quick cast + indicator" };
+	static const WideChar *const textureFilterNames[] = { L"None", L"Point", L"Bilinear", L"Trilinear", L"Anisotropic" };
+	static const WideChar *const anisotropyNames[] = { L"2x", L"4x", L"8x", L"16x" };
+	static_assert( ARRAY_SIZE(textureFilterNames) == TextureFilterClass::TEXTURE_FILTER_COUNT, "textureFilterNames out of date" );
+	static_assert( ARRAY_SIZE(anisotropyNames) == ARRAY_SIZE(AnisotropyLevels), "anisotropyNames out of date" );
+	addComboEntries( comboBoxHealthBars, "GUI:HealthBars", healthBarNames, HealthBarDisplayMode_Count, 2 );
+	addComboEntries( comboBoxBuildTimers, "GUI:BuildTimers", buildTimerNames, BuildTimerDisplayMode_Count, 2 );
+	addComboEntries( comboBoxCastMode, "GUI:CastMode", castModeNames, CastMode_Count, 2 );
+	addComboEntries( comboBoxTextureFilter, "GUI:TextureFilter", textureFilterNames, TextureFilterClass::TEXTURE_FILTER_COUNT, 4 );
+	addComboEntries( comboBoxAnisotropy, "GUI:Anisotropy", anisotropyNames, ARRAY_SIZE(AnisotropyLevels), 3 );
+}
+
 // TheSuperHackers @tweak Now prints additional version information in the version label.
 static void initLabelVersion()
 {
@@ -1091,6 +1703,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	ButtonAdvancedCancelID		= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonAdvanceBack" );
 	ButtonAdvancedCancel      = TheWindowManager->winGetWindowFromId( nullptr, ButtonAdvancedCancelID );
 
+	initGameOptionsWindows();
+
 	sliderTextureResolutionID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:LowResSlider" );
 	sliderTextureResolution = TheWindowManager->winGetWindowFromId( nullptr, sliderTextureResolutionID );
 
@@ -1131,6 +1745,10 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
   sliderParticleCap = TheWindowManager->winGetWindowFromId( nullptr, sliderParticleCapID );
 
 	WinAdvancedDisplay->winHide(TRUE);
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide(TRUE);
+	}
 
 	Color color =  GameMakeColor(255,255,255,255);
 
@@ -1446,6 +2064,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	DEBUG_LOG(("Scroll Speed %d", scrollPos));
 
 	showMaxCameraHeight( pref->getUseCustomMaxCameraHeight(), (Int)pref->getMaxCameraHeight() );
+	populateGameOptions();
 
  	// set volume sliders
 
@@ -1575,6 +2194,12 @@ WindowMsgHandledType OptionsMenuInput( GameWindow *window, UnsignedInt msg,
 					//
 					if( BitIsSet( state, KEY_STATE_UP ) )
 					{
+						if (isGameOptionsOpen())
+						{
+							cancelGameOptions();
+							return MSG_HANDLED;
+						}
+
 						NameKeyType buttonID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonBack" );
 						GameWindow *button = TheWindowManager->winGetWindowFromId( window, buttonID );
 
@@ -1727,6 +2352,22 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			else if (controlID == buttonDefaults )
 			{
 				setDefaults();
+			}
+			else if (controlID == ButtonGameOptionsID )
+			{
+				showGameOptions();
+			}
+			else if (controlID == ButtonGameOptionsAcceptID )
+			{
+				acceptGameOptions();
+			}
+			else if (controlID == ButtonGameOptionsCancelID )
+			{
+				cancelGameOptions();
+			}
+			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID )
+			{
+				updateGameOptionsEnables();
 			}
 			else if (controlID == ButtonAdvancedAcceptID )
 			{

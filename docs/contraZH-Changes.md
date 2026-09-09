@@ -139,7 +139,9 @@ played with. The `Shift + Ctrl + Z` zoom-limit cheat is unaffected.
 
 # Options.ini
 
-These are read once at startup. Changing them needs a restart.
+These are read at startup. Most of them can also be changed in game from Options, with the
+`Game Options` button in the title bar, and take effect when you press Accept. `NewRadar` and
+`BlipSize` still need a restart.
 
 ## Camera
 
