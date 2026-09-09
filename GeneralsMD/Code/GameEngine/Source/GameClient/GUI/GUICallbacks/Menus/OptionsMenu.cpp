@@ -109,6 +109,11 @@ static GameWindow *		checkDoubleClickAttackMove		= nullptr;
 static NameKeyType		sliderScrollSpeedID	= NAMEKEY_INVALID;
 static GameWindow *		sliderScrollSpeed		= nullptr;
 
+static NameKeyType		checkMaxCameraHeightID	= NAMEKEY_INVALID;
+static GameWindow *		checkMaxCameraHeight		= nullptr;
+static NameKeyType		textEntryMaxCameraHeightID	= NAMEKEY_INVALID;
+static GameWindow *		textEntryMaxCameraHeight		= nullptr;
+
 static NameKeyType    checkLanguageFilterID = NAMEKEY_INVALID;
 static GameWindow *   checkLanguageFilter   = nullptr;
 
@@ -215,6 +220,28 @@ WindowLayout *OptionsLayout = nullptr;
 
 static OptionPreferences *pref = nullptr;
 
+// Shows a camera limit in the text entry; the entry only takes input while the checkbox is on
+static void showMaxCameraHeightEntry( Bool useCustom, Int height )
+{
+	if (textEntryMaxCameraHeight)
+	{
+		UnicodeString shown;
+		shown.format( L"%d", height );
+		GadgetTextEntrySetText( textEntryMaxCameraHeight, shown );
+		textEntryMaxCameraHeight->winEnable( useCustom );
+	}
+}
+
+// Setting the checkbox re-sends GBM_SELECTED, so the click handler must not call this
+static void showMaxCameraHeight( Bool useCustom, Int height )
+{
+	if (checkMaxCameraHeight)
+	{
+		GadgetCheckBoxSetChecked( checkMaxCameraHeight, useCustom );
+	}
+	showMaxCameraHeightEntry( useCustom, height );
+}
+
 static void setDefaults()
 {
 	constexpr const Bool ModifyDisplaySettings = FALSE;
@@ -268,6 +295,8 @@ static void setDefaults()
 //	// scroll speed val
 	Int scrollPos = (Int)(TheGlobalData->m_keyboardDefaultScrollFactor*100.0f);
 	GadgetSliderSetPosition( sliderScrollSpeed, scrollPos );
+
+	showMaxCameraHeight( FALSE, (Int)TheGlobalData->m_defaultMaxCameraHeight );
 
 
 	Int valMin, valMax;
@@ -626,6 +655,37 @@ static void saveOptions()
 	}
 
 	//-------------------------------------------------------------------------------------------------
+	// max camera height
+	if (checkMaxCameraHeight && textEntryMaxCameraHeight)
+	{
+		const Bool useCustom = GadgetCheckBoxIsChecked( checkMaxCameraHeight );
+		(*pref)["UseCustomMaxCameraHeight"] = useCustom ? "yes" : "no";
+		if (useCustom)
+		{
+			AsciiString text;
+			text.translate( GadgetTextEntryGetText( textEntryMaxCameraHeight ) );
+			const Int height = clamp( (Int)OptionPreferences::MaxCameraHeightMin, atoi( text.str() ), (Int)OptionPreferences::MaxCameraHeightMax );
+			AsciiString prefString;
+			prefString.format( "%d", height );
+			(*pref)["MaxCameraHeight"] = prefString;
+		}
+		showMaxCameraHeight( useCustom, (Int)pref->getMaxCameraHeight() );
+
+		// LAN and online games play the host's limit until they end
+		const GameMode mode = TheGameLogic->getGameMode();
+		if (mode != GAME_LAN && mode != GAME_INTERNET)
+		{
+			const Real height = pref->getMaxCameraHeight();
+			TheWritableGlobalData->m_maxCameraHeight = height;
+			if (TheTacticalView && TheGameLogic->isInGame() && mode != GAME_SHELL)
+			{
+				TheTacticalView->setMaxHeightAboveGround( height );
+				TheTacticalView->setHeightAboveGround( TheTacticalView->getHeightAboveGround() );
+			}
+		}
+	}
+
+	//-------------------------------------------------------------------------------------------------
 	// draw scroll anchor
 	{
 		if( TheInGameUI->getDrawRMBScrollAnchor() )
@@ -958,6 +1018,20 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	checkDoubleClickAttackMove   = TheWindowManager->winGetWindowFromId( nullptr, checkDoubleClickAttackMoveID );
 	sliderScrollSpeedID	   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderScrollSpeed" );
 	sliderScrollSpeed		   = TheWindowManager->winGetWindowFromId( nullptr,  sliderScrollSpeedID);
+	// The layout may predate these controls, so they stay optional
+	checkMaxCameraHeightID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckMaxCameraHeight" );
+	checkMaxCameraHeight   = TheWindowManager->winGetWindowFromId( nullptr, checkMaxCameraHeightID );
+	textEntryMaxCameraHeightID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:TextEntryMaxCameraHeight" );
+	textEntryMaxCameraHeight   = TheWindowManager->winGetWindowFromId( nullptr, textEntryMaxCameraHeightID );
+	if (checkMaxCameraHeight)
+	{
+		GadgetCheckBoxSetText( checkMaxCameraHeight, TheGameText->FETCH_OR_SUBSTITUTE( "GUI:MaxCameraHeight", L"Max Camera Height" ) );
+		checkMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:CheckMaxCameraHeight", L"Replaces the mod's camera height limit with your own. LAN and online games use the host's limit." ) );
+	}
+	if (textEntryMaxCameraHeight)
+	{
+		textEntryMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:MaxCameraHeight", L"Max camera height, 210 to 1000" ) );
+	}
 	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxAntiAliasing" );
 	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxAntiAliasingID );
 	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxResolution" );
@@ -1371,6 +1445,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 	DEBUG_LOG(("Scroll Speed %d", scrollPos));
 
+	showMaxCameraHeight( pref->getUseCustomMaxCameraHeight(), (Int)pref->getMaxCameraHeight() );
+
  	// set volume sliders
 
 	// set music volume slider
@@ -1412,6 +1488,19 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		if (textEntryFirewallPortOverride)
 			textEntryFirewallPortOverride->winEnable(FALSE);
+
+		const GameMode mode = TheGameLogic->getGameMode();
+		if (mode == GAME_LAN || mode == GAME_INTERNET)
+		{
+			if (checkMaxCameraHeight)
+			{
+				checkMaxCameraHeight->winEnable(FALSE);
+			}
+			if (textEntryMaxCameraHeight)
+			{
+				textEntryMaxCameraHeight->winEnable(FALSE);
+			}
+		}
 
 //		if (checkAudioSurround)
 //			checkAudioSurround->winEnable(FALSE);
@@ -1651,6 +1740,11 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			else if ( controlID == buttonKeyboardOptionsMenu )
 			{
 				TheShell->push( "Menus/KeyboardOptionsMenu.wnd" );
+			}
+			else if(controlID == checkMaxCameraHeightID )
+			{
+				const Bool useCustom = GadgetCheckBoxIsChecked( control );
+				showMaxCameraHeightEntry( useCustom, useCustom ? (Int)pref->getMaxCameraHeight() : (Int)TheGlobalData->m_defaultMaxCameraHeight );
 			}
 			else if(controlID == checkDrawAnchorID )
       {

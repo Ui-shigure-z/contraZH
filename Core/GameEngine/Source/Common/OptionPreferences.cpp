@@ -624,6 +624,21 @@ Real OptionPreferences::getScrollFactor()
 	return factor/100.0f;
 }
 
+Bool OptionPreferences::getUseCustomMaxCameraHeight() const
+{
+	return getBool("UseCustomMaxCameraHeight", FALSE);
+}
+
+Real OptionPreferences::getMaxCameraHeight() const
+{
+	const Int height = getInt("MaxCameraHeight", 0);
+	if (!getUseCustomMaxCameraHeight() || height <= 0)
+	{
+		return TheGlobalData->m_defaultMaxCameraHeight;
+	}
+	return (Real)clamp((Int)MaxCameraHeightMin, height, (Int)MaxCameraHeightMax);
+}
+
 Bool OptionPreferences::getDrawScrollAnchor()
 {
 	OptionPreferences::const_iterator it = find("DrawScrollAnchor");
