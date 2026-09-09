@@ -3112,8 +3112,7 @@ void W3DView::setPitchToDefault()
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 #if defined(GENERALS_ONLINE)
-// GeneralsOnline port: bForceDefaultCam is unused; the lobby camera limit reaches the view
-// through NGMPGame::SyncWithLobby, GameInfo and GameLogic::applyMaxCameraHeightForGame.
+// GeneralsOnline port: bForceDefaultCam is unused, the lobby camera limit arrives through GameInfo
 void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight, bool bForceDefaultCam)
 #else
 void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)

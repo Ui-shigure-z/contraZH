@@ -677,6 +677,18 @@ void lanUpdateSlotList()
 //-------------------------------------------------------------------------------------------------
 /** Initialize the Gadgets Options Menu */
 //-------------------------------------------------------------------------------------------------
+// Zero means no shared limit, and the entry then shows GameData's value greyed out
+static void showLanMaxCameraHeight(Int value, Bool host)
+{
+	const Bool enabled = value != 0;
+	GadgetCheckBoxSetChecked(checkMaxCameraHeight, enabled);
+	UnicodeString shown;
+	shown.format(L"%d", enabled ? value : (Int)TheGlobalData->m_defaultMaxCameraHeight);
+	GadgetTextEntrySetText(textEntryMaxCameraHeight, shown);
+	checkMaxCameraHeight->winEnable(host);
+	textEntryMaxCameraHeight->winEnable(host && enabled);
+}
+
 // The host's shared camera limit; unchecked means none and every player keeps GameData's limit
 static void commitLanMaxCameraHeight()
 {
@@ -686,19 +698,14 @@ static void commitLanMaxCameraHeight()
 		return;
 	}
 
-	const Bool enabled = GadgetCheckBoxIsChecked(checkMaxCameraHeight);
 	Int value = 0;
-	if (enabled)
+	if (GadgetCheckBoxIsChecked(checkMaxCameraHeight))
 	{
 		AsciiString text;
 		text.translate(GadgetTextEntryGetText(textEntryMaxCameraHeight));
 		value = clamp((Int)OptionPreferences::MaxCameraHeightMin, atoi(text.str()), (Int)OptionPreferences::MaxCameraHeightMax);
 	}
-
-	UnicodeString shown;
-	shown.format(L"%d", enabled ? value : (Int)TheGlobalData->m_defaultMaxCameraHeight);
-	GadgetTextEntrySetText(textEntryMaxCameraHeight, shown);
-	textEntryMaxCameraHeight->winEnable(enabled);
+	showLanMaxCameraHeight(value, TRUE);
 
 	if (value == myGame->getMaxCameraHeight())
 	{
@@ -1042,14 +1049,7 @@ void updateGameOptions()
 
 		if (checkMaxCameraHeight && textEntryMaxCameraHeight)
 		{
-			const Int value = theGame->getMaxCameraHeight();
-			const Bool enabled = value != 0;
-			GadgetCheckBoxSetChecked( checkMaxCameraHeight, enabled );
-			UnicodeString shown;
-			shown.format(L"%d", enabled ? value : (Int)TheGlobalData->m_defaultMaxCameraHeight);
-			GadgetTextEntrySetText( textEntryMaxCameraHeight, shown );
-			checkMaxCameraHeight->winEnable( TheLAN->AmIHost() );
-			textEntryMaxCameraHeight->winEnable( TheLAN->AmIHost() && enabled );
+			showLanMaxCameraHeight(theGame->getMaxCameraHeight(), TheLAN->AmIHost());
 		}
 	}
 }

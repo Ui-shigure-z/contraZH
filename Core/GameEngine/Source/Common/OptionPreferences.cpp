@@ -631,8 +631,12 @@ Bool OptionPreferences::getUseCustomMaxCameraHeight() const
 
 Real OptionPreferences::getMaxCameraHeight() const
 {
+	if (!getUseCustomMaxCameraHeight())
+	{
+		return TheGlobalData->m_defaultMaxCameraHeight;
+	}
 	const Int height = getInt("MaxCameraHeight", 0);
-	if (!getUseCustomMaxCameraHeight() || height <= 0)
+	if (height <= 0)
 	{
 		return TheGlobalData->m_defaultMaxCameraHeight;
 	}
