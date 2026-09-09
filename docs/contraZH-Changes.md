@@ -128,9 +128,27 @@ entry disappears when none of its generals are allowed.
 * The choice travels in the game options like plain `Random` does. All players in a LAN or online
 game need this build, and a replay made with one of these entries needs it too.
 
+## Host camera height
+
+The LAN game setup gains a `Max Camera Height` checkbox and number field for the host. When checked,
+every player in that game zooms out to that height (210 to 1000) instead of `GameData.ini`'s
+`MaxCameraHeight`, and personal Options settings are ignored. The value travels in the game options
+like starting cash, so clients need this build. Generals Online keeps its `/maxcameraheight` lobby
+command; a lobby left at GO's default (310) plays the mod's own limit. Replays keep the limit they were
+played with. The `Shift + Ctrl + Z` zoom-limit cheat is unaffected.
+
 # Options.ini
 
 These are read once at startup. Changing them needs a restart.
+
+## Camera
+
+* `UseCustomMaxCameraHeight = No` - (`Yes` lets `MaxCameraHeight` below replace `GameData.ini`'s
+`MaxCameraHeight`, 670 in Contra. Also editable in Options as `Max Camera Height`, where it applies
+without a restart.)
+* `MaxCameraHeight = 670` - (210 to 1000. Used in single player, skirmish and campaign. LAN and
+online games with two or more humans use the host's limit, or `GameData.ini`'s when the host set
+none.)
 
 ## Display
 
