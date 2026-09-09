@@ -193,6 +193,7 @@ public:
 	Real m_cameraHeight;
 #endif
 	Real m_maxCameraHeight;
+	Real m_defaultMaxCameraHeight; ///< MaxCameraHeight as parsed from INI, before Options.ini overrides it
 	Real m_minCameraHeight;
 	Real m_terrainHeightAtEdgeOfMap;
 	Real m_unitDamagedThresh;
