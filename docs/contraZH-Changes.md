@@ -237,16 +237,19 @@ holds 16 cameos; anything beyond that gets none.
 * `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on
 Ctrl+Shift+click.)
 
-* Left click a cameo to show its type's command set in the bar; every cameo of that type pushes
-in. The whole group stays selected, so orders still go to everyone. A command off that card which
-not every selected type carries is issued to the focused type alone; one they all carry, like Stop
-or Guard, still goes to everyone. Click a pushed in cameo again to go back to the group's common
-commands.
+* Left click a cameo to show its command set in the bar. A cameo that stands for a whole type
+shows the type's set, and every cameo of that type pushes in. A cameo that stands for one object
+drives the bar as if that object alone were selected, so a transport shows its passengers and a
+factory its queue, and only its cameo pushes in. The whole group stays selected, so orders given on
+the map still go to everyone. A command off a focused object's bar goes to that object alone.
+A command off a focused type's card which not every selected unit carries goes to that type alone;
+one they all carry, like Stop or Guard, still goes to everyone. Click a pushed in cameo again to go
+back to the group's common commands.
 * Right click a cameo to drop its unit, or its whole type, from the selection.
 * Double click a cameo (or Ctrl+Shift+click it with `SmartSelectionUseMouse = No`) to keep only its
 unit, or its whole type, and drop everything else.
 * Tab and Shift+Tab (`SMART_SELECTION_NEXT_TYPE` / `SMART_SELECTION_PREV_TYPE` in
-CommandMap.ini) step the focused type through the row, skipping cameos of the type already focused.
+CommandMap.ini) step the focus through the row, skipping cameos that are already pushed in.
 
 ## Input
 
