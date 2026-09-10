@@ -685,12 +685,13 @@ void ControlBar::smartSelectionBeginCommand( const CommandButton *command )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Give the logic side the whole selection back, once the handler is done and no command is
-	* still waiting for a target. That later clear of the pending command ends up here as well. */
+/** Give the logic side the whole selection back, once the handler is done and no command or
+	* building placement is still waiting for a target. Their later clears end up here as well. */
 //-------------------------------------------------------------------------------------------------
 void ControlBar::smartSelectionEndCommand()
 {
-	if( !m_smartSelectionNarrowed || m_smartSelectionInCommand || TheInGameUI->getGUICommand() != nullptr )
+	if( !m_smartSelectionNarrowed || m_smartSelectionInCommand ||
+			TheInGameUI->getGUICommand() != nullptr || TheInGameUI->getPendingPlaceType() != nullptr )
 	{
 		return;
 	}

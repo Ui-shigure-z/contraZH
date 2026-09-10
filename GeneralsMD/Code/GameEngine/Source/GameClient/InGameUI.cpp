@@ -3875,6 +3875,12 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 	//
 	m_pendingPlaceType = build;
 
+	// a placement holds the smart selection narrowing like a pending command, so its end restores
+	if( build == nullptr && TheControlBar )
+	{
+		TheControlBar->smartSelectionEndCommand();
+	}
+
 	//Keep the prev pending place for left click deselection prevention in alternate mouse mode.
 	//We want to keep our dozer selected after initiating construction.
 	setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( m_pendingPlaceSourceObjectID != INVALID_ID );
