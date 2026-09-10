@@ -230,6 +230,29 @@ static Player *getMessagePlayer(GameMessage *msg)
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** The control bar sends the group its next command acts on when a smart selection focus
+	* makes that narrower than the selection. It is used once, by the next message. */
+//-------------------------------------------------------------------------------------------------
+Bool GameLogic::takeCommandGroup( Int playerIndex, AIGroup *group )
+{
+	if( playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT || m_commandGroup[ playerIndex ].empty() )
+	{
+		return FALSE;
+	}
+	std::vector<ObjectID> &commandGroup = m_commandGroup[ playerIndex ];
+	for( size_t i = 0; i < commandGroup.size(); i++ )
+	{
+		Object *obj = findObjectByID( commandGroup[ i ] );
+		if( obj )
+		{
+			group->add( obj );
+		}
+	}
+	commandGroup.clear();
+	return TRUE;
+}
+
 static Object * getSingleObjectFromSelection(const AIGroup *currentlySelectedGroup)
 {
 	if( currentlySelectedGroup && !currentlySelectedGroup->isEmpty() )
@@ -390,6 +413,17 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		return;
 	}
 
+	if( msg->getType() == GameMessage::MSG_COMMAND_GROUP && msg->getPlayerIndex() < MAX_PLAYER_COUNT )
+	{
+		std::vector<ObjectID> &commandGroup = m_commandGroup[ msg->getPlayerIndex() ];
+		commandGroup.clear();
+		for( Int i = 0; i < msg->getArgumentCount(); i++ )
+		{
+			commandGroup.push_back( msg->getArgument( i )->objectID );
+		}
+		return;
+	}
+
 	AIGroupPtr currentlySelectedGroup = nullptr;
 
 	if (isInGame())
@@ -401,10 +435,14 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 				currentlySelectedGroup = TheAI->createGroup(); // can't do this outside a game - it'll cause sync errors galore.
 				CRCGEN_LOG(( "Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup?currentlySelectedGroup->getID():0 ));
 #if RETAIL_COMPATIBLE_AIGROUP
-				msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
+				AIGroup *selectedGroup = currentlySelectedGroup;
 #else
-				msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.Peek());
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
 #endif
+				if( !takeCommandGroup( msg->getPlayerIndex(), selectedGroup ) )
+				{
+					msgPlayer->getCurrentSelectionAsAIGroup( selectedGroup );
+				}
 
 				// We can't issue commands to groups that contain units that don't belong to the issuing player, so pretend like
 				// there's nothing selected. Also, if currentlySelectedGroup is empty, go ahead and delete it, so that we can skip

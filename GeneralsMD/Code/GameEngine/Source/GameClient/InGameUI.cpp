@@ -3571,21 +3571,6 @@ void InGameUI::setGUICommand( const CommandButton *command )
 	// set the command
 	m_pendingGUICommand = command;
 
-	// TheSuperHackers @feature A queued cast arms here without passing through the control
-	// bar, and every cancel or completion clears here, so the smart selection focus narrows
-	// and restores the logic side group from this one spot.
-	if( TheControlBar )
-	{
-		if( command )
-		{
-			TheControlBar->smartSelectionBeginCommand( command );
-		}
-		else
-		{
-			TheControlBar->smartSelectionEndCommand();
-		}
-	}
-
 	// Target designator checks
 	if (m_designatorCommand && m_designatorCommand != m_pendingGUICommand) {
 		m_designatorCommand = NULL;
@@ -3874,12 +3859,6 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 	// place something, it is overwritten
 	//
 	m_pendingPlaceType = build;
-
-	// a placement holds the smart selection narrowing like a pending command, so its end restores
-	if( build == nullptr && TheControlBar )
-	{
-		TheControlBar->smartSelectionEndCommand();
-	}
 
 	//Keep the prev pending place for left click deselection prevention in alternate mouse mode.
 	//We want to keep our dozer selected after initiating construction.
