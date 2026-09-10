@@ -94,6 +94,18 @@ Note: a drone set to acquire targets on its own can still pick a fight after bei
 that is a separate mechanism from following the master's victim. That is a data decision rather than
 an engine one.
 
+## USE_OWNER_OBJECT fires from the owner
+
+An `OCLSpecialPower` with `CreateLocation = USE_OWNER_OBJECT` is meant to make the object that owns
+the power carry out the delivery itself, with no new transport spawned. That is how vanilla Generals
+behaves and what the retail INI comments describe. Zero Hour instead spawned a fresh transport next
+to the owner and left the owner idle, because a `Real angle` overload added to the OCL entry point
+swallowed the "do not create the owner" flag as a lifetime of zero frames.
+
+The owner now performs the delivery, as in Generals. Only powers that set `USE_OWNER_OBJECT`, which
+are scripted or mod-defined, are affected; every other `CreateLocation` is untouched. This changes the
+simulation for those powers, so replays that rely on them will not play back identically.
+
 ## More Generals Challenge personas
 
 ChallengeMode.ini stopped at twelve personas, `GeneralPersona0` through `GeneralPersona11`. A
