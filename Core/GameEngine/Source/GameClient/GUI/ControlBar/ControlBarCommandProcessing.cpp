@@ -601,11 +601,6 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			for( Int queued = 0; queued < unitsToQueue; ++queued )
 			{
-				// Re-check every time round. canMakeUnit covers money, queue space, parking and
-				// per player unit caps, and each unit we just queued moves those. Stop quietly
-				// once we can no longer build -- the first unit already reported any problem.
-				if( queued > 0 && TheBuildAssistant->canMakeUnit( factory, whatToBuild ) != CANMAKE_OK )
-					break;
 
 				// get a new production id to assign to this
 				ProductionID productionID = pu->requestUniqueUnitID();
