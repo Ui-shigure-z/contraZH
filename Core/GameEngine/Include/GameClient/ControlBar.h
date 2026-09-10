@@ -764,7 +764,7 @@ public:
 	Drawable *getSmartSelectionFocusDrawable() const;
 	Bool isSmartSelectionFocused( const Object *obj ) const;
 	Bool isSmartSelectionGroupFocused( Int groupIndex ) const;
-	/// a command that only the focused cameo has goes to its type, or its object, alone
+	/// a command off the focused cameo's card goes to its type, or its object, alone
 	void smartSelectionBeginCommand( const CommandButton *command );
 	void smartSelectionEndCommand();
 

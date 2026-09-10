@@ -99,26 +99,6 @@ static Object *getSmartSelectionObject( Drawable *draw )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Whether a command set carries the button, by name because sets hold overridable copies. */
-//-------------------------------------------------------------------------------------------------
-static Bool commandSetHasButton( const CommandSet *commandSet, const CommandButton *command )
-{
-	if( commandSet == nullptr )
-	{
-		return FALSE;
-	}
-	for( Int i = 0; i < MAX_COMMANDS_PER_SET; i++ )
-	{
-		const CommandButton *button = commandSet->getCommandButton( i );
-		if( button && button->getName() == command->getName() )
-		{
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-//-------------------------------------------------------------------------------------------------
 /** Hand the logic side a group made of the selection, or of one type in it for onlyType. */
 //-------------------------------------------------------------------------------------------------
 static void appendSelectionGroup( const ThingTemplate *onlyType )
@@ -650,8 +630,8 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 //-------------------------------------------------------------------------------------------------
 /** The logic side sends a command to every unit in the player's group that can do it, so a
 	* command off the focused card would leak to any other unit with a matching one. Hand the
-	* logic side just the focused object, or for a focused type only a command the group does
-	* not share, until the command is done. The client selection is untouched throughout. */
+	* logic side just the focused object or type until the command is done. The client
+	* selection is untouched throughout. */
 //-------------------------------------------------------------------------------------------------
 void ControlBar::smartSelectionBeginCommand( const CommandButton *command )
 {
@@ -686,23 +666,8 @@ void ControlBar::smartSelectionBeginCommand( const CommandButton *command )
 	{
 		return;
 	}
-
-	// a command every other selected unit carries too is the group's own and still goes to everyone
-	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
-	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
-	{
-		Object *obj = getSmartSelectionObject( *it );
-		if( obj == nullptr || isSmartSelectionFocused( obj ) )
-		{
-			continue;
-		}
-		if( !commandSetHasButton( findCommandSet( obj->getCommandSetString() ), command ) )
-		{
-			appendSelectionGroup( focus );
-			m_smartSelectionNarrowed = TRUE;
-			return;
-		}
-	}
+	appendSelectionGroup( focus );
+	m_smartSelectionNarrowed = TRUE;
 }
 
 //-------------------------------------------------------------------------------------------------
