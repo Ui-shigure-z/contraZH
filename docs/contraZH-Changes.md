@@ -254,7 +254,8 @@ shows the type's set, and every cameo of that type pushes in. A cameo that stand
 drives the bar as if that object alone were selected, so a transport shows its passengers and a
 factory its queue, and only its cameo pushes in. The whole group stays selected, so orders given on
 the map still go to everyone, but a command off the bar goes to the focused object, or the focused
-type, alone. Click a pushed in cameo again to go back to the group's common commands.
+type, alone. A building placed from a focused dozer is built by it, and the other selected dozers
+go to help. Click a pushed in cameo again to go back to the group's common commands.
 * Right click a cameo to drop its unit, or its whole type, from the selection.
 * Double click a cameo (or Ctrl+Shift+click it with `SmartSelectionUseMouse = No`) to keep only its
 unit, or its whole type, and drop everything else.

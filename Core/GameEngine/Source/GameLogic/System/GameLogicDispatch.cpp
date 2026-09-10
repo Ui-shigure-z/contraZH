@@ -30,6 +30,7 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/ActionManager.h"
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
@@ -2143,12 +2144,17 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 	Coord3D loc;
 	Real angle;
 
-	// get player, what to place, and location
+	// TheSuperHackers @feature The first of the group builds and any dozer behind it is sent to
+	// help, so a smart selection focus can lead the rest of the selected dozers to one site.
 #if RETAIL_COMPATIBLE_AIGROUP
-	Object *constructorObject = getSingleObjectFromSelection(currentlySelectedGroup);
+	const AIGroup *group = currentlySelectedGroup;
 #else
-	Object *constructorObject = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
+	const AIGroup *group = currentlySelectedGroup.Peek();
 #endif
+	if( group == nullptr || group->isEmpty() )
+		return false;
+	const VecObjectID &groupIDs = group->getAllIDs();
+	Object *constructorObject = findObjectByID( groupIDs.front() );
 	place = TheThingFactory->findByTemplateID( msg->getArgument( 0 )->integer );
 	loc = msg->getArgument( 1 )->location;
 	angle = msg->getArgument( 2 )->real;
@@ -2158,8 +2164,17 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 
 	if( msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT )
 	{
-		TheBuildAssistant->buildObjectNow( constructorObject, place, &loc, angle,
+		Object *building = TheBuildAssistant->buildObjectNow( constructorObject, place, &loc, angle,
 																				constructorObject->getControllingPlayer() );
+		for( size_t i = 1; building && i < groupIDs.size(); i++ )
+		{
+			Object *helper = findObjectByID( groupIDs[ i ] );
+			if( helper && helper->getAIUpdateInterface() &&
+					TheActionManager->canResumeConstructionOf( helper, building, CMD_FROM_PLAYER ) )
+			{
+				helper->getAIUpdateInterface()->aiResumeConstruction( building, CMD_FROM_PLAYER );
+			}
+		}
 	}
 	else
 	{

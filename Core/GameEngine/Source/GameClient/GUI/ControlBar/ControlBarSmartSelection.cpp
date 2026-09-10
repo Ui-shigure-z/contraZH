@@ -118,13 +118,27 @@ static void appendSelectionGroup( const ThingTemplate *onlyType )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Hand the logic side a group of that one object. */
+/** Hand the logic side a group of that one object. For a build it leads the other selected
+	* dozers, which the logic side sends to help it. */
 //-------------------------------------------------------------------------------------------------
-static void appendSelectionGroupOf( ObjectID objectID )
+static void appendSelectionGroupOf( ObjectID objectID, Bool withDozers )
 {
 	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_CREATE_SELECTED_GROUP_NO_SOUND );
 	msg->appendBooleanArgument( TRUE );
 	msg->appendObjectIDArgument( objectID );
+	if( !withDozers )
+	{
+		return;
+	}
+	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
+	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
+	{
+		Object *obj = ( *it )->getObject();
+		if( obj && obj->getID() != objectID && obj->isKindOf( KINDOF_DOZER ) )
+		{
+			msg->appendObjectIDArgument( obj->getID() );
+		}
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -644,7 +658,7 @@ void ControlBar::smartSelectionBeginCommand( const CommandButton *command )
 	const ObjectID focusObject = getSmartSelectionFocusObject();
 	if( focusObject != INVALID_ID )
 	{
-		appendSelectionGroupOf( focusObject );
+		appendSelectionGroupOf( focusObject, command->getCommandType() == GUI_COMMAND_DOZER_CONSTRUCT );
 		m_smartSelectionNarrowed = TRUE;
 		return;
 	}
