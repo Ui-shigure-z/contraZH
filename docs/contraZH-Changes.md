@@ -275,7 +275,8 @@ at an unintended spot cannot be undone.
 says it is ready, rather than being thrown away. The cooldown itself is untouched: readiness is
 asked of `SpecialPowerModule::isReady` every frame rather than predicted, so a queued cast can never
 fire earlier than a manual one could.
-* Shift+click queues or cancels five units at once, from either the mouse or the hotkey.
+* Shift+click queues five units at once, from either the mouse or the hotkey. Shift+click on a
+queue entry cancels every queued unit of that type in the factory.
 
 ## Clipboard paste
 
@@ -715,7 +716,7 @@ earlier, swapping it with the entry directly before it. The displaced entry lose
 build time spent on it and starts over when it reaches the front again; already produced
 units of a quantity batch stay produced. Ctrl+click on the first entry does nothing, and
 a finished unit that is only waiting to exit the factory cannot be displaced. A plain
-click still cancels the entry, and Shift+click still cancels a batch of units.
+click still cancels the entry, and Shift+click still cancels every unit of its type.
 
 # Drag Selection
 
