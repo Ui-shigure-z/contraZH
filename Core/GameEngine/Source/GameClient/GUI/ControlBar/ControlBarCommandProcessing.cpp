@@ -651,50 +651,55 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if( !producer->isLocallyControlled() )
 				break;
 
+			ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
+			if (!pu)
+				break;
+
 			// Ctrl moves the clicked entry one position earlier in the queue instead of
 			// cancelling it. Break unconditionally so a Ctrl click can never fall through
-			// to the cancel below, and never combines with the Shift batch either. Gated
+			// to the cancel below, and never combines with the Shift cancel either. Gated
 			// behind the QueueReorder GameData option; with it off, Ctrl+click cancels
 			// like retail.
-			if( TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl() )
+			if (TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl())
 			{
-				if( i > 0 )
+				if (i > 0)
 				{
-					GameMessage *moveMsg = TheMessageStream->appendMessage( GameMessage::MSG_MOVE_UNIT_CREATE_EARLIER );
-					moveMsg->appendIntegerArgument( productionIDToCancel );
+					GameMessage *moveMsg = TheMessageStream->appendMessage(GameMessage::MSG_MOVE_UNIT_CREATE_EARLIER);
+					moveMsg->appendIntegerArgument(productionIDToCancel);
 				}
 				break;
 			}
 
-			// send a message to cancel that particular production entry
-			GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_CANCEL_UNIT_CREATE );
-			msg->appendIntegerArgument( productionIDToCancel );
-
-			// TheSuperHackers @feature Shift cancels a batch: the clicked entry plus the newest
-			// queued units. The queue is displayed oldest to newest, so the extra cancels walk
-			// from the tail towards the clicked slot - taking the most recently queued entries
-			// first and leaving whatever is closest to completion alone for as long as
-			// possible. Deliberately not filtered by template: the point of the batch is to
-			// clear what was just queued, whatever it was. Only unit entries are taken, so an
-			// upgrade sitting in the queue is never swept up.
-			if( TheKeyboard && TheKeyboard->isShift() )
-			{
-				Int cancelled = 1;
-				for( Int j = MAX_BUILD_QUEUE_BUTTONS - 1; j > i && cancelled < SHIFT_CLICK_BATCH_SIZE; --j )
+			const ProductionEntry *pe;
+			UnsignedShort typeIDToCancel = UINT16_MAX;
+			for (pe = pu->firstProduction(); pe; pe = pu->nextProduction(pe))
+				if (pe->getProductionType() == PRODUCTION_UNIT && pe->getProductionID() == productionIDToCancel)
 				{
-					if( m_queueData[ j ].control == nullptr )
-						continue;
-					if( m_queueData[ j ].type != PRODUCTION_UNIT )
-						continue;
-
-					msg = TheMessageStream->appendMessage( GameMessage::MSG_CANCEL_UNIT_CREATE );
-					msg->appendIntegerArgument( m_queueData[ j ].productionID );
-					++cancelled;
+					typeIDToCancel = pe->getProductionObject()->getTemplateID();
+					break;
 				}
+			if (typeIDToCancel == UINT16_MAX)
+				break;
+
+			// TheSuperHackers @feature Shift cancels all units of this type
+			if (TheKeyboard && TheKeyboard->isShift())
+			{
+				for (pe = pu->firstProduction(); pe; pe = pu->nextProduction(pe))
+					if (pe->getProductionType() == PRODUCTION_UNIT && pe->getProductionObject()->getTemplateID() == typeIDToCancel)
+					{
+						// send a message to cancel that particular production entry
+						GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UNIT_CREATE);
+						msg->appendIntegerArgument(pe->getProductionID());
+					}
+			}
+			else
+			{
+				// send a message to cancel that particular production entry
+				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UNIT_CREATE);
+				msg->appendIntegerArgument(productionIDToCancel);
 			}
 
 			break;
-
 		}
 
 		//---------------------------------------------------------------------------------------------
