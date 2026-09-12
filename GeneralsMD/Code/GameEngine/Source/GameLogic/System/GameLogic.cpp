@@ -2889,11 +2889,6 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 		return;
 	}
 
-	//  ShigureUi 07/09/2026 Don't do the check, we have check elsewhere.
-	//if (!obj->isMassSelectable() && !createNewSelection) {
-	//	DEBUG_LOG(("GameLogic::selectObject() - Object attempted to be added to selection, but isn't mass-selectable."));
-	//	return;
-	//}
 
 	while( playerMask )
 	{
@@ -2905,6 +2900,32 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 
 		CRCGEN_LOG(( "Creating AIGroup in GameLogic::selectObject()" ));
 		AIGroupPtr group = TheAI->createGroup();
+
+		// a structure may only join a selection made of its own kind
+		if (!createNewSelection && !obj->isMassSelectable())
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			player->getCurrentSelectionAsAIGroup(group);
+#else
+			player->getCurrentSelectionAsAIGroup(group.Peek());
+#endif
+			const VecObjectID &ids = group->getAllIDs();
+			const Object *first = ids.empty() ? nullptr : findObjectByID(ids.front());
+			const Bool sameKind = first && first->getTemplate() == obj->getTemplate();
+#if RETAIL_COMPATIBLE_AIGROUP
+			TheAI->destroyGroup(group);
+#else
+			group->removeAll();
+#endif
+			if (!sameKind)
+			{
+				return;
+			}
+#if RETAIL_COMPATIBLE_AIGROUP
+			group = TheAI->createGroup();
+#endif
+		}
+
 		group->add(obj);
 
 		// add all selected agents to the AI group

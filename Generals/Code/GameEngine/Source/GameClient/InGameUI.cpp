@@ -162,9 +162,7 @@ static Bool kindOfUnitSelection( Drawable *test, void *userData )
 					&& !object->isContained()
 					&& !object->getDrawable()->isSelected()
 					&& !object->isEffectivelyDead()
-			    //  ShigureUi 07/09/2026 Allowing kind of selection on structures.
-			    // && object->isMassSelectable()
-			    && object->isSelectable()
+			    && object->isMassSelectable()
 					&& !object->isOffMap()
 				)
 		{

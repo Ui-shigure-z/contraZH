@@ -1965,9 +1965,14 @@ bool GameLogic::onDoForceAttackGround(MAYBE_UNUSED GameMessage *msg, AIGroupPtr 
 
 bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
+	Player *msgPlayer = getMessagePlayer(msg);
 	Object* producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(0)->objectID);
 	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 1 )->integer) );
 	if (!upgradeT)	// sanity
+		return false;
+
+	// the producer may have died since the click, and the player must actually control it
+	if (producer == nullptr || producer->getControllingPlayer() != msgPlayer)
 		return false;
 
 	// ShigureUi 13/9/2026 check added, maybe invalid might be sent
@@ -2020,7 +2025,10 @@ bool GameLogic::onCancelUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curre
 
 	if (cancelAll)
 	{
-		currentlySelectedGroup->cancelUpgradeOfType(upgradeT);
+		if (currentlySelectedGroup)
+		{
+			currentlySelectedGroup->cancelUpgradeOfType(upgradeT);
+		}
 	}
 	else
 	{
@@ -2068,6 +2076,10 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 	if ( producer == nullptr || whatToCreate == nullptr )
 		return false;
 
+	// the player must actually control the producer object
+	if (producer->getControllingPlayer() != getMessagePlayer(msg))
+		return false;
+
 	// get the production interface for the producer
 	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
 	if( pu == nullptr )
@@ -2101,7 +2113,10 @@ bool GameLogic::onCancelUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cu
 	if (isCancelAll)
 	{
 		templateID = (Int)msg->getArgument(1)->integer;
-		currentlySelectedGroup->cancelProductionOfType(TheThingFactory->findByTemplateID(templateID));
+		if (currentlySelectedGroup)
+		{
+			currentlySelectedGroup->cancelProductionOfType(TheThingFactory->findByTemplateID(templateID));
+		}
 	}
 	else
 	{

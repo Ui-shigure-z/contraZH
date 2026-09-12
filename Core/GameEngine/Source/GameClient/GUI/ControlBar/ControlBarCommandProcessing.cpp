@@ -693,7 +693,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				DEBUG_CRASH( ("Cannot create '%s' because the factory object '%s' returns false for canMakeUnit",
 																whatToBuild->getName().str(),
-																factory->getTemplate()->getName().str()) );
+																bestFactory ? bestFactory->getTemplate()->getName().str() : "none") );
 				break;
 			}
 
@@ -706,7 +706,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 				DEBUG_CRASH( ("Cannot create '%s' because the factory object '%s' is not capable of producing units",
 																whatToBuild->getName().str(),
-																factory->getTemplate()->getName().str()) );
+																bestFactory->getTemplate()->getName().str()) );
 				break;
 
 			}
@@ -780,17 +780,18 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			const ProductionEntry* pe;
 			const ThingTemplate* typeToCancel = nullptr;
 
-			Object* curFactory;
+			Object* curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and save the type
 			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
 			{
-				curFactory = (*it)->getObject();
-				if (!curFactory || !curFactory->isLocallyControlled())
+				Object* factory = (*it)->getObject();
+				if (!factory || !factory->isLocallyControlled())
 					break;
-				pu = curFactory->getProductionUpdateInterface();
-				if (m_queueData[i].producer == curFactory)
+				pu = factory->getProductionUpdateInterface();
+				if (m_queueData[i].producer == factory)
 				{
+					curFactory = factory;
 					for (pe = pu->firstProduction(); pe; pe = pu->nextProduction(pe))
 						if (pe->getProductionType() == PRODUCTION_UNIT && pe->getProductionID() == productionIDToCancel)
 						{
@@ -804,18 +805,18 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// TheSuperHackers @feature Shift cancels every queued unit of the clicked entry's type
 			// ShigureUi 13/9/2026 instead of decide here, cancel all needs to add new templateID argument and send them to the message processor
 			// When ultiselect cancel the production alone also needs producer ID
+			Bool cancelAll = TheKeyboard && TheKeyboard->isShift();
+			if (cancelAll ? !typeToCancel : !curFactory)
+				break;
+
 			GameMessage* msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UNIT_CREATE);
-			if (TheKeyboard && TheKeyboard->isShift())
+			if (cancelAll)
 			{
-				if (!typeToCancel)
-					break;
 				msg->appendBooleanArgument(true);
 				msg->appendIntegerArgument(typeToCancel->getTemplateID());
 			}
 			else
 			{
-				if (!curFactory)
-					break;
 				msg->appendBooleanArgument(false);
 				msg->appendIntegerArgument(productionIDToCancel);
 				msg->appendObjectIDArgument(curFactory->getID());
@@ -1080,17 +1081,18 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			ProductionUpdateInterface* pu;
 			const ProductionEntry* pe;
 
-			Object* curFactory;
+			Object* curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and get the type
 			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
 			{
-				curFactory = (*it)->getObject();
-				if (!curFactory || !curFactory->isLocallyControlled())
+				Object* factory = (*it)->getObject();
+				if (!factory || !factory->isLocallyControlled())
 					break;
-				pu = curFactory->getProductionUpdateInterface();
-				if (m_queueData[i].producer == curFactory)
+				pu = factory->getProductionUpdateInterface();
+				if (m_queueData[i].producer == factory)
 				{
+					curFactory = factory;
 					for (pe = pu->firstProduction(); pe; pe = pu->nextProduction(pe))
 						if (pe->getProductionType() == PRODUCTION_UPGRADE && pe->getProductionUpgrade() == upgradeT)
 							break;

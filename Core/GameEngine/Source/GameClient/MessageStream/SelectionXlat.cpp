@@ -853,8 +853,9 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
       //Change condition in order to filter illegal selection only.
       //This is 2nd of the cases.
 			//addToGroup = FALSE;
-			if (si.currentCountMineBuildings > 0 &&
-				(*currentList->begin())->getTemplate() != (*drawablesThatWillSelect.begin())->getTemplate())
+			if (si.currentCountMine > 0 &&
+				(si.currentCountMineBuildings == 0 ||
+				(*currentList->begin())->getTemplate() != (*drawablesThatWillSelect.begin())->getTemplate()))
 			  addToGroup = FALSE;
 			si.selectMineBuildings = TRUE;
 		}
@@ -892,8 +893,9 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 				//Change condition in order to filter illegal selection only.
 				//This is 3rd of the cases.
 				//addToGroup = FALSE;
-			  if (si.currentCountMineBuildings > 0 &&
-				  (*currentList->begin())->getTemplate() != thebuilding->getTemplate())
+			  if (si.currentCountMine > 0 &&
+				  (si.currentCountMineBuildings == 0 ||
+				  (*currentList->begin())->getTemplate() != thebuilding->getTemplate()))
 			    addToGroup = FALSE;
 				si.selectMineBuildings = TRUE;
 			}

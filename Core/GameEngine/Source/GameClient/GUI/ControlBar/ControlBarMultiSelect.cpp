@@ -703,15 +703,6 @@ void ControlBar::updateContextMultiSelect()
 					break;
 			}
 
-			//Determine by the production type of this button, whether or not the created object
-			//will have a veterancy rank
-			if (command->getCommandType() != GUI_COMMAND_EXIT_CONTAINER)
-			{
-				//Already handled for contained members -- see ControlBar::populateButtonProc()
-				const Image* image = calculateVeterancyOverlayForThing(command->getThingTemplate());
-				GadgetButtonDrawOverlayImage(win, image);
-			}
-
 			//If button is a CHECK_LIKE, then update it's status now.
 			if( BitIsSet( command->getOptions(), CHECK_LIKE ) )
 			{
@@ -750,6 +741,15 @@ void ControlBar::updateContextMultiSelect()
 			m_commandWindows[ i ]->winEnable( TRUE );
 		else
 			m_commandWindows[ i ]->winEnable( FALSE );
+
+		//Determine by the production type of this button, whether or not the created object
+		//will have a veterancy rank
+		if (m_commonCommands[ i ]->getCommandType() != GUI_COMMAND_EXIT_CONTAINER)
+		{
+			//Already handled for contained members -- see ControlBar::populateButtonProc()
+			const Image* image = calculateVeterancyOverlayForThing(m_commonCommands[ i ]->getThingTemplate());
+			GadgetButtonDrawOverlayImage(m_commandWindows[ i ], image);
+		}
 
 
 		// ShigureUi 07/09/2026 check if there is any command button is build/upgrade and available to all.
@@ -830,8 +830,6 @@ void ControlBar::updateContextMultiSelect()
 			// ShigureUi 08/09/2026 for multiselect, check every build queue windows to see if they're any production facility's first production.
 
 			const ProductionEntry* pe;
-			static char name[] = "ControlBar.wnd:ButtonQueue01";
-
 
 			for (i = 0; i < MAX_BUILD_QUEUE_BUTTONS; i++)
 			{
@@ -847,15 +845,16 @@ void ControlBar::updateContextMultiSelect()
 					break;
 				pe = pu->firstProduction();
 
+				// this producer's queue may have drained without changing the summed count
+				if (!pe)
+					continue;
+
 				if (m_queueData[i].type == pe->getProductionType() &&
 					((m_queueData[i].type == PRODUCTION_UNIT && m_queueData[i].productionID == pe->getProductionID()) ||
 						(m_queueData[i].type == PRODUCTION_UPGRADE && m_queueData[i].upgradeToResearch == pe->getProductionUpgrade()))
 					)
 				{
-					name[strlen(name) - 1] += i;
-					NameKeyType winID = TheNameKeyGenerator->nameToKey(name);
-					GameWindow* win = TheWindowManager->winGetWindowFromId(m_contextParent[CP_BUILD_QUEUE], winID);
-					DEBUG_ASSERTCRASH(win, ("updateMultiSelect: Unable to find the build queue button"));
+					GameWindow* win = m_queueData[i].control;
 					//				UnicodeString text;
 					//
 					//				text.format( L"%.0f%%", produce->getPercentComplete() );
@@ -886,8 +885,6 @@ void ControlBar::updateContextMultiSelect()
 								(remainingFrames + LOGICFRAMES_PER_SECOND - 1) / LOGICFRAMES_PER_SECOND);
 						}
 					}
-
-					name[strlen(name) - 1] -= i;
 				}
 			}
 		}
