@@ -23,6 +23,7 @@
 #include "Common/AsciiString.h"
 #include "Common/GameAudio.h"
 #include "mss/mss.h"
+#include "WWLib/mutex.h"
 
 class AudioEventRTS;
 class DynamicAudioEventRTS;
@@ -40,7 +41,8 @@ enum PlayingAudioType CPP_11(: Int)
 enum PlayingStatus CPP_11(: Int)
 {
 	PS_Playing,
-	PS_Stopped,
+	PS_Stopping, ///< Is about to be stopped
+	PS_Stopped, ///< Is about to be released
 };
 
 enum PlayingWhich CPP_11(: Int)
@@ -65,8 +67,9 @@ struct PlayingAudio
 	PlayingAudioType m_type;
 	volatile PlayingStatus m_status; // This member is adjusted by another running thread.
 	Short m_framesFaded;
-	Bool m_requestStop;
+	Bool m_fade;
 	volatile Bool m_rerequestOnNextUpdate;
+	volatile Bool m_requestStop; // Let the audio finish but stop looping if it is looping
 
 	PlayingAudio()
 		: m_sample(nullptr)
@@ -75,9 +78,22 @@ struct PlayingAudio
 		, m_type(PAT_INVALID)
 		, m_status(PS_Playing)
 		, m_framesFaded(0)
-		, m_requestStop(false)
+		, m_fade(false)
 		, m_rerequestOnNextUpdate(false)
+		, m_requestStop(false)
 	{}
+
+	Bool isPlaying() const
+	{
+		return m_status == PS_Playing;
+	}
+
+	Bool isPlayingOrRequested() const
+	{
+		return m_status == PS_Playing || m_rerequestOnNextUpdate;
+	}
+
+	static_assert(sizeof(m_status) == sizeof(long), "Must be size of long, because it is used with Interlocked functions");
 };
 
 struct ProviderInfo
@@ -237,7 +253,7 @@ class MilesAudioManager : public AudioManager
 		Real getEffectiveVolume(AudioEventRTS *event) const;
 
 		// Looping functions
-		Bool startNextLoop( PlayingAudio *looping );
+		Bool startNextLoop( PlayingAudio *playing );
 
 		void playStream( AudioEventRTS *event, HSTREAM stream );
 		// Returns the file handle for attachment to the PlayingAudio structure
@@ -259,14 +275,17 @@ class MilesAudioManager : public AudioManager
 		void closeFile( void *fileRead );
 
 		PlayingAudio *allocatePlayingAudio();
-		void releaseMilesHandles( PlayingAudio *release );
-		void releasePlayingAudio( PlayingAudio *release );
+		void releaseMilesHandles( PlayingAudio *playing );
+		void releasePlayingAudio( PlayingAudio *playing );
+		void stopPlayingAudio( PlayingAudio *playing );
 		void rerequestPlayingAudio( PlayingAudio *playing );
 		void rerequestPlayingAudioWhenSignalled( PlayingAudio *playing );
+		void fadePlayingAudio( PlayingAudio *playing );
 
 		PlayingAudio *findActiveMusic( const AsciiString *trackName = nullptr );
 		const PlayingAudio *findActiveMusic( const AsciiString* trackName = nullptr ) const;
 
+		void releasePlayingAudioInListIfStopped(std::list<PlayingAudio *> &list, CriticalSectionClass &cs);
 		void stopAllAudioImmediately();
 		void freeAllMilesHandles();
 
@@ -314,11 +333,21 @@ class MilesAudioManager : public AudioManager
 		// Currently fading music. We just let it finish fading, then release it.
 		std::list<PlayingAudio *> m_fadingAudio;
 
+		// TheSuperHackers @fix Erasing from PlayingAudio lists on main thread is not safe when the MSS Timer thread
+		// needs to iterate the same lists. The critical sections are used to guard writes that will invalidate iterators.
+		CriticalSectionClass m_playingSoundsCS;
+		CriticalSectionClass m_playing3DSoundsCS;
+		CriticalSectionClass m_playingStreamsCS;
+		CriticalSectionClass m_fadingAudioCS;
+
 		AudioFileCache *m_audioCache;
 		PlayingAudio *m_binkHandle;
 		UnsignedInt m_num2DSamples;
 		UnsignedInt m_num3DSamples;
 		UnsignedInt m_numStreams;
+
+		Bool m_deviceOpened;
+		Bool m_milesLoaded;
 
 #if defined(RTS_DEBUG)
 		typedef std::set<AsciiString> SetAsciiString;
