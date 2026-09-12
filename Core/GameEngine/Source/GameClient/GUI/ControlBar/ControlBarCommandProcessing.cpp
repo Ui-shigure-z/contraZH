@@ -602,6 +602,15 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			Int totalFrames = 0;
 			CanMakeType cmt = CANMAKE_FACTORY_IS_DISABLED, curCmt;
 
+			// TheSuperHackers @feature Shift queues a batch instead of a single unit.
+			Int unitsToQueue = 1;
+			if (TheKeyboard && TheKeyboard->isShift())
+				unitsToQueue = SHIFT_CLICK_BATCH_SIZE;
+
+			// every producer that can take the unit, so a batch can be spread across them
+			ObjectVector okFactories;
+			std::vector<Real> okFinishTimes;
+
 			// ShigureUi 13/9/2026 find best producer, compare them estimated finish time
 			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
 			{
@@ -652,6 +661,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				// ShigureUi 13/9/2026 do update if better
 				if (curCmt == CANMAKE_OK)
 				{
+					okFactories.push_back(curFactory);
+					okFinishTimes.push_back(curFinishTime);
 					if (curFinishTime < minFinishTime || cmt != CANMAKE_OK)
 					{
 						cmt = CANMAKE_OK;
@@ -663,7 +674,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				else if (curCmt == CANMAKE_QUEUE_FULL && cmt == CANMAKE_PARKING_PLACES_FULL)
 						cmt = CANMAKE_QUEUE_FULL;
 
-				if (minFinishTime == 0.0)
+				// an idle producer is the best pick for one unit, but a batch still wants the rest
+				if (minFinishTime == 0.0 && unitsToQueue == 1)
 					break;
 			}
 
@@ -711,13 +723,21 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			}
 
-			// TheSuperHackers @feature Shift queues a batch instead of a single unit.
-			Int unitsToQueue = 1;
-			if (TheKeyboard && TheKeyboard->isShift())
-				unitsToQueue = SHIFT_CLICK_BATCH_SIZE;
-
+			// each unit goes to whichever producer would finish it first, counting the ones just queued
+			const Int unitFrames = whatToBuild->calcTimeToBuild(player);
 			for( Int queued = 0; queued < unitsToQueue; ++queued )
 			{
+				size_t best = 0;
+				for (size_t k = 1; k < okFactories.size(); ++k)
+				{
+					if (okFinishTimes[k] < okFinishTimes[best])
+					{
+						best = k;
+					}
+				}
+				bestFactory = okFactories[best];
+				okFinishTimes[best] += unitFrames;
+				pu = bestFactory->getProductionUpdateInterface();
 
 				// get a new production id to assign to this
 				ProductionID productionID = pu->requestUniqueUnitID();

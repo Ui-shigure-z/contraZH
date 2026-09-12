@@ -734,7 +734,7 @@ that every selected producer has is enabled even without `OK_FOR_MULTI_SELECT`. 
 nine entries closest to finishing across all of them.
 
 * Click a unit or upgrade to queue it on the producer that would finish it first.
-* Shift+click a unit to queue five on that producer.
+* Shift+click a unit to queue five, each on whichever producer would finish it first.
 * Shift+click an upgrade to queue it on the five producers that would finish it first.
 * Shift+click a queue entry to cancel that type in every selected producer.
 
