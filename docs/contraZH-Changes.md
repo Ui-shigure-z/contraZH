@@ -718,6 +718,26 @@ units of a quantity batch stay produced. Ctrl+click on the first entry does noth
 a finished unit that is only waiting to exit the factory cannot be displaced. A plain
 click still cancels the entry, and Shift+click still cancels every unit of its type.
 
+# Structure Multi-Select
+
+Structures of one type can now be selected together, the same way units can. Retail dropped a
+selected structure the moment anything else was picked.
+
+* The select-matching key (E by default) picks every structure of the same type on screen, or
+across the map with Alt held.
+* Shift+click and Shift+double click add a structure of the same type to the selection.
+* Shift plus a team number (0 to 9) adds that team if it holds only structures of that type.
+* Mixing structures with units, or structures of different types, still drops the old selection.
+
+With several producers selected the bar shows their shared commands. A build or upgrade command
+that every selected producer has is enabled even without `OK_FOR_MULTI_SELECT`. The queue shows the
+nine entries closest to finishing across all of them.
+
+* Click a unit or upgrade to queue it on the producer that would finish it first.
+* Shift+click a unit to queue five on that producer.
+* Shift+click an upgrade to queue it on the five producers that would finish it first.
+* Shift+click a queue entry to cancel that type in every selected producer.
+
 # Drag Selection
 
 ## EasyMilitaryDrag
