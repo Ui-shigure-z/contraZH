@@ -2889,11 +2889,11 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 		return;
 	}
 
-	if (!obj->isMassSelectable() && !createNewSelection)
-	{
-		DEBUG_LOG(("GameLogic::selectObject() - Object attempted to be added to selection, but isn't mass-selectable."));
-		return;
-	}
+	//  ShigureUi 07/09/2026 Don't do the check, we have check elsewhere.
+	//if (!obj->isMassSelectable() && !createNewSelection) {
+	//	DEBUG_LOG(("GameLogic::selectObject() - Object attempted to be added to selection, but isn't mass-selectable."));
+	//	return;
+	//}
 
 	while( playerMask )
 	{

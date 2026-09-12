@@ -1965,12 +1965,37 @@ bool GameLogic::onDoForceAttackGround(MAYBE_UNUSED GameMessage *msg, AIGroupPtr 
 
 bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
+	Object* producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(0)->objectID);
 	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 1 )->integer) );
 	if (!upgradeT)	// sanity
 		return false;
 
-	if (currentlySelectedGroup)
-		currentlySelectedGroup->queueUpgrade( upgradeT );
+	// ShigureUi 13/9/2026 check added, maybe invalid might be sent
+	if (!TheUpgradeCenter->canAffordUpgrade(producer->getControllingPlayer(), upgradeT, FALSE))
+	{
+		return false;
+	}
+
+	if (upgradeT->getUpgradeType() == UPGRADE_TYPE_OBJECT)
+	{
+		if (producer->hasUpgrade(upgradeT) || !producer->affectedByUpgrade(upgradeT))
+			return false;
+	}
+
+	// Ever think to check if this thing can actually build the upgrade to "stop cheaters"?
+	if (!producer->canProduceUpgrade(upgradeT))
+		return false;// They have faked their button; go out of sync. (Cheater will execute it, non cheater will not execute it.)
+
+	// producer must have a production update
+	ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+	if (pu == nullptr)
+		return false;
+
+	if (pu->canQueueUpgrade(upgradeT) == CANMAKE_QUEUE_FULL)
+		return false;//So we don't charge them for something that we can't build... happy happy
+
+	// queue the upgrade "research"
+	pu->queueUpgrade(upgradeT);
 
 	return true;
 }
@@ -1978,46 +2003,66 @@ bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curren
 bool GameLogic::onCancelUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
-
+/*
 #if RETAIL_COMPATIBLE_AIGROUP
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
-	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 0 )->integer) );
+*/
+	Bool cancelAll = (Bool)msg->getArgument(0)->boolean;
+
+	const UpgradeTemplate* upgradeT = TheUpgradeCenter->findUpgradeByKey((NameKeyType)(msg->getArgument(1)->integer));
 
 	// sanity
-	if( producer == nullptr || upgradeT == nullptr )
+	if (upgradeT == nullptr)
 		return false;
 
-	// the player must actually control the producer object
-	if( producer->getControllingPlayer() != msgPlayer )
-		return false;
+	if (cancelAll)
+	{
+		currentlySelectedGroup->cancelUpgradeOfType(upgradeT);
+	}
+	else
+	{
+		Object *producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(2)->objectID);
+		if (producer == nullptr)
+			return false;
 
-	// producer must have a production update
-	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
-	if( pu == nullptr )
-		return false;
+		// the player must actually control the producer object
+		if (producer->getControllingPlayer() != msgPlayer)
+			return false;
 
-	// cancel the upgrade
-	pu->cancelUpgrade( upgradeT );
+		// producer must have a production update
+		ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+		if (pu == nullptr)
+			return false;
+
+		// cancel the upgrade
+		pu->cancelUpgrade(upgradeT);
+
+	}
 
 	return true;
 }
 
 bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
+	// ShigureUi 09/09/2026 we're not gonna use this producer
 #if RETAIL_COMPATIBLE_AIGROUP
-	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
+	//Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
-	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
+	//Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
 	const ThingTemplate *whatToCreate;
+	ObjectID objID;
 	ProductionID productionID;
 
 	// get data from the message
 	whatToCreate = TheThingFactory->findByTemplateID( msg->getArgument( 0 )->integer );
-	productionID = (ProductionID)msg->getArgument( 1 )->integer;
+	objID = (ObjectID)msg->getArgument(1)->integer;
+	productionID = (ProductionID)msg->getArgument( 2 )->integer;
+
+	Object* producer = TheGameLogic->findObjectByID(objID);
 
 	// sanity
 	if ( producer == nullptr || whatToCreate == nullptr )
@@ -2041,29 +2086,44 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 bool GameLogic::onCancelUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
-
+/*
 #if RETAIL_COMPATIBLE_AIGROUP
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
-	ProductionID productionID = (ProductionID)msg->getArgument( 0 )->integer;
+*/
 
-	// sanity
-	if( producer == nullptr )
-		return false;
+	Bool isCancelAll = (Bool)msg->getArgument(0)->boolean;
+	UnsignedShort templateID = 0;
+	
 
-	// sanity, the player must control the producer
-	if( producer->getControllingPlayer() != msgPlayer )
-		return false;
+	if (isCancelAll)
+	{
+		templateID = (Int)msg->getArgument(1)->integer;
+		currentlySelectedGroup->cancelProductionOfType(TheThingFactory->findByTemplateID(templateID));
+	}
+	else
+	{
+		ProductionID productionID = (ProductionID)msg->getArgument(1)->integer;
+		Object* producer = findObjectByID((ObjectID)msg->getArgument(2)->objectID);
 
-	// get the unit production interface
-	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
-	if( pu == nullptr )
-		return false;
+		// sanity
+		if (producer == nullptr)
+			return false;
 
-	// cancel the production
-	pu->cancelUnitCreate( productionID );
+		// sanity, the player must control the producer
+		if (producer->getControllingPlayer() != msgPlayer)
+			return false;
+
+		// get the unit production interface
+		ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+		if (pu == nullptr)
+			return false;
+
+		// cancel the production
+		pu->cancelUnitCreate(productionID);
+	}
 
 	return true;
 }

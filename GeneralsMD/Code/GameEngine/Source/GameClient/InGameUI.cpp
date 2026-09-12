@@ -170,7 +170,9 @@ static Bool kindOfUnitSelection( Drawable *test, void *userData )
 					&& !object->isContained()
 					&& !object->getDrawable()->isSelected()
 					&& !object->isEffectivelyDead()
-					&& object->isMassSelectable()
+			    //  ShigureUi 07/09/2026 Allowing kind of selection on structures.
+			    // && object->isMassSelectable()
+					&& object->isSelectable()
 					&& !object->isOffMap()
 				)
 		{
@@ -229,7 +231,10 @@ static Bool similarUnitSelection( Drawable *test, void *userData )
 			  && object->isLocallyControlled()
 				&& !object->isContained()
 				&& !( object->getDrawable()->isSelected() )
-				&& object->isMassSelectable() // And only if they can be multiply selected. (otherwise the drawable will be, but the object will not be)
+			  //  ShigureUi 07/09/2026 Allowing similar selection on structures.
+			  // && object->isMassSelectable()
+			  && object->isSelectable()
+			  // // And only if they can be multiply selected. (otherwise the drawable will be, but the object will not be)
 				&& !object->isOffMap()
 				)
 		{

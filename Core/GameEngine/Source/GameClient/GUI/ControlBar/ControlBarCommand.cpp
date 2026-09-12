@@ -537,6 +537,7 @@ void ControlBar::resetBuildQueueData()
 
 		m_queueData[ i ].control = nullptr;
 		m_queueData[ i ].type = PRODUCTION_INVALID;
+		m_queueData[ i ].producer = nullptr;
 		m_queueData[ i ].productionID = PRODUCTIONID_INVALID;
 		m_queueData[ i ].upgradeToResearch = nullptr;
 
@@ -614,6 +615,8 @@ void ControlBar::populateBuildQueue( Object *producer )
 		// don't go above how many queue windows we have
 		if( windowIndex >= MAX_BUILD_QUEUE_BUTTONS )
 			break;  // exit for
+
+		m_queueData[ windowIndex ].producer = producer;
 
 		// set the command into the queue button
 		if( production->getProductionType() == PRODUCTION_UNIT )
@@ -1118,6 +1121,10 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 	{
 		disabled = false;
 	}
+
+	//ShigureUi 08/09/2026 when not finished structure multiselected, must return COMMAND_RESTRICTED
+	if (obj->isStructure() && obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+		return COMMAND_RESTRICTED;
 
  	if (disabled && !forceDisabledEvaluation)
  	{
