@@ -595,8 +595,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			DEBUG_ASSERTCRASH( whatToBuild, ("Undefined BUILD command for object '%s'",
 												 commandButton->getThingTemplate()->getName().str()) );
 
-			Real minFinishTime = 1e9, curFinishTime;
-			Object *bestFactory = nullptr, *curFactory;
+			Real curFinishTime;
+			Object *curFactory;
 			ProductionUpdateInterface *pu = nullptr;
 			const ProductionEntry* pe;
 			Int totalFrames = 0;
@@ -661,22 +661,13 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				// ShigureUi 13/9/2026 do update if better
 				if (curCmt == CANMAKE_OK)
 				{
+					cmt = CANMAKE_OK;
 					okFactories.push_back(curFactory);
 					okFinishTimes.push_back(curFinishTime);
-					if (curFinishTime < minFinishTime || cmt != CANMAKE_OK)
-					{
-						cmt = CANMAKE_OK;
-						minFinishTime = curFinishTime;
-						bestFactory = curFactory;
-					}
 				}
 				// ShigureUi 13/9/2026 queue full is better than parking places full, update if possible
 				else if (curCmt == CANMAKE_QUEUE_FULL && cmt == CANMAKE_PARKING_PLACES_FULL)
 						cmt = CANMAKE_QUEUE_FULL;
-
-				// an idle producer is the best pick for one unit, but a batch still wants the rest
-				if (minFinishTime == 0.0 && unitsToQueue == 1)
-					break;
 			}
 
 
@@ -705,48 +696,26 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				DEBUG_CRASH( ("Cannot create '%s' because the factory object '%s' returns false for canMakeUnit",
 																whatToBuild->getName().str(),
-																bestFactory ? bestFactory->getTemplate()->getName().str() : "none") );
+																(*factorys.begin())->getObject()->getTemplate()->getName().str()) );
 				break;
 			}
 
-			// get the production interface from the factory object
-			pu = bestFactory->getProductionUpdateInterface();
-
-			// sanity, we can't build things if we can't produce units
-			if( pu == nullptr )
-			{
-
-				DEBUG_CRASH( ("Cannot create '%s' because the factory object '%s' is not capable of producing units",
-																whatToBuild->getName().str(),
-																bestFactory->getTemplate()->getName().str()) );
-				break;
-
-			}
-
-			// each unit goes to whichever producer would finish it first, counting the ones just queued
 			const Int unitFrames = whatToBuild->calcTimeToBuild(player);
 			for( Int queued = 0; queued < unitsToQueue; ++queued )
 			{
-				size_t best = 0;
-				for (size_t k = 1; k < okFactories.size(); ++k)
-				{
-					if (okFinishTimes[k] < okFinishTimes[best])
-					{
-						best = k;
-					}
-				}
-				bestFactory = okFactories[best];
+				// the producer that would finish first takes the unit and is charged for it
+				const size_t best = std::min_element(okFinishTimes.begin(), okFinishTimes.end()) - okFinishTimes.begin();
+				Object *factory = okFactories[best];
 				okFinishTimes[best] += unitFrames;
-				pu = bestFactory->getProductionUpdateInterface();
 
 				// get a new production id to assign to this
-				ProductionID productionID = pu->requestUniqueUnitID();
+				ProductionID productionID = factory->getProductionUpdateInterface()->requestUniqueUnitID();
 
 				// create a message to build this thing
 				// ShigureUi 13/9/2026 Add a new factory objectID argument, otherwise message processor needs to find best producer again
 				GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_QUEUE_UNIT_CREATE );
 				msg->appendIntegerArgument( whatToBuild->getTemplateID() );
-				msg->appendObjectIDArgument( bestFactory->getID() );
+				msg->appendObjectIDArgument( factory->getID() );
 				msg->appendIntegerArgument( productionID );
 			}
 
