@@ -231,16 +231,56 @@ static Player *getMessagePlayer(GameMessage *msg)
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-/** The control bar sends the group its next command acts on when a smart selection focus
-	* makes that narrower than the selection. It is used once, by the next message. */
+/** ShigureUi 11/09/2026 A plain order goes to the whole selection even while a cameo is
+	* focused, so the control bar's group is not for it. */
 //-------------------------------------------------------------------------------------------------
-Bool GameLogic::takeCommandGroup( Int playerIndex, AIGroup *group )
+static Bool isPlainOrder( GameMessage::Type msgType )
+{
+	switch( msgType )
+	{
+		case GameMessage::MSG_DO_ATTACKMOVETO:
+		case GameMessage::MSG_DO_REVERSE_MOVETO:
+		case GameMessage::MSG_DO_FORCEMOVETO:
+		case GameMessage::MSG_DO_SALVAGE:
+		case GameMessage::MSG_DO_MOVETO:
+		case GameMessage::MSG_ADD_WAYPOINT:
+		case GameMessage::MSG_DO_GUARD_POSITION:
+		case GameMessage::MSG_DO_GUARD_OBJECT:
+		case GameMessage::MSG_DO_STOP:
+		case GameMessage::MSG_DO_SCATTER:
+		case GameMessage::MSG_CREATE_FORMATION:
+		case GameMessage::MSG_DO_CHEER:
+		case GameMessage::MSG_ENTER:
+		case GameMessage::MSG_GET_REPAIRED:
+		case GameMessage::MSG_DOCK:
+		case GameMessage::MSG_GET_HEALED:
+		case GameMessage::MSG_DO_REPAIR:
+		case GameMessage::MSG_DO_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** The control bar sends the group its next command acts on when a smart selection focus
+	* makes that narrower than the selection. The next message takes it whether it wants it or
+	* not, so a plain order does not leave it for the message after. */
+//-------------------------------------------------------------------------------------------------
+Bool GameLogic::takeCommandGroup( Int playerIndex, AIGroup *group, Bool wanted )
 {
 	if( playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT || m_commandGroup[ playerIndex ].empty() )
 	{
 		return FALSE;
 	}
-	std::vector<ObjectID> &commandGroup = m_commandGroup[ playerIndex ];
+	std::vector<ObjectID> commandGroup;
+	commandGroup.swap( m_commandGroup[ playerIndex ] );
+	if( !wanted )
+	{
+		return FALSE;
+	}
 	for( size_t i = 0; i < commandGroup.size(); i++ )
 	{
 		Object *obj = findObjectByID( commandGroup[ i ] );
@@ -249,7 +289,6 @@ Bool GameLogic::takeCommandGroup( Int playerIndex, AIGroup *group )
 			group->add( obj );
 		}
 	}
-	commandGroup.clear();
 	return TRUE;
 }
 
@@ -425,8 +464,6 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 	}
 
 	AIGroupPtr currentlySelectedGroup = nullptr;
-	//Bool hasSmartSelectionFocus = false;
-
 	GameMessage::Type msgType = msg->getType();
 
 	if (isInGame())
@@ -436,61 +473,16 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			if (msg->getType() != GameMessage::MSG_LOGIC_CRC && msg->getType() != GameMessage::MSG_SET_REPLAY_CAMERA)
 			{
 				currentlySelectedGroup = TheAI->createGroup(); // can't do this outside a game - it'll cause sync errors galore.
-
-				// ShigureUi 11/9/2026 decide currentlySelectedGroup by message type.
-				// Some common order doesn not apply smart selection focus group
-				switch ( msgType )
+				CRCGEN_LOG(( "Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup?currentlySelectedGroup->getID():0 ));
+#if RETAIL_COMPATIBLE_AIGROUP
+				AIGroup *selectedGroup = currentlySelectedGroup;
+#else
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
+#endif
+				if( !takeCommandGroup( msg->getPlayerIndex(), selectedGroup, !isPlainOrder( msgType ) ) )
 				{
-					// These messages ignores smart selection focus group
-					case GameMessage::MSG_DO_ATTACKMOVETO:
-					case GameMessage::MSG_DO_REVERSE_MOVETO:
-					case GameMessage::MSG_DO_FORCEMOVETO:
-					case GameMessage::MSG_DO_SALVAGE:
-					case GameMessage::MSG_DO_MOVETO:
-					case GameMessage::MSG_ADD_WAYPOINT:
-					case GameMessage::MSG_DO_GUARD_POSITION:
-					case GameMessage::MSG_DO_GUARD_OBJECT:
-					case GameMessage::MSG_DO_STOP:
-					case GameMessage::MSG_DO_SCATTER:
-					case GameMessage::MSG_CREATE_FORMATION:
-					case GameMessage::MSG_DO_CHEER:
-					case GameMessage::MSG_ENTER:
-					case GameMessage::MSG_GET_REPAIRED:
-					case GameMessage::MSG_DOCK:
-					case GameMessage::MSG_GET_HEALED:
-					case GameMessage::MSG_DO_REPAIR:
-					case GameMessage::MSG_DO_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
-					{
-#if RETAIL_COMPATIBLE_AIGROUP
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
-#else
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.peek());
-#endif
-
-						break;
-					}
-
-					// others must check for smart selection
-					default:
-					{
-#if RETAIL_COMPATIBLE_AIGROUP
-						if (!takeCommandGroup(msg->getPlayerIndex(), currentlySelectedGroup))
-#else
-						if (!takeCommandGroup(msg->getPlayerIndex(), currentlySelectedGroup.peek())
-#endif
-						{
-
-#if RETAIL_COMPATIBLE_AIGROUP
-							msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
-#else
-							msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.peek());
-#endif
-						}
-					}
+					msgPlayer->getCurrentSelectionAsAIGroup( selectedGroup );
 				}
-				CRCGEN_LOG(("Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup ? currentlySelectedGroup->getID() : 0));
 
 				// We can't issue commands to groups that contain units that don't belong to the issuing player, so pretend like
 				// there's nothing selected. Also, if currentlySelectedGroup is empty, go ahead and delete it, so that we can skip
@@ -649,7 +641,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			else
 			{
 				//Use the selected group!
-				if(currentlySelectedGroup)
+				if( currentlySelectedGroup )
 				{
 					currentlySelectedGroup->groupDoSpecialPowerAtMultipleLocations( specialPowerID, locs, options );
 				}
@@ -764,7 +756,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		// arguments -- peers can hold different selections, so each derives the result from its own.
 		case GameMessage::MSG_DO_AUTO_FILL:
 		{
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupAutoFill( CMD_FROM_PLAYER );
 
 			break;
@@ -779,7 +771,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			if( target == nullptr )
 				break;
 
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 			{
 				currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);	// release any temporary locks.
 				currentlySelectedGroup->groupSmartGarrison( target, CMD_FROM_PLAYER );
@@ -910,7 +902,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_TOGGLE_HOLD_FIRE:
 		{
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupToggleHoldFire( CMD_FROM_PLAYER );
 
 			break;
@@ -923,7 +915,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			Int maxShotsToFire = msg->getArgument( 1 )->integer;
 
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 			{
 				currentlySelectedGroup->groupToggleFireWeapon( weaponSlot, maxShotsToFire, CMD_FROM_PLAYER );
 			}
@@ -935,7 +927,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_TOGGLE_DEPLOY:
 		{
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupToggleDeploy( CMD_FROM_PLAYER );
 
 			break;
@@ -1154,7 +1146,6 @@ bool GameLogic::onClearGameData(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curre
 #endif
 	}
 	currentlySelectedGroup = nullptr;
-
 	clearGameData();
 
 	return true;
