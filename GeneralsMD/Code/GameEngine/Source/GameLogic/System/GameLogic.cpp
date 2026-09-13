@@ -2704,11 +2704,13 @@ void GameLogic::processCommandList( CommandList *list )
 	m_cachedCRCs.clear();
 	m_shouldValidateCRCs = FALSE;
 
+	/* Really? Highly doubt it.
 	// a command group only holds for the frame it was sent in
 	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
 		m_commandGroup[ i ].clear();
 	}
+	*/
 
 	GameMessage* msg;
 

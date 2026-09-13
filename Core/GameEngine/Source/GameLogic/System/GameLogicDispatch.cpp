@@ -228,30 +228,6 @@ static Player *getMessagePlayer(GameMessage *msg)
 	return ThePlayerList->getNthPlayer( msg->getPlayerIndex() );
 }
 
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------
-/** The control bar sends the group its next command acts on when a smart selection focus
-	* makes that narrower than the selection. It is used once, by the next message. */
-//-------------------------------------------------------------------------------------------------
-Bool GameLogic::takeCommandGroup( Int playerIndex, AIGroup *group )
-{
-	if( playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT || m_commandGroup[ playerIndex ].empty() )
-	{
-		return FALSE;
-	}
-	std::vector<ObjectID> &commandGroup = m_commandGroup[ playerIndex ];
-	for( size_t i = 0; i < commandGroup.size(); i++ )
-	{
-		Object *obj = findObjectByID( commandGroup[ i ] );
-		if( obj )
-		{
-			group->add( obj );
-		}
-	}
-	commandGroup.clear();
-	return TRUE;
-}
 
 static Object * getSingleObjectFromSelection(const AIGroup *currentlySelectedGroup)
 {
@@ -410,17 +386,6 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 	if (msgPlayer == nullptr)
 	{
 		DEBUG_CRASH(("logicMessageDispatcher: Processing message from unknown player (player index '%d')", msg->getPlayerIndex()));
-		return;
-	}
-
-	if( msg->getType() == GameMessage::MSG_COMMAND_GROUP && msg->getPlayerIndex() < MAX_PLAYER_COUNT )
-	{
-		std::vector<ObjectID> &commandGroup = m_commandGroup[ msg->getPlayerIndex() ];
-		commandGroup.clear();
-		for( Int i = 0; i < msg->getArgumentCount(); i++ )
-		{
-			commandGroup.push_back( msg->getArgument( i )->objectID );
-		}
 		return;
 	}
 
@@ -927,6 +892,20 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_DESTROY_SELECTED_GROUP:
 		{
 			onDestroySelectedGroup(msg);
+			break;
+		}
+		case GameMessage::MSG_COMMAND_GROUP:
+		{
+			if (msg->getPlayerIndex() < MAX_PLAYER_COUNT)
+			{
+				Player* thePlayer = ThePlayerList->getNthPlayer(msg->getPlayerIndex());
+				std::vector<ObjectID>& commandGroup = m_commandGroup[msg->getPlayerIndex()];
+				commandGroup.clear();
+				for (Int i = 0; i < msg->getArgumentCount(); i++)
+				{
+					commandGroup.push_back(msg->getArgument(i)->objectID);
+				}
+			}
 			break;
 		}
 		case GameMessage::MSG_SELECTED_GROUP_COMMAND:
@@ -2422,6 +2401,26 @@ bool GameLogic::onCreateSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 		if (!obj) {
 			continue;
 		}
+
+		selectObject(obj, createNewGroup && firstObject, msgPlayer->getPlayerMask());
+		firstObject = FALSE;
+	}
+
+	return true;
+}
+
+bool GameLogic::onCreateFocusedGroup(MAYBE_UNUSED GameMessage* msg)
+{
+	Player* msgPlayer = getMessagePlayer(msg);
+	Bool createNewGroup = msg->getArgument(0)->boolean;
+	Bool firstObject = TRUE;
+
+	for (Int i = 1; i < msg->getArgumentCount(); ++i) {
+		Object* obj = findObjectByID(msg->getArgument(i)->objectID);
+		if (!obj) {
+			continue;
+		}
+
 
 		selectObject(obj, createNewGroup && firstObject, msgPlayer->getPlayerMask());
 		firstObject = FALSE;

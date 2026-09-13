@@ -389,7 +389,7 @@ private:
 	typedef std::map<Int, UnsignedInt> CachedCRCMap;
 	CachedCRCMap m_cachedCRCs;															///< CRCs we've seen this frame
 	Bool m_shouldValidateCRCs;															///< Should we validate CRCs this frame?
-	std::vector<ObjectID> m_commandGroup[ MAX_PLAYER_COUNT ];	///< the group each player's next command acts on, sent by the control bar
+
 	//-----------------------------------------------------------------------------------------------
 	//Bool m_loadingScene;
 	Bool m_loadingMap;

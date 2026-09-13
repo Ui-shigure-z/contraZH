@@ -327,6 +327,7 @@ Player::Player( Int playerIndex )
 	m_cashBountyPercent = 0.0f;
 	m_color = 0;
 	m_currentSelection = nullptr;
+	m_currentFocus = nullptr;
 	m_rankLevel = 0;
 	m_sciencePurchasePoints = 0;
 	m_side = nullptr;

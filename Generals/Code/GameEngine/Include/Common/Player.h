@@ -814,6 +814,7 @@ private:
 
 	Squad									*m_squads[NUM_HOTKEY_SQUADS];	///< The hotkeyed squads
 	Squad									*m_currentSelection;		///< This player's currently selected group
+	Squad									*m_currentFocus;	///< Sub group of selected group, most command bar actions work with these units.
 
 	Bool									m_isPlayerDead;
 	Bool									m_logicalRetaliationModeEnabled;
