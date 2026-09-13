@@ -609,7 +609,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			// every producer that can take the unit, so a batch can be spread across them
 			ObjectVector okFactories;
-			std::vector<Real> okFinishTimes;
+			std::vector<Real> finishTimes;
+			std::vector<Int> roomToLeft;
 
 			// ShigureUi 13/9/2026 find best producer, compare them estimated finish time
 			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
@@ -658,12 +659,31 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 						break;
 				}
 
-				// ShigureUi 13/9/2026 do update if better
+				// ShigureUi 13/9/2026 record all canmake items
 				if (curCmt == CANMAKE_OK)
 				{
 					cmt = CANMAKE_OK;
 					okFactories.push_back(curFactory);
-					okFinishTimes.push_back(curFinishTime);
+					finishTimes.push_back(curFinishTime);
+
+					// how many more this producer takes before its queue, or its parking, fills
+					Int room = pu->getMaxQueueEntries() - pu->getProductionCount();
+					for (BehaviorModule** i = curFactory->getBehaviorModules(); *i; ++i)
+					{
+						ParkingPlaceBehaviorInterface* pp = (*i)->getParkingPlaceBehaviorInterface();
+						if (pp != nullptr)
+						{
+							if (pp->shouldReserveDoorWhenQueued(whatToBuild))
+							{
+								while (room > 0 && !pp->hasAvailableSpaceFor(whatToBuild, room))
+								{
+									room--;
+								}
+							}
+							break;
+						}
+					}
+					roomToLeft.push_back(room);
 				}
 				// ShigureUi 13/9/2026 queue full is better than parking places full, update if possible
 				else if (curCmt == CANMAKE_QUEUE_FULL && cmt == CANMAKE_PARKING_PLACES_FULL)
@@ -700,13 +720,37 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 			}
 
-			const Int unitFrames = whatToBuild->calcTimeToBuild(player);
-			for( Int queued = 0; queued < unitsToQueue; ++queued )
+			// the batch stops where the money or the per type limit runs out; canMakeUnit
+			// already vouched for the first unit
+			const Int unitCost = whatToBuild->calcCostToBuild(player);
+			if (unitCost > 0)
 			{
+				unitsToQueue = MIN(unitsToQueue, (Int)(player->getMoney()->countMoney() / unitCost));
+			}
+			while (unitsToQueue > 1 && !player->canBuildMoreOfType(whatToBuild, unitsToQueue))
+			{
+				unitsToQueue--;
+			}
+
+			const Int unitFrames = whatToBuild->calcTimeToBuild(player);
+			for( Int queued = 0; queued < unitsToQueue; )
+			{
+				if (finishTimes.empty())
+				{
+					break;
+				}
 				// the producer that would finish first takes the unit and is charged for it
-				const size_t best = std::min_element(okFinishTimes.begin(), okFinishTimes.end()) - okFinishTimes.begin();
+				const size_t best = std::min_element(finishTimes.begin(), finishTimes.end()) - finishTimes.begin();
+				if (roomToLeft[best] < 1)
+				{
+					okFactories.erase(okFactories.begin() + best);
+					finishTimes.erase(finishTimes.begin() + best);
+					roomToLeft.erase(roomToLeft.begin() + best);
+					continue;
+				}
 				Object *factory = okFactories[best];
-				okFinishTimes[best] += unitFrames;
+				finishTimes[best] += unitFrames;
+				roomToLeft[best]--;
 
 				// get a new production id to assign to this
 				ProductionID productionID = factory->getProductionUpdateInterface()->requestUniqueUnitID();
@@ -717,6 +761,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				msg->appendIntegerArgument( whatToBuild->getTemplateID() );
 				msg->appendObjectIDArgument( factory->getID() );
 				msg->appendIntegerArgument( productionID );
+
+				queued++;
 			}
 
 			break;
