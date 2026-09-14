@@ -72,6 +72,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="replaceBtn">
+          <property name="text">
+           <string>Replace...</string>
+          </property>
+          <property name="toolTip">
+           <string>Swap the selected entry for a different building, keeping its position and settings. Other entries using the same building are left alone.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="deleteBtn">
           <property name="text">
            <string>Delete</string>

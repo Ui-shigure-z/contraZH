@@ -85,6 +85,12 @@ int  WBQtBuildList_HasMissingBuildings(void);
 int  WBQtBuildList_ReplaceMissingBuildings(void);
 // Rewrite every entry naming `from` to `to`; returns the entries changed (the report's edits).
 int  WBQtBuildList_ReplaceBuildingName(const char *from, const char *to);
+// Re-point ONE entry (side, index) at `to`, leaving other entries naming the same building
+// alone. Returns 1 when that entry changed.
+int  WBQtBuildList_ReplaceBuildingAt(int side, int idx, const char *to);
+// Run the structure-filtered "Pick A Unit" modal and return the chosen template in `out`.
+// Returns 1 on OK, 0 on cancel/unavailable. The ES_STRUCTURE filter is applied MFC-side.
+int  WBQtBuildList_PickBuilding(char *out, int cap);
 int  WBQtBuildList_GetCurBuild(void);
 void WBQtBuildList_SetCurBuild(int i);
 // Re-point the current building without pushing a panel refresh; use before writing an attribute

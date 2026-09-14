@@ -39,6 +39,7 @@ private slots:
 	void onMoveUp();
 	void onMoveDown();
 	void onAdd();
+	void onReplace();
 	void onDelete();
 	void onExport();
 	void onImport();
@@ -61,6 +62,7 @@ private:
 	QPushButton    *m_up;
 	QPushButton    *m_down;
 	QPushButton    *m_add;
+	QPushButton    *m_replace;
 	QPushButton    *m_delete;
 	QPushButton    *m_export;
 	QPushButton    *m_import;

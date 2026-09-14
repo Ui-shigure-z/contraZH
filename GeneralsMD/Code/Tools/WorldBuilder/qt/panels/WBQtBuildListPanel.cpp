@@ -32,6 +32,7 @@ WBQtBuildListPanel::WBQtBuildListPanel(QWidget *owner)
 	m_up = m_ui->up;
 	m_down = m_ui->down;
 	m_add = m_ui->add;
+	m_replace = m_ui->replaceBtn;
 	m_delete = m_ui->deleteBtn;
 	m_export = m_ui->exportBtn;
 	m_import = m_ui->importBtn;
@@ -62,6 +63,7 @@ WBQtBuildListPanel::WBQtBuildListPanel(QWidget *owner)
 	connect(m_up, SIGNAL(clicked()), this, SLOT(onMoveUp()));
 	connect(m_down, SIGNAL(clicked()), this, SLOT(onMoveDown()));
 	connect(m_add, SIGNAL(clicked()), this, SLOT(onAdd()));
+	connect(m_replace, SIGNAL(clicked()), this, SLOT(onReplace()));
 	connect(m_delete, SIGNAL(clicked()), this, SLOT(onDelete()));
 	connect(m_export, SIGNAL(clicked()), this, SLOT(onExport()));
 	connect(m_import, SIGNAL(clicked()), this, SLOT(onImport()));
@@ -167,6 +169,7 @@ void WBQtBuildListPanel::refreshAttributes()
 	m_alreadyBuilt->setEnabled(has);
 	m_rebuilds->setEnabled(has);
 	m_delete->setEnabled(has);
+	m_replace->setEnabled(has);
 
 	if (has)
 	{
@@ -252,6 +255,36 @@ void WBQtBuildListPanel::onAdd()
 {
 	WBQtBuildList_AddBuilding();
 	// Placement happens via a map click; the panel refreshes when BuildList::update fires.
+}
+
+// Swap the selected entry's building for another, chosen from the same picker the Add path uses.
+// Unlike Fix Missing this works on entries that resolve fine -- the point is to change what gets
+// built, not to repair a broken name. Only the selected entry changes; a second entry naming the
+// same building is left alone (see BuildList::qtReplaceBuildingAt).
+void WBQtBuildListPanel::onReplace()
+{
+	const int row = m_buildList->currentRow();
+	if (row < 0)
+	{
+		return;
+	}
+	WBQtBuildList_SetCurBuild(row);
+
+	// The structure-only filter lives on the MFC side (ES_STRUCTURE is an engine enum, not
+	// visible from Qt), so Replace can only ever pick something Add could have placed.
+	char picked[256];
+	picked[0] = 0;
+	if (WBQtBuildList_PickBuilding(picked, sizeof(picked)) != 1 || picked[0] == 0)
+	{
+		return;		// cancelled, or a folder was selected
+	}
+
+	if (WBQtBuildList_ReplaceBuildingAt(WBQtBuildList_GetCurSide(), row, picked) == 0)
+	{
+		return;		// same building, or the entry went away
+	}
+	refresh();
+	m_buildList->setCurrentRow(row);
 }
 
 void WBQtBuildListPanel::onDelete()

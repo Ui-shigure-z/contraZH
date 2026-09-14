@@ -1185,6 +1185,53 @@ int BuildList::qtReplaceBuildingName(const char *from, const char *to)
 	return hits;
 }
 
+// Re-point a SINGLE entry, unlike qtReplaceBuildingName which rewrites every entry sharing the
+// name. Two entries can legitimately use the same building (two war factories, say), and swapping
+// the one the user selected must not disturb the other.
+int BuildList::qtReplaceBuildingAt(int side, int idx, const char *to)
+{
+	if (TheSidesList == NULL || to == NULL || to[0] == 0 || side < 0 || idx < 0)
+	{
+		return 0;
+	}
+	if (side >= TheSidesList->getNumSides())
+	{
+		return 0;
+	}
+	const AsciiString replacement(to);
+
+	// Mutate a COPY and commit it as one undoable (== qtReplaceBuildingName / addBuilding): the
+	// live TheSidesList is only replaced when the undoable is applied.
+	SidesList sides;
+	sides = *TheSidesList;
+
+	BuildListInfo *p = sides.getSideInfo(side)->getBuildList();
+	for (int count = idx; count > 0 && p != NULL; count--)
+	{
+		p = p->getNext();
+	}
+	if (p == NULL || p->getTemplateName() == replacement)
+	{
+		return 0;
+	}
+	// Only the name changes -- location, angle, rebuilds, already-built and the rest of the entry
+	// are left exactly as they were.
+	p->setTemplateName(replacement);
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc != NULL)
+	{
+		SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
+		pDoc->AddAndDoUndoable(pUndo);
+		REF_PTR_RELEASE(pUndo);		// belongs to pDoc now
+	}
+	if (m_staticThis != NULL)
+	{
+		m_staticThis->updateCurSide();
+	}
+	return 1;
+}
+
 int BuildList::qtReplaceMissingBuildings(void)
 {
 #ifndef RTS_HAS_QT

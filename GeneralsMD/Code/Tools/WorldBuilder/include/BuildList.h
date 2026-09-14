@@ -127,6 +127,10 @@ public:
 	// Rewrite every build-list entry naming `from` to `to`; returns the entries changed. Used by
 	// the report when a guess is corrected.
 	static int  qtReplaceBuildingName(const char *from, const char *to);
+	// Re-point ONE entry (side `side`, index `idx`) at template `to`, leaving other entries that
+	// name the same building alone. Position, angle, rebuilds and flags are preserved.
+	// Returns 1 when the entry changed, 0 otherwise.
+	static int  qtReplaceBuildingAt(int side, int idx, const char *to);
 	static int  qtGetCurBuild(void);
 	static void qtSetCurBuild(int i);
 	// As qtSetCurBuild, but without running OnSelchangeBuildList (which pushes a full panel

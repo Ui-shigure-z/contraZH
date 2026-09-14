@@ -7,6 +7,8 @@
 #include "Lib/BaseType.h"
 #include "BuildList.h"
 #include "qt/WBQtPanelBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"
+#include "Common/ThingSort.h"		// ES_STRUCTURE, the Add path's filter
 
 #ifdef RTS_HAS_QT
 extern "C" {
@@ -22,6 +24,21 @@ int  WBQtBuildList_HasMissingBuildings(void)       { return BuildList::qtHasMiss
 int  WBQtBuildList_ReplaceMissingBuildings(void)   { return BuildList::qtReplaceMissingBuildings(); }
 int  WBQtBuildList_ReplaceBuildingName(const char *f, const char *t)
                                                    { return BuildList::qtReplaceBuildingName(f, t); }
+int  WBQtBuildList_ReplaceBuildingAt(int side, int idx, const char *t)
+                                                   { return BuildList::qtReplaceBuildingAt(side, idx, t); }
+
+// Structure-filtered building picker for the panel's Replace button. The filter is applied here
+// because ES_STRUCTURE is an engine enum the Qt TUs cannot see; == BuildListTool's ADD path.
+int  WBQtBuildList_PickBuilding(char *out, int cap)
+{
+	if (out == NULL || cap <= 0) { return 0; }
+	out[0] = 0;
+	static const int allowable[1] = { ES_STRUCTURE };
+	HWND frame = (::AfxGetMainWnd() != NULL) ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL;
+	const int rc = WBQtPickUnit_Run(frame, allowable, 1, false, out, cap);
+	return (rc == 1) ? 1 : 0;
+}
+
 int  WBQtBuildList_GetCurBuild(void)               { return BuildList::qtGetCurBuild(); }
 void WBQtBuildList_SetCurBuild(int i)              { BuildList::qtSetCurBuild(i); }
 void WBQtBuildList_SetCurBuildNoRefresh(int i)     { BuildList::qtSetCurBuildNoRefresh(i); }
