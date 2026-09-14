@@ -265,8 +265,10 @@ shows the type's set, and every cameo of that type pushes in. A cameo that stand
 drives the bar as if that object alone were selected, so a transport shows its passengers and a
 factory its queue, and only its cameo pushes in. The whole group stays selected, so orders given on
 the map still go to everyone, but a command off the bar goes to the focused object, or the focused
-type, alone. A building placed from a focused dozer is built by it, and the other selected dozers
-go to help. Click a pushed in cameo again to go back to the group's common commands.
+type, alone. Plain orders are the exception and always go to everyone, even when armed off the bar:
+move, attack move, guard, stop, scatter, cheer, formation, waypoints, enter, dock, repair and heal.
+A building placed from a focused dozer is built by it, and the other selected dozers go to help.
+Click a pushed in cameo again to go back to the group's common commands.
 * Right click a cameo to drop its unit, or its whole type, from the selection.
 * Double click a cameo (or Ctrl+Shift+click it with `SmartSelectionUseMouse = No`) to keep only its
 unit, or its whole type, and drop everything else.
@@ -759,7 +761,9 @@ that every selected producer has is enabled even without `OK_FOR_MULTI_SELECT`. 
 nine entries closest to finishing across all of them.
 
 * Click a unit or upgrade to queue it on the producer that would finish it first.
-* Shift+click a unit to queue five, each on whichever producer would finish it first.
+* Shift+click a unit to queue five, each on whichever producer would finish it first. A producer
+whose queue or parking is full hands the rest to the next one, and the batch stops where the money
+or the unit's per player limit runs out.
 * Shift+click an upgrade to queue it on the five producers that would finish it first.
 * Shift+click a queue entry to cancel that type in every selected producer.
 

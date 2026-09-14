@@ -390,8 +390,6 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 	}
 
 	AIGroupPtr currentlySelectedGroup = nullptr;
-	//Bool hasSmartSelectionFocus = false;
-
 	GameMessage::Type msgType = msg->getType();
 
 	if (isInGame())
@@ -401,37 +399,11 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			if (msg->getType() != GameMessage::MSG_LOGIC_CRC && msg->getType() != GameMessage::MSG_SET_REPLAY_CAMERA)
 			{
 				currentlySelectedGroup = TheAI->createGroup(); // can't do this outside a game - it'll cause sync errors galore.
-
-				// ShigureUi 11/9/2026 decide currentlySelectedGroup by message type.
-				// Some common order doesn not apply smart selection focus group
-				switch ( msgType )
-				{
-					// These messages ignores smart selection focus group
-					case GameMessage::MSG_DO_ATTACKMOVETO:
-					case GameMessage::MSG_DO_REVERSE_MOVETO:
-					case GameMessage::MSG_DO_FORCEMOVETO:
-					case GameMessage::MSG_DO_SALVAGE:
-					case GameMessage::MSG_DO_MOVETO:
-					case GameMessage::MSG_ADD_WAYPOINT:
-					case GameMessage::MSG_DO_GUARD_POSITION:
-					case GameMessage::MSG_DO_GUARD_OBJECT:
-					case GameMessage::MSG_DO_STOP:
-					case GameMessage::MSG_DO_SCATTER:
-					case GameMessage::MSG_CREATE_FORMATION:
-					case GameMessage::MSG_DO_CHEER:
-					case GameMessage::MSG_ENTER:
-					case GameMessage::MSG_GET_REPAIRED:
-					case GameMessage::MSG_DOCK:
-					case GameMessage::MSG_GET_HEALED:
-					case GameMessage::MSG_DO_REPAIR:
-					case GameMessage::MSG_DO_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
-					{
+				CRCGEN_LOG(( "Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup?currentlySelectedGroup->getID():0 ));
 #if RETAIL_COMPATIBLE_AIGROUP
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
+				AIGroup *selectedGroup = currentlySelectedGroup;
 #else
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.peek());
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
 #endif
 
 						break;
@@ -458,7 +430,6 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 						}
 					}
 				}
-				CRCGEN_LOG(("Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup ? currentlySelectedGroup->getID() : 0));
 
 				// We can't issue commands to groups that contain units that don't belong to the issuing player, so pretend like
 				// there's nothing selected. Also, if currentlySelectedGroup is empty, go ahead and delete it, so that we can skip
@@ -617,7 +588,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			else
 			{
 				//Use the selected group!
-				if(currentlySelectedGroup)
+				if( currentlySelectedGroup )
 				{
 					currentlySelectedGroup->groupDoSpecialPowerAtMultipleLocations( specialPowerID, locs, options );
 				}
@@ -732,7 +703,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		// arguments -- peers can hold different selections, so each derives the result from its own.
 		case GameMessage::MSG_DO_AUTO_FILL:
 		{
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupAutoFill( CMD_FROM_PLAYER );
 
 			break;
@@ -747,7 +718,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			if( target == nullptr )
 				break;
 
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 			{
 				currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);	// release any temporary locks.
 				currentlySelectedGroup->groupSmartGarrison( target, CMD_FROM_PLAYER );
@@ -878,7 +849,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_TOGGLE_HOLD_FIRE:
 		{
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupToggleHoldFire( CMD_FROM_PLAYER );
 
 			break;
@@ -891,7 +862,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			Int maxShotsToFire = msg->getArgument( 1 )->integer;
 
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 			{
 				currentlySelectedGroup->groupToggleFireWeapon( weaponSlot, maxShotsToFire, CMD_FROM_PLAYER );
 			}
@@ -903,7 +874,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_TOGGLE_DEPLOY:
 		{
 			// use the selected group
-			if(currentlySelectedGroup)
+			if( currentlySelectedGroup )
 				currentlySelectedGroup->groupToggleDeploy( CMD_FROM_PLAYER );
 
 			break;
@@ -1127,7 +1098,6 @@ bool GameLogic::onClearGameData(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curre
 #endif
 	}
 	currentlySelectedGroup = nullptr;
-
 	clearGameData();
 
 	return true;
