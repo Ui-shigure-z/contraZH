@@ -277,10 +277,11 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 						}
 					}
 
+					/*
 					if( TheControlBar )
 					{
 						TheControlBar->appendBuildGroup( builderObj );
-					}
+					}*/
 
 					// create the right kind of message
 					if( isLineBuild )

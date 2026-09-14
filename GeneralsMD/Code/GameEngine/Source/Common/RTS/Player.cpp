@@ -4229,7 +4229,7 @@ void Player::setCurrentlyFocusedAIGroup(AIGroup* group) {
 	m_currentFocus->clearSquad();
 
 	if (group != nullptr) {
-		m_currentSelection->squadFromAIGroup(group, true);
+		m_currentFocus->squadFromAIGroup(group, true);
 	}
 }
 

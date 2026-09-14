@@ -773,11 +773,9 @@ public:
 	ObjectID getSmartSelectionFocusObject() const;
 	Drawable *getSmartSelectionFocusDrawable() const;
 	Bool isSmartSelectionFocused( const Object *obj ) const;
-	Bool isSmartSelectionGroupFocused( Int groupIndex ) const;
+	Bool isIndexSmartSelectionFocused( Int groupIndex ) const;
 	/// sent ahead of a bar command, so it acts on the focused object or type alone
-	void appendCommandGroup( const CommandButton *command );
-	/// sent ahead of a placement, so the builder builds and the other selected dozers help
-	void appendBuildGroup( const Object *builder );
+	void updateFocusGroup();// const CommandButton *command 
 	/// a cameo in the command group row selects its hotkey squad
 	void processCommandGroupClick( GameWindow *button );
 

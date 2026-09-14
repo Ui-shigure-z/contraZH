@@ -222,6 +222,7 @@ void ControlBar::resetSmartSelection()
 {
 	m_smartSelectionGroups.clear();
 	m_smartSelectionActive = -1;
+	updateFocusGroup();
 	if( m_smartSelectionParent && !m_smartSelectionParent->winIsHidden() )
 	{
 		m_smartSelectionParent->winHide( TRUE );
@@ -265,14 +266,33 @@ Drawable *ControlBar::getSmartSelectionFocusDrawable() const
 //-------------------------------------------------------------------------------------------------
 Bool ControlBar::isSmartSelectionFocused( const Object *obj ) const
 {
-	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
-	return focus == nullptr || obj->getTemplate() == focus;
+	if (m_smartSelectionActive < 0)
+		return true;
+
+	if (!obj)
+		return false;
+
+	Int count = m_smartSelectionGroups[m_smartSelectionActive].count;
+
+	//sanity
+	if (count < 1)
+		return true;
+
+	//ShigureUi 14/09/2026 If focus on single
+	if (count == 1 && obj->getID() == m_smartSelectionGroups[m_smartSelectionActive].objectID)
+		return true;
+
+	//ShigureUi 14/09/2026 If focus on a type
+	if (count > 1 && obj->getTemplate() == m_smartSelectionGroups[m_smartSelectionActive].thingTemplate)
+		return true;
+	
+	return false;
 }
 
 //-------------------------------------------------------------------------------------------------
 /** Whether the cameo is pushed in: the focused one, or every one of the focused type. */
 //-------------------------------------------------------------------------------------------------
-Bool ControlBar::isSmartSelectionGroupFocused( Int groupIndex ) const
+Bool ControlBar::isIndexSmartSelectionFocused( Int groupIndex ) const
 {
 	if( m_smartSelectionActive < 0 )
 	{
@@ -386,6 +406,7 @@ void ControlBar::populateSmartSelection()
 		}
 	}
 
+	updateFocusGroup();
 	refreshSmartSelectionButtons();
 }
 
@@ -491,7 +512,7 @@ void ControlBar::refreshSmartSelectionButtons()
 		}
 		GadgetButtonSetText( button, count );
 		button->winSetTooltip( group.thingTemplate->getDisplayName() );
-		GadgetCheckLikeButtonSetVisualCheck( button, isSmartSelectionGroupFocused( i ) );
+		GadgetCheckLikeButtonSetVisualCheck( button, isIndexSmartSelectionFocused( i ) );
 		button->winHide( FALSE );
 	}
 
@@ -536,7 +557,7 @@ void ControlBar::processSmartSelectionClick( GameWindow *button, Bool rightClick
 	}
 	else
 	{
-		smartSelectionFocus( isSmartSelectionGroupFocused( groupIndex ) ? -1 : groupIndex );
+		smartSelectionFocus( isIndexSmartSelectionFocused( groupIndex ) ? -1 : groupIndex );
 	}
 }
 
@@ -563,7 +584,7 @@ void ControlBar::smartSelectionCycle( Int direction )
 		{
 			next = ( next + direction + groupCount ) % groupCount;
 		}
-		if( !isSmartSelectionGroupFocused( next ) )
+		if( !isIndexSmartSelectionFocused( next ) )
 		{
 			smartSelectionFocus( next );
 			return;
@@ -578,6 +599,7 @@ void ControlBar::smartSelectionCycle( Int direction )
 void ControlBar::smartSelectionFocus( Int groupIndex )
 {
 	m_smartSelectionActive = groupIndex;
+	updateFocusGroup();
 	refreshSmartSelectionButtons();
 	markUIDirty();
 }
@@ -631,13 +653,20 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 	* command off the focused card would leak to any other unit with a matching one. The group
 	* the command acts on goes ahead of it instead. The client selection is untouched. */
 //-------------------------------------------------------------------------------------------------
-void ControlBar::appendCommandGroup( const CommandButton *command )
+void ControlBar::updateFocusGroup()// const CommandButton *command 
 {
+	if (m_smartSelectionActive == -1)
+	{
+		TheMessageStream->appendMessage(GameMessage::MSG_UPDATE_FOCUSED_GROUP);
+		return;
+	}
+
 	// the bar is that object's own, so anything out of it goes to that object alone
 	const ObjectID focusObject = getSmartSelectionFocusObject();
+
 	if( focusObject != INVALID_ID )
 	{
-		GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_COMMAND_GROUP );
+		GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
 		msg->appendObjectIDArgument( focusObject );
 		return;
 	}
@@ -648,19 +677,7 @@ void ControlBar::appendCommandGroup( const CommandButton *command )
 		return;
 	}
 
-	// with a cameo focused the populated commands are its card, so anything else, a shortcut
-	// bar power say, came from elsewhere
-	Bool onCard = FALSE;
-	for( Int i = 0; !onCard && i < MAX_COMMANDS_PER_SET; i++ )
-	{
-		onCard = m_commonCommands[ i ] == command;
-	}
-	if( !onCard )
-	{
-		return;
-	}
-
-	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_COMMAND_GROUP );
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
 	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
@@ -670,27 +687,5 @@ void ControlBar::appendCommandGroup( const CommandButton *command )
 			msg->appendObjectIDArgument( obj->getID() );
 		}
 	}
-}
-
-//-------------------------------------------------------------------------------------------------
-/** A multi selection only gets build buttons off a focused dozer's own bar. The builder leads
-	* the group and the logic side sends the dozers behind it to help. */
-//-------------------------------------------------------------------------------------------------
-void ControlBar::appendBuildGroup( const Object *builder )
-{
-	if( builder == nullptr || TheInGameUI->getSelectCount() < 2 )
-	{
-		return;
-	}
-	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_COMMAND_GROUP );
-	msg->appendObjectIDArgument( builder->getID() );
-	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
-	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
-	{
-		Object *obj = ( *it )->getObject();
-		if( obj && obj != builder && obj->isKindOf( KINDOF_DOZER ) )
-		{
-			msg->appendObjectIDArgument( obj->getID() );
-		}
-	}
+	
 }

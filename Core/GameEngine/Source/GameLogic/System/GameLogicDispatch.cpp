@@ -441,10 +441,13 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 					default:
 					{
 #if RETAIL_COMPATIBLE_AIGROUP
-						if (!takeCommandGroup(msg->getPlayerIndex(), currentlySelectedGroup))
+						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup);
+						if (!currentlySelectedGroup->getCount())
 #else
-						if (!takeCommandGroup(msg->getPlayerIndex(), currentlySelectedGroup.peek())
+						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup.peek());
+						if (!currentlySelectedGroup.peek()->getCount())
 #endif
+						
 						{
 
 #if RETAIL_COMPATIBLE_AIGROUP
@@ -941,18 +944,9 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			onDestroySelectedGroup(msg);
 			break;
 		}
-		case GameMessage::MSG_COMMAND_GROUP:
+		case GameMessage::MSG_UPDATE_FOCUSED_GROUP:
 		{
-			if (msg->getPlayerIndex() < MAX_PLAYER_COUNT)
-			{
-				Player* thePlayer = ThePlayerList->getNthPlayer(msg->getPlayerIndex());
-				std::vector<ObjectID>& commandGroup = m_commandGroup[msg->getPlayerIndex()];
-				commandGroup.clear();
-				for (Int i = 0; i < msg->getArgumentCount(); i++)
-				{
-					commandGroup.push_back(msg->getArgument(i)->objectID);
-				}
-			}
+			onUpdateFocusedGroup(msg);
 			break;
 		}
 		case GameMessage::MSG_SELECTED_GROUP_COMMAND:
@@ -2457,22 +2451,31 @@ bool GameLogic::onCreateSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 	return true;
 }
 
-bool GameLogic::onCreateFocusedGroup(MAYBE_UNUSED GameMessage* msg)
+bool GameLogic::onUpdateFocusedGroup(MAYBE_UNUSED GameMessage* msg)
 {
 	Player* msgPlayer = getMessagePlayer(msg);
-	Bool createNewGroup = msg->getArgument(0)->boolean;
-	Bool firstObject = TRUE;
+	AIGroupPtr group = TheAI->createGroup();
 
-	for (Int i = 1; i < msg->getArgumentCount(); ++i) {
+	for (Int i = 0; i < msg->getArgumentCount(); ++i) {
 		Object* obj = findObjectByID(msg->getArgument(i)->objectID);
 		if (!obj) {
 			continue;
 		}
 
-
-		selectObject(obj, createNewGroup && firstObject, msgPlayer->getPlayerMask());
-		firstObject = FALSE;
+		group->add(obj);
 	}
+
+#if RETAIL_COMPATIBLE_AIGROUP
+	msgPlayer->setCurrentlyFocusedAIGroup(group);
+#else
+	msgPlayer->setCurrentlyFocusedAIGroup(group.Peek());
+#endif
+
+#if RETAIL_COMPATIBLE_AIGROUP
+	TheAI->destroyGroup(group);
+#else
+	TheAI->destroyGroup(group.Peek());
+#endif
 
 	return true;
 }

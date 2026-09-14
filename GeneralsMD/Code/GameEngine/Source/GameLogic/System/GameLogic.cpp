@@ -2704,14 +2704,16 @@ void GameLogic::processCommandList( CommandList *list )
 	m_cachedCRCs.clear();
 	m_shouldValidateCRCs = FALSE;
 
-	/* Really? Highly doubt it.
-	// a command group only holds for the frame it was sent in
+	/*
+	Player *player;
+	AIGroupPtr group = TheAI->createGroup();
 	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
-		m_commandGroup[ i ].clear();
+		player = ThePlayerList->getNthPlayer(i);
+		player->setCurrentlyFocusedAIGroup(group);
 	}
-	*/
-
+	TheAI->destroyGroup(group);
+*/
 	GameMessage* msg;
 
 	for( msg = list->getFirstMessage(); msg; msg = msg->next() )

@@ -361,7 +361,7 @@ private:
 	bool onReturnToPrison(GameMessage *msg, AIGroupPtr &currentlySelectedGroup);
 #endif
 	bool onCreateSelectedGroup(GameMessage* msg);
-	bool onCreateFocusedGroup(GameMessage* msg);
+	bool onUpdateFocusedGroup(GameMessage* msg);
 	bool onRemoveFromSelectedGroup(GameMessage *msg);
 	bool onDestroySelectedGroup(GameMessage *msg);
 	bool onPlaceBeacon(GameMessage *msg);
