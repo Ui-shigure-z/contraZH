@@ -1019,7 +1019,7 @@ protected:
 	Drawable *m_currentSelectedDrawable;					///< currently selected drawable for the context sensitive interface
 	ControlBarContext m_currContext;							///< our current displayed context
 
-	DrawableID m_rallyPointDrawableID;						///< rally point drawable for visual rally point
+	std::vector<DrawableID> m_rallyPointDrawableIDs;						///< rally point drawable for visual rally point
 
 	Real m_displayedConstructPercent;							///< construct percent last displayed to user
 	UnsignedInt m_displayedOCLTimerSeconds;				///< OCL Timer seconds remaining last displayed to user
