@@ -165,6 +165,12 @@ void ControlBar::populateStructureInventory( Object *building )
 
 	}
 
+	//ShigureUi 15/09/2026 prevent others button from having veterancy
+	for (i = MAX_STRUCTURE_INVENTORY_BUTTONS; i < MAX_COMMANDS_PER_SET; i++)
+	{
+		GadgetButtonDrawOverlayImage(m_commandWindows[i], nullptr);
+	}
+
 	// show the window
 	m_commandWindows[ EVACUATE_ID ]->winHide( FALSE );
 	m_commandWindows[ STOP_ID ]->winHide( FALSE );
