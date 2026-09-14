@@ -441,11 +441,9 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 					default:
 					{
 #if RETAIL_COMPATIBLE_AIGROUP
-						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup);
-						if (!currentlySelectedGroup->getCount())
+						if (!takeCommandGroup(msg->getPlayerIndex(), currentlySelectedGroup))
 #else
-						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup.peek());
-						if (!currentlySelectedGroup.peek()->getCount())
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
 #endif
 						
 						{
