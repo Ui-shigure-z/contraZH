@@ -406,7 +406,6 @@ void ControlBar::populateSmartSelection()
 		}
 	}
 
-	updateFocusGroup();
 	refreshSmartSelectionButtons();
 }
 
@@ -598,8 +597,11 @@ void ControlBar::smartSelectionCycle( Int direction )
 //-------------------------------------------------------------------------------------------------
 void ControlBar::smartSelectionFocus( Int groupIndex )
 {
-	m_smartSelectionActive = groupIndex;
-	updateFocusGroup();
+	if (m_smartSelectionActive != groupIndex)
+	{
+		m_smartSelectionActive = groupIndex;
+		updateFocusGroup();
+	}
 	refreshSmartSelectionButtons();
 	markUIDirty();
 }
@@ -655,6 +657,26 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 //-------------------------------------------------------------------------------------------------
 void ControlBar::updateFocusGroup()// const CommandButton *command 
 {
+	const CommandButton* command = TheInGameUI->getGUICommand();
+
+	if (command && BitIsSet(command->getOptions(), COMMAND_OPTION_NEED_TARGET))
+	{
+		switch (command->getCommandType())
+		{
+			case GUI_COMMAND_ATTACK_MOVE:
+			case GUI_COMMAND_GUARD:
+			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:	
+			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
+			case GUI_COMMAND_REVERSE_MOVE:
+				break;
+			default:
+				TheInGameUI->setGUICommand(nullptr);
+				break;
+		}
+	}
+
+	TheInGameUI->placeBuildAvailable(nullptr, nullptr);
+
 	if (m_smartSelectionActive == -1)
 	{
 		TheMessageStream->appendMessage(GameMessage::MSG_UPDATE_FOCUSED_GROUP);

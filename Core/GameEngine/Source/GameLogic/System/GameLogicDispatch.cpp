@@ -2500,6 +2500,8 @@ bool GameLogic::onRemoveFromSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 bool GameLogic::onDestroySelectedGroup(MAYBE_UNUSED GameMessage *msg)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
+
+	msgPlayer->setCurrentlyFocusedAIGroup(nullptr);
 	msgPlayer->setCurrentlySelectedAIGroup(nullptr);
 
 	return true;
