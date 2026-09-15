@@ -1284,7 +1284,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			if (BitIsSet(commandButton->getOptions(), NEED_TARGET_POS) == FALSE) {
 				pickAndPlayUnitVoiceResponse( TheInGameUI->getAllSelectedDrawables(), GameMessage::MSG_EVACUATE );
-				TheMessageStream->appendMessage( GameMessage::MSG_EVACUATE );
+				GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_EVACUATE );
+				msg->appendBooleanArgument(false);
 			}
 
 			break;
@@ -1359,6 +1360,15 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		{
 
 			TheMessageStream->appendMessage( GameMessage::MSG_TOGGLE_DEPLOY );
+			break;
+
+		}
+
+		//Same as above
+		case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
+		{
+
+			TheMessageStream->appendMessage(GameMessage::MSG_TOGGLE_TUNNEL_AUTO_POP);
 			break;
 
 		}
