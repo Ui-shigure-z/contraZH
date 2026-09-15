@@ -5631,12 +5631,14 @@ StateReturnType AIAttackFireWeaponState::update()
 		{
 			for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
 			{
-				if (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+				// the lead already passed the aim and readiness checks; the rest must qualify on their own
+				const Bool isLead = (slot == wslot);
+				if (!isLead && (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource)))
 				{
 					continue;
 				}
 				Weapon* groundWeapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
-				if (groundWeapon->getStatus() != READY_TO_FIRE || !groundWeapon->isWithinAttackRange(obj, getMachineGoalPosition()))
+				if (!isLead && (groundWeapon->getStatus() != READY_TO_FIRE || !groundWeapon->isWithinAttackRange(obj, getMachineGoalPosition())))
 				{
 					continue;
 				}

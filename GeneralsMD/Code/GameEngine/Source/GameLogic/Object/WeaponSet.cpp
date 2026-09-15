@@ -1005,7 +1005,9 @@ Bool WeaponSet::canSlotAttackGround( WeaponSlotType wslot, CommandSourceType cmd
 	}
 	const CommandSourceMask syncBits = (1 << CMD_SYNC_TO_PRIMARY) | (1 << CMD_SYNC_TO_SECONDARY) | (1 << CMD_SYNC_TO_TERTIARY)
 		| (1 << CMD_SYNC_TO_FOUR) | (1 << CMD_SYNC_TO_FIVE) | (1 << CMD_SYNC_TO_SIX) | (1 << CMD_SYNC_TO_SEVEN) | (1 << CMD_SYNC_TO_EIGHT);
-	if( m_curWeaponTemplateSet->getNthCommandSourceMask( wslot ) & syncBits )
+	// the unset mask is 0xffffffff, which the sync lookup treats as no sync bits, so mirror that
+	const UnsignedInt mask = m_curWeaponTemplateSet->getNthCommandSourceMask( wslot );
+	if( (Int)mask >= 0 && ( mask & syncBits ) )
 	{
 		return FALSE;
 	}
