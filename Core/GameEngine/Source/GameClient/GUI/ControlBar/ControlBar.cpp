@@ -1399,9 +1399,7 @@ void ControlBar::reset()
 {
 	hideSpecialPowerShortcut();
 	resetSmartSelection();
-	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
-	for (std::vector<DrawableID>::iterator it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
-		TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(*it));
+	// do not destroy the rally drawables, they get destroyed with everything else during a reset
 	m_rallyPointDrawableIDs.clear();
 	if(m_radarAttackGlowWindow)
 		m_radarAttackGlowWindow->winEnable(TRUE);
@@ -2961,13 +2959,17 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 
 	Drawable* marker = nullptr;
 
-	const Coord3D* otherLoc;
 	for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
 	{
+		// nothing prunes the list when a marker dies, so a stale id reads back as null
 		marker = TheGameClient->findDrawableByID(*it);
-		otherLoc = marker->getPosition();
+		if (marker == nullptr)
+		{
+			continue;
+		}
 
 		//ShigureUi 15/9/2026 same loc so we dont't need a new one
+		const Coord3D* otherLoc = marker->getPosition();
 		if (abs(otherLoc->x - loc->x) < 0.1 && abs(otherLoc->y - loc->y) < 0.1)
 			return;
 	}
@@ -2976,14 +2978,13 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 	const ThingTemplate* ttn = TheThingFactory->findTemplate("RallyPointMarker");
 	marker = TheThingFactory->newDrawable(ttn);
 	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: Unable to create rally point drawable"));
-	if (marker)
+	if (marker == nullptr)
 	{
-		marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
-		m_rallyPointDrawableIDs.push_back(marker->getID());
+		return;
 	}
 
-	// sanity
-	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: No rally point marker found"));
+	marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
+	m_rallyPointDrawableIDs.push_back(marker->getID());
 
 	// Adapt position to water height if under water
 	Real waterZ{ 0 };

@@ -200,6 +200,36 @@ const char *GameMessage::getCommandAsString() const
 	return getCommandTypeAsString(m_type);
 }
 
+Bool GameMessage::isPlainOrder(GameMessage::Type t)
+{
+	switch( t )
+	{
+		case GameMessage::MSG_DO_ATTACKMOVETO:
+		case GameMessage::MSG_DO_REVERSE_MOVETO:
+		case GameMessage::MSG_DO_FORCEMOVETO:
+		case GameMessage::MSG_DO_SALVAGE:
+		case GameMessage::MSG_DO_MOVETO:
+		case GameMessage::MSG_ADD_WAYPOINT:
+		case GameMessage::MSG_DO_GUARD_POSITION:
+		case GameMessage::MSG_DO_GUARD_OBJECT:
+		case GameMessage::MSG_DO_STOP:
+		case GameMessage::MSG_DO_SCATTER:
+		case GameMessage::MSG_CREATE_FORMATION:
+		case GameMessage::MSG_DO_CHEER:
+		case GameMessage::MSG_ENTER:
+		case GameMessage::MSG_GET_REPAIRED:
+		case GameMessage::MSG_DOCK:
+		case GameMessage::MSG_GET_HEALED:
+		case GameMessage::MSG_DO_REPAIR:
+		case GameMessage::MSG_DO_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
 const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 {
 #define CASE_LABEL(x) case x: return #x;

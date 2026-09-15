@@ -514,33 +514,13 @@ void pickAndPlayUnitVoiceResponse( const DrawableList *list, GameMessage::Type m
 		{
 			return;
 		}
-		// TheSuperHackers @feature With a type focused in the smart selection row, only that type
-		// contributes, so the bar shows its command set rather than the group's common subset.
+		// TheSuperHackers @feature With a cameo focused, only its units answer a command; a
+		// plain order still goes to the whole selection, so they all answer that
 		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(obj))
 		{
 			switch (msgType)
 			{
-				// These messages ignores smart selection focus group
-				case GameMessage::MSG_DO_ATTACKMOVETO:
-				case GameMessage::MSG_DO_REVERSE_MOVETO:
-				case GameMessage::MSG_DO_FORCEMOVETO:
-				case GameMessage::MSG_DO_SALVAGE:
-				case GameMessage::MSG_DO_MOVETO:
-				case GameMessage::MSG_ADD_WAYPOINT:
-				case GameMessage::MSG_DO_GUARD_POSITION:
-				case GameMessage::MSG_DO_GUARD_OBJECT:
-				case GameMessage::MSG_DO_STOP:
-				case GameMessage::MSG_DO_SCATTER:
-				case GameMessage::MSG_CREATE_FORMATION:
-				case GameMessage::MSG_DO_CHEER:
-				case GameMessage::MSG_ENTER:
-				case GameMessage::MSG_GET_REPAIRED:
-				case GameMessage::MSG_DOCK:
-				case GameMessage::MSG_GET_HEALED:
-				case GameMessage::MSG_DO_REPAIR:
-				case GameMessage::MSG_DO_ATTACK_OBJECT:
-				case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
-				case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
+				// selecting is not a command, so the whole group still speaks
 				case GameMessage::MSG_SELECT_TEAM0:
 				case GameMessage::MSG_SELECT_TEAM1:
 				case GameMessage::MSG_SELECT_TEAM2:
@@ -554,9 +534,12 @@ void pickAndPlayUnitVoiceResponse( const DrawableList *list, GameMessage::Type m
 				case GameMessage::MSG_CREATE_SELECTED_GROUP:
 					break;
 				default:
-					continue;
+					if (!GameMessage::isPlainOrder(msgType))
+					{
+						continue;
+					}
+					break;
 			}
-			
 		}
 
 		switch (msgType)

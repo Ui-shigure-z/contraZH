@@ -2704,16 +2704,6 @@ void GameLogic::processCommandList( CommandList *list )
 	m_cachedCRCs.clear();
 	m_shouldValidateCRCs = FALSE;
 
-	/*
-	Player *player;
-	AIGroupPtr group = TheAI->createGroup();
-	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
-	{
-		player = ThePlayerList->getNthPlayer(i);
-		player->setCurrentlyFocusedAIGroup(group);
-	}
-	TheAI->destroyGroup(group);
-*/
 	GameMessage* msg;
 
 	for( msg = list->getFirstMessage(); msg; msg = msg->next() )

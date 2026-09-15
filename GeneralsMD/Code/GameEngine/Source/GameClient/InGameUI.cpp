@@ -5265,8 +5265,6 @@ Bool InGameUI::canSelectedObjectsDoAction( ActionType action, const Object *obje
 
 		// get this drawable
 		other = *it;
-		count++;
-		Bool success = FALSE;
 
 		// TheSuperHackers @feature Only the focused type judges availability, or another type
 		// that cannot do a command would hide or grey it out.
@@ -5284,6 +5282,9 @@ Bool InGameUI::canSelectedObjectsDoAction( ActionType action, const Object *obje
 					break;
 			}
 		}
+
+		count++;
+		Bool success = FALSE;
 
 		switch( action )
 		{

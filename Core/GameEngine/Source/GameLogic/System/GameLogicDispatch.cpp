@@ -401,62 +401,20 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 				currentlySelectedGroup = TheAI->createGroup(); // can't do this outside a game - it'll cause sync errors galore.
 				CRCGEN_LOG(( "Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup?currentlySelectedGroup->getID():0 ));
 
-				// ShigureUi 11/9/2026 decide currentlySelectedGroup by message type.
-// Some common order doesn not apply smart selection focus group
-				switch (msgType)
+#if RETAIL_COMPATIBLE_AIGROUP
+				AIGroup *selectedGroup = currentlySelectedGroup;
+#else
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
+#endif
+				// ShigureUi 11/09/2026 a plain order acts on the whole selection; everything else
+				// prefers the smart selection focus and falls back to the selection
+				if( !GameMessage::isPlainOrder( msgType ) )
 				{
-					// These messages ignores smart selection focus group
-					case GameMessage::MSG_DO_ATTACKMOVETO:
-					case GameMessage::MSG_DO_REVERSE_MOVETO:
-					case GameMessage::MSG_DO_FORCEMOVETO:
-					case GameMessage::MSG_DO_SALVAGE:
-					case GameMessage::MSG_DO_MOVETO:
-					case GameMessage::MSG_ADD_WAYPOINT:
-					case GameMessage::MSG_DO_GUARD_POSITION:
-					case GameMessage::MSG_DO_GUARD_OBJECT:
-					case GameMessage::MSG_DO_STOP:
-					case GameMessage::MSG_DO_SCATTER:
-					case GameMessage::MSG_CREATE_FORMATION:
-					case GameMessage::MSG_DO_CHEER:
-					case GameMessage::MSG_ENTER:
-					case GameMessage::MSG_GET_REPAIRED:
-					case GameMessage::MSG_DOCK:
-					case GameMessage::MSG_GET_HEALED:
-					case GameMessage::MSG_DO_REPAIR:
-					case GameMessage::MSG_DO_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
-					case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
-					{
-
-#if RETAIL_COMPATIBLE_AIGROUP
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
-#else
-						msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.peek());
-#endif
-
-						break;
-					}
-
-					// others must check for smart selection
-					default:
-					{
-#if RETAIL_COMPATIBLE_AIGROUP
-						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup);
-						if (!currentlySelectedGroup->getCount())
-#else
-						msgPlayer->getCurrentFocusAsAIGroup(currentlySelectedGroup.peek());
-						if (!currentlySelectedGroup.peek()->getCount())
-#endif
-						
-						{
-
-#if RETAIL_COMPATIBLE_AIGROUP
-							msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
-#else
-							msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.peek());
-#endif
-						}
-					}
+					msgPlayer->getCurrentFocusAsAIGroup( selectedGroup );
+				}
+				if( selectedGroup->getCount() == 0 )
+				{
+					msgPlayer->getCurrentSelectionAsAIGroup( selectedGroup );
 				}
 
 				// We can't issue commands to groups that contain units that don't belong to the issuing player, so pretend like
@@ -2472,7 +2430,7 @@ bool GameLogic::onUpdateFocusedGroup(MAYBE_UNUSED GameMessage* msg)
 #if RETAIL_COMPATIBLE_AIGROUP
 	TheAI->destroyGroup(group);
 #else
-	TheAI->destroyGroup(group.Peek());
+	group->removeAll();
 #endif
 
 	return true;

@@ -683,6 +683,9 @@ public:
 	const char *getCommandAsString() const; ///< returns a string representation of the command type.
 	static const char *getCommandTypeAsString(GameMessage::Type t);
 
+	/// ShigureUi 11/09/2026 a plain order acts on the whole selection, never the smart selection focus
+	static Bool isPlainOrder(GameMessage::Type t);
+
 	Int getPlayerIndex() const { return m_playerIndex; }		///< Return the originating player
 
 	// access methods for GameMessageArgumentType enum

@@ -398,6 +398,9 @@ void Player::init(const PlayerTemplate* pt)
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance(Squad);
 
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
+
 	deleteInstance(m_tunnelSystem);
 	m_tunnelSystem = nullptr;
 
@@ -559,6 +562,9 @@ Player::~Player()
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = nullptr;
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 
 	deleteInstance(m_battlePlanBonuses);
 	m_battlePlanBonuses = nullptr;
@@ -1046,6 +1052,9 @@ void Player::initFromDict(const Dict* d)
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance( Squad );
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 }
 
 //=============================================================================

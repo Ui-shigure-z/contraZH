@@ -405,6 +405,8 @@ void ControlBar::populateSmartSelection()
 			break;
 		}
 	}
+	// the focus resolves to a new set of objects here, even when its index is unchanged
+	updateFocusGroup();
 
 	refreshSmartSelectionButtons();
 }
@@ -647,6 +649,7 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 	if( groupIndex == m_smartSelectionActive || keepGroup )
 	{
 		m_smartSelectionActive = -1;
+		updateFocusGroup();
 	}
 }
 

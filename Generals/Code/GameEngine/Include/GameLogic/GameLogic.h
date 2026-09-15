@@ -352,7 +352,7 @@ private:
 	bool onReturnToPrison(GameMessage *msg, AIGroupPtr &currentlySelectedGroup);
 #endif
 	bool onCreateSelectedGroup(GameMessage *msg);
-	Bool takeCommandGroup( Int playerIndex, AIGroup *group, Bool wanted );	///< consume the player's pending command group, filling the group when wanted
+	bool onUpdateFocusedGroup(GameMessage* msg);
 	bool onRemoveFromSelectedGroup(GameMessage *msg);
 	bool onDestroySelectedGroup(GameMessage *msg);
 	bool onPlaceBeacon(GameMessage *msg);
