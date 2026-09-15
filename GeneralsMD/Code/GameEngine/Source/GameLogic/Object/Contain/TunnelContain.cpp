@@ -566,7 +566,7 @@ UpdateSleepTime TunnelContain::update()
 			const TunnelContainModuleData* modData = getTunnelContainModuleData();
 			tunnelSystem->healObjects(modData->m_framesForFullHeal);
 
-			if (tunnelSystem->isNextTunnelToPop(obj))
+			if (tunnelSystem->isNextTunnelToPop(obj) && tunnelSystem->getContainCount() > 0)
 			{
 				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_EVACUATE);
 				msg->appendBooleanArgument(true);
