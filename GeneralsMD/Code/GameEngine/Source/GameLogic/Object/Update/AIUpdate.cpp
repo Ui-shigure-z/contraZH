@@ -89,6 +89,7 @@ AIUpdateModuleData::AIUpdateModuleData()
 
     m_forbidPlayerCommands = FALSE;
 	m_turretsLinked = FALSE;
+	m_forceFireAllWeapons = FALSE;
 	// TheSuperHackers @feature Default to allowing return fire while holding fire, so a held unit is not defenseless.
 	m_holdFireAllowsRetaliation = TRUE;
 	//m_attackAngle = 0.0f;
@@ -158,6 +159,7 @@ struct AttackAngleData
 #endif
     { "ForbidPlayerCommands",				INI::parseBool,										nullptr, offsetof(AIUpdateModuleData, m_forbidPlayerCommands) },
     { "TurretsLinked",							INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_turretsLinked ) },
+    { "ForceFireAllWeapons",			INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_forceFireAllWeapons ) },
     // TheSuperHackers @feature If No, this object stays silent even when attacked while holding fire.
     { "HoldFireAllowsRetaliation",	INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_holdFireAllowsRetaliation ) },
 		{ "PreferredAttackAngle",				AIUpdateModuleData::parseAttackAngle,					NULL, NULL },

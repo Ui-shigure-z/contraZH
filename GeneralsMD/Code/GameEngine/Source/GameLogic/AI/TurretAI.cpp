@@ -709,6 +709,42 @@ Bool TurretAI::isWeaponSlotOnTurret(WeaponSlotType wslot) const
 }
 
 //----------------------------------------------------------------------------------------------------------
+Bool TurretAI::controlsGroundWeapon() const
+{
+	CommandSourceType cmdSource = getOwner()->getAI()->getLastCommandSource();
+	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; ++slot)
+	{
+		if (isWeaponSlotOnTurret((WeaponSlotType)slot) && getOwner()->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+//----------------------------------------------------------------------------------------------------------
+Weapon* TurretAI::getAimWeapon(WeaponSlotType* wslot) const
+{
+	Weapon* cur = m_owner->getCurrentWeapon(wslot);
+	if (cur == nullptr || isWeaponSlotOnTurret(*wslot) || m_target != TARGET_POSITION || !getOwner()->getAI()->forceFiresAllWeapons())
+	{
+		return cur;
+	}
+
+	// attacking the ground with a weapon on another turret, so aim with our own ground weapon
+	CommandSourceType cmdSource = getOwner()->getAI()->getLastCommandSource();
+	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; ++slot)
+	{
+		if (isWeaponSlotOnTurret((WeaponSlotType)slot) && getOwner()->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+		{
+			*wslot = (WeaponSlotType)slot;
+			return m_owner->getWeaponInWeaponSlot(*wslot);
+		}
+	}
+	return cur;
+}
+
+//----------------------------------------------------------------------------------------------------------
 TurretTargetType TurretAI::friend_getTurretTarget( Object*& obj, Coord3D& pos, Bool clearDeadTargets ) const
 {
 	obj = nullptr;
@@ -804,7 +840,8 @@ void TurretAI::setTurretTargetPosition( const Coord3D* pos )
 {
 	if (!pos ||	!isOwnersCurWeaponOnTurret())
 	{
-		if( !getOwner()->getAI()->areTurretsLinked() )
+		const AIUpdateInterface* ai = getOwner()->getAI();
+		if( !ai->areTurretsLinked() && !( ai->forceFiresAllWeapons() && controlsGroundWeapon() ) )
 		{
 			pos = nullptr;
 		}
@@ -1277,7 +1314,7 @@ StateReturnType TurretAIAimTurretState::update()
 	}
 
 	WeaponSlotType slot;
-	Weapon *curWeapon = obj->getCurrentWeapon( &slot );
+	Weapon *curWeapon = turret->getAimWeapon( &slot );
 	if (!curWeapon)
 	{
 		DEBUG_CRASH(("TurretAIAimTurretState::update - curWeapon is null."));

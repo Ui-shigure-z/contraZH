@@ -427,6 +427,29 @@ Notes:
 * Does nothing while `SkipTranslucencySort = No`; the sorter already orders every triangle.
 * Depth ordering interleaves textures more, so `BatchParticles` gathers slightly smaller batches.
 
+## ForceFireAllWeapons
+
+* `ForceFireAllWeapons = No` - (Default. `Yes` makes an attack ground order fire every weapon that
+can hit the ground, on every turret, instead of only the primary weapon.) Goes in the `AIUpdate`
+block next to `TurretsLinked`.
+
+Attack ground, whether from a Ctrl+click on terrain or a script, always selects the primary weapon
+and fires nothing else. Until now the only way around it was `TurretsLinked = Yes`, which fires
+every slot regardless of what it can hit, anti-air included, and also chains every turret to one
+target during ordinary attacks. `ForceFireAllWeapons = Yes` only changes attack ground. Each weapon
+whose anti mask includes ground fires once it is ready and the target is inside its own range;
+weapons that can only hit aircraft, projectiles or mines stay quiet. A turret that does not hold
+the current weapon turns to the point on its own and fires with its own ground weapon, so a two
+turret unit no longer needs `TurretsLinked` to use both.
+
+Notes:
+* Attacking a unit or building, forced or not, still picks the single best weapon.
+* A weapon slot that fires in sync with another slot keeps that rule and fires only when its lead
+does. A locked weapon, which is how attack ground special powers work, fires alone as before.
+* The weapons beyond the lead skip their `PreAttackDelay` wind-up, the same as linked turrets do.
+* A slot whose `AutoChooseSources` excludes `FROM_PLAYER` is skipped for player orders, the same
+way normal weapon choice skips it.
+
 ## NoOccupantFriendlyFire
 
 * `NoOccupantFriendlyFire = No` - (Default. `Yes` spares the container a passenger is riding in from

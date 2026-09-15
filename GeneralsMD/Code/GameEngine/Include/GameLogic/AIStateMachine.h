@@ -942,6 +942,7 @@ public:
 	virtual void notifyFired() = 0;
 	virtual void notifyNewVictimChosen(Object* victim) = 0;
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const = 0;
+	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const = 0;	///< the slot fires from this machine, not from a turret of its own
 	virtual Bool isAttackingObject() const = 0;
 	virtual const Coord3D* getOriginalVictimPos() const = 0;
 };
@@ -995,6 +996,7 @@ public:
 	virtual void notifyNewVictimChosen(Object* victim) override;
 	virtual const Coord3D* getOriginalVictimPos() const override { return &m_originalVictimPos; }
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const override { return true; }
+	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const override;
 	virtual Bool isAttackingObject() const override { return m_isAttackingObject; }
 	virtual Bool isForceAttacking() const { return m_isForceAttacking; }
 #ifdef STATE_MACHINE_DEBUG

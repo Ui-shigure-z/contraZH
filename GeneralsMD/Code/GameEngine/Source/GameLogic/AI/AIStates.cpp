@@ -5050,7 +5050,15 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 	else
 	{
 		WhichTurretType tur = sourceAI->getWhichTurretForCurWeapon();
-		if (tur != TURRET_INVALID)
+		if (!m_isAttackingObject && sourceAI->forceFiresAllWeapons())
+		{
+			// every turret with a ground weapon takes the target; the others drop it themselves
+			for (Int i = 0; i < MAX_TURRETS; i++)
+			{
+				sourceAI->setTurretTargetPosition((WhichTurretType)i, getMachineGoalPosition());
+			}
+		}
+		else if (tur != TURRET_INVALID)
 		{
 			//Order specific turret to attack.
 			if (m_isAttackingObject)
@@ -5062,7 +5070,7 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 				sourceAI->setTurretTargetPosition(tur, getMachineGoalPosition());
 			}
 		}
-		else
+		if (tur == TURRET_INVALID)
 		{
 			// GS moved contact weapon check in here, because Success can never be given to a unit in this state
 			// using a turret to attack.  Check out ::update and you will see.
@@ -5121,7 +5129,14 @@ StateReturnType AIAttackAimAtTargetState::update()
 	}
 
 	WhichTurretType tur = sourceAI->getWhichTurretForCurWeapon();
-	if (tur != TURRET_INVALID)
+	if (!m_isAttackingObject && sourceAI->forceFiresAllWeapons())
+	{
+		for (Int i = 0; i < MAX_TURRETS; i++)
+		{
+			sourceAI->setTurretTargetPosition((WhichTurretType)i, getMachineGoalPosition());
+		}
+	}
+	else if (tur != TURRET_INVALID)
 	{
 		if (m_isAttackingObject)
 		{
@@ -5498,6 +5513,28 @@ StateReturnType AIAttackFireWeaponState::update()
 		return STATE_FAILURE;
 	}
 
+	const AIUpdateInterface* ai = obj->getAI();
+	const CommandSourceType cmdSource = ai->getLastCommandSource();
+	const Bool fireAllAtGround = !m_att->isAttackingObject() && ai->forceFiresAllWeapons() && !obj->isCurWeaponLocked();
+	if (fireAllAtGround && !m_att->ownsWeaponSlot(wslot))
+	{
+		// the current weapon fires elsewhere, so lead with our own first ground weapon
+		weapon = nullptr;
+		for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
+		{
+			if (m_att->ownsWeaponSlot((WeaponSlotType)slot) && obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+			{
+				wslot = (WeaponSlotType)slot;
+				weapon = obj->getWeaponInWeaponSlot(wslot);
+				break;
+			}
+		}
+		if (!weapon)
+		{
+			return STATE_FAILURE;
+		}
+	}
+
 	WeaponStatus status = weapon->getStatus();
 	if (status == PRE_ATTACK)
 	{
@@ -5520,7 +5557,7 @@ StateReturnType AIAttackFireWeaponState::update()
 	}
 
 	// must adjust the state BEFORE calling fireWeapon, for FX to work correctly...
-	obj->setFiringConditionForCurrentWeapon();
+	obj->setFiringConditionForWeaponSlot(wslot);
 
 	if (m_att->isAttackingObject())
 	{
@@ -5588,6 +5625,26 @@ StateReturnType AIAttackFireWeaponState::update()
 
 					obj->notifyFiringTrackerShotFired(weapon, INVALID_ID);
 				}
+			}
+		}
+		else if (fireAllAtGround)
+		{
+			for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
+			{
+				if (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+				{
+					continue;
+				}
+				Weapon* groundWeapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
+				if (groundWeapon->getStatus() != READY_TO_FIRE || !groundWeapon->isWithinAttackRange(obj, getMachineGoalPosition()))
+				{
+					continue;
+				}
+				if (groundWeapon->fireWeapon(obj, getMachineGoalPosition()))
+				{
+					obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+				}
+				obj->notifyFiringTrackerShotFired(groundWeapon, INVALID_ID);
 			}
 		}
 		else
@@ -6006,6 +6063,13 @@ StateReturnType AIAttackState::update()
 	 * sleeps, we still need to be called every frame.
 	 */
 	return CONVERT_SLEEP_TO_CONTINUE(m_attackMachine->updateStateMachine());
+}
+
+//----------------------------------------------------------------------------------------------------------
+Bool AIAttackState::ownsWeaponSlot( WeaponSlotType wslot ) const
+{
+	const AIUpdateInterface* ai = getMachineOwner()->getAI();
+	return ai == nullptr || ai->getWhichTurretForWeaponSlot( wslot, nullptr ) == TURRET_INVALID;
 }
 
 //----------------------------------------------------------------------------------------------------------

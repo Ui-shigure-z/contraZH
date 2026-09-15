@@ -301,6 +301,8 @@ public:
 
 	Bool isOwnersCurWeaponOnTurret() const;
 	Bool isWeaponSlotOnTurret(WeaponSlotType wslot) const;
+	Bool controlsGroundWeapon() const;
+	Weapon* getAimWeapon(WeaponSlotType* wslot) const;	///< the weapon this turret aims and ranges with
 	virtual Bool isAttackingObject() const override { return m_target == TARGET_OBJECT; }
 	Bool isForceAttacking() const { return m_isForceAttacking; }
 
@@ -326,6 +328,7 @@ public:
 	virtual void notifyNewVictimChosen(Object* victim) override;
 	virtual const Coord3D* getOriginalVictimPos() const override { return nullptr; }	// yes, we return nullptr here
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const override;
+	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const override { return isWeaponSlotOnTurret(wslot); }
 
 	// these are only for use by the state machines... don't call them otherwise, please
 	Bool friend_turnTowardsAngle(Real desiredAngle, Real rateModifier, Real relThresh);

@@ -1446,9 +1446,14 @@ Real Object::getLargestWeaponRange() const
 //=============================================================================
 void Object::setFiringConditionForCurrentWeapon() const
 {
+	setFiringConditionForWeaponSlot( m_weaponSet.getCurWeaponSlot() );
+}
+
+//=============================================================================
+void Object::setFiringConditionForWeaponSlot( WeaponSlotType wslot ) const
+{
 	if (m_drawable)
 	{
-		WeaponSlotType wslot = m_weaponSet.getCurWeaponSlot();
 		ModelConditionFlags c = m_weaponSet.getModelConditionForWeaponSlot(wslot, WSF_FIRING);
 		m_drawable->clearAndSetModelConditionFlags(s_allWeaponFireFlags[wslot], c);
 	}
