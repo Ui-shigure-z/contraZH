@@ -514,6 +514,33 @@ void pickAndPlayUnitVoiceResponse( const DrawableList *list, GameMessage::Type m
 		{
 			return;
 		}
+		// TheSuperHackers @feature With a cameo focused, only its units answer a command; a
+		// plain order still goes to the whole selection, so they all answer that
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(obj))
+		{
+			switch (msgType)
+			{
+				// selecting is not a command, so the whole group still speaks
+				case GameMessage::MSG_SELECT_TEAM0:
+				case GameMessage::MSG_SELECT_TEAM1:
+				case GameMessage::MSG_SELECT_TEAM2:
+				case GameMessage::MSG_SELECT_TEAM3:
+				case GameMessage::MSG_SELECT_TEAM4:
+				case GameMessage::MSG_SELECT_TEAM5:
+				case GameMessage::MSG_SELECT_TEAM6:
+				case GameMessage::MSG_SELECT_TEAM7:
+				case GameMessage::MSG_SELECT_TEAM8:
+				case GameMessage::MSG_SELECT_TEAM9:
+				case GameMessage::MSG_CREATE_SELECTED_GROUP:
+					break;
+				default:
+					if (!GameMessage::isPlainOrder(msgType))
+					{
+						continue;
+					}
+					break;
+			}
+		}
 
 		switch (msgType)
 		{

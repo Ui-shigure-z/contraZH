@@ -1018,7 +1018,7 @@ ControlBar::ControlBar()
 	m_communicatorButton = nullptr;
 	m_currentSelectedDrawable = nullptr;
 	m_currContext = CB_CONTEXT_NONE;
-	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+	m_rallyPointDrawableIDs.clear();
 	m_displayedConstructPercent = -1.0f;
 	m_displayedOCLTimerSeconds = 0;
 	m_displayedQueueCount = 0;
@@ -1399,8 +1399,8 @@ void ControlBar::reset()
 {
 	hideSpecialPowerShortcut();
 	resetSmartSelection();
-	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
-	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+	// do not destroy the rally drawables, they get destroyed with everything else during a reset
+	m_rallyPointDrawableIDs.clear();
 	if(m_radarAttackGlowWindow)
 		m_radarAttackGlowWindow->winEnable(TRUE);
 	m_radarAttackGlowOn = FALSE;
@@ -2943,35 +2943,48 @@ void ControlBar::setPortraitByObject( Object *obj )
 void ControlBar::showRallyPoint(const Coord3D* loc)
 {
 	// if loc is null, destroy any rally point drawable we have shown
+
+	std::vector<DrawableID>::iterator it;
+
 	if (loc == nullptr)
 	{
-		// destroy rally point drawable if present
-		if (m_rallyPointDrawableID != INVALID_DRAWABLE_ID)
-			TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(m_rallyPointDrawableID));
+		// destroy any rally point drawable if present
+		if (m_rallyPointDrawableIDs.size() > 0)
+			for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
+				TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(*it));
 
-		m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+		m_rallyPointDrawableIDs.clear();
 		return;
 	}
 
 	Drawable* marker = nullptr;
 
-	// create a rally point drawable if necessary
-	if (m_rallyPointDrawableID == INVALID_DRAWABLE_ID)
+	for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
 	{
-		const ThingTemplate* ttn = TheThingFactory->findTemplate("RallyPointMarker");
-		marker = TheThingFactory->newDrawable(ttn);
-		DEBUG_ASSERTCRASH(marker, ("showRallyPoint: Unable to create rally point drawable"));
-		if (marker)
+		// nothing prunes the list when a marker dies, so a stale id reads back as null
+		marker = TheGameClient->findDrawableByID(*it);
+		if (marker == nullptr)
 		{
-			marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
-			m_rallyPointDrawableID = marker->getID();
+			continue;
 		}
-	}
-	else
-		marker = TheGameClient->findDrawableByID(m_rallyPointDrawableID);
 
-	// sanity
-	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: No rally point marker found"));
+		//ShigureUi 15/9/2026 same loc so we dont't need a new one
+		const Coord3D* otherLoc = marker->getPosition();
+		if (abs(otherLoc->x - loc->x) < 0.1 && abs(otherLoc->y - loc->y) < 0.1)
+			return;
+	}
+
+	// create a rally point drawable if necessary
+	const ThingTemplate* ttn = TheThingFactory->findTemplate("RallyPointMarker");
+	marker = TheThingFactory->newDrawable(ttn);
+	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: Unable to create rally point drawable"));
+	if (marker == nullptr)
+	{
+		return;
+	}
+
+	marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
+	m_rallyPointDrawableIDs.push_back(marker->getID());
 
 	// Adapt position to water height if under water
 	Real waterZ{ 0 };

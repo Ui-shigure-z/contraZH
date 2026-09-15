@@ -1617,10 +1617,21 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
 			for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 			{
-				Drawable *draw = *it;
-				if( draw && draw->getObject() && draw->getObject()->isLocallyControlled() && draw->getObject()->getCurrentWeapon())
+				if (!*it || !(*it)->getObject())
+					continue;
+
+				Object* obj = (*it)->getObject();
+
+				// TheSuperHackers @feature With a type focused in the smart selection row, only that type
+				// contributes, so the bar shows its command set rather than the group's common subset.
+				if (!isSmartSelectionFocused(obj))
 				{
-					WeaponSlotType wslot = draw->getObject()->getCurrentWeapon()->getWeaponSlot();
+					continue;
+				}
+
+				if (obj->isLocallyControlled() && obj->getCurrentWeapon())
+				{
+					WeaponSlotType wslot = obj->getCurrentWeapon()->getWeaponSlot();
 					if (wslot != command->getWeaponSlot())
 						return COMMAND_AVAILABLE;
 				}

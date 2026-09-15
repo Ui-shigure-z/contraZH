@@ -5265,6 +5265,24 @@ Bool InGameUI::canSelectedObjectsDoAction( ActionType action, const Object *obje
 
 		// get this drawable
 		other = *it;
+
+		// TheSuperHackers @feature Only the focused type judges availability, or another type
+		// that cannot do a command would hide or grey it out.
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(other->getObject()))
+		{
+			switch (action)
+			{
+				case ACTIONTYPE_COMBATDROP_INTO:
+				case ACTIONTYPE_CAPTURE_BUILDING:
+				case ACTIONTYPE_DISABLE_VEHICLE_VIA_HACKING:
+				case ACTIONTYPE_STEAL_CASH_VIA_HACKING:
+				case ACTIONTYPE_DISABLE_BUILDING_VIA_HACKING:
+					continue;
+				default:
+					break;
+			}
+		}
+
 		count++;
 		Bool success = FALSE;
 
@@ -5423,6 +5441,14 @@ Bool InGameUI::canSelectedObjectsDoSpecialPower( const CommandButton *command, c
 
 		// get this drawable
 		Drawable* other = *it;
+
+		// TheSuperHackers @feature Only the focused type judges availability, or another type
+		// that cannot do a command would hide or grey it out.
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(other->getObject()))
+		{
+			continue;
+		}
+
 		count++;
 
 		if( !doAtObject && !doAtPosition )
@@ -5486,6 +5512,14 @@ Bool InGameUI::canSelectedObjectsOverrideSpecialPowerDestination( const Coord3D 
 
 		// get this drawable
 		other = *it;
+
+		// TheSuperHackers @feature Only the focused type judges availability, or another type
+		// that cannot do a command would hide or grey it out.
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(other->getObject()))
+		{
+			continue;
+		}
+
 		count++;
 
 		if( TheActionManager->canOverrideSpecialPowerDestination( other->getObject(), loc, spType, CMD_FROM_PLAYER ) )
@@ -5542,6 +5576,14 @@ Bool InGameUI::canSelectedObjectsEffectivelyUseWeapon( const CommandButton *comm
 
 		// get this drawable
 		other = *it;
+
+		// TheSuperHackers @feature Only the focused type judges availability, or another type
+		// that cannot do a command would hide or grey it out.
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(other->getObject()))
+		{
+			continue;
+		}
+
 		count++;
 
 		if( !doAtObject && !doAtPosition )

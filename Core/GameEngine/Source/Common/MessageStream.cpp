@@ -200,6 +200,36 @@ const char *GameMessage::getCommandAsString() const
 	return getCommandTypeAsString(m_type);
 }
 
+Bool GameMessage::isPlainOrder(GameMessage::Type t)
+{
+	switch( t )
+	{
+		case GameMessage::MSG_DO_ATTACKMOVETO:
+		case GameMessage::MSG_DO_REVERSE_MOVETO:
+		case GameMessage::MSG_DO_FORCEMOVETO:
+		case GameMessage::MSG_DO_SALVAGE:
+		case GameMessage::MSG_DO_MOVETO:
+		case GameMessage::MSG_ADD_WAYPOINT:
+		case GameMessage::MSG_DO_GUARD_POSITION:
+		case GameMessage::MSG_DO_GUARD_OBJECT:
+		case GameMessage::MSG_DO_STOP:
+		case GameMessage::MSG_DO_SCATTER:
+		case GameMessage::MSG_CREATE_FORMATION:
+		case GameMessage::MSG_DO_CHEER:
+		case GameMessage::MSG_ENTER:
+		case GameMessage::MSG_GET_REPAIRED:
+		case GameMessage::MSG_DOCK:
+		case GameMessage::MSG_GET_HEALED:
+		case GameMessage::MSG_DO_REPAIR:
+		case GameMessage::MSG_DO_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_OBJECT:
+		case GameMessage::MSG_DO_FORCE_ATTACK_GROUND:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
 const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 {
 #define CASE_LABEL(x) case x: return #x;
@@ -651,7 +681,7 @@ const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 	CASE_LABEL(MSG_MOVE_UNIT_CREATE_EARLIER)
 	CASE_LABEL(MSG_MOVE_UPGRADE_EARLIER)
 	CASE_LABEL(MSG_TOGGLE_FIRE_WEAPON)
-	CASE_LABEL(MSG_COMMAND_GROUP)
+	CASE_LABEL(MSG_UPDATE_FOCUSED_GROUP)
 	CASE_LABEL(MSG_SWITCH_WEAPONS)
 	CASE_LABEL(MSG_CONVERT_TO_CARBOMB)
 	CASE_LABEL(MSG_CAPTUREBUILDING)

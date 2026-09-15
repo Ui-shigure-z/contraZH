@@ -329,6 +329,7 @@ Player::Player( Int playerIndex )
 	m_cashBountyPercent = 0.0f;
 	m_color = 0;
 	m_currentSelection = nullptr;
+	m_currentFocus = nullptr;
 	m_rankLevel = 0;
 	m_sciencePurchasePoints = 0;
 	m_side = nullptr;
@@ -396,6 +397,9 @@ void Player::init(const PlayerTemplate* pt)
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance(Squad);
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 
 	deleteInstance(m_tunnelSystem);
 	m_tunnelSystem = nullptr;
@@ -558,6 +562,9 @@ Player::~Player()
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = nullptr;
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 
 	deleteInstance(m_battlePlanBonuses);
 	m_battlePlanBonuses = nullptr;
@@ -1045,6 +1052,9 @@ void Player::initFromDict(const Dict* d)
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance( Squad );
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 }
 
 //=============================================================================
@@ -4199,6 +4209,12 @@ void Player::getCurrentSelectionAsAIGroup(AIGroup *group) {
 	}
 }
 
+void Player::getCurrentFocusAsAIGroup(AIGroup* group) {
+	if (m_currentFocus != nullptr) {
+		m_currentFocus->aiGroupFromSquad(group);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Select a hotkey team based on this GameMessage */
 //-------------------------------------------------------------------------------------------------
@@ -4211,6 +4227,18 @@ void Player::setCurrentlySelectedAIGroup(AIGroup *group) {
 
 	if (group != nullptr) {
 		m_currentSelection->squadFromAIGroup(group, true);
+	}
+}
+
+void Player::setCurrentlyFocusedAIGroup(AIGroup* group) {
+	if (m_currentFocus == nullptr) {
+		m_currentFocus = newInstance(Squad);
+	}
+
+	m_currentFocus->clearSquad();
+
+	if (group != nullptr) {
+		m_currentFocus->squadFromAIGroup(group, true);
 	}
 }
 

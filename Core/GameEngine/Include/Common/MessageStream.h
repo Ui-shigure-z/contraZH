@@ -643,7 +643,7 @@ public:
 		MSG_MOVE_UNIT_CREATE_EARLIER,								///< (productionID) move the queued unit one position earlier in its production queue
 		MSG_MOVE_UPGRADE_EARLIER,										///< (upgrade name key) move the queued upgrade one position earlier in its production queue
 		MSG_TOGGLE_FIRE_WEAPON,											///< (weapon slot, max shots) start the selected group firing a weapon, or stop it
-		MSG_COMMAND_GROUP,													///< (objectID1 ... objectIDN) the group this player's next command acts on, in place of the selection
+		MSG_UPDATE_FOCUSED_GROUP,										///< update and tell every player that we have smart selection focus on this group
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 
@@ -682,6 +682,9 @@ public:
 
 	const char *getCommandAsString() const; ///< returns a string representation of the command type.
 	static const char *getCommandTypeAsString(GameMessage::Type t);
+
+	/// ShigureUi 11/09/2026 a plain order acts on the whole selection, never the smart selection focus
+	static Bool isPlainOrder(GameMessage::Type t);
 
 	Int getPlayerIndex() const { return m_playerIndex; }		///< Return the originating player
 

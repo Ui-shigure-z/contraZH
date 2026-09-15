@@ -255,9 +255,6 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		return CBC_COMMAND_NOT_USED;
 	}
 
-	// TheSuperHackers @feature A smart selection focus decides the group the command acts on
-	appendCommandGroup( commandButton );
-
 	// sanity, we won't process messages if we have no source object,
 	// unless we're CB_CONTEXT_PURCHASE_SCIENCE or GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT
 	if( m_currContext != CB_CONTEXT_MULTI_SELECT &&

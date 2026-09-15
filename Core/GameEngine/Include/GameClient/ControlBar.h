@@ -773,11 +773,9 @@ public:
 	ObjectID getSmartSelectionFocusObject() const;
 	Drawable *getSmartSelectionFocusDrawable() const;
 	Bool isSmartSelectionFocused( const Object *obj ) const;
-	Bool isSmartSelectionGroupFocused( Int groupIndex ) const;
-	/// sent ahead of a bar command, so it acts on the focused object or type alone
-	void appendCommandGroup( const CommandButton *command );
-	/// sent ahead of a placement, so the builder builds and the other selected dozers help
-	void appendBuildGroup( const Object *builder );
+	Bool isIndexSmartSelectionFocused( Int groupIndex ) const;
+	/// ShigureUi 15/9/2026 sent a message once smart selection focus changed, so following commands can choose to act on the focused object or type alone, or not
+	void updateFocusGroup();
 	/// a cameo in the command group row selects its hotkey squad
 	void processCommandGroupClick( GameWindow *button );
 
@@ -1021,7 +1019,7 @@ protected:
 	Drawable *m_currentSelectedDrawable;					///< currently selected drawable for the context sensitive interface
 	ControlBarContext m_currContext;							///< our current displayed context
 
-	DrawableID m_rallyPointDrawableID;						///< rally point drawable for visual rally point
+	std::vector<DrawableID> m_rallyPointDrawableIDs;						///< rally point drawable for visual rally point
 
 	Real m_displayedConstructPercent;							///< construct percent last displayed to user
 	UnsignedInt m_displayedOCLTimerSeconds;				///< OCL Timer seconds remaining last displayed to user
