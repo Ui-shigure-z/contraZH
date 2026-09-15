@@ -655,10 +655,11 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 	* command off the focused card would leak to any other unit with a matching one. The group
 	* the command acts on goes ahead of it instead. The client selection is untouched. */
 //-------------------------------------------------------------------------------------------------
-void ControlBar::updateFocusGroup()// const CommandButton *command 
+void ControlBar::updateFocusGroup()
 {
 	const CommandButton* command = TheInGameUI->getGUICommand();
 
+	// ShigureUi 15/09/2026 clear any pending GUICommannd (need target ofc) unless it doesn't act on focus group
 	if (command && BitIsSet(command->getOptions(), COMMAND_OPTION_NEED_TARGET))
 	{
 		switch (command->getCommandType())

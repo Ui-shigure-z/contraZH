@@ -774,8 +774,8 @@ public:
 	Drawable *getSmartSelectionFocusDrawable() const;
 	Bool isSmartSelectionFocused( const Object *obj ) const;
 	Bool isIndexSmartSelectionFocused( Int groupIndex ) const;
-	/// sent ahead of a bar command, so it acts on the focused object or type alone
-	void updateFocusGroup();// const CommandButton *command 
+	/// ShigureUi 15/9/2026 sent a message once smart selection focus changed, so following commands can choose to act on the focused object or type alone, or not
+	void updateFocusGroup();
 	/// a cameo in the command group row selects its hotkey squad
 	void processCommandGroupClick( GameWindow *button );
 

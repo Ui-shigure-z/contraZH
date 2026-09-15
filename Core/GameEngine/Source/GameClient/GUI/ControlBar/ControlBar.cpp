@@ -2950,7 +2950,7 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 
 	if (loc == nullptr)
 	{
-		// destroy rally point drawable if present
+		// destroy any rally point drawable if present
 		if (m_rallyPointDrawableIDs.size() > 0)
 			for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
 				TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(*it));
