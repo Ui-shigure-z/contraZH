@@ -320,6 +320,15 @@ filters the paste the same way, and hidden fields keep showing asterisks.
 * A multi-line paste stops at the first line break, so half a pasted paragraph cannot become a
 chat message on its own.
 
+## Command line
+
+* `-loadreplay <file>` starts the game straight into a replay with the full game context, so the
+menus and Options are loaded as usual. `<file>` is a name inside the Replays folder or an absolute
+path. A replay that cannot be read, or whose map is not installed, shows a message box in the
+shell instead of starting a broken game.
+* `-loadsave <file>` likewise accepts an absolute path as well as a name inside the Save folder,
+and a save that cannot be read shows a message box instead of failing silently.
+
 ## Rendering
 
 The texture filter option shipped here pre-merge was this fork's adaptation of an unreleased
