@@ -147,7 +147,6 @@ const char* const TintStatusFlags::s_bitNameList[] =
 	"EXTRA8",
 	"EXTRA9",
 	"EXTRA10",
-	"GAINING_JAMMING_DAMAGE",
 	NULL
 };
 static_assert(ARRAY_SIZE(TintStatusFlags::s_bitNameList) == TintStatusFlags::NumBits + 1, "Incorrect array size");

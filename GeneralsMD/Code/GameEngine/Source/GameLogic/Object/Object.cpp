@@ -2389,31 +2389,6 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 		sound.setPosition( getPosition() );
 		TheAudio->addAudioEvent( &sound );
 	}
-	else if( type == DISABLED_JAMMED )
-	{
-		if( !isDisabledByType( DISABLED_JAMMED ) )
-		{
-			const AudioEventRTS *unitSound = getTemplate()->getPerUnitSound("SoundJammed");
-			if( unitSound && !unitSound->getEventName().isEmpty() )
-			{
-				sound = *unitSound;
-				sound.setPosition( getPosition() );
-				TheAudio->addAudioEvent( &sound );
-			}
-			else if( isKindOf( KINDOF_STRUCTURE ) )
-			{
-				sound = TheAudio->getMiscAudio()->m_buildingDisabled;
-				sound.setPosition( getPosition() );
-				TheAudio->addAudioEvent( &sound );
-			}
-			else if( isKindOf( KINDOF_VEHICLE ) )
-			{
-				sound = TheAudio->getMiscAudio()->m_vehicleDisabled;
-				sound.setPosition( getPosition() );
-				TheAudio->addAudioEvent( &sound );
-			}
-		}
-	}
 	else if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
 	{
 		if( !isDisabledByType( DISABLED_UNDERPOWERED ) &&
@@ -2579,30 +2554,7 @@ Bool Object::clearDisabled( DisabledType type )
 		return FALSE;
 	}
 
-	if( type == DISABLED_JAMMED )
-	{
-		AudioEventRTS sound;
-		const AudioEventRTS *unitSound = getTemplate()->getPerUnitSound("SoundUnjammed");
-		if( unitSound && !unitSound->getEventName().isEmpty() )
-		{
-			sound = *unitSound;
-			sound.setPosition( getPosition() );
-			TheAudio->addAudioEvent( &sound );
-		}
-		else if( isKindOf( KINDOF_STRUCTURE ) )
-		{
-			sound = TheAudio->getMiscAudio()->m_buildingReenabled;
-			sound.setPosition( getPosition() );
-			TheAudio->addAudioEvent( &sound );
-		}
-		else if( isKindOf( KINDOF_VEHICLE ) )
-		{
-			sound = TheAudio->getMiscAudio()->m_vehicleReenabled;
-			sound.setPosition( getPosition() );
-			TheAudio->addAudioEvent( &sound );
-		}
-	}
-	else if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
+	if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
 	{
 	 	AudioEventRTS sound;
 		if( (!isDisabledByType( DISABLED_UNDERPOWERED ) || type == DISABLED_UNDERPOWERED ) &&
@@ -5817,14 +5769,6 @@ void Object::notifyJammingDamage( Real amount )
 {
 	if(m_jammingDamageHelper)
 		m_jammingDamageHelper->notifyJammingDamage( amount );
-
-	if( getDrawable() )
-	{
-		if( amount > 0 )
-			getDrawable()->setTintStatus(TINT_STATUS_GAINING_JAMMING_DAMAGE);
-		else
-			getDrawable()->clearTintStatus(TINT_STATUS_GAINING_JAMMING_DAMAGE);
-	}
 }
 
 //-------------------------------------------------------------------------------------------------

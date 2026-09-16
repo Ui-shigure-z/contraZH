@@ -1486,9 +1486,24 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 {
 	Object *me = getObject();
 
+	AudioEventRTS sound;
+	const AudioEventRTS *unitSound = me->getTemplate()->getPerUnitSound( isNowJammed ? "SoundJammed" : "SoundUnjammed" );
+	if( unitSound && !unitSound->getEventName().isEmpty() )
+		sound = *unitSound;
+	else if( me->isKindOf( KINDOF_STRUCTURE ) )
+		sound = isNowJammed ? TheAudio->getMiscAudio()->m_buildingDisabled : TheAudio->getMiscAudio()->m_buildingReenabled;
+	else if( me->isKindOf( KINDOF_VEHICLE ) )
+		sound = isNowJammed ? TheAudio->getMiscAudio()->m_vehicleDisabled : TheAudio->getMiscAudio()->m_vehicleReenabled;
+
+	if( !sound.getEventName().isEmpty() )
+	{
+		sound.setPosition( me->getPosition() );
+		TheAudio->addAudioEvent( &sound );
+	}
+
 	if( isNowJammed )
 	{
-		me->setDisabled(DISABLED_JAMMED);
+		me->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
 
 		ContainModuleInterface *contain = me->getContain();
 		if ( contain )
@@ -1496,7 +1511,7 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 	}
 	else
 	{
-		me->clearDisabled(DISABLED_JAMMED);
+		me->clearStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
 	}
 }
 

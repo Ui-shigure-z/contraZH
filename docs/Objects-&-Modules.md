@@ -1927,12 +1927,11 @@ Two new entries in `DamageType`:
 
 Neither type reduces health. Set these on a weapon's `DamageType` field.
 
-## New Disabled Type
+## Jam Effect
 
-* `DISABLED_JAMMED` - set automatically when jamming damage reaches the unit's max health
-
-Works like other disabled types: the unit stops accepting orders and plays a disabled sound. Clears
-itself when the jamming damage heals below the threshold.
+When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status and
+its passengers are ordered to idle. The status clears once the jamming damage heals below the
+threshold.
 
 ## ActiveBody Fields
 
@@ -1960,11 +1959,6 @@ End
 ```
 
 `SUBDUAL_JAMMING_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
-
-## Tint Status
-
-`GAINING_JAMMING_DAMAGE` is available as a tint status for visual feedback when a unit takes jamming
-damage. Configure it in `GameData.ini` alongside other tint envelopes.
 
 ## Per-Unit Sounds
 
