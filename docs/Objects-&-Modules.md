@@ -1960,6 +1960,26 @@ End
 
 `SUBDUAL_JAMMING_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
 
+## Overlay Texture
+
+A scrolling texture can be drawn over units taking jamming damage. Its opacity tracks the
+accumulated jamming damage, so it fades in as the unit is jammed and fades out as it heals.
+Configured globally in `GameData.ini`:
+
+```
+JammingOverlayTexture  = JammingFX   ; texture name; omit or leave empty to disable
+JammingOverlayScrollU  = 0.5         ; horizontal scroll per second
+JammingOverlayScrollV  = 0.0         ; vertical scroll per second
+JammingOverlayAdditive = Yes         ; Yes = additive glow, No = alpha blend
+```
+
+The effect is off by default. `Yes` suits an electrical shimmer; `No` suits an opaque layer
+such as frost, and needs the texture to carry an alpha channel.
+
+Note: a unit that is both jammed and stealth-detected shows the jamming overlay only. The
+engine carries one opacity value per render call, so the two effects cannot be layered with
+independent strengths.
+
 ## Per-Unit Sounds
 
 Units can define custom jam/unjam sounds via their `UnitSpecificSounds` block:

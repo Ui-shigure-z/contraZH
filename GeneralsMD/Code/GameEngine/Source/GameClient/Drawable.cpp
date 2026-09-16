@@ -537,6 +537,7 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_hidden = false;
 	m_hiddenByStealth = false;
 	m_secondMaterialPassOpacity = 0.0f;
+	m_jammingOverlayIntensity = 0.0f;
 	m_drawableFullyObscuredByShroud = false;
 
   m_receivesDynamicLights = TRUE; // a good default... overridden by one of my draw modules if at all
@@ -1299,6 +1300,7 @@ void Drawable::imitateStealthLook( Drawable& otherDraw )
   m_hiddenByStealth = otherDraw.isDrawableEffectivelyHidden();
   m_stealthLook = otherDraw.getStealthLook();
   m_secondMaterialPassOpacity = otherDraw.getSecondMaterialPassOpacity();
+  m_jammingOverlayIntensity = otherDraw.getJammingOverlayIntensity();
 
 }
 
@@ -6083,7 +6085,7 @@ void Drawable::xfer( Xfer *xfer )
 #elif RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 7;
 #else
-	const XferVersion currentVersion = 8;
+	const XferVersion currentVersion = 9;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -6578,6 +6580,11 @@ void Drawable::xfer( Xfer *xfer )
       }
     }
   }
+
+	if( version >= 9 )
+	{
+		xfer->xferReal( &m_jammingOverlayIntensity );
+	}
 }
 
 // ------------------------------------------------------------------------------------------------

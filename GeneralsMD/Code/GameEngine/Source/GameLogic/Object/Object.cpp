@@ -5769,6 +5769,19 @@ void Object::notifyJammingDamage( Real amount )
 {
 	if(m_jammingDamageHelper)
 		m_jammingDamageHelper->notifyJammingDamage( amount );
+
+	Drawable *draw = getDrawable();
+	BodyModuleInterface *body = getBodyModule();
+	if( draw && body )
+	{
+		// Normalize against the jam threshold, which is max health, not the accumulation cap.
+		Real maxHealth = body->getMaxHealth();
+		Real intensity = 0.0f;
+		if( maxHealth > 0.0f )
+			intensity = clamp( 0.0f, body->getCurrentJammingDamageAmount() / maxHealth, 1.0f );
+
+		draw->setJammingOverlayIntensity( intensity );
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
