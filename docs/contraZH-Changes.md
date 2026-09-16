@@ -381,6 +381,30 @@ to defaults, and when the driver supports anisotropic filtering for only one of
 minification/magnification the other falls back to linear per capability, instead of both dropping
 to point sampling as the merged code did.
 
+### Bloom
+
+A soft glow around additive particle effects (fire, muzzle flashes, tracers, lasers, explosions)
+and around model meshes whose W3D material uses the `Add` blend mode, such as building lights and
+glowing panels. Smoke and other alpha blended effects do not glow. Built from DX8 render targets and
+fixed function blur passes, so it needs no shader support.
+
+* `Bloom = No` - (Yes turns the glow on.)
+* `BloomStrength = 0.5` - (0 to 1. How bright the glow is. 0 is the same as off.)
+* `BloomDebug = No` - (Yes replaces the scene with the blurred glow buffer on black, full strength.
+Only the additive effects and meshes that feed the bloom show up, so it tells at a glance whether
+the effect is running and what is feeding it. The UI still draws on top.)
+
+Notes:
+* The glow source is a second draw of the additive particles into an offscreen target, so the
+effect costs fill rate on particle heavy scenes in proportion to how many additive particles are
+on screen.
+* Off while `AntiAliasing` is above 1, because DirectX 8 cannot redirect a multisampled scene into a
+texture. Turning anti-aliasing off brings it back without a restart.
+* Particles hidden behind terrain or buildings cast no glow, since the second draw shares the
+scene's depth buffer.
+* Additive meshes on skinned models (infantry and other bone deformed meshes) do not glow. Their
+vertices only exist for the duration of the normal draw, so there is nothing left to draw again.
+
 # ParticleSystem.ini
 
 ## ConformToTerrain

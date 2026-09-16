@@ -37,6 +37,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/ww3d.h"
 #include <algorithm>
@@ -174,22 +175,13 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	Real beY = bbox.Extent.Y;
 	Real beZ = bbox.Extent.Z;
 
-	unsigned int personalities[MAX_POINTS_PER_GROUP];
-
-
 	m_fieldParticleCount = 0;
 
-	const Bool drawSmudge = TheSmudgeManager && TheSmudgeManager->getHardwareSupport() && TheGlobalData->m_useHeatEffects;
-
-	if (drawSmudge)
+	if (TheSmudgeManager && TheSmudgeManager->getHardwareSupport() && TheGlobalData->m_useHeatEffects)
 	{
 		TheSmudgeManager->resetDraw();
 	}
 
-	// Number of particles/points being rendered.
-	UnsignedInt pointCount = 0;
-
-	const Bool batchParticles = TheGlobalData->m_batchParticles;
 	// without the triangle sorter, draw order is the only depth cue, so order whole systems far to near
 	const Bool backToFront = TheGlobalData->m_backToFront && !WW3D::Is_Sorting_Enabled();
 
@@ -252,9 +244,58 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		std::stable_sort(m_drawOrder.begin(), m_drawOrder.end(), isFarther);
 	}
 
+	drawSystems(rinfo, FALSE);
+
+	/// @todo lorenzen sez: this should be debug only:
+	TheParticleSystemManager->setOnScreenParticleCount(m_onScreenParticleCount);
+
+	// the glow comes from a second draw of the additive systems into the bloom target
+	if (TheW3DBloom && TheW3DBloom->begin(rinfo))
+	{
+		const Int onScreenCount = m_onScreenParticleCount;
+		const UnsignedInt fieldCount = m_fieldParticleCount;
+
+		// the sorter would hold the quads until after the target is gone
+		m_pointGroup->Set_Flag(PointGroupClass::DISABLE_SORTING, true);
+		m_streakLine->Set_Disable_Sorting(true);
+		drawSystems(rinfo, TRUE);
+		m_streakLine->Set_Disable_Sorting(false);
+		m_pointGroup->Set_Flag(PointGroupClass::DISABLE_SORTING, false);
+
+		m_onScreenParticleCount = onScreenCount;
+		m_fieldParticleCount = fieldCount;
+		TheW3DBloom->end(rinfo);
+	}
+
+	//Draw any particles belonging to weather effects
+	if (TheSnowManager)
+		((W3DSnowManager *)TheSnowManager)->render(rinfo);
+
+	//Now process screen smudges which are particles that distort the background behind them.
+	if(TheSmudgeManager)
+	{
+		((W3DSmudgeManager *)TheSmudgeManager)->render(rinfo);
+	}
+}
+
+void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, Bool additiveOnly)
+{
+	const Bool drawSmudge = TheSmudgeManager && TheSmudgeManager->getHardwareSupport() && TheGlobalData->m_useHeatEffects;
+	const Bool batchParticles = TheGlobalData->m_batchParticles;
+
+	unsigned int personalities[MAX_POINTS_PER_GROUP];
+
+	// Number of particles/points being rendered.
+	UnsignedInt pointCount = 0;
+
 	for (std::vector<DrawEntry>::iterator entry = m_drawOrder.begin(); entry != m_drawOrder.end(); ++entry)
 	{
 		ParticleSystem *sys = entry->sys;
+
+		if (additiveOnly && (sys->isUsingSmudge() || sys->getShaderType() != ParticleSystemInfo::ADDITIVE))
+		{
+			continue;
+		}
 
 		// Handle smudge type particles
 		if (sys->isUsingSmudge())
@@ -464,19 +505,6 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 
 	// TheSuperHackers @info Flush the last batch if one is pending.
 	flushParticleBatch(rinfo, pointCount);
-
-		/// @todo lorenzen sez: this should be debug only:
-	TheParticleSystemManager->setOnScreenParticleCount(m_onScreenParticleCount);
-
-	//Draw any particles belonging to weather effects
-	if (TheSnowManager)
-		((W3DSnowManager *)TheSnowManager)->render(rinfo);
-
-	//Now process screen smudges which are particles that distort the background behind them.
-	if(TheSmudgeManager)
-	{
-		((W3DSmudgeManager *)TheSmudgeManager)->render(rinfo);
-	}
 }
 
 // the camera looks down -Z, so the smallest view Z is the farthest system

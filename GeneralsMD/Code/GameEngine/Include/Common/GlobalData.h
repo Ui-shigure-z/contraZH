@@ -567,6 +567,9 @@ public:
   Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
   Bool m_skipTranslucencySort;    ///< skips the per-triangle translucency sorter; off unless GameData or the LOD level enables it
   Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
+  Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
+  Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
+  Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	Bool m_shroudOn;

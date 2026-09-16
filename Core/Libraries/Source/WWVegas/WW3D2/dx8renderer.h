@@ -83,7 +83,10 @@ class DX8TextureCategoryClass : public MultiListObjectClass
 	DX8FVFCategoryContainer*					container;
 
 	PolyRenderTaskClass *						render_task_head;			// polygon renderers queued for rendering
+	PolyRenderTaskClass *						bloom_task_head;			// additive tasks already drawn this frame, kept for the bloom replay
 	static bool											m_gForceMultiply;  // Forces opaque materials to use the multiply blend - pseudo transparent effect.  jba.
+
+	void									Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool allowSorting);
 
 public:
 
@@ -95,6 +98,10 @@ public:
 	void									Render();
 	bool									Anything_To_Render() { return (render_task_head != nullptr); }
 	void									Clear_Render_List();
+
+	bool									Is_Additive() const;
+	void									Render_Bloom();
+	void									Clear_Bloom_List();
 
 	TextureClass *						Peek_Texture(int stage)	{ return textures[stage]; }
 	const VertexMaterialClass *	Peek_Material() { return material; }
@@ -202,6 +209,7 @@ public:
 	virtual void Add_Mesh(MeshModelClass* mmc)=0;
 	virtual void Log(bool only_visible)=0;
 	virtual bool Check_If_Mesh_Fits(MeshModelClass* mmc)=0;
+	virtual bool Bind_Static_Buffers()=0;	// false when the vertices only exist during Render
 
 	unsigned Get_FVF() const { return FVF; }
 
@@ -240,6 +248,7 @@ public:
 	virtual void Add_Mesh(MeshModelClass* mmc) override;
 	virtual void Log(bool only_visible) override;
 	virtual bool Check_If_Mesh_Fits(MeshModelClass* mmc) override;
+	virtual bool Bind_Static_Buffers() override;
 
 	virtual void Render() override;	// Generic render function
 
@@ -276,6 +285,7 @@ public:
 	virtual void Add_Mesh(MeshModelClass* mmc) override;
 	virtual void Log(bool only_visible) override;
 	virtual bool Check_If_Mesh_Fits(MeshModelClass* mmc) override;
+	virtual bool Bind_Static_Buffers() override { return false; }
 
 	void Add_Visible_Skin(MeshClass * mesh);
 
@@ -318,6 +328,13 @@ public:
 	void						Flush();
 	void						Clear_Pending_Delete_Lists();
 
+	// While capture is on, Flush keeps every additive draw so Flush_Bloom can draw it again into the bloom target.
+	static void				Enable_Bloom_Capture(bool enable) { bloom_capture=enable; }
+	static bool				Is_Bloom_Capture_Enabled() { return bloom_capture; }
+	void						Add_Bloom_Category(DX8TextureCategoryClass* category);
+	void						Flush_Bloom();
+	void						Clear_Bloom_Lists();
+
 	void						Log_Statistics_String(bool only_visible);
 	static void				Request_Log_Statistics();
 
@@ -342,6 +359,8 @@ protected:
 
 	SimpleDynVecClass<FVFCategoryList *>		texture_category_container_lists_rigid;
 	FVFCategoryList *									texture_category_container_list_skin;
+	SimpleDynVecClass<DX8TextureCategoryClass *>	bloom_categories;		// categories holding kept additive tasks
+	static bool											bloom_capture;
 
 	DecalMeshClass *									visible_decal_meshes;
 

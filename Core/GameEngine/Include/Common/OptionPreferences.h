@@ -125,6 +125,10 @@ public:
 	CastMode getCastMode() const;
 	Bool getSelectionCircleEnabled() const;
 	Bool getObjectDecalsEnabled() const;
+	// Options.ini: Bloom = Yes adds a glow around additive particles, BloomStrength (0..1) sets how bright
+	Bool getBloomEnabled() const;
+	Real getBloomStrength() const;
+	Bool getBloomDebugEnabled() const;
 	Bool getEasyMilitaryDragEnabled() const;
 	Bool getSmartPipsEnabled() const;
 	Bool getNumericalHealthEnabled() const;

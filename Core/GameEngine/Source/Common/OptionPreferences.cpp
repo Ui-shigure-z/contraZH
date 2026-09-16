@@ -363,6 +363,22 @@ Bool OptionPreferences::getObjectDecalsEnabled(void) const
 	return getBool("ObjectDecals", TRUE);
 }
 
+Bool OptionPreferences::getBloomEnabled(void) const
+{
+	return getBool("Bloom", FALSE);
+}
+
+Real OptionPreferences::getBloomStrength(void) const
+{
+	const Real strength = getReal("BloomStrength", 0.5f);
+	return clamp(0.0f, strength, 1.0f);
+}
+
+Bool OptionPreferences::getBloomDebugEnabled(void) const
+{
+	return getBool("BloomDebug", FALSE);
+}
+
 // TheSuperHackers @feature Options.ini: NumericalHealth = Yes prints the hit points beside the
 // health bar. Follows HealthBarDisplayMode, so the number appears exactly where a bar does.
 Bool OptionPreferences::getNumericalHealthEnabled(void) const

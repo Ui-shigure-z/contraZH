@@ -70,6 +70,7 @@ public:
 
 	enum FlagsType {
 		TRANSFORM,	// transform points w. modelview matrix (worldspace points)
+		DISABLE_SORTING,	// draw translucent points at once instead of queueing them in the sorting renderer
 	};
 
 	PointGroupClass();

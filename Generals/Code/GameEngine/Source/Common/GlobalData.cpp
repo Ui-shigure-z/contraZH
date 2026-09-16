@@ -572,6 +572,9 @@ GlobalData::GlobalData()
   m_batchParticles = FALSE;
   m_skipTranslucencySort = FALSE;
   m_backToFront = FALSE;
+  m_useBloom = FALSE;
+  m_bloomStrength = 0.5f;
+  m_bloomDebug = FALSE;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_smartSelectionUseMouse = TRUE;
@@ -1244,6 +1247,9 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_antiAliasLevel = optionPref.getAntiAliasing();
 	TheWritableGlobalData->m_textureFilteringMode = optionPref.getTextureFilterMode();
 	TheWritableGlobalData->m_textureAnisotropyLevel = optionPref.getTextureAnisotropyLevel();
+	TheWritableGlobalData->m_useBloom = optionPref.getBloomEnabled();
+	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
+	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.
