@@ -1913,6 +1913,87 @@ The named object is expected to carry a [TornadoUpdate](#tornadoupdate-new). Giv
 `FullStrengthTime = 0` and a `RampDownTime` matching the cannon `WidthGrowTime`, so that the tornado
 follows the beam for as long as it fires and then fades out with it.
 
+# Subdual Jamming
+
+Jamming damage that accumulates on the body like subdual damage, interacts with armor, and disables
+the unit when the threshold is reached. Healing ticks remove the damage over time.
+
+## New Damage Types
+
+Two new entries in `DamageType`:
+
+* `SUBDUAL_JAMMING` - jamming damage adjusted by armor coefficients
+* `SUBDUAL_JAMMING_UNRESISTABLE` - bypasses armor entirely (used internally for healing ticks)
+
+Neither type reduces health. Set these on a weapon's `DamageType` field.
+
+## New Disabled Type
+
+* `DISABLED_JAMMED` - set automatically when jamming damage reaches the unit's max health
+
+Works like other disabled types: the unit stops accepting orders and plays a disabled sound. Clears
+itself when the jamming damage heals below the threshold.
+
+## ActiveBody Fields
+
+```
+Body = ActiveBody ModuleTag_Body
+  ; ...existing ActiveBody fields...
+  JammingDamageCap  = 100.0   ; max jamming damage this unit can accumulate (0 = immune)
+  JammingDamageHealRate   = 10  ; frames between each healing tick
+  JammingDamageHealAmount = 5.0 ; jamming damage removed per tick
+End
+```
+
+All three default to 0. A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
+The unit becomes jammed when accumulated jamming damage reaches `MaxHealth`. Healing begins
+automatically after the first hit.
+
+## Armor
+
+`SUBDUAL_JAMMING` interacts with armor normally. Define coefficients in `Armor.ini`:
+
+```
+Armor ChinaTankArmor
+  Armor = SUBDUAL_JAMMING 200%   ; takes twice as long to jam
+End
+```
+
+`SUBDUAL_JAMMING_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
+
+## Tint Status
+
+`GAINING_JAMMING_DAMAGE` is available as a tint status for visual feedback when a unit takes jamming
+damage. Configure it in `GameData.ini` alongside other tint envelopes.
+
+## Per-Unit Sounds
+
+Units can define custom jam/unjam sounds via their `UnitSpecificSounds` block:
+
+```
+Object SomeUnit
+  UnitSpecificSounds
+    SoundJammed   = JammedSoundEvent
+    SoundUnjammed = UnjammedSoundEvent
+  End
+End
+```
+
+If no per-unit sound is defined, the unit falls back to the generic building-disabled or
+vehicle-disabled sounds from `MiscAudio`.
+
+## Example Weapon
+
+```
+Weapon JammerGun
+  PrimaryDamage     = 50.0
+  PrimaryDamageRadius = 0.0
+  DamageType        = SUBDUAL_JAMMING
+  DeathType         = NORMAL
+  ; ...other weapon fields...
+End
+```
+
 # Misc Improvements
 
 ## ObjectExtend
