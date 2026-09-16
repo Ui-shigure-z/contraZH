@@ -106,6 +106,7 @@ protected:
 	void flagOccludedObjects(CameraClass * camera);
 	void flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo);
 	void updatePlayerColorPasses();
+	MaterialPassClass *getJammingOverlayPass(void);	///< builds the jamming pass on demand; null when disabled
 
 protected:
 	RefRenderObjListClass	m_dynamicLightList;
@@ -123,6 +124,7 @@ protected:
 	MaterialPassClass *m_heatVisionMaterialPass;			///< Custom render passed applied on top of objects with heatvision effect.
 	MaterialPassClass *m_heatVisionOnlyPass;					///< Custom render pass applied in place of regular pass on objects with heat vision effect.
 	MaterialPassClass *m_jammingOverlayPass;					///< Scrolling texture pass applied on top of objects taking jamming damage.
+	Bool m_jammingOverlayPassChecked;								///< the pass is built on first use, so only attempt it once
 	MaterialPassClass *m_frenzyMaterialPass;					///< Custom render pass applied in place of regular pass on objects with FRENZY effect.
 	///Custom rendering passes for each possible player color on the map
 	MaterialPassClass *m_occludedMaterialPass[MAX_PLAYER_COUNT];
