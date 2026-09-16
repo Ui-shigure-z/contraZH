@@ -603,17 +603,26 @@ MaterialPassClass *RTS3DScene::getJammingOverlayPass(void)
 	if (TheGlobalData->m_jammingOverlayTexture.isEmpty() || WW3DAssetManager::Get_Instance() == nullptr)
 		return nullptr;
 
+	// Get_Texture hands back a lazy handle even for a name that does not resolve, so a bad name
+	// shows up as the magenta placeholder rather than a null here.
 	TextureClass *jamTexture = WW3DAssetManager::Get_Instance()->Get_Texture(TheGlobalData->m_jammingOverlayTexture.str());
 	if (jamTexture == nullptr)
 		return nullptr;
 
+	DEBUG_ASSERTCRASH(TheGlobalData->m_jammingOverlayTexture.find('.') != nullptr,
+		("JammingOverlayTexture '%s' has no file extension; texture names need one (e.g. .tga or .dds)",
+		TheGlobalData->m_jammingOverlayTexture.str()));
+
 	m_jammingOverlayPass = NEW_REF(MaterialPassClass,());
 
+	// Lighting must stay on: with it off D3D ignores emissive, and the intensity carried by
+	// materialPassEmissiveOverride would have no effect.
 	VertexMaterialClass *jamMtl = NEW_REF(VertexMaterialClass,());
-	jamMtl->Set_Lighting(false);
+	jamMtl->Set_Lighting(true);
 	jamMtl->Set_Ambient(0,0,0);
 	jamMtl->Set_Diffuse(0,0,0);
 	jamMtl->Set_Emissive(1.0f,1.0f,1.0f);
+	jamMtl->Set_UV_Source(0, 0);
 
 	// Self-driving scroll; the mapper advances itself off the render sync time.
 	LinearOffsetTextureMapperClass *jamMapper = NEW_REF(LinearOffsetTextureMapperClass,
@@ -625,12 +634,17 @@ MaterialPassClass *RTS3DScene::getJammingOverlayPass(void)
 	m_jammingOverlayPass->Set_Material(jamMtl);
 	jamMtl->Release_Ref();
 
+	// Wrap so the scrolling offset tiles instead of smearing the border pixels.
+	jamTexture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+	jamTexture->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+
 	m_jammingOverlayPass->Set_Texture(jamTexture);
 	jamTexture->Release_Ref();
 
+	// Must be the textured presets; the "Solid" variants set TEXTURING_DISABLE.
 	ShaderClass jamShader = TheGlobalData->m_jammingOverlayAdditive
-		? ShaderClass::_PresetAdditiveSolidShader
-		: ShaderClass::_PresetAlphaSolidShader;
+		? ShaderClass::_PresetAdditiveShader
+		: ShaderClass::_PresetAlphaShader;
 	jamShader.Set_Depth_Compare(ShaderClass::PASS_EQUAL);
 	m_jammingOverlayPass->Set_Shader(jamShader);
 
