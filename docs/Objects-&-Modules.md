@@ -148,7 +148,9 @@ New paramters for Turret or AltTurret entries
 * `MinTurretAngle = 0` - Minimum angle the turret is allowed to turn
 * `MaxTurretAngle = 0` - Maximum angle the turret is allowed to turn
 Notes:
-- for backwards facing configurations, MaxTurretAngle can be > MinTurretAngle; Currently this is not working 100% reliably
+- Angles are relative to the hull. Positive turns the turret to its left, negative to its right, so `MinTurretAngle` is always the rightmost edge of the arc and `MaxTurretAngle` the leftmost.
+- To mirror an arc onto the other side, negate and swap the values: a left sponson with `MinTurretAngle = 0` / `MaxTurretAngle = 50` becomes `MinTurretAngle = -50` / `MaxTurretAngle = 0` on the right.
+- For backwards facing configurations, set MaxTurretAngle < MinTurretAngle; the arc then wraps through the rear (e.g. `150` / `-150` covers the rear 60 degrees). Currently this is not working 100% reliably.
 - Remove the angle limit lines to use unlimited angle. A value of 0 will use 0 as limit.
 - If the turret cannot turn to the front (e.g. side mounted gun on a helicopter), the unit will attempt to turn to the turret's firing arc
   - this feature only works for locomotors that can turn in place (minTurnSpeed = 0)

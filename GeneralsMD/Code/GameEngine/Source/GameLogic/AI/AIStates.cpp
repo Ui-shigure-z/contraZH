@@ -5246,9 +5246,12 @@ StateReturnType AIAttackAimAtTargetState::update()
 		}
 
 		Real desiredAngle = 0;
+
+		// the turret fires once step 1 sees the target inside its arc, so the hull itself never succeeds here
 		Bool hasPreferredAngle = false;
 		if (sourceAI->useAttackAngle())
 		{ // Check our preferred angle on how to move.
+			hasPreferredAngle = true;
 
 			//We ignore AimDelta here.
 			//aimDelta = REL_THRESH * 5;  // about 10 degrees
@@ -5262,7 +5265,6 @@ StateReturnType AIAttackAimAtTargetState::update()
 				// DEBUG_LOG((">>> ObjAngle = %f, DesiredAngle = %f", source->getOrientation() * 180.0 / PI, desiredAngle * 180.0 / PI));
 				sourceAI->setLocomotorGoalOrientation(desiredAngle);
 				m_setLocomotor = true;
-				hasPreferredAngle = true;
 			}
 			else
 			{ // TODO
@@ -5272,6 +5274,7 @@ StateReturnType AIAttackAimAtTargetState::update()
 		}
 		else if (sourceAI->hasLimitedTurretAngle(tur))
 		{ // Check limited turret angles how to move
+			hasPreferredAngle = true;
 
 			Real maxAngle = sourceAI->getMaxTurretAngle(tur) + aimDelta;
 			Real minAngle = sourceAI->getMinTurretAngle(tur) - aimDelta;
@@ -5282,7 +5285,6 @@ StateReturnType AIAttackAimAtTargetState::update()
 			
 			if (m_canTurnInPlace)
 			{
-				hasPreferredAngle = true;
 				// if out of turret turn range:
 				if (relAngle > maxAngle || relAngle < minAngle) {
 
@@ -5355,8 +5357,7 @@ StateReturnType AIAttackAimAtTargetState::update()
 			}
 		}
 
-		if (fabs(stdAngleDiff(desiredAngle,relAngle)) < aimDelta /*&& !m_preAttackFrames*/ )
-		//if (fabs(relAngle) < aimDelta && !hasPreferredAngle /*&& !m_preAttackFrames*/)
+		if (!hasPreferredAngle && fabs(relAngle) < aimDelta /*&& !m_preAttackFrames*/ )
 		{
 			AIUpdateInterface* victimAI = victim ? victim->getAI() : nullptr;
 			// add ourself as a targeter BEFORE calling isTemporarilyPreventingAimSuccess().
