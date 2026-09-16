@@ -39,8 +39,16 @@
 
 W3DBloom *TheW3DBloom = nullptr;
 
-// the blur runs at this fraction of the screen on each axis, then widens by one texel per pass
-enum { BLOOM_DOWNSCALE = 4, BLOOM_BLUR_PASSES = 3 };
+// The blur runs at this fraction of the screen on each axis. Half keeps the halo smooth; a quarter
+// shows its own texels as blocks once the glow is bright.
+enum { BLOOM_DOWNSCALE = 2, BLOOM_BLUR_PASSES = 4 };
+
+// A separable gaussian, run as a horizontal pass then a vertical one. Each tap sits between two
+// texels so bilinear filtering folds two samples into one, which keeps a wide radius cheap. Four
+// diagonal taps of equal weight would be a box blur instead, and a box stays square however many
+// times it runs, which is what made the halo look blocky.
+static const Real BLOOM_TAP_OFFSET[3] = { 0.0f, 1.3846154f, 3.2307692f };
+static const Real BLOOM_TAP_WEIGHT[3] = { 0.2270270f, 0.3162162f, 0.0702703f };
 
 // screen space quads; the copy variant replaces the target instead of adding to it
 static ShaderClass makeQuadShader(Bool additive)
@@ -225,15 +233,20 @@ void W3DBloom::end(RenderInfoClass &rinfo)
 	DX8Wrapper::Set_Material(material);
 	REF_PTR_RELEASE(material);
 
-	// the first pass shrinks the scene: four bilinear taps one screen texel out average a 4x4 block
-	Bool drawn = blurPass(m_fullTarget, m_blurTarget[0], 1.0f / m_width, 1.0f / m_height);
+	// shrink the scene into the first blur target, averaging a 2x2 block per texel
+	Bool drawn = blurPass(m_fullTarget, m_blurTarget[0], 0.5f / m_width, 0.5f / m_height, TRUE);
 
+	// alternating the axis makes the kernel separable, and each pair widens the halo
 	const Real blurWidth = (Real)(m_width / BLOOM_DOWNSCALE);
 	const Real blurHeight = (Real)(m_height / BLOOM_DOWNSCALE);
 	for (Int pass = 0; drawn && pass < BLOOM_BLUR_PASSES; ++pass)
 	{
-		const Real spread = (Real)pass + 1.5f;
-		drawn = blurPass(m_blurTarget[pass & 1], m_blurTarget[(pass + 1) & 1], spread / blurWidth, spread / blurHeight);
+		const Real spread = 1.0f + (Real)(pass / 2);
+		const Bool horizontal = (pass & 1) == 0;
+		drawn = blurPass(m_blurTarget[pass & 1], m_blurTarget[(pass + 1) & 1],
+			horizontal ? spread / blurWidth : 0.0f,
+			horizontal ? 0.0f : spread / blurHeight,
+			FALSE);
 	}
 
 	DX8Wrapper::_Get_D3D_Device8()->SetRenderTarget(m_defaultTarget, m_defaultDepth);
@@ -267,22 +280,37 @@ void W3DBloom::end(RenderInfoClass &rinfo)
 }
 
 // four diagonal taps a quarter bright each; the first replaces the target so no clear is needed
-Bool W3DBloom::blurPass(TextureClass *source, TextureClass *target, Real offsetU, Real offsetV)
+Bool W3DBloom::blurPass(TextureClass *source, TextureClass *target, Real offsetU, Real offsetV, Bool shrink)
 {
 	static const ShaderClass copyShader = makeQuadShader(FALSE);
 	static const ShaderClass addShader = makeQuadShader(TRUE);
-	static const Real signs[4][2] = { { -1.0f, -1.0f }, { 1.0f, -1.0f }, { -1.0f, 1.0f }, { 1.0f, 1.0f } };
+	static const Real corners[4][2] = { { -1.0f, -1.0f }, { 1.0f, -1.0f }, { -1.0f, 1.0f }, { 1.0f, 1.0f } };
 
 	if (!setTarget(target))
 	{
 		return false;
 	}
 
-	for (Int tap = 0; tap < 4; ++tap)
+	// the shrink samples a square of the larger source, a blur pass runs along one axis of its own size
+	if (shrink)
 	{
-		const Real du = signs[tap][0] * offsetU;
-		const Real dv = signs[tap][1] * offsetV;
-		drawQuad(source, du, dv, 1.0f + du, 1.0f + dv, 0.25f, tap == 0 ? copyShader : addShader);
+		for (Int tap = 0; tap < 4; ++tap)
+		{
+			const Real du = corners[tap][0] * offsetU;
+			const Real dv = corners[tap][1] * offsetV;
+			drawQuad(source, du, dv, 1.0f + du, 1.0f + dv, 0.25f, tap == 0 ? copyShader : addShader);
+		}
+		return true;
+	}
+
+	// the centre tap first so it replaces the target, then the pairs either side of it
+	drawQuad(source, 0.0f, 0.0f, 1.0f, 1.0f, BLOOM_TAP_WEIGHT[0], copyShader);
+	for (Int tap = 1; tap < 3; ++tap)
+	{
+		const Real du = offsetU * BLOOM_TAP_OFFSET[tap];
+		const Real dv = offsetV * BLOOM_TAP_OFFSET[tap];
+		drawQuad(source, du, dv, 1.0f + du, 1.0f + dv, BLOOM_TAP_WEIGHT[tap], addShader);
+		drawQuad(source, -du, -dv, 1.0f - du, 1.0f - dv, BLOOM_TAP_WEIGHT[tap], addShader);
 	}
 	return true;
 }

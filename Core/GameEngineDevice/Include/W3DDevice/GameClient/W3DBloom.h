@@ -46,7 +46,7 @@ private:
 	void releaseTargets();
 	void releaseDefaults();
 	Bool setTarget(TextureClass *target);
-	Bool blurPass(TextureClass *source, TextureClass *target, Real offsetU, Real offsetV);
+	Bool blurPass(TextureClass *source, TextureClass *target, Real offsetU, Real offsetV, Bool shrink);
 	void drawQuad(TextureClass *source, Real u0, Real v0, Real u1, Real v1, Real brightness, const ShaderClass &shader);
 
 	TextureClass *m_fullTarget;					///< screen sized, receives the additive particles
