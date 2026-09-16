@@ -943,6 +943,7 @@ public:
 	virtual void notifyNewVictimChosen(Object* victim) = 0;
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const = 0;
 	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const = 0;	///< the slot fires from this machine, not from a turret of its own
+	WeaponSlotType findOwnedGroundSlot(const Object* obj, CommandSourceType cmdSource) const;	///< first owned slot that can attack the ground, or WEAPONSLOT_COUNT
 	virtual Bool isAttackingObject() const = 0;
 	virtual const Coord3D* getOriginalVictimPos() const = 0;
 };

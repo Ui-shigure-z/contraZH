@@ -711,37 +711,27 @@ Bool TurretAI::isWeaponSlotOnTurret(WeaponSlotType wslot) const
 //----------------------------------------------------------------------------------------------------------
 Bool TurretAI::controlsGroundWeapon() const
 {
-	CommandSourceType cmdSource = getOwner()->getAI()->getLastCommandSource();
-	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; ++slot)
-	{
-		if (isWeaponSlotOnTurret((WeaponSlotType)slot) && getOwner()->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
-		{
-			return TRUE;
-		}
-	}
-	return FALSE;
+	return findOwnedGroundSlot(getOwner(), getOwner()->getAI()->getLastCommandSource()) != WEAPONSLOT_COUNT;
 }
 
 //----------------------------------------------------------------------------------------------------------
 Weapon* TurretAI::getAimWeapon(WeaponSlotType* wslot) const
 {
 	Weapon* cur = m_owner->getCurrentWeapon(wslot);
-	if (cur == nullptr || isWeaponSlotOnTurret(*wslot) || m_target != TARGET_POSITION || !getOwner()->getAI()->forceFiresAllWeapons())
+	const AIUpdateInterface* ai = getOwner()->getAI();
+	if (cur == nullptr || isWeaponSlotOnTurret(*wslot) || m_target != TARGET_POSITION || !ai->forceFiresAllWeapons())
 	{
 		return cur;
 	}
 
 	// attacking the ground with a weapon on another turret, so aim with our own ground weapon
-	CommandSourceType cmdSource = getOwner()->getAI()->getLastCommandSource();
-	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; ++slot)
+	WeaponSlotType ownSlot = findOwnedGroundSlot(getOwner(), ai->getLastCommandSource());
+	if (ownSlot == WEAPONSLOT_COUNT)
 	{
-		if (isWeaponSlotOnTurret((WeaponSlotType)slot) && getOwner()->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
-		{
-			*wslot = (WeaponSlotType)slot;
-			return m_owner->getWeaponInWeaponSlot(*wslot);
-		}
+		return cur;
 	}
-	return cur;
+	*wslot = ownSlot;
+	return m_owner->getWeaponInWeaponSlot(ownSlot);
 }
 
 //----------------------------------------------------------------------------------------------------------

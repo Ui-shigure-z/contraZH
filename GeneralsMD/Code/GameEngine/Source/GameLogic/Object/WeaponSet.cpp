@@ -981,14 +981,14 @@ CanAttackResult WeaponSet::getAbleToUseWeaponAgainstTarget( AbleToAttackType att
 }
 
 //-------------------------------------------------------------------------------------------------
+static const UnsignedInt CMD_SYNC_TO_ANY_BITS = (1 << CMD_SYNC_TO_PRIMARY) | (1 << CMD_SYNC_TO_SECONDARY) | (1 << CMD_SYNC_TO_TERTIARY)
+	| (1 << CMD_SYNC_TO_FOUR) | (1 << CMD_SYNC_TO_FIVE) | (1 << CMD_SYNC_TO_SIX) | (1 << CMD_SYNC_TO_SEVEN) | (1 << CMD_SYNC_TO_EIGHT);
+
+//-------------------------------------------------------------------------------------------------
 Bool WeaponSet::isSlotAllowedForCommandSource( WeaponSlotType wslot, CommandSourceType cmdSource ) const
 {
 	CommandSourceMask okSrcs = m_curWeaponTemplateSet->getNthCommandSourceMask( wslot );
-	if( ( okSrcs & (1 << cmdSource) ) == 0 )
-	{
-		return ( okSrcs & CMD_DEFAULT_SWITCH_WEAPON ) != 0;
-	}
-	return TRUE;
+	return ( okSrcs & (1 << cmdSource) ) != 0 || ( okSrcs & CMD_DEFAULT_SWITCH_WEAPON ) != 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1003,11 +1003,9 @@ Bool WeaponSet::canSlotAttackGround( WeaponSlotType wslot, CommandSourceType cmd
 	{
 		return FALSE;
 	}
-	const CommandSourceMask syncBits = (1 << CMD_SYNC_TO_PRIMARY) | (1 << CMD_SYNC_TO_SECONDARY) | (1 << CMD_SYNC_TO_TERTIARY)
-		| (1 << CMD_SYNC_TO_FOUR) | (1 << CMD_SYNC_TO_FIVE) | (1 << CMD_SYNC_TO_SIX) | (1 << CMD_SYNC_TO_SEVEN) | (1 << CMD_SYNC_TO_EIGHT);
 	// the unset mask is 0xffffffff, which the sync lookup treats as no sync bits, so mirror that
 	const UnsignedInt mask = m_curWeaponTemplateSet->getNthCommandSourceMask( wslot );
-	if( (Int)mask >= 0 && ( mask & syncBits ) )
+	if( (Int)mask >= 0 && ( mask & CMD_SYNC_TO_ANY_BITS ) )
 	{
 		return FALSE;
 	}

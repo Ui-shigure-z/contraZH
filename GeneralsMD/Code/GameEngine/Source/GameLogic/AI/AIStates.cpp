@@ -5032,7 +5032,8 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 	if (victimAI)
 		victimAI->addTargeter(source->getID(), true);
 
-	if( sourceAI->areTurretsLinked() )
+	// ForceFireAllWeapons hands a ground target to every turret; those without a ground weapon drop it
+	if( sourceAI->areTurretsLinked() || ( !m_isAttackingObject && sourceAI->forceFiresAllWeapons() ) )
 	{
 		//Order all turrets to attack.
 		for( Int i = 0; i < MAX_TURRETS; i++ )
@@ -5050,15 +5051,7 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 	else
 	{
 		WhichTurretType tur = sourceAI->getWhichTurretForCurWeapon();
-		if (!m_isAttackingObject && sourceAI->forceFiresAllWeapons())
-		{
-			// every turret with a ground weapon takes the target; the others drop it themselves
-			for (Int i = 0; i < MAX_TURRETS; i++)
-			{
-				sourceAI->setTurretTargetPosition((WhichTurretType)i, getMachineGoalPosition());
-			}
-		}
-		else if (tur != TURRET_INVALID)
+		if (tur != TURRET_INVALID)
 		{
 			//Order specific turret to attack.
 			if (m_isAttackingObject)
@@ -5070,7 +5063,7 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 				sourceAI->setTurretTargetPosition(tur, getMachineGoalPosition());
 			}
 		}
-		if (tur == TURRET_INVALID)
+		else
 		{
 			// GS moved contact weapon check in here, because Success can never be given to a unit in this state
 			// using a turret to attack.  Check out ::update and you will see.
@@ -5129,14 +5122,7 @@ StateReturnType AIAttackAimAtTargetState::update()
 	}
 
 	WhichTurretType tur = sourceAI->getWhichTurretForCurWeapon();
-	if (!m_isAttackingObject && sourceAI->forceFiresAllWeapons())
-	{
-		for (Int i = 0; i < MAX_TURRETS; i++)
-		{
-			sourceAI->setTurretTargetPosition((WhichTurretType)i, getMachineGoalPosition());
-		}
-	}
-	else if (tur != TURRET_INVALID)
+	if (tur != TURRET_INVALID)
 	{
 		if (m_isAttackingObject)
 		{
@@ -5519,20 +5505,12 @@ StateReturnType AIAttackFireWeaponState::update()
 	if (fireAllAtGround && !m_att->ownsWeaponSlot(wslot))
 	{
 		// the current weapon fires elsewhere, so lead with our own first ground weapon
-		weapon = nullptr;
-		for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
-		{
-			if (m_att->ownsWeaponSlot((WeaponSlotType)slot) && obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
-			{
-				wslot = (WeaponSlotType)slot;
-				weapon = obj->getWeaponInWeaponSlot(wslot);
-				break;
-			}
-		}
-		if (!weapon)
+		wslot = m_att->findOwnedGroundSlot(obj, cmdSource);
+		if (wslot == WEAPONSLOT_COUNT)
 		{
 			return STATE_FAILURE;
 		}
+		weapon = obj->getWeaponInWeaponSlot(wslot);
 	}
 
 	WeaponStatus status = weapon->getStatus();
@@ -5613,40 +5591,28 @@ StateReturnType AIAttackFireWeaponState::update()
 	}
 	else
 	{
-		if (getMachineOwner()->getAI()->areTurretsLinked()) //LINKED TURRETS
-		{// it doesn;t matter which weapon slot is locked, current or whatever
-			for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
-			{// were firing with all barrels
-				Weapon* weapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
-				if (weapon)
-				{
-					if (weapon->fireWeapon(obj, getMachineGoalPosition())) //fire() returns 'reloaded'
-						obj->releaseWeaponLock(LOCKED_TEMPORARILY);// unlock, 'cause we're loaded
-
-					obj->notifyFiringTrackerShotFired(weapon, INVALID_ID);
-				}
-			}
-		}
-		else if (fireAllAtGround)
+		const Bool linked = ai->areTurretsLinked();
+		if (linked || fireAllAtGround)
 		{
+			// linked turrets fire every barrel; force fire adds only ground weapons that are ready and in range
 			for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
 			{
-				// the lead already passed the aim and readiness checks; the rest must qualify on their own
-				const Bool isLead = (slot == wslot);
-				if (!isLead && (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource)))
+				Weapon* slotWeapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
+				if (slotWeapon == nullptr)
 				{
 					continue;
 				}
-				Weapon* groundWeapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
-				if (!isLead && (groundWeapon->getStatus() != READY_TO_FIRE || !groundWeapon->isWithinAttackRange(obj, getMachineGoalPosition())))
+				if (!linked && slot != wslot
+					&& (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource)
+						|| slotWeapon->getStatus() != READY_TO_FIRE || !slotWeapon->isWithinAttackRange(obj, getMachineGoalPosition())))
 				{
 					continue;
 				}
-				if (groundWeapon->fireWeapon(obj, getMachineGoalPosition()))
+				if (slotWeapon->fireWeapon(obj, getMachineGoalPosition())) //fire() returns 'reloaded'
 				{
-					obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+					obj->releaseWeaponLock(LOCKED_TEMPORARILY);// unlock, 'cause we're loaded
 				}
-				obj->notifyFiringTrackerShotFired(groundWeapon, INVALID_ID);
+				obj->notifyFiringTrackerShotFired(slotWeapon, INVALID_ID);
 			}
 		}
 		else
@@ -6065,6 +6031,19 @@ StateReturnType AIAttackState::update()
 	 * sleeps, we still need to be called every frame.
 	 */
 	return CONVERT_SLEEP_TO_CONTINUE(m_attackMachine->updateStateMachine());
+}
+
+//----------------------------------------------------------------------------------------------------------
+WeaponSlotType NotifyWeaponFiredInterface::findOwnedGroundSlot( const Object* obj, CommandSourceType cmdSource ) const
+{
+	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
+	{
+		if (ownsWeaponSlot((WeaponSlotType)slot) && obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+		{
+			return (WeaponSlotType)slot;
+		}
+	}
+	return WEAPONSLOT_COUNT;
 }
 
 //----------------------------------------------------------------------------------------------------------
