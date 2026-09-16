@@ -388,11 +388,17 @@ and around model meshes whose W3D material uses the `Add` blend mode, such as bu
 glowing panels. Smoke and other alpha blended effects do not glow. Built from DX8 render targets and
 fixed function blur passes, so it needs no shader support.
 
-* `Bloom = No` - (Yes turns the glow on.)
-* `BloomStrength = 0.5` - (0 to 1. How bright the glow is. 0 is the same as off.)
+* `Bloom = No` - (Yes turns the glow on. Also the `Glow around additive effects` checkbox in
+Game Options, where it applies on Accept without a restart.)
+* `BloomStrength = 0.5` - (0 to 1. How bright the glow is. 0 is the same as off. Edited as a
+percentage, `Strength %`, in Game Options.)
 * `BloomDebug = No` - (Yes replaces the scene with the blurred glow buffer on black, full strength.
 Only the additive effects and meshes that feed the bloom show up, so it tells at a glance whether
-the effect is running and what is feeding it. The UI still draws on top.)
+the effect is running and what is feeding it. The UI still draws on top. `Debug view` in Game
+Options.)
+
+The Game Options controls need the `BloomGroupLabel`, `CheckBloom`, `TextEntryBloomStrength` and
+`CheckBloomDebug` windows in `OptionsMenu.wnd`; without them the keys still work from the file.
 
 Notes:
 * The glow source is a second draw of the additive particles into an offscreen target, so the

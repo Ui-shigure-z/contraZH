@@ -209,6 +209,10 @@ static GameWindow *   textEntryKeyboardOverlayBackdropRed     = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropGreen   = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropBlue    = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropOpacity = nullptr;
+static NameKeyType    checkBloomID                = NAMEKEY_INVALID;
+static GameWindow *   checkBloom                  = nullptr;
+static GameWindow *   textEntryBloomStrength      = nullptr;
+static GameWindow *   checkBloomDebug             = nullptr;
 
 // Options.ini spellings, indexed by the matching enum and combo box position
 static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
@@ -453,7 +457,15 @@ static const BoolOption BoolOptions[] =
 	{ &checkGridHotkeys, "GridHotkeys", &OptionPreferences::getGridHotkeysEnabled, &GlobalData::m_gridHotkeysEnabled, FALSE },
 	{ &checkKeyboardOverlay, "KeyboardOverlay", &OptionPreferences::getKeyboardOverlayEnabled, &GlobalData::m_keyboardOverlayEnabled, FALSE },
 	{ &checkKeyboardOverlayBackdrop, "KeyboardOverlayBackdrop", &OptionPreferences::getKeyboardOverlayBackdropEnabled, &GlobalData::m_keyboardOverlayBackdrop, TRUE },
+	{ &checkBloom, "Bloom", &OptionPreferences::getBloomEnabled, &GlobalData::m_useBloom, FALSE },
+	{ &checkBloomDebug, "BloomDebug", &OptionPreferences::getBloomDebugEnabled, &GlobalData::m_bloomDebug, FALSE },
 };
+
+// the strength is stored as 0..1 but edited as a percentage
+static Int bloomPercent( Real strength )
+{
+	return REAL_TO_INT( strength * 100.0f + 0.5f );
+}
 
 static Int anisotropyIndex( Int level )
 {
@@ -480,6 +492,10 @@ static void updateGameOptionsEnables()
 	enableWindow( textEntryKeyboardOverlayBackdropGreen, backdrop );
 	enableWindow( textEntryKeyboardOverlayBackdropBlue, backdrop );
 	enableWindow( textEntryKeyboardOverlayBackdropOpacity, backdrop );
+
+	const Bool bloom = getCheck( checkBloom, FALSE );
+	enableWindow( textEntryBloomStrength, bloom );
+	enableWindow( checkBloomDebug, bloom );
 }
 
 static void populateGameOptions()
@@ -507,6 +523,7 @@ static void populateGameOptions()
 
 	showColorEntries( pref->getKeyboardOverlayColor(), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 	showColorEntries( pref->getKeyboardOverlayBackdropColor(), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, bloomPercent( pref->getBloomStrength() ) );
 
 	updateGameOptionsEnables();
 }
@@ -536,6 +553,7 @@ static void setGameOptionsDefaults()
 
 	showColorEntries( GameMakeColor( 255, 255, 255, 255 ), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 	showColorEntries( GameMakeColor( 0, 0, 0, 128 ), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, 50 );
 
 	updateGameOptionsEnables();
 }
@@ -1044,6 +1062,11 @@ static void saveOptions()
 			textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 		TheWritableGlobalData->m_keyboardOverlayBackdropColor = saveColorEntries( "KeyboardOverlayBackdrop", GameMakeColor( 0, 0, 0, 128 ),
 			textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+
+		const Int percent = getEntryInt( textEntryBloomStrength, 0, 100, bloomPercent( pref->getBloomStrength() ) );
+		prefString.format( "%.2f", percent / 100.0f );
+		(*pref)["BloomStrength"] = prefString;
+		TheWritableGlobalData->m_bloomStrength = percent / 100.0f;
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -1475,6 +1498,9 @@ static void initGameOptionsWindows()
 	textEntryKeyboardOverlayBackdropGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropGreen" );
 	textEntryKeyboardOverlayBackdropBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropBlue" );
 	textEntryKeyboardOverlayBackdropOpacity = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropOpacity" );
+	checkBloom = findOptionsWindow( "OptionsMenu.wnd:CheckBloom", checkBloomID );
+	textEntryBloomStrength = findOptionsWindow( "OptionsMenu.wnd:TextEntryBloomStrength" );
+	checkBloomDebug = findOptionsWindow( "OptionsMenu.wnd:CheckBloomDebug" );
 
 	if (ButtonGameOptions)
 	{
@@ -1499,6 +1525,8 @@ static void initGameOptionsWindows()
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayColorLabel", "GUI:KeyboardOverlayColor", L"Letter R G B" );
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropColorLabel", "GUI:KeyboardOverlayBackdropColor", L"Backdrop R G B" );
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropOpacityLabel", "GUI:KeyboardOverlayBackdropOpacity", L"Backdrop opacity" );
+	setLabelText( "OptionsMenu.wnd:BloomGroupLabel", "GUI:GameOptionsBloom", L"Bloom" );
+	setLabelText( "OptionsMenu.wnd:BloomStrengthLabel", "GUI:BloomStrength", L"Strength %" );
 
 	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
 	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
@@ -1513,6 +1541,9 @@ static void initGameOptionsWindows()
 	setCheckText( checkGridHotkeys, "GUI:GridHotkeys", L"Use grid hotkeys", "TOOLTIP:GridHotkeys", L"Command bar slots use the layout keys instead of the retail hotkeys" );
 	setCheckText( checkKeyboardOverlay, "GUI:KeyboardOverlay", L"Show hotkey letters on cameos", "TOOLTIP:KeyboardOverlay", L"Draws each cameo's hotkey letter on the cameo" );
 	setCheckText( checkKeyboardOverlayBackdrop, "GUI:KeyboardOverlayBackdrop", L"Backdrop behind letter", "TOOLTIP:KeyboardOverlayBackdrop", L"Draws a plate behind the letter so it stays readable" );
+	setCheckText( checkBloom, "GUI:Bloom", L"Glow around additive effects", "TOOLTIP:Bloom", L"Fire, lasers, muzzle flashes and additive model parts get a soft glow. Off while anti-aliasing is on." );
+	setCheckText( checkBloomDebug, "GUI:BloomDebug", L"Debug view", "TOOLTIP:BloomDebug", L"Shows only the glow buffer on black" );
+	setTooltip( textEntryBloomStrength, "TOOLTIP:BloomStrength", L"0 to 100. How bright the glow is." );
 
 	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
 	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
@@ -2319,7 +2350,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				cancelGameOptions();
 			}
-			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID )
+			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID )
 			{
 				updateGameOptionsEnables();
 			}
