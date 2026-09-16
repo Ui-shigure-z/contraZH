@@ -56,6 +56,10 @@ public:
 	UnsignedInt m_subdualDamageHealRate;		///< Every this often, we drop subdual damage...
 	Real m_subdualDamageHealAmount;					///< by this much.
 
+	Real m_jammingDamageCap;
+	UnsignedInt m_jammingDamageHealRate;
+	Real m_jammingDamageHealAmount;
+
 	ActiveBodyModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
@@ -91,6 +95,11 @@ public:
 	virtual Real getChronoDamageHealAmount() const;
 	virtual Bool hasAnyChronoDamage() const;
 	virtual Real getCurrentChronoDamageAmount() const { return m_currentChronoDamage; }
+
+	virtual UnsignedInt getJammingDamageHealRate() const override;
+	virtual Real getJammingDamageHealAmount() const override;
+	virtual Bool hasAnyJammingDamage() const override;
+	virtual Real getCurrentJammingDamageAmount() const override { return m_currentJammingDamage; }
 
 	virtual const DamageInfo *getLastDamageInfo() const { return &m_lastDamageInfo; }	///< return info on last damage dealt to this object
 	virtual UnsignedInt getLastDamageTimestamp() const { return m_lastDamageTimestamp; }	///< return frame of last damage dealt
@@ -133,7 +142,12 @@ public:
 
 	// Chrono
 	virtual Bool isSubduedChrono() const;
-	virtual void onSubdualChronoChange(Bool isNowSubdued); ///< Override this if you want a totally different effect than DISABLED_SUBDUED
+	virtual void onSubdualChronoChange(Bool isNowSubdued);
+
+	// Jamming
+	virtual Bool isJammed() const;
+	virtual Bool canBeJammed() const;
+	virtual void onJammingChange(Bool isNowJammed);
 
 
 	virtual void overrideDamageFX(DamageFX* damageFX);
@@ -159,8 +173,9 @@ protected:
 	Bool shouldRetaliate(Object *obj);
 	Bool shouldRetaliateAgainstAggressor(Object *obj, Object *damager);
 
-	virtual void internalAddSubdualDamage( Real delta );								///< change health
-	virtual void internalAddChronoDamage( Real delta );								///< change health
+	virtual void internalAddSubdualDamage( Real delta );
+	virtual void internalAddChronoDamage( Real delta );
+	virtual void internalAddJammingDamage( Real delta );
 
 	virtual void applyChronoParticleSystems(void);
 
@@ -174,6 +189,7 @@ private:
   Real									m_initialHealth;				///< starting health for this object
 	Real									m_currentSubdualDamage;	///< Starts at zero and goes up.  Inherited modules will do something when "subdued".
 	Real									m_currentChronoDamage;	///< Same as Subdual, but for CHRONO_GUN
+	Real									m_currentJammingDamage;
 
 	BodyDamageType				m_curDamageState;				///< last known damage state
 	

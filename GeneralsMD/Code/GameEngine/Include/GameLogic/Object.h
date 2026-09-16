@@ -107,6 +107,7 @@ class ObjectRepulsorHelper;
 class StatusDamageHelper;
 class SubdualDamageHelper;
 class ChronoDamageHelper;
+class JammingDamageHelper;
 class TempWeaponBonusHelper;
 class BuffEffectHelper;
 class ObjectWeaponStatusHelper;
@@ -235,8 +236,9 @@ public:
 	Real estimateDamage( DamageInfoInput& damageInfo ) const;
 	void kill( DamageType damageType = DAMAGE_UNRESISTABLE, DeathType deathType = DEATH_NORMAL );	///< kill the object with an optional type of damage and death.
 	void healCompletely();														///< Restore max health to this Object
-	void notifySubdualDamage( Real amount );///< At this level, we just pass this on to our helper and do a special tint
-	void notifyChronoDamage( Real amount );///< At this level, we just pass this on to our helper and do a special tint
+	void notifySubdualDamage( Real amount );
+	void notifyChronoDamage( Real amount );
+	void notifyJammingDamage( Real amount );
 	void doStatusDamage( ObjectStatusTypes status, Real duration );///< At this level, we just pass this on to our helper
 	void doTempWeaponBonus( WeaponBonusConditionType status, UnsignedInt duration, TintStatus tintStatus = TINT_STATUS_INVALID );///< At this level, we just pass this on to our helper
 	void applyBuff(const BuffTemplate* buffTemp, UnsignedInt duration, Object* sourceObj);
@@ -785,7 +787,7 @@ private:
 
 	UnsignedInt		m_smcUntil;
 
-	enum { NUM_SLEEP_HELPERS = 10 };
+	enum { NUM_SLEEP_HELPERS = 11 };
 	ObjectRepulsorHelper*					m_repulsorHelper;
 	ObjectSMCHelper*							m_smcHelper;
 	ObjectWeaponStatusHelper*			m_wsHelper;
@@ -793,6 +795,7 @@ private:
 	StatusDamageHelper*						m_statusDamageHelper;
 	SubdualDamageHelper*					m_subdualDamageHelper;
 	ChronoDamageHelper*					m_chronoDamageHelper;
+	JammingDamageHelper*					m_jammingDamageHelper;
 	TempWeaponBonusHelper*				m_tempWeaponBonusHelper;
 	BuffEffectHelper*				m_buffEffectHelper;
 	FiringTracker*								m_firingTracker;	///< Tracker is really a "helper" and is included NUM_SLEEP_HELPERS

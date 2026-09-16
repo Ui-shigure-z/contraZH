@@ -131,6 +131,9 @@ ActiveBodyModuleData::ActiveBodyModuleData()
 	m_subdualDamageCap = 0;
 	m_subdualDamageHealRate = 0;
 	m_subdualDamageHealAmount = 0;
+	m_jammingDamageCap = 0;
+	m_jammingDamageHealRate = 0;
+	m_jammingDamageHealAmount = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -147,6 +150,9 @@ void ActiveBodyModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "SubdualDamageCap",					INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageCap ) },
 		{ "SubdualDamageHealRate",		INI::parseDurationUnsignedInt,	nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealRate ) },
 		{ "SubdualDamageHealAmount",	INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealAmount ) },
+		{ "JammingDamageCap",					INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageCap ) },
+		{ "JammingDamageHealRate",		INI::parseDurationUnsignedInt,	nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealRate ) },
+		{ "JammingDamageHealAmount",	INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealAmount ) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
@@ -168,6 +174,7 @@ ActiveBody::ActiveBody( Thing *thing, const ModuleData* moduleData ) :
 	m_lastDamageCleared(false),
 	m_particleSystems(nullptr),
 	m_currentSubdualDamage(0),
+	m_currentJammingDamage(0),
 	m_indestructible(false),
 	m_damageFXOverride(false)
 {
@@ -559,6 +566,25 @@ void ActiveBody::attemptDamage( DamageInfo *damageInfo )
 		}
 
 		getObject()->notifySubdualDamage(amount);
+	}
+
+	if( IsSubdualJammingDamage(damageInfo->in.m_damageType) )
+	{
+		if( !canBeJammed() )
+			return;
+
+		Bool wasJammed = isJammed();
+		internalAddJammingDamage(amount);
+		Bool nowJammed = m_maxHealth <= m_currentJammingDamage;
+		alreadyHandled = TRUE;
+		allowModifier = FALSE;
+
+		if( wasJammed != nowJammed )
+		{
+			onJammingChange(nowJammed);
+		}
+
+		getObject()->notifyJammingDamage(amount);
 	}
 
 	if (allowModifier)
@@ -1428,6 +1454,71 @@ void ActiveBody::onSubdualChronoChange( Bool isNowSubdued )
 				contain->orderAllPassengersToHackInternet(CMD_FROM_AI);
 		}
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void ActiveBody::internalAddJammingDamage( Real delta )
+{
+	const ActiveBodyModuleData *data = getActiveBodyModuleData();
+
+	m_currentJammingDamage += delta;
+	m_currentJammingDamage = clamp(0.0f, m_currentJammingDamage, data->m_jammingDamageCap);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::canBeJammed() const
+{
+	return getActiveBodyModuleData()->m_jammingDamageCap > 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::isJammed() const
+{
+	return m_maxHealth <= m_currentJammingDamage;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void ActiveBody::onJammingChange( Bool isNowJammed )
+{
+	Object *me = getObject();
+
+	if( isNowJammed )
+	{
+		me->setDisabled(DISABLED_JAMMED);
+
+		ContainModuleInterface *contain = me->getContain();
+		if ( contain )
+			contain->orderAllPassengersToIdle( CMD_FROM_AI );
+	}
+	else
+	{
+		me->clearDisabled(DISABLED_JAMMED);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+UnsignedInt ActiveBody::getJammingDamageHealRate() const
+{
+	return getActiveBodyModuleData()->m_jammingDamageHealRate;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Real ActiveBody::getJammingDamageHealAmount() const
+{
+	return getActiveBodyModuleData()->m_jammingDamageHealAmount;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::hasAnyJammingDamage() const
+{
+	return m_currentJammingDamage > 0;
 }
 
 // ------------------------------------------------------------------------------------------------

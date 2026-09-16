@@ -101,6 +101,8 @@ const char* const DamageTypeFlags::s_bitNameList[] =
 	"ANTI_TORPEDO",
 	"CHRONO_GUN",
 	"CHRONO_UNRESISTABLE",
+	"SUBDUAL_JAMMING",
+	"SUBDUAL_JAMMING_UNRESISTABLE",
 	//"ZOMBIE_VIRUS",  // TODO
 	//"MIND_CONTROL",  // TODO
 	nullptr

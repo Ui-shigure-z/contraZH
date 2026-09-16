@@ -106,6 +106,8 @@ enum DamageType CPP_11(: Int)
 	DAMAGE_ANTI_TORPEDO, /// destroy torpedoes
 	DAMAGE_CHRONO_GUN,   ///< Disable target and remove them once health threshold is reached
 	DAMAGE_CHRONO_UNRESISTABLE,  ///< Used for recovery from CHRONO_GUN
+	DAMAGE_SUBDUAL_JAMMING,  ///< Accumulates jamming damage; jams target when threshold is reached
+	DAMAGE_SUBDUAL_JAMMING_UNRESISTABLE,  ///< Used for recovery from SUBDUAL_JAMMING
 	// DAMAGE_ZOMBIE_VIRUS,  // TODO
 	// DAMAGE_MIND_CONTROL,  // TODO
 
@@ -152,6 +154,18 @@ inline Bool IsSubdualDamage( DamageType type )
 	return FALSE;
 }
 
+inline Bool IsSubdualJammingDamage( DamageType type )
+{
+	switch( type )
+	{
+		case DAMAGE_SUBDUAL_JAMMING:
+		case DAMAGE_SUBDUAL_JAMMING_UNRESISTABLE:
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 /// Does this type of damage go to internalChangeHealth?
 inline Bool IsHealthDamagingDamage( DamageType type )
 {
@@ -164,6 +178,8 @@ inline Bool IsHealthDamagingDamage( DamageType type )
 		case DAMAGE_SUBDUAL_VEHICLE:
 		case DAMAGE_SUBDUAL_BUILDING:
 		case DAMAGE_SUBDUAL_UNRESISTABLE:
+		case DAMAGE_SUBDUAL_JAMMING:
+		case DAMAGE_SUBDUAL_JAMMING_UNRESISTABLE:
 		case DAMAGE_KILLPILOT:
 		case DAMAGE_KILL_GARRISONED:
 			return FALSE;

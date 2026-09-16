@@ -98,6 +98,7 @@
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/SubdualDamageHelper.h"
 #include "GameLogic/Module/ChronoDamageHelper.h"
+#include "GameLogic/Module/JammingDamageHelper.h"
 #include "GameLogic/Module/TempWeaponBonusHelper.h"
 #include "GameLogic/Module/BuffEffectHelper.h"
 #include "GameLogic/Module/ToppleUpdate.h"
@@ -245,6 +246,7 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 	m_buffEffectHelper(nullptr),
 	m_subdualDamageHelper(nullptr),
 	m_chronoDamageHelper(nullptr),
+	m_jammingDamageHelper(nullptr),
 	m_smcHelper(nullptr),
 	m_wsHelper(nullptr),
 	m_defectionHelper(nullptr),
@@ -399,6 +401,12 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 		chronoModuleData.setModuleTagNameKey(chronoHelperModuleDataTagNameKey);
 		m_chronoDamageHelper = newInstance(ChronoDamageHelper)(this, &chronoModuleData);
 		*curB++ = m_chronoDamageHelper;
+
+		static const NameKeyType jammingHelperModuleDataTagNameKey = NAMEKEY("ModuleTag_JammingDamageHelper");
+		static JammingDamageHelperModuleData jammingModuleData;
+		jammingModuleData.setModuleTagNameKey(jammingHelperModuleDataTagNameKey);
+		m_jammingDamageHelper = newInstance(JammingDamageHelper)(this, &jammingModuleData);
+		*curB++ = m_jammingDamageHelper;
 	}
 
 	if (TheAI != nullptr
@@ -728,6 +736,7 @@ Object::~Object()
 	m_tempWeaponBonusHelper = nullptr;
 	m_subdualDamageHelper = nullptr;
 	m_chronoDamageHelper = nullptr;
+	m_jammingDamageHelper = nullptr;
 	m_buffEffectHelper = nullptr;
 	m_smcHelper = nullptr;
 	m_wsHelper = nullptr;
@@ -1159,6 +1168,11 @@ void Object::setStatus( ObjectStatusMaskType objectStatus, Bool set )
 
 			if (m_partitionData)
 				m_partitionData->makeDirty(true);
+		}
+
+		if (set && objectStatus.test(OBJECT_STATUS_UNSELECTABLE) && m_drawable)
+		{
+			TheInGameUI->deselectDrawable(m_drawable);
 		}
 
 	}
@@ -2375,10 +2389,33 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 		sound.setPosition( getPosition() );
 		TheAudio->addAudioEvent( &sound );
 	}
+	else if( type == DISABLED_JAMMED )
+	{
+		if( !isDisabledByType( DISABLED_JAMMED ) )
+		{
+			const AudioEventRTS *unitSound = getTemplate()->getPerUnitSound("SoundJammed");
+			if( unitSound && !unitSound->getEventName().isEmpty() )
+			{
+				sound = *unitSound;
+				sound.setPosition( getPosition() );
+				TheAudio->addAudioEvent( &sound );
+			}
+			else if( isKindOf( KINDOF_STRUCTURE ) )
+			{
+				sound = TheAudio->getMiscAudio()->m_buildingDisabled;
+				sound.setPosition( getPosition() );
+				TheAudio->addAudioEvent( &sound );
+			}
+			else if( isKindOf( KINDOF_VEHICLE ) )
+			{
+				sound = TheAudio->getMiscAudio()->m_vehicleDisabled;
+				sound.setPosition( getPosition() );
+				TheAudio->addAudioEvent( &sound );
+			}
+		}
+	}
 	else if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
 	{
-		//We've lost power -- make sure we aren't already out of power as the sounds shouldn't happen
-		//if you were already disabled.
 		if( !isDisabledByType( DISABLED_UNDERPOWERED ) &&
 				!isDisabledByType( DISABLED_EMP ) &&
 				!isDisabledByType( DISABLED_SUBDUED ) &&
@@ -2542,9 +2579,31 @@ Bool Object::clearDisabled( DisabledType type )
 		return FALSE;
 	}
 
-	if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
+	if( type == DISABLED_JAMMED )
 	{
-		//We've regained power-- make sure we aren't still disabled by another type.
+		AudioEventRTS sound;
+		const AudioEventRTS *unitSound = getTemplate()->getPerUnitSound("SoundUnjammed");
+		if( unitSound && !unitSound->getEventName().isEmpty() )
+		{
+			sound = *unitSound;
+			sound.setPosition( getPosition() );
+			TheAudio->addAudioEvent( &sound );
+		}
+		else if( isKindOf( KINDOF_STRUCTURE ) )
+		{
+			sound = TheAudio->getMiscAudio()->m_buildingReenabled;
+			sound.setPosition( getPosition() );
+			TheAudio->addAudioEvent( &sound );
+		}
+		else if( isKindOf( KINDOF_VEHICLE ) )
+		{
+			sound = TheAudio->getMiscAudio()->m_vehicleReenabled;
+			sound.setPosition( getPosition() );
+			TheAudio->addAudioEvent( &sound );
+		}
+	}
+	else if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
+	{
 	 	AudioEventRTS sound;
 		if( (!isDisabledByType( DISABLED_UNDERPOWERED ) || type == DISABLED_UNDERPOWERED ) &&
 				(!isDisabledByType( DISABLED_EMP ) || type == DISABLED_EMP ) &&
@@ -5750,6 +5809,21 @@ void Object::notifyChronoDamage(Real amount)
 			getDrawable()->setTintStatus(TINT_STATUS_GAINING_CHRONO_DAMAGE);
 		else
 			getDrawable()->clearTintStatus(TINT_STATUS_GAINING_CHRONO_DAMAGE);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Object::notifyJammingDamage( Real amount )
+{
+	if(m_jammingDamageHelper)
+		m_jammingDamageHelper->notifyJammingDamage( amount );
+
+	if( getDrawable() )
+	{
+		if( amount > 0 )
+			getDrawable()->setTintStatus(TINT_STATUS_GAINING_JAMMING_DAMAGE);
+		else
+			getDrawable()->clearTintStatus(TINT_STATUS_GAINING_JAMMING_DAMAGE);
 	}
 }
 

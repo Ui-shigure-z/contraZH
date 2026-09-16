@@ -162,6 +162,11 @@ public:
 	virtual Bool hasAnyChronoDamage() const = 0;
 	virtual Real getCurrentChronoDamageAmount() const = 0;
 
+	virtual UnsignedInt getJammingDamageHealRate() const = 0;
+	virtual Real getJammingDamageHealAmount() const = 0;
+	virtual Bool hasAnyJammingDamage() const = 0;
+	virtual Real getCurrentJammingDamageAmount() const = 0;
+
 	virtual BodyDamageType getDamageState() const = 0;
 	virtual void setDamageState( BodyDamageType newState ) = 0;	///< control damage state directly.  Will adjust hitpoints.
 	virtual void setAflame( Bool setting ) = 0;///< This is a major change like a damage state.
@@ -248,6 +253,11 @@ public:
 	virtual Real getChronoDamageHealAmount() const override { return 0.0f; }
 	virtual Bool hasAnyChronoDamage() const override { return FALSE; }
 	virtual Real getCurrentChronoDamageAmount() const override { return 0.0f; }
+
+	virtual UnsignedInt getJammingDamageHealRate() const override { return 0; }
+	virtual Real getJammingDamageHealAmount() const override { return 0.0f; }
+	virtual Bool hasAnyJammingDamage() const override { return FALSE; }
+	virtual Real getCurrentJammingDamageAmount() const override { return 0.0f; }
 
 	virtual BodyDamageType getDamageState() const = 0;
 	virtual void setDamageState( BodyDamageType newState ) = 0;	///< control damage state directly.  Will adjust hitpoints.
