@@ -543,7 +543,9 @@ GameMessageDisposition GUICommandTranslator::translateGameMessage(const GameMess
 	// If we're destroying the message, it means we used it. Therefore, destroy the current
 	// attack move instruction as well.
 	if (disp == DESTROY_MESSAGE)
-		TheInGameUI->clearAttackMoveToMode();
+	{
+		TheInGameUI->clearArmedMoveMode();
+	}
 
 
 	return disp;

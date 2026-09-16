@@ -259,6 +259,21 @@ while the button still works the way it did before grid hotkeys existed. If that
 live grid letter the slot gets no hotkey instead, since `addHotKey` keeps whichever slot registered
 first and silently drops the other.
 
+## Reverse move hotkey
+
+Caps Lock arms a reverse move for the whole selection, whatever their command sets hold. The next
+terrain click sends the same order as the `REVERSE_MOVE` command button, so the unit drives to the
+spot in reverse. Pressing Caps Lock again, or arming attack move, drops the mode.
+
+* `TOGGLE_REVERSEMOVE` in CommandMap.ini rebinds it. The Caps Lock default only fills an empty slot.
+* `KEY_CAPS` is new as a CommandMap key name. The press still toggles the Caps Lock state.
+* While armed, the cursor shows the `ReverseMove` block from Mouse.ini, e.g.
+`MouseCursor ReverseMove` with `Image = SCCMove` and `Texture = SCCMove`. A Mouse.ini without that
+block keeps the plain move cursor.
+
+The order needs a locomotor with `CanMoveBackwards = Yes`, and `ReverseMoveIgnoreAngleThreshold`
+in GameData decides whether a goal in front of the unit is also driven to in reverse.
+
 ## Smart selection
 
 Shows a row of half size cameos above the command bar. A selection of different unit types gets one

@@ -303,6 +303,7 @@ public:
 	void setMouseText( UnicodeString text, const RGBAColorInt *color, const RGBAColorInt *dropColor );					///< set the cursor text, *NOT* the tooltip text
 	virtual void setMouseLimits();					///< update the limit extents the mouse can move in
 	MouseCursor getMouseCursor() { return m_currentCursor; }	///< get the current mouse cursor image type
+	Bool isCursorDefined( MouseCursor cursor ) const { return !m_cursorInfo[cursor].cursorName.isEmpty(); }	///< Mouse.ini has a block for this cursor
 	virtual void setRedrawMode(RedrawMode mode)	{m_currentRedrawMode=mode;} ///<set cursor drawing method.
 	virtual RedrawMode getRedrawMode() { return m_currentRedrawMode; } //get cursor drawing method
 	virtual void setVisibility(Bool visible) { m_visible = visible; } // set visibility for load screens, etc
