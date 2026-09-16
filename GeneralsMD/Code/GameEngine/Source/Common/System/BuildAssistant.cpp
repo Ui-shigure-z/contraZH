@@ -776,6 +776,12 @@ LegalBuildCode BuildAssistant::isLocationClearOfObjects( const Coord3D *worldPos
 		if( isRemovableForConstruction( them ) == TRUE )
 			continue;
 
+		// a contained object moves with its container, which is checked on its own
+		if( them->getContainedBy() )
+		{
+			continue;
+		}
+
 		// ignore land mines, cluster mines and demo traps, since you can build on them
 		// doing so will damage them during construction, by the way
 		if (them->isKindOf( KINDOF_MINE ))

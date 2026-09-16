@@ -133,6 +133,16 @@ into hulks.
 A dying unit also kept catching the mouse, so a click on a corpse never reached the unit or ground
 behind it. Anything effectively dead now drops its pick bit, unless it is `ALWAYS_SELECTABLE`.
 
+## Portable addons no longer block building
+
+Placing a building over your own units normally shoves them out of the footprint, but a carrier
+with a `PORTABLE_STRUCTURE` addon - an Overlord with a Gattling Cannon, or any of the mod's
+multi-addon vehicles - refused the placement outright. The addon stays a live collision object
+riding on its carrier, and the build check treated it as a held, immovable unit rather than as
+part of the vehicle that would have driven off. Contained objects are now skipped by that check
+and only their carrier is judged, so an enemy or otherwise stuck carrier still blocks as before.
+This changes build legality, so it affects replays.
+
 # Game Setup
 
 ## Random army per faction
