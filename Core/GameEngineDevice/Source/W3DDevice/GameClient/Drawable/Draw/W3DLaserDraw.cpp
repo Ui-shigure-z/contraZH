@@ -596,8 +596,8 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 			}
 		}
 
-		// the beam's own fade and decay ramps do not reach the ground, it is lit or it is not
-		if (!TheGlobalData->m_laserRef || update->getAlphaScale() <= 0.0f || update->getWidthScale() <= 0.0f)
+		// the ground is lit from the first frame and goes dark the moment the beam starts to fade or decay
+		if (!TheGlobalData->m_laserRef || update->isEnding() || update->getAlphaScale() <= 0.0f || update->getWidthScale() <= 0.0f)
 		{
 			releaseGroundLights();
 		}
