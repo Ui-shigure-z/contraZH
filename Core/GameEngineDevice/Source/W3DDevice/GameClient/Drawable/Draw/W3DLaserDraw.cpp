@@ -445,7 +445,8 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update )
 		// diffuse only, so the hue survives being added onto sunlit ground
 		Real intensity = data->m_groundGlowIntensity >= 0.0f ? data->m_groundGlowIntensity : TheGlobalData->m_laserGlowIntensity;
 		Vector3 lightColor( glowRed * intensity, glowGreen * intensity, glowBlue * intensity );
-		Real lightHeight = MAX( data->m_outerBeamWidth, 4.0f );
+		// the light must sit inside its own radius or it never reaches the ground
+		Real lightHeight = MIN( MAX( data->m_outerBeamWidth, 4.0f ), radius * 0.5f );
 
 		for( Int i = 0; i < m_numGroundLights; i++ )
 		{
