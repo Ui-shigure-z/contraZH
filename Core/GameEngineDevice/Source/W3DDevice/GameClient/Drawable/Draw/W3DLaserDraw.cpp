@@ -78,7 +78,7 @@ W3DLaserDrawModuleData::W3DLaserDrawModuleData()
 	m_useHouseColorInner = FALSE;
 	m_groundGlowColor = 0;
 	m_groundGlowRadius = 0.0f;
-	m_groundGlowIntensity = 0.7f;
+	m_groundGlowIntensity = -1.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -609,8 +609,17 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 			Real dy = beamEnd->y - beamStart->y;
 			Real beamLength = sqrt( dx * dx + dy * dy );
 
+			// the module overrides GameData, which overrides the beam-derived defaults
+			Real radius = data->m_groundGlowRadius;
+			if (radius <= 0.0f)
+			{
+				radius = TheGlobalData->m_laserGlowRadius;
+			}
+			if (radius <= 0.0f)
+			{
+				radius = 2.0f * data->m_outerBeamWidth;
+			}
 			// terrain lighting is per vertex on a 10 unit grid, so anything under two cells shows nothing
-			Real radius = data->m_groundGlowRadius > 0.0f ? data->m_groundGlowRadius : 2.0f * data->m_outerBeamWidth;
 			radius = MAX( radius * update->getWidthScale(), 20.0f );
 
 			// centers one radius apart so the linear falloffs sum to a level strip
@@ -623,10 +632,11 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 
 			// the inner color is usually a white core, the outer color carries the hue
 			Real glowRed, glowGreen, glowBlue;
-			if (data->m_groundGlowColor != 0)
+			Color glowColor = data->m_groundGlowColor != 0 ? data->m_groundGlowColor : TheGlobalData->m_laserGlowColor;
+			if (glowColor != 0)
 			{
 				Real glowAlpha;
-				GameGetColorComponentsReal( data->m_groundGlowColor, &glowRed, &glowGreen, &glowBlue, &glowAlpha );
+				GameGetColorComponentsReal( glowColor, &glowRed, &glowGreen, &glowBlue, &glowAlpha );
 			}
 			else if (data->m_numBeams > 1)
 			{
@@ -651,7 +661,7 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 			}
 
 			// diffuse only, so the hue survives being added onto sunlit ground
-			Real intensity = data->m_groundGlowIntensity;
+			Real intensity = data->m_groundGlowIntensity >= 0.0f ? data->m_groundGlowIntensity : TheGlobalData->m_laserGlowIntensity;
 			Vector3 lightColor( glowRed * intensity, glowGreen * intensity, glowBlue * intensity );
 			Real lightHeight = MAX( data->m_outerBeamWidth, 4.0f );
 

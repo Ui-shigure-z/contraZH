@@ -571,6 +571,9 @@ public:
   Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
   Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
   Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
+  Real m_laserGlowRadius;         ///< GameData LaserGroundGlowRadius: 0 uses twice the outer beam width
+  Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	Bool m_shroudOn;

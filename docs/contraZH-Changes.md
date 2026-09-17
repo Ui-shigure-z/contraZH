@@ -422,14 +422,19 @@ target moves. Roads are not lit, since road dynamic lighting is disabled in the 
 * `LaserRef = No` - (Yes turns the glow on. Also the `Lasers light the ground` checkbox in Game
 Options, where it applies on Accept without a restart.)
 
-`W3DLaserDraw` modules can tune it per laser:
+`GameData.ini` tunes it for every laser:
 
-* `GroundGlowColor = R:0 G:0 B:0` - (Light color. Black picks `OuterColor` when the laser has
-more than one beam, else `InnerColor`, since the inner color is usually a white core. The
+* `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black picks `OuterColor` when the laser
+has more than one beam, else `InnerColor`, since the inner color is usually a white core. The
 color is normalized to full brightness either way.)
-* `GroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice `OuterBeamWidth`,
-and anything under 20 is raised to 20 because terrain lighting is per vertex on a 10 unit grid.)
-* `GroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
+* `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
+`OuterBeamWidth`, and anything under 20 is raised to 20 because terrain lighting is per vertex
+on a 10 unit grid.)
+* `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
+
+`W3DLaserDraw` modules can override those per laser with `GroundGlowColor`, `GroundGlowRadius`
+and `GroundGlowIntensity`, which take the same values. Leaving a module key out (or black, or 0)
+falls back to the `GameData.ini` value.
 
 The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the key
 still works from the file. The terrain used to accept 20 dynamic lights a frame; it now accepts 64.
