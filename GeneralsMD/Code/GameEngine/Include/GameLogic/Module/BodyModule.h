@@ -165,6 +165,7 @@ public:
 	virtual UnsignedInt getJammingDamageHealRate() const = 0;
 	virtual Real getJammingDamageHealAmount() const = 0;
 	virtual Bool hasAnyJammingDamage() const = 0;
+	virtual Bool isJammed() const = 0;
 	virtual Real getCurrentJammingDamageAmount() const = 0;
 
 	virtual BodyDamageType getDamageState() const = 0;
@@ -257,6 +258,7 @@ public:
 	virtual UnsignedInt getJammingDamageHealRate() const override { return 0; }
 	virtual Real getJammingDamageHealAmount() const override { return 0.0f; }
 	virtual Bool hasAnyJammingDamage() const override { return FALSE; }
+	virtual Bool isJammed() const override { return FALSE; }
 	virtual Real getCurrentJammingDamageAmount() const override { return 0.0f; }
 
 	virtual BodyDamageType getDamageState() const = 0;

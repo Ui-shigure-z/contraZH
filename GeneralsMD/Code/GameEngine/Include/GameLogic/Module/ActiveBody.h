@@ -145,7 +145,7 @@ public:
 	virtual void onSubdualChronoChange(Bool isNowSubdued);
 
 	// Jamming
-	virtual Bool isJammed() const;
+	virtual Bool isJammed() const override;
 	virtual Bool canBeJammed() const;
 	virtual void onJammingChange(Bool isNowJammed);
 

@@ -101,6 +101,7 @@ enum DrawableIconType CPP_11(: Int)
 	ICON_ENTHUSIASTIC_SUBLIMINAL,
 	ICON_CARBOMB,
 	ICON_STATUS,
+	ICON_JAMMED,
 
 	MAX_ICONS,
 	ICON_FIRST = 0,
@@ -843,6 +844,7 @@ private:
 	void drawDemoralized( const IRegion2D* healthBarRegion );				///< draw icons
 #endif
 	void drawBombed( const IRegion2D* healthBarRegion );						///< draw icons
+	void drawJammed( const IRegion2D* healthBarRegion );
 	void drawDisabled( const IRegion2D* healthBarRegion );					///< draw icons
 	void drawStatusIcon( const IRegion2D* healthBarRegion );				///< draw the module-set status icon
 	void drawIconAboveBar( DrawableIconType slot, const IRegion2D* healthBarRegion, Int xOffset );

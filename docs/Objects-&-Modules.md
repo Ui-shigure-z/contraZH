@@ -1986,6 +1986,21 @@ Note: a unit that is both jammed and stealth-detected shows the jamming overlay 
 engine carries one opacity value per render call, so the two effects cannot be layered with
 independent strengths.
 
+## Icon
+
+A jammed unit shows its own icon beside the health bar, next to the disabled icon when both
+apply. Define the animation in `Animation2D.ini`; the icon is not drawn until this exists:
+
+```
+Animation Jammed
+  AnimationMode       = LOOP
+  AnimationDelay      = 66
+  RandomizeStartFrame = No
+  NumberImages        = 1
+  Image               = SomeJamIcon
+End
+```
+
 ## Per-Unit Sounds
 
 Units can define custom jam/unjam sounds via their `UnitSpecificSounds` block:

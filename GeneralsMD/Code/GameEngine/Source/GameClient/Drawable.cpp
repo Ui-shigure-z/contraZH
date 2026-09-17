@@ -113,6 +113,7 @@ static const char *const TheDrawableIconNames[] =
 	"Subliminal",  //with the gold border! replace?
 	"CarBomb",
 	"Status",
+	"Jammed",
 	nullptr
 };
 static_assert(ARRAY_SIZE(TheDrawableIconNames) == MAX_ICONS + 1, "Incorrect array size");
@@ -386,6 +387,7 @@ const Int MAX_ENABLED_MODULES								= 16;
 	s_animationTemplates[ICON_ENTHUSIASTIC_SUBLIMINAL]			= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_ENTHUSIASTIC_SUBLIMINAL]);
 	s_animationTemplates[ICON_CARBOMB]			= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_CARBOMB]);
 	s_animationTemplates[ICON_STATUS]				= nullptr; //Set per object by name, so there is no single template.
+	s_animationTemplates[ICON_JAMMED]				= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_JAMMED]);
 
 	s_staticImagesInited = true;
 
@@ -3572,6 +3574,7 @@ void Drawable::drawIconUI()
 		drawDemoralized( healthBarRegion );
 #endif
 		drawDisabled( healthBarRegion );
+		drawJammed( healthBarRegion );
 		drawStatusIcon( healthBarRegion );
 
 		drawAmmo( healthBarRegion );
@@ -4656,6 +4659,35 @@ void Drawable::drawDisabled(const IRegion2D* healthBarRegion)
 
 }
 
+// ------------------------------------------------------------------------------------------------
+/** Jammed icon, beside the disabled one when both show. Inert until Animation2D.ini defines "Jammed". */
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawJammed(const IRegion2D* healthBarRegion)
+{
+	const Object *obj = getObject();
+	const BodyModuleInterface *body = obj ? obj->getBodyModule() : nullptr;
+
+	if( body && body->isJammed() && s_animationTemplates[ ICON_JAMMED ] )
+	{
+		if( getIconInfo()->m_icon[ ICON_JAMMED ] == nullptr )
+		{
+			getIconInfo()->m_icon[ ICON_JAMMED ] = newInstance(Anim2D)
+			( s_animationTemplates[ ICON_JAMMED ], TheAnim2DCollection );
+		}
+
+		Int xOffset = 0;
+		if( getIconInfo()->m_icon[ ICON_DISABLED ] )
+		{
+			xOffset = getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		}
+		drawIconAboveBar( ICON_JAMMED, healthBarRegion, xOffset );
+	}
+	else
+	{
+		killIcon(ICON_JAMMED);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Draw a live icon slot at the left of the health bar, sitting on top of it */
 //-------------------------------------------------------------------------------------------------
@@ -4693,11 +4725,15 @@ void Drawable::drawStatusIcon(const IRegion2D* healthBarRegion)
 		return;
 	}
 
-	// sit beside the disabled icon when both are showing
+	// sit beside the disabled and jammed icons when they are showing
 	Int xOffset = 0;
 	if( getIconInfo()->m_icon[ ICON_DISABLED ] )
 	{
-		xOffset = getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		xOffset += getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+	}
+	if( getIconInfo()->m_icon[ ICON_JAMMED ] )
+	{
+		xOffset += getIconInfo()->m_icon[ ICON_JAMMED ]->getCurrentFrameWidth();
 	}
 	drawIconAboveBar( ICON_STATUS, healthBarRegion, xOffset );
 }
