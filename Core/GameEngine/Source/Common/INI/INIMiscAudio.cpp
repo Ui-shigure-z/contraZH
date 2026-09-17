@@ -52,6 +52,8 @@ const FieldParse MiscAudio::m_fieldParseTable[] =
 	{ "BuildingReenabled",										INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_buildingReenabled ) },
 	{ "VehicleDisabled",											INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_vehicleDisabled ) },
 	{ "VehicleReenabled",											INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_vehicleReenabled ) },
+	{ "UnitJammed",														INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_unitJammed ) },
+	{ "UnitUnjammed",													INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_unitUnjammed ) },
 	{ "SplatterVehiclePilotsBrain",						INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_splatterVehiclePilotsBrain ) },
 	{ "TerroristInCarMoveVoice",							INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_terroristInCarMoveVoice ) },
 	{ "TerroristInCarAttackVoice",						INI::parseAudioEventRTS, nullptr, offsetof( MiscAudio, m_terroristInCarAttackVoice ) },

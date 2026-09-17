@@ -1933,6 +1933,10 @@ When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE`
 its passengers are ordered to idle. The status clears once the jamming damage heals below the
 threshold.
 
+Jamming is independent of the `DISABLED_*` states: it neither waits for them nor ends them, and a
+disabled unit stays disabled through a jam. On unjam it only clears `UNSELECTABLE` if the jam was
+what set it, so a docked, slaved, or status-held unit keeps that state.
+
 ## ActiveBody Fields
 
 ```
@@ -1995,8 +1999,16 @@ Object SomeUnit
 End
 ```
 
-If no per-unit sound is defined, the unit falls back to the generic building-disabled or
-vehicle-disabled sounds from `MiscAudio`.
+If no per-unit sound is defined, the unit falls back to the global jam sounds in
+`MiscAudio.ini`, and is silent if those are unset too:
+
+```
+UnitJammed   = JammedSoundEvent
+UnitUnjammed = UnjammedSoundEvent
+```
+
+Jamming never borrows the building-disabled or vehicle-disabled sounds, so an EMP'd unit that
+is also jammed plays two distinct cues rather than a repeated one.
 
 ## Example Weapon
 

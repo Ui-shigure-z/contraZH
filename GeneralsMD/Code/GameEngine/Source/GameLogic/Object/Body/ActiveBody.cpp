@@ -175,6 +175,7 @@ ActiveBody::ActiveBody( Thing *thing, const ModuleData* moduleData ) :
 	m_particleSystems(nullptr),
 	m_currentSubdualDamage(0),
 	m_currentJammingDamage(0),
+	m_jammingSetUnselectable(FALSE),
 	m_indestructible(false),
 	m_damageFXOverride(false)
 {
@@ -1489,11 +1490,13 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 	AudioEventRTS sound;
 	const AudioEventRTS *unitSound = me->getTemplate()->getPerUnitSound( isNowJammed ? "SoundJammed" : "SoundUnjammed" );
 	if( unitSound && !unitSound->getEventName().isEmpty() )
+	{
 		sound = *unitSound;
-	else if( me->isKindOf( KINDOF_STRUCTURE ) )
-		sound = isNowJammed ? TheAudio->getMiscAudio()->m_buildingDisabled : TheAudio->getMiscAudio()->m_buildingReenabled;
-	else if( me->isKindOf( KINDOF_VEHICLE ) )
-		sound = isNowJammed ? TheAudio->getMiscAudio()->m_vehicleDisabled : TheAudio->getMiscAudio()->m_vehicleReenabled;
+	}
+	else
+	{
+		sound = isNowJammed ? TheAudio->getMiscAudio()->m_unitJammed : TheAudio->getMiscAudio()->m_unitUnjammed;
+	}
 
 	if( !sound.getEventName().isEmpty() )
 	{
@@ -1501,9 +1504,14 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 		TheAudio->addAudioEvent( &sound );
 	}
 
+	// Other systems hold UNSELECTABLE for their own reasons, so only clear it if jam set it.
 	if( isNowJammed )
 	{
-		me->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
+		m_jammingSetUnselectable = !me->testStatus( OBJECT_STATUS_UNSELECTABLE );
+		if( m_jammingSetUnselectable )
+		{
+			me->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
+		}
 
 		ContainModuleInterface *contain = me->getContain();
 		if ( contain )
@@ -1511,7 +1519,11 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 	}
 	else
 	{
-		me->clearStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
+		if( m_jammingSetUnselectable )
+		{
+			me->clearStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
+		}
+		m_jammingSetUnselectable = FALSE;
 	}
 }
 
@@ -1886,13 +1898,14 @@ void ActiveBody::crc( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
 	* Version Info:
-	* 1: Initial version */
+	* 1: Initial version
+	* 2: jamming damage and unselectable ownership */
 // ------------------------------------------------------------------------------------------------
 void ActiveBody::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1997,6 +2010,12 @@ void ActiveBody::xfer( Xfer *xfer )
 
 	// armor set flags
 	m_curArmorSetFlags.xfer( xfer );
+
+	if( version >= 2 )
+	{
+		xfer->xferReal( &m_currentJammingDamage );
+		xfer->xferBool( &m_jammingSetUnselectable );
+	}
 
 }
 
