@@ -411,6 +411,29 @@ scene's depth buffer.
 * Additive meshes on skinned models (infantry and other bone deformed meshes) do not glow. Their
 vertices only exist for the duration of the normal draw, so there is nothing left to draw again.
 
+### Laser ground glow
+
+Each laser beam lights the terrain along its whole length with a row of small dynamic lights
+(up to eight per beam), so the ground under the beam picks up the beam color. The lights are
+terrain only, so units and buildings do not light up. They take the beam color (house colored
+when the laser asks for it), switch on and off with the beam and follow a continuous beam as its
+target moves. Roads are not lit, since road dynamic lighting is disabled in the engine.
+
+* `LaserRef = No` - (Yes turns the glow on. Also the `Lasers light the ground` checkbox in Game
+Options, where it applies on Accept without a restart.)
+
+`W3DLaserDraw` modules can tune it per laser:
+
+* `GroundGlowColor = R:0 G:0 B:0` - (Light color. Black picks `OuterColor` when the laser has
+more than one beam, else `InnerColor`, since the inner color is usually a white core. The
+color is normalized to full brightness either way.)
+* `GroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice `OuterBeamWidth`,
+and anything under 20 is raised to 20 because terrain lighting is per vertex on a 10 unit grid.)
+* `GroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
+
+The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the key
+still works from the file. The terrain used to accept 20 dynamic lights a frame; it now accepts 64.
+
 # ParticleSystem.ini
 
 ## ConformToTerrain

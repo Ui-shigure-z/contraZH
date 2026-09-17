@@ -49,6 +49,7 @@ protected:
 	Int			m_minX, m_minY, m_maxX, m_maxY;
 
 	Bool		m_enabled;
+	Bool		m_terrainOnly;
 
 	Bool		m_decayRange;
 	Bool		m_decayColor;
@@ -68,8 +69,12 @@ public:
 public:
 	virtual void					On_Frame_Update() override;
 
-	void setEnabled(Bool enabled) { m_enabled = enabled; m_decayRange = false; m_decayFrameCount = 0; m_decayColor = false; m_increaseFrameCount = 0;};
+	void setEnabled(Bool enabled) { m_enabled = enabled; m_decayRange = false; m_decayFrameCount = 0; m_decayColor = false; m_increaseFrameCount = 0; m_terrainOnly = false;};
 	Bool isEnabled() {return m_enabled;};
+
+	/// lights the terrain only, objects ignore it
+	void setTerrainOnly(Bool terrainOnly) { m_terrainOnly = terrainOnly; }
+	Bool isTerrainOnly() const { return m_terrainOnly; }
 
 
 	/// 0 frameIncreaseTime means it starts out full size/intensity, 0 decay time means it lasts forever.

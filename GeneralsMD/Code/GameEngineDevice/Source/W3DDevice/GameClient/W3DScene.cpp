@@ -787,7 +787,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		  for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
 		  {
 			  W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
-			  if (!pDyna->isEnabled()) {
+			  if (!pDyna->isEnabled() || pDyna->isTerrainOnly()) {
 				  continue;
 			  }
 			  SphereClass lSph = pDyna->Get_Bounding_Sphere();

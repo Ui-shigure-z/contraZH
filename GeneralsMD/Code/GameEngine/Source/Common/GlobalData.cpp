@@ -645,6 +645,7 @@ GlobalData::GlobalData()
   m_useBloom = FALSE;
   m_bloomStrength = 0.5f;
   m_bloomDebug = FALSE;
+  m_laserRef = FALSE;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	m_shroudOn = TRUE;
@@ -1425,6 +1426,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useBloom = optionPref.getBloomEnabled();
 	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
 	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
+	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.

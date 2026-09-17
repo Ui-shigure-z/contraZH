@@ -45,6 +45,7 @@
 #include "GameLogic/Module/LaserUpdate.h"
 #include "W3DDevice/GameClient/Module/W3DLaserDraw.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
+#include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "WW3D2/rinfo.h"
 #include "WW3D2/camera.h"
@@ -75,6 +76,9 @@ W3DLaserDrawModuleData::W3DLaserDrawModuleData()
 	m_gridColumns = 1;
 	m_useHouseColorOuter = FALSE;
 	m_useHouseColorInner = FALSE;
+	m_groundGlowColor = 0;
+	m_groundGlowRadius = 0.0f;
+	m_groundGlowIntensity = 0.7f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -109,6 +113,9 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "TextureGridColumns",				INI::parseUnsignedInt,							NULL, offsetof(W3DLaserDrawModuleData, m_gridColumns) },
 		{ "UseHouseColorOuter",				INI::parseBool,							NULL, offsetof(W3DLaserDrawModuleData, m_useHouseColorOuter) },
 		{ "UseHouseColorInner",				INI::parseBool,							NULL, offsetof(W3DLaserDrawModuleData, m_useHouseColorInner) },
+		{ "GroundGlowColor",					INI::parseColorInt,							nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowColor) },
+		{ "GroundGlowRadius",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowRadius) },
+		{ "GroundGlowIntensity",			INI::parsePercentToReal,				nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowIntensity) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
@@ -123,7 +130,8 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 	m_texture(nullptr),
 	m_textureAspectRatio(1.0f),
 	m_selfDirty(TRUE),
-	m_hexColor(0)
+	m_hexColor(0),
+	m_numGroundLights(0)
 {
 	Vector3 dummyPos1(0.0f, 0.0f, 0.0f);
 	Vector3 dummyPos2(1.0f, 1.0f, 1.0f);
@@ -266,6 +274,8 @@ W3DLaserDraw::~W3DLaserDraw()
 {
 	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
 
+	releaseGroundLights();
+
 	for( UnsignedInt i = 0; i < data->m_numBeams * data->m_segments; i++ )
 	{
 
@@ -289,6 +299,41 @@ Real W3DLaserDraw::getLaserTemplateWidth() const
 {
 	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
 	return data->m_outerBeamWidth * 0.5f;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void W3DLaserDraw::acquireGroundLights( Int count )
+{
+	releaseGroundLights();
+
+	if (W3DDisplay::m_3DScene == nullptr)
+	{
+		return;
+	}
+
+	// the pool hands out enabled lights with no decay, so they stay lit until we release them
+	for( Int i = 0; i < count; i++ )
+	{
+		W3DDynamicLight *light = W3DDisplay::m_3DScene->getADynamicLight();
+		light->setTerrainOnly( true );
+		light->Set_Ambient( Vector3( 0.0f, 0.0f, 0.0f ) );
+		light->Set_Flag( LightClass::FAR_ATTENUATION, true );
+		m_groundLights[ i ] = light;
+	}
+	m_numGroundLights = count;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void W3DLaserDraw::releaseGroundLights()
+{
+	// disabling returns a light to the scene pool, which owns it
+	for( Int i = 0; i < m_numGroundLights; i++ )
+	{
+		m_groundLights[ i ]->setEnabled( false );
+	}
+	m_numGroundLights = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -548,6 +593,78 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 
 				//	m_line3D[index]->Set_Color(color);
 				//}
+			}
+		}
+
+		// the beam's own fade and decay ramps do not reach the ground, it is lit or it is not
+		if (!TheGlobalData->m_laserRef || update->getAlphaScale() <= 0.0f || update->getWidthScale() <= 0.0f)
+		{
+			releaseGroundLights();
+		}
+		else
+		{
+			const Coord3D *beamStart = update->getStartPos();
+			const Coord3D *beamEnd = update->getEndPos();
+			Real dx = beamEnd->x - beamStart->x;
+			Real dy = beamEnd->y - beamStart->y;
+			Real beamLength = sqrt( dx * dx + dy * dy );
+
+			// terrain lighting is per vertex on a 10 unit grid, so anything under two cells shows nothing
+			Real radius = data->m_groundGlowRadius > 0.0f ? data->m_groundGlowRadius : 2.0f * data->m_outerBeamWidth;
+			radius = MAX( radius * update->getWidthScale(), 20.0f );
+
+			// centers one radius apart so the linear falloffs sum to a level strip
+			Int count = (Int)ceil( beamLength / radius );
+			count = MIN( MAX( count, 1 ), (Int)MAX_LASER_GROUND_LIGHTS );
+			if (count != m_numGroundLights)
+			{
+				acquireGroundLights( count );
+			}
+
+			// the inner color is usually a white core, the outer color carries the hue
+			Real glowRed, glowGreen, glowBlue;
+			if (data->m_groundGlowColor != 0)
+			{
+				Real glowAlpha;
+				GameGetColorComponentsReal( data->m_groundGlowColor, &glowRed, &glowGreen, &glowBlue, &glowAlpha );
+			}
+			else if (data->m_numBeams > 1)
+			{
+				glowRed = outerRed;
+				glowGreen = outerGreen;
+				glowBlue = outerBlue;
+			}
+			else
+			{
+				glowRed = innerRed;
+				glowGreen = innerGreen;
+				glowBlue = innerBlue;
+			}
+
+			// normalize so a dim ini color still lights at the same strength as a bright one
+			Real brightest = MAX( glowRed, MAX( glowGreen, glowBlue ) );
+			if (brightest > 0.0f)
+			{
+				glowRed /= brightest;
+				glowGreen /= brightest;
+				glowBlue /= brightest;
+			}
+
+			// diffuse only, so the hue survives being added onto sunlit ground
+			Real intensity = data->m_groundGlowIntensity;
+			Vector3 lightColor( glowRed * intensity, glowGreen * intensity, glowBlue * intensity );
+			Real lightHeight = MAX( data->m_outerBeamWidth, 4.0f );
+
+			for( Int i = 0; i < m_numGroundLights; i++ )
+			{
+				Real t = (i + 0.5f) / m_numGroundLights;
+				Real x = beamStart->x + dx * t;
+				Real y = beamStart->y + dy * t;
+				// a fixed height above the ground keeps the strip the same width whatever the beam height
+				Real z = TheTerrainLogic->getGroundHeight( x, y ) + lightHeight;
+				m_groundLights[ i ]->Set_Diffuse( lightColor );
+				m_groundLights[ i ]->Set_Position( Vector3( x, y, z ) );
+				m_groundLights[ i ]->Set_Far_Attenuation_Range( 0.5f, radius );
 			}
 		}
 	}

@@ -36,6 +36,9 @@
 
 class SegmentedLineClass;
 class TextureClass;
+class W3DDynamicLight;
+
+enum { MAX_LASER_GROUND_LIGHTS = 8 };
 
 class W3DLaserDrawModuleData : public ModuleData
 {
@@ -59,6 +62,9 @@ public:
 	UnsignedInt m_gridColumnsTotal;
 	Bool m_useHouseColorInner;
 	Bool m_useHouseColorOuter;
+	Color m_groundGlowColor;
+	Real m_groundGlowRadius;
+	Real m_groundGlowIntensity;
 
 	W3DLaserDrawModuleData();
 	virtual ~W3DLaserDrawModuleData() override;
@@ -100,5 +106,10 @@ protected:
 	Bool m_selfDirty;								// not saved
 
 	Int	        m_hexColor;  ///< player house color
+	W3DDynamicLight *m_groundLights[MAX_LASER_GROUND_LIGHTS];	///< terrain-only lights spaced along the beam, runtime only
+	Int m_numGroundLights;
+
+	void acquireGroundLights( Int count );
+	void releaseGroundLights();
 
 };

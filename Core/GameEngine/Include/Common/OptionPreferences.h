@@ -129,6 +129,8 @@ public:
 	Bool getBloomEnabled() const;
 	Real getBloomStrength() const;
 	Bool getBloomDebugEnabled() const;
+	// Options.ini: LaserRef = Yes lights the ground along each laser beam
+	Bool getLaserRefEnabled() const;
 	Bool getEasyMilitaryDragEnabled() const;
 	Bool getSmartPipsEnabled() const;
 	Bool getNumericalHealthEnabled() const;

@@ -508,6 +508,7 @@ public:
   Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
   Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
   Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
+  Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
 
 	// TheSuperHackers @feature Outline the radar blips and the shoreline, at double radar
 	// resolution. Client side only; the radar never feeds game logic.

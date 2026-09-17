@@ -213,6 +213,7 @@ static NameKeyType    checkBloomID                = NAMEKEY_INVALID;
 static GameWindow *   checkBloom                  = nullptr;
 static GameWindow *   textEntryBloomStrength      = nullptr;
 static GameWindow *   checkBloomDebug             = nullptr;
+static GameWindow *   checkLaserRef               = nullptr;
 
 // Options.ini spellings, indexed by the matching enum and combo box position
 static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
@@ -459,6 +460,7 @@ static const BoolOption BoolOptions[] =
 	{ &checkKeyboardOverlayBackdrop, "KeyboardOverlayBackdrop", &OptionPreferences::getKeyboardOverlayBackdropEnabled, &GlobalData::m_keyboardOverlayBackdrop, TRUE },
 	{ &checkBloom, "Bloom", &OptionPreferences::getBloomEnabled, &GlobalData::m_useBloom, FALSE },
 	{ &checkBloomDebug, "BloomDebug", &OptionPreferences::getBloomDebugEnabled, &GlobalData::m_bloomDebug, FALSE },
+	{ &checkLaserRef, "LaserRef", &OptionPreferences::getLaserRefEnabled, &GlobalData::m_laserRef, FALSE },
 };
 
 // the strength is stored as 0..1 but edited as a percentage
@@ -1501,6 +1503,7 @@ static void initGameOptionsWindows()
 	checkBloom = findOptionsWindow( "OptionsMenu.wnd:CheckBloom", checkBloomID );
 	textEntryBloomStrength = findOptionsWindow( "OptionsMenu.wnd:TextEntryBloomStrength" );
 	checkBloomDebug = findOptionsWindow( "OptionsMenu.wnd:CheckBloomDebug" );
+	checkLaserRef = findOptionsWindow( "OptionsMenu.wnd:CheckLaserRef" );
 
 	if (ButtonGameOptions)
 	{
@@ -1544,6 +1547,7 @@ static void initGameOptionsWindows()
 	setCheckText( checkBloom, "GUI:Bloom", L"Glow around additive effects", "TOOLTIP:Bloom", L"Fire, lasers, muzzle flashes and additive model parts get a soft glow. Off while anti-aliasing is on." );
 	setCheckText( checkBloomDebug, "GUI:BloomDebug", L"Debug view", "TOOLTIP:BloomDebug", L"Shows only the glow buffer on black" );
 	setTooltip( textEntryBloomStrength, "TOOLTIP:BloomStrength", L"0 to 100. How bright the glow is." );
+	setCheckText( checkLaserRef, "GUI:LaserRef", L"Lasers light the ground", "TOOLTIP:LaserRef", L"Laser beams cast a colored light on the terrain along their length" );
 
 	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
 	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
