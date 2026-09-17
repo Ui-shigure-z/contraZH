@@ -39,6 +39,7 @@
 #include "W3DDevice/GameClient/W3DSnow.h"
 #include "W3DDevice/GameClient/W3DBloom.h"
 #include "WW3D2/camera.h"
+#include "WW3D2/dx8renderer.h"
 #include "WW3D2/ww3d.h"
 #include <algorithm>
 
@@ -187,6 +188,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 
 	m_drawOrder.clear();
 
+	// whether the glow pass has anything to draw at all this frame
+	Bool hasAdditive = FALSE;
+
 	ParticleSystemManager::ParticleSystemList &particleSysList = TheParticleSystemManager->getAllParticleSystems();
 	for( ParticleSystemManager::ParticleSystemListIt it = particleSysList.begin(); it != particleSysList.end(); ++it)
 	{
@@ -227,6 +231,11 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		if (particleCount == 0)
 			continue;
 
+		if (!sys->isUsingSmudge() && sys->getShaderType() == ParticleSystemInfo::ADDITIVE)
+		{
+			hasAdditive = TRUE;
+		}
+
 		DrawEntry entry;
 		entry.sys = sys;
 		entry.depth = 0.0f;
@@ -250,7 +259,7 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	TheParticleSystemManager->setOnScreenParticleCount(m_onScreenParticleCount);
 
 	// the glow comes from a second draw of the additive systems into the bloom target
-	if (TheW3DBloom && TheW3DBloom->begin(rinfo))
+	if (TheW3DBloom && TheW3DBloom->begin(rinfo, hasAdditive || TheDX8MeshRenderer.Has_Bloom_Tasks()))
 	{
 		const Int onScreenCount = m_onScreenParticleCount;
 		const UnsignedInt fieldCount = m_fieldParticleCount;
