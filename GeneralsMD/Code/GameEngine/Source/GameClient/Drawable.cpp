@@ -147,7 +147,6 @@ const char* const TintStatusFlags::s_bitNameList[] =
 	"EXTRA8",
 	"EXTRA9",
 	"EXTRA10",
-	"GAINING_JAMMING_DAMAGE",
 	NULL
 };
 static_assert(ARRAY_SIZE(TintStatusFlags::s_bitNameList) == TintStatusFlags::NumBits + 1, "Incorrect array size");
@@ -538,6 +537,7 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_hidden = false;
 	m_hiddenByStealth = false;
 	m_secondMaterialPassOpacity = 0.0f;
+	m_jammingOverlayIntensity = 0.0f;
 	m_drawableFullyObscuredByShroud = false;
 
   m_receivesDynamicLights = TRUE; // a good default... overridden by one of my draw modules if at all
@@ -6084,7 +6084,7 @@ void Drawable::xfer( Xfer *xfer )
 #elif RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 7;
 #else
-	const XferVersion currentVersion = 8;
+	const XferVersion currentVersion = 9;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -6579,6 +6579,11 @@ void Drawable::xfer( Xfer *xfer )
       }
     }
   }
+
+	if( version >= 9 )
+	{
+		xfer->xferReal( &m_jammingOverlayIntensity );
+	}
 }
 
 // ------------------------------------------------------------------------------------------------

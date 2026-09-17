@@ -1913,6 +1913,103 @@ The named object is expected to carry a [TornadoUpdate](#tornadoupdate-new). Giv
 `FullStrengthTime = 0` and a `RampDownTime` matching the cannon `WidthGrowTime`, so that the tornado
 follows the beam for as long as it fires and then fades out with it.
 
+# Subdual Jamming
+
+Jamming damage that accumulates on the body like subdual damage, interacts with armor, and disables
+the unit when the threshold is reached. Healing ticks remove the damage over time.
+
+## New Damage Types
+
+Two new entries in `DamageType`:
+
+* `SUBDUAL_JAMMING` - jamming damage adjusted by armor coefficients
+* `SUBDUAL_JAMMING_UNRESISTABLE` - bypasses armor entirely (used internally for healing ticks)
+
+Neither type reduces health. Set these on a weapon's `DamageType` field.
+
+## Jam Effect
+
+When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status and
+its passengers are ordered to idle. The status clears once the jamming damage heals below the
+threshold.
+
+## ActiveBody Fields
+
+```
+Body = ActiveBody ModuleTag_Body
+  ; ...existing ActiveBody fields...
+  JammingDamageCap  = 100.0   ; max jamming damage this unit can accumulate (0 = immune)
+  JammingDamageHealRate   = 10  ; frames between each healing tick
+  JammingDamageHealAmount = 5.0 ; jamming damage removed per tick
+End
+```
+
+All three default to 0. A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
+The unit becomes jammed when accumulated jamming damage reaches `MaxHealth`. Healing begins
+automatically after the first hit.
+
+## Armor
+
+`SUBDUAL_JAMMING` interacts with armor normally. Define coefficients in `Armor.ini`:
+
+```
+Armor ChinaTankArmor
+  Armor = SUBDUAL_JAMMING 200%   ; takes twice as long to jam
+End
+```
+
+`SUBDUAL_JAMMING_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
+
+## Overlay Texture
+
+A scrolling texture can be drawn over units taking jamming damage. Its opacity tracks the
+accumulated jamming damage, so it fades in as the unit is jammed and fades out as it heals.
+Configured globally in `GameData.ini`:
+
+```
+JammingOverlayTexture  = JammingFX   ; texture name; omit or leave empty to disable
+JammingOverlayScrollU  = 0.5         ; horizontal scroll per second
+JammingOverlayScrollV  = 0.0         ; vertical scroll per second
+JammingOverlayScale    = 1.0         ; UV tiling; >1 repeats the texture more densely
+JammingOverlayColor    = R:255 G:255 B:255  ; tint multiplied into the texture
+JammingOverlayAdditive = Yes         ; Yes = additive glow, No = alpha blend
+```
+
+The effect is off by default. `Yes` suits an electrical shimmer; `No` suits an opaque layer
+such as frost, and needs the texture to carry an alpha channel.
+
+Note: a unit that is both jammed and stealth-detected shows the jamming overlay only. The
+engine carries one opacity value per render call, so the two effects cannot be layered with
+independent strengths.
+
+## Per-Unit Sounds
+
+Units can define custom jam/unjam sounds via their `UnitSpecificSounds` block:
+
+```
+Object SomeUnit
+  UnitSpecificSounds
+    SoundJammed   = JammedSoundEvent
+    SoundUnjammed = UnjammedSoundEvent
+  End
+End
+```
+
+If no per-unit sound is defined, the unit falls back to the generic building-disabled or
+vehicle-disabled sounds from `MiscAudio`.
+
+## Example Weapon
+
+```
+Weapon JammerGun
+  PrimaryDamage     = 50.0
+  PrimaryDamageRadius = 0.0
+  DamageType        = SUBDUAL_JAMMING
+  DeathType         = NORMAL
+  ; ...other weapon fields...
+End
+```
+
 # Misc Improvements
 
 ## ObjectExtend

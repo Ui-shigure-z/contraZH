@@ -645,6 +645,13 @@ public:
 	DrawableColorTint	m_colorTintTypes[TINT_STATUS_COUNT];
 	Bool	m_colorTintTypes2; // [TINT_STATUS_COUNT] ;
 
+	AsciiString m_jammingOverlayTexture;	///< empty disables the jamming overlay entirely
+	Real m_jammingOverlayScrollU;
+	Real m_jammingOverlayScrollV;
+	Real m_jammingOverlayScale;				///< UV tiling; >1 repeats the texture more densely
+	RGBColor m_jammingOverlayColor;			///< tint multiplied into the texture
+	Bool m_jammingOverlayAdditive;
+
 	Bool m_useOldMoveSpeed;
 
 	Real m_chronoDamageDisableThreshold;

@@ -64,6 +64,10 @@
 #include "WW3D2/shader.h"
 #include "WW3D2/dx8caps.h"
 #include "WW3D2/colorspace.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/mapper.h"
+#include "WW3D2/texture.h"
+#include "WW3D2/vertmaterial.h"
 
 #include "WW3D2/shdlib.h"
 
@@ -133,6 +137,10 @@ RTS3DScene::RTS3DScene()
 	heatVisionShader.Set_Depth_Mask(ShaderClass::DEPTH_WRITE_DISABLE);
 	m_heatVisionOnlyPass->Set_Material(heatVisionMtl);
 	m_heatVisionOnlyPass->Set_Shader(heatVisionShader);
+
+	// Built lazily: the asset manager does not exist yet when the scene is constructed.
+	m_jammingOverlayPass = nullptr;
+	m_jammingOverlayPassChecked = FALSE;
 
 
 //	VertexMaterialClass *frenzyMtl = NEW_REF(VertexMaterialClass,());
@@ -224,6 +232,8 @@ RTS3DScene::~RTS3DScene()
 	REF_PTR_RELEASE(m_heatVisionMaterialPass);
 
 	REF_PTR_RELEASE(m_heatVisionOnlyPass);
+
+	REF_PTR_RELEASE(m_jammingOverlayPass);
 
 	delete [] m_translucentObjectsBuffer;
 	delete [] m_nonOccludersOrOccludees;
@@ -578,6 +588,73 @@ void RTS3DScene::renderSpecificDrawables(RenderInfoClass &rinfo, Int numDrawable
 }
 
 //============================================================================
+// RTS3DScene::getJammingOverlayPass
+//=============================================================================
+/** Builds the jamming overlay pass on first use. The asset manager is created after the
+	* scene, so the texture cannot be loaded in the constructor. Returns null when disabled. */
+//=============================================================================
+MaterialPassClass *RTS3DScene::getJammingOverlayPass(void)
+{
+	if (m_jammingOverlayPassChecked)
+		return m_jammingOverlayPass;
+
+	m_jammingOverlayPassChecked = TRUE;
+
+	if (TheGlobalData->m_jammingOverlayTexture.isEmpty() || WW3DAssetManager::Get_Instance() == nullptr)
+		return nullptr;
+
+	// Get_Texture hands back a lazy handle even for a name that does not resolve, so a bad name
+	// shows up as the magenta placeholder rather than a null here.
+	TextureClass *jamTexture = WW3DAssetManager::Get_Instance()->Get_Texture(TheGlobalData->m_jammingOverlayTexture.str());
+	if (jamTexture == nullptr)
+		return nullptr;
+
+	DEBUG_ASSERTCRASH(TheGlobalData->m_jammingOverlayTexture.find('.') != nullptr,
+		("JammingOverlayTexture '%s' has no file extension; texture names need one (e.g. .tga or .dds)",
+		TheGlobalData->m_jammingOverlayTexture.str()));
+
+	m_jammingOverlayPass = NEW_REF(MaterialPassClass,());
+
+	// Lighting must stay on: with it off D3D ignores emissive, and the intensity carried by
+	// materialPassEmissiveOverride would have no effect.
+	VertexMaterialClass *jamMtl = NEW_REF(VertexMaterialClass,());
+	jamMtl->Set_Lighting(true);
+	jamMtl->Set_Ambient(0,0,0);
+	jamMtl->Set_Diffuse(0,0,0);
+	jamMtl->Set_Emissive(TheGlobalData->m_jammingOverlayColor.red,
+		TheGlobalData->m_jammingOverlayColor.green,
+		TheGlobalData->m_jammingOverlayColor.blue);
+	jamMtl->Set_UV_Source(0, 0);
+
+	// Self-driving scroll; the mapper advances itself off the render sync time.
+	LinearOffsetTextureMapperClass *jamMapper = NEW_REF(LinearOffsetTextureMapperClass,
+		(Vector2(TheGlobalData->m_jammingOverlayScrollU, TheGlobalData->m_jammingOverlayScrollV),
+		 Vector2(0.0f, 0.0f), false,
+		 Vector2(TheGlobalData->m_jammingOverlayScale, TheGlobalData->m_jammingOverlayScale), 0));
+	jamMtl->Set_Mapper(jamMapper, 0);
+	jamMapper->Release_Ref();
+
+	m_jammingOverlayPass->Set_Material(jamMtl);
+	jamMtl->Release_Ref();
+
+	// Wrap so the scrolling offset tiles instead of smearing the border pixels.
+	jamTexture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+	jamTexture->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+
+	m_jammingOverlayPass->Set_Texture(jamTexture);
+	jamTexture->Release_Ref();
+
+	// Must be the textured presets; the "Solid" variants set TEXTURING_DISABLE.
+	ShaderClass jamShader = TheGlobalData->m_jammingOverlayAdditive
+		? ShaderClass::_PresetAdditiveShader
+		: ShaderClass::_PresetAlphaShader;
+	jamShader.Set_Depth_Compare(ShaderClass::PASS_EQUAL);
+	m_jammingOverlayPass->Set_Shader(jamShader);
+
+	return m_jammingOverlayPass;
+}
+
+//============================================================================
 // RTS3DScene::renderOneObject
 //=============================================================================
 /** Renders a single drawable entity. */
@@ -714,8 +791,21 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			}
 		}
 
+		// Jamming takes the pass ahead of heat vision. materialPassEmissiveOverride is one float for
+		// the whole render call, so the two effects cannot carry independent opacities.
+		const Real jammingIntensity = draw->getJammingOverlayIntensity();
+		MaterialPassClass *jammingPass = (jammingIntensity > 0.0f) ? getJammingOverlayPass() : nullptr;
+		if (jammingPass)
+		{
+			// Alpha mode blends by alpha, so intensity has to reach that channel too.
+			rinfo.materialPassEmissiveOverride = jammingIntensity;
+			rinfo.materialPassAlphaOverride = jammingIntensity;
+			rinfo.Push_Material_Pass(jammingPass);
+
+			doExtraMaterialPop = TRUE;
+		}
 		//Apply custom render pass for any drawables with heatvision enabled
-		if (draw->getSecondMaterialPassOpacity() != 0 )
+		else if (draw->getSecondMaterialPassOpacity() != 0 )
 		{
 			rinfo.materialPassEmissiveOverride = draw->getSecondMaterialPassOpacity();
 

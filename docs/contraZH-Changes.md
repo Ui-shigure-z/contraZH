@@ -133,6 +133,13 @@ into hulks.
 A dying unit also kept catching the mouse, so a click on a corpse never reached the unit or ground
 behind it. Anything effectively dead now drops its pick bit, unless it is `ALWAYS_SELECTABLE`.
 
+## Jammed units deselect properly
+
+Setting `UNSELECTABLE` status (e.g. from a jam weapon) left the drawable in the selection list. After
+the status cleared, the unit appeared selected but the control bar did not respond, forcing the player
+to click elsewhere and reselect. `setStatus(UNSELECTABLE)` now deselects the drawable immediately.
+This changes selection state, so it affects replays.
+
 ## Portable addons no longer block building
 
 Placing a building over your own units normally shoves them out of the footprint, but a carrier

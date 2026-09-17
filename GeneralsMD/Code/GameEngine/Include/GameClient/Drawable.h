@@ -583,6 +583,10 @@ public:
 	Real getSecondMaterialPassOpacity() const { return m_secondMaterialPassOpacity; }		///< get alpha/opacity value used to render add'l  rendering pass.
 	void setSecondMaterialPassOpacity( Real op ) { m_secondMaterialPassOpacity = op; }; ///< set alpha/opacity value used to render add'l  rendering pass.
 
+	// Written authoritatively from jamming damage, so Draw() does not fade it.
+	Real getJammingOverlayIntensity() const { return m_jammingOverlayIntensity; }
+	void setJammingOverlayIntensity( Real intensity ) { m_jammingOverlayIntensity = intensity; }
+
 	// both of these assume that you are starting at one extreme 100% or 0% opacity and are trying to go to the other!! -- amit
 	void fadeOut( UnsignedInt frames );		///< fade object out...how gradually this is done is determined by frames
 	void fadeIn( UnsignedInt frames );		///< fade object in...how gradually this is done is determined by frames
@@ -769,6 +773,7 @@ private:
 #endif
 
 	Real m_secondMaterialPassOpacity;			///< drawable gets rendered again in hardware with an extra material layer
+	Real m_jammingOverlayIntensity;			///< opacity of the scrolling jamming overlay pass, 0 = no pass
 	// --------- BYTE-SIZED THINGS GO HERE
 	Byte m_selected;						///< drawable is selected or not
 

@@ -52,7 +52,6 @@ const char* const DisabledMaskType::s_bitNameList[] =
 	"DISABLED_TELEPORT",
 	"DISABLED_CHRONO",
 	"DISABLED_TELEPORT_RECOVER",
-	"DISABLED_JAMMED",
 
 	nullptr
 };
