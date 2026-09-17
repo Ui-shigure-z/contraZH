@@ -486,6 +486,26 @@ terrain fit, which is not visible on the effects that actually reach that size.
 
 # GameData.ini
 
+## Subdual damage defaults
+
+Subdual, jamming and chrono tuning no longer has to be repeated on every ActiveBody. GameData.ini
+accepts any number of `SubdualDamageDefaults` blocks, each optionally limited to a `KindOf`
+list, and values may be written against max health:
+
+```
+SubdualDamageDefaults
+  SubdualDamageCap        = MaxHealth * 2
+  SubdualDamageHealRate   = 500
+  SubdualDamageHealAmount = MaxHealth / 16.25
+End
+```
+
+An ActiveBody key still wins over the global block, an explicit `SubdualDamageCap = 0` still
+means immune, and an ActiveBody with no key at all now falls back to the global block instead
+of zero. The `MaxHealth` forms work on ActiveBody too, and ActiveBody gains `ChronoDamageHealRate`
+and `ChronoDamageHealAmount` for per-unit chrono tuning. Details in
+[GameData](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
 ## BatchParticles
 
 * `BatchParticles = No` - (Default. `Yes` draws consecutive particle systems that share a texture,

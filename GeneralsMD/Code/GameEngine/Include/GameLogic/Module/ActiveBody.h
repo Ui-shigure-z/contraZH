@@ -31,6 +31,7 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/DamageFX.h"
+#include "Common/GlobalData.h"
 #include "Common/MiscAudio.h"
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Damage.h"
@@ -52,13 +53,17 @@ public:
 	Real m_maxHealth;
 	Real m_initialHealth;
 
-	Real m_subdualDamageCap;								///< Subdual damage will never accumulate past this
-	UnsignedInt m_subdualDamageHealRate;		///< Every this often, we drop subdual damage...
-	Real m_subdualDamageHealAmount;					///< by this much.
+	// unset fields fall back to the GameData SubdualDamageDefaults blocks
+	SubdualValue m_subdualDamageCap;				///< Subdual damage will never accumulate past this
+	SubdualValue m_subdualDamageHealRate;		///< Every this often, we drop subdual damage...
+	SubdualValue m_subdualDamageHealAmount;	///< by this much.
 
-	Real m_jammingDamageCap;
-	UnsignedInt m_jammingDamageHealRate;
-	Real m_jammingDamageHealAmount;
+	SubdualValue m_jammingDamageCap;
+	SubdualValue m_jammingDamageHealRate;
+	SubdualValue m_jammingDamageHealAmount;
+
+	SubdualValue m_chronoDamageHealRate;
+	SubdualValue m_chronoDamageHealAmount;
 
 	ActiveBodyModuleData();
 
@@ -173,6 +178,8 @@ protected:
 	Bool shouldRetaliate(Object *obj);
 	Bool shouldRetaliateAgainstAggressor(Object *obj, Object *damager);
 
+	void resolveSubdualDefaults();
+
 	virtual void internalAddSubdualDamage( Real delta );
 	virtual void internalAddChronoDamage( Real delta );
 	virtual void internalAddJammingDamage( Real delta );
@@ -191,6 +198,16 @@ private:
 	Real									m_currentChronoDamage;	///< Same as Subdual, but for CHRONO_GUN
 	Real									m_currentJammingDamage;
 	Bool									m_jammingSetUnselectable;	///< jam set UNSELECTABLE, so unjam may clear it
+
+	// resolved from the module data or GameData at creation; evaluated against the live max health
+	SubdualValue					m_subdualDamageCap;
+	SubdualValue					m_subdualDamageHealRate;
+	SubdualValue					m_subdualDamageHealAmount;
+	SubdualValue					m_jammingDamageCap;
+	SubdualValue					m_jammingDamageHealRate;
+	SubdualValue					m_jammingDamageHealAmount;
+	SubdualValue					m_chronoDamageHealRate;
+	SubdualValue					m_chronoDamageHealAmount;
 
 	BodyDamageType				m_curDamageState;				///< last known damage state
 	

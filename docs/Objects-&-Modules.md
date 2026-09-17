@@ -1947,9 +1947,16 @@ Body = ActiveBody ModuleTag_Body
 End
 ```
 
-All three default to 0. A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
+A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
 The unit becomes jammed when accumulated jamming damage reaches `MaxHealth`. Healing begins
 automatically after the first hit.
+
+Any of these keys, and the `SubdualDamage*` trio, may be omitted. An omitted key takes its value
+from the matching `SubdualDamageDefaults` block in GameData.ini, and is 0 if no block matches.
+Cap and HealAmount keys accept `MaxHealth * 2` or `MaxHealth / 16.25` as well as a plain number,
+evaluated against the unit's current max health. ActiveBody also accepts `ChronoDamageHealRate`
+and `ChronoDamageHealAmount` in the same forms, which override the global chrono keys for that
+unit. See [Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
 
 ## Armor
 

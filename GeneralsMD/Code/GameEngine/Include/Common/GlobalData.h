@@ -46,6 +46,7 @@ enum _TerrainLOD CPP_11(: Int);
 class CommandLine;
 class GlobalData;
 class INI;
+class ThingTemplate;
 class WeaponBonusSet;
 enum BodyDamageType CPP_11(: Int);
 enum AIDebugOptions CPP_11(: Int);
@@ -73,6 +74,38 @@ class CommandLineData
 	Bool m_hasParsedCommandLineForStartup;
 	Bool m_hasParsedCommandLineForEngineInit;
 	BoolVector m_parsedArguments;
+};
+
+//-------------------------------------------------------------------------------------------------
+// A subdual tuning value: a plain number, or a multiple of the unit's max health ("MaxHealth * 2").
+// Unset until an INI key writes it, so callers can tell "absent" from an explicit zero.
+struct SubdualValue
+{
+	Real m_flat;
+	Real m_maxHealthFactor;
+	Bool m_isSet;
+
+	SubdualValue() : m_flat(0.0f), m_maxHealthFactor(0.0f), m_isSet(FALSE) { }
+
+	Real evaluate( Real maxHealth ) const { return m_flat + maxHealth * m_maxHealthFactor; }
+
+	static void parseFromINI( INI* ini, void* instance, void* store, const void* userData );
+	static void parseDurationFromINI( INI* ini, void* instance, void* store, const void* userData );
+};
+
+//-------------------------------------------------------------------------------------------------
+// One GameData SubdualDamageDefaults block; an empty KindOf matches every object
+struct SubdualDamageDefaults
+{
+	KindOfMaskType m_kindOf;
+	SubdualValue m_subdualDamageCap;
+	SubdualValue m_subdualDamageHealRate;
+	SubdualValue m_subdualDamageHealAmount;
+	SubdualValue m_jammingDamageCap;
+	SubdualValue m_jammingDamageHealRate;
+	SubdualValue m_jammingDamageHealAmount;
+	SubdualValue m_chronoDamageHealRate;
+	SubdualValue m_chronoDamageHealAmount;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -658,6 +691,11 @@ public:
 	UnsignedInt m_chronoDamageHealRate;
 	Real m_chronoDamageHealAmount;
 
+	std::vector<SubdualDamageDefaults> m_subdualDamageDefaults;	///< later blocks win over earlier ones
+
+	/// the last block matching the template's KindOf that sets the given field, or nullptr
+	const SubdualValue* findSubdualDefault( const ThingTemplate* tmpl, SubdualValue SubdualDamageDefaults::*field ) const;
+
 	Real m_chronoDisableAlphaStart;
 	Real m_chronoDisableAlphaEnd;
 
@@ -711,6 +749,7 @@ private:
 
 	static void setColorTintEntry(DrawableColorTint* arr, int index, RGBColor color, RGBColor colorInfantry, UnsignedInt attackFrames, UnsignedInt decayFrames);
 	static void parseTintStatusType(INI* ini, void* instance, void* store, const void* userData);
+	static void parseSubdualDamageDefaults(INI* ini, void* instance, void* store, const void* userData);
 
 };
 

@@ -128,12 +128,6 @@ ActiveBodyModuleData::ActiveBodyModuleData()
 {
 	m_maxHealth = 0;
 	m_initialHealth = 0;
-	m_subdualDamageCap = 0;
-	m_subdualDamageHealRate = 0;
-	m_subdualDamageHealAmount = 0;
-	m_jammingDamageCap = 0;
-	m_jammingDamageHealRate = 0;
-	m_jammingDamageHealAmount = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -147,12 +141,14 @@ void ActiveBodyModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "MaxHealth",						INI::parseReal,						nullptr,		offsetof( ActiveBodyModuleData, m_maxHealth ) },
 		{ "InitialHealth",				INI::parseReal,						nullptr,		offsetof( ActiveBodyModuleData, m_initialHealth ) },
 
-		{ "SubdualDamageCap",					INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageCap ) },
-		{ "SubdualDamageHealRate",		INI::parseDurationUnsignedInt,	nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealRate ) },
-		{ "SubdualDamageHealAmount",	INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealAmount ) },
-		{ "JammingDamageCap",					INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageCap ) },
-		{ "JammingDamageHealRate",		INI::parseDurationUnsignedInt,	nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealRate ) },
-		{ "JammingDamageHealAmount",	INI::parseReal,									nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealAmount ) },
+		{ "SubdualDamageCap",					SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageCap ) },
+		{ "SubdualDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealRate ) },
+		{ "SubdualDamageHealAmount",	SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_subdualDamageHealAmount ) },
+		{ "JammingDamageCap",					SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageCap ) },
+		{ "JammingDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealRate ) },
+		{ "JammingDamageHealAmount",	SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealAmount ) },
+		{ "ChronoDamageHealRate",			SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_chronoDamageHealRate ) },
+		{ "ChronoDamageHealAmount",		SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_chronoDamageHealAmount ) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
@@ -183,6 +179,8 @@ ActiveBody::ActiveBody( Thing *thing, const ModuleData* moduleData ) :
 	m_prevHealth = getActiveBodyModuleData()->m_initialHealth;
 	m_maxHealth = getActiveBodyModuleData()->m_maxHealth;
 	m_initialHealth = getActiveBodyModuleData()->m_initialHealth;
+
+	resolveSubdualDefaults();
 
 	// force an initially-valid armor setup
 	validateArmorAndDamageFX();
@@ -1340,18 +1338,59 @@ void ActiveBody::internalChangeHealth( Real delta, Bool changeModelCondition)
 }
 
 //-------------------------------------------------------------------------------------------------
+// Module data wins, then the last matching GameData block, else the fallback
+static void resolveSubdualValue( SubdualValue& out, const SubdualValue& moduleValue, const ThingTemplate* tmpl,
+	SubdualValue SubdualDamageDefaults::*field, const SubdualValue& fallback )
+{
+	if (moduleValue.m_isSet)
+	{
+		out = moduleValue;
+		return;
+	}
+
+	const SubdualValue* global = TheGlobalData ? TheGlobalData->findSubdualDefault(tmpl, field) : nullptr;
+	out = global ? *global : fallback;
+}
+
+//-------------------------------------------------------------------------------------------------
+void ActiveBody::resolveSubdualDefaults()
+{
+	const ActiveBodyModuleData* data = getActiveBodyModuleData();
+	const ThingTemplate* tmpl = getObject()->getTemplate();
+	const SubdualValue none;
+
+	resolveSubdualValue(m_subdualDamageCap,        data->m_subdualDamageCap,        tmpl, &SubdualDamageDefaults::m_subdualDamageCap,        none);
+	resolveSubdualValue(m_subdualDamageHealRate,   data->m_subdualDamageHealRate,   tmpl, &SubdualDamageDefaults::m_subdualDamageHealRate,   none);
+	resolveSubdualValue(m_subdualDamageHealAmount, data->m_subdualDamageHealAmount, tmpl, &SubdualDamageDefaults::m_subdualDamageHealAmount, none);
+	resolveSubdualValue(m_jammingDamageCap,        data->m_jammingDamageCap,        tmpl, &SubdualDamageDefaults::m_jammingDamageCap,        none);
+	resolveSubdualValue(m_jammingDamageHealRate,   data->m_jammingDamageHealRate,   tmpl, &SubdualDamageDefaults::m_jammingDamageHealRate,   none);
+	resolveSubdualValue(m_jammingDamageHealAmount, data->m_jammingDamageHealAmount, tmpl, &SubdualDamageDefaults::m_jammingDamageHealAmount, none);
+
+	// the old global chrono keys stay as the default of last resort
+	SubdualValue chronoRate;
+	SubdualValue chronoAmount;
+	if (TheGlobalData)
+	{
+		chronoRate.m_flat = (Real)TheGlobalData->m_chronoDamageHealRate;
+		chronoAmount.m_maxHealthFactor = TheGlobalData->m_chronoDamageHealAmount;
+	}
+	resolveSubdualValue(m_chronoDamageHealRate,   data->m_chronoDamageHealRate,   tmpl, &SubdualDamageDefaults::m_chronoDamageHealRate,   chronoRate);
+	resolveSubdualValue(m_chronoDamageHealAmount, data->m_chronoDamageHealAmount, tmpl, &SubdualDamageDefaults::m_chronoDamageHealAmount, chronoAmount);
+}
+
+//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void ActiveBody::internalAddSubdualDamage( Real delta )
 {
-	const ActiveBodyModuleData *data = getActiveBodyModuleData();
+	Real cap = m_subdualDamageCap.evaluate(m_maxHealth);
 
 	m_currentSubdualDamage += delta;
 #if RETAIL_COMPATIBLE_CRC
-	m_currentSubdualDamage = min(m_currentSubdualDamage, data->m_subdualDamageCap);
+	m_currentSubdualDamage = min(m_currentSubdualDamage, cap);
 #else
 	// TheSuperHackers @bugfix Stubbjax 25/01/2026 Subdual damage can no longer go negative, which
 	// stops weak subdual damage + rapid healing from negatively stacking subdual damage over time.
-	m_currentSubdualDamage = clamp(0.0f, m_currentSubdualDamage, data->m_subdualDamageCap);
+	m_currentSubdualDamage = clamp(0.0f, m_currentSubdualDamage, cap);
 #endif
 }
 
@@ -1370,7 +1409,7 @@ void ActiveBody::internalAddChronoDamage(Real delta)
 Bool ActiveBody::canBeSubdued() const
 {
 	// Any body with subdue listings can be subdued.
-	return getActiveBodyModuleData()->m_subdualDamageCap > 0;
+	return m_subdualDamageCap.evaluate(m_maxHealth) > 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1461,17 +1500,15 @@ void ActiveBody::onSubdualChronoChange( Bool isNowSubdued )
 //-------------------------------------------------------------------------------------------------
 void ActiveBody::internalAddJammingDamage( Real delta )
 {
-	const ActiveBodyModuleData *data = getActiveBodyModuleData();
-
 	m_currentJammingDamage += delta;
-	m_currentJammingDamage = clamp(0.0f, m_currentJammingDamage, data->m_jammingDamageCap);
+	m_currentJammingDamage = clamp(0.0f, m_currentJammingDamage, m_jammingDamageCap.evaluate(m_maxHealth));
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 Bool ActiveBody::canBeJammed() const
 {
-	return getActiveBodyModuleData()->m_jammingDamageCap > 0;
+	return m_jammingDamageCap.evaluate(m_maxHealth) > 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1531,14 +1568,14 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 //-------------------------------------------------------------------------------------------------
 UnsignedInt ActiveBody::getJammingDamageHealRate() const
 {
-	return getActiveBodyModuleData()->m_jammingDamageHealRate;
+	return (UnsignedInt)m_jammingDamageHealRate.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 Real ActiveBody::getJammingDamageHealAmount() const
 {
-	return getActiveBodyModuleData()->m_jammingDamageHealAmount;
+	return m_jammingDamageHealAmount.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1665,14 +1702,14 @@ Real ActiveBody::getMaxHealth() const
 //-------------------------------------------------------------------------------------------------
 UnsignedInt ActiveBody::getSubdualDamageHealRate() const
 {
-	return getActiveBodyModuleData()->m_subdualDamageHealRate;
+	return (UnsignedInt)m_subdualDamageHealRate.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 Real ActiveBody::getSubdualDamageHealAmount() const
 {
-	return getActiveBodyModuleData()->m_subdualDamageHealAmount;
+	return m_subdualDamageHealAmount.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1686,15 +1723,14 @@ Bool ActiveBody::hasAnySubdualDamage() const
 //-------------------------------------------------------------------------------------------------
 UnsignedInt ActiveBody::getChronoDamageHealRate() const
 {
-	return TheGlobalData->m_chronoDamageHealRate;
+	return (UnsignedInt)m_chronoDamageHealRate.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 Real ActiveBody::getChronoDamageHealAmount() const
 {
-	// DEBUG_LOG(("ActiveBody::getChronoDamageHealAmount() - maxHealth = %f\n", m_maxHealth));
-	return m_maxHealth * TheGlobalData->m_chronoDamageHealAmount;
+	return m_chronoDamageHealAmount.evaluate(m_maxHealth);
 }
 
 //-------------------------------------------------------------------------------------------------

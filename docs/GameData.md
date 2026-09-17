@@ -45,6 +45,60 @@ Tint Colors:
 * `ChronoDamageParticleSystemLarge = ChronoSparksLarge`   ; ParticleSystem applied to STRUCTURES. (BOX volume scales to unit geometry)
 * `ChronoDamageParticleSystemMedium = ChronoSparksMedium`  ; ParticleSystem applied to everyting else. (BOX volume scales to unit geometry)
 * `ChronoDamageParticleSystemSmall = ChronoSparksSmall`   ; ParticleSystem applied to INFANTRY. (BOX volume scales to unit geometry)
+
+`ChronoDamageHealRate` and `ChronoDamageHealAmountPercent` are the default of last resort. A
+`SubdualDamageDefaults` block or an object's own ActiveBody can override both (see below).
+
+## Subdual Damage Defaults
+
+Global defaults for the subdual, jamming and chrono values that otherwise repeat on every
+ActiveBody. Any number of blocks may appear; each one can be restricted to a KindOf.
+
+```
+SubdualDamageDefaults
+  SubdualDamageCap        = MaxHealth * 2
+  SubdualDamageHealRate   = 500
+  SubdualDamageHealAmount = MaxHealth / 16.25
+  JammingDamageCap        = MaxHealth * 2
+  JammingDamageHealRate   = 500
+  JammingDamageHealAmount = MaxHealth / 16.25
+  ChronoDamageHealRate    = 500
+  ChronoDamageHealAmount  = MaxHealth * 0.1
+End
+
+SubdualDamageDefaults
+  KindOf                  = PROJECTILE
+  SubdualDamageCap        = MaxHealth
+  SubdualDamageHealRate   = 1000
+End
+```
+
+Every key is optional. `KindOf` takes a list of KindOf bits and matches an object that has any of
+them; a block without `KindOf` matches every object. Blocks are searched from last to first, so
+put general blocks first and specific ones after them. A map's own `GameData` block appends its
+`SubdualDamageDefaults` after the global ones and therefore wins.
+
+Cap and HealAmount values take one of these forms:
+
+* `1000` - (A fixed value.)
+* `MaxHealth` - (The unit's max health.)
+* `MaxHealth * 2` - (A multiple of max health.)
+* `MaxHealth / 16.25` - (A fraction of max health.)
+
+`MaxHealth` is the unit's max health at the moment it is used, so a cap written as `MaxHealth * 2`
+grows with veterancy health bonuses just as the subdue threshold does. HealRate values are
+durations in milliseconds as before.
+
+Precedence for each value on each unit:
+
+1. The value written on the unit's ActiveBody, if present. An explicit `SubdualDamageCap = 0`
+   still means immune.
+2. The last matching `SubdualDamageDefaults` block that sets that value.
+3. Zero for subdual and jamming. For chrono, `ChronoDamageHealRate` and
+   `ChronoDamageHealAmountPercent` from GameData.
+
+The same value forms are accepted on ActiveBody itself, and ActiveBody also accepts
+`ChronoDamageHealRate` and `ChronoDamageHealAmount`; see [ActiveBody subdual fields](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#activebody-fields).
   
 ## Water Depth Terrain Lighting
 

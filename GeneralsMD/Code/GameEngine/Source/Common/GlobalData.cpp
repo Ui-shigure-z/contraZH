@@ -51,6 +51,7 @@
 #include "Common/INI.h"
 #include "Common/Registry.h"
 #include "Common/OptionPreferences.h"
+#include "Common/ThingTemplate.h"
 #include "Common/version.h"
 
 #include "GameLogic/AI.h"
@@ -85,6 +86,108 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 
 	INI::parseUnsignedInt(ini, instance, &tintEntry->attackFrames, NULL);
 	INI::parseUnsignedInt(ini, instance, &tintEntry->decayFrames, NULL);
+}
+
+//-------------------------------------------------------------------------------------------------
+// Accepts "1000", "MaxHealth", "MaxHealth * 2" or "MaxHealth / 16.25", with or without spaces
+/*static*/ void SubdualValue::parseFromINI( INI* ini, void* /*instance*/, void* store, const void* /*userData*/ )
+{
+	AsciiString text;
+	for (const char* token = ini->getNextTokenOrNull(); token; token = ini->getNextTokenOrNull())
+	{
+		text.concat(token);
+	}
+
+	static const char* MAX_HEALTH = "MaxHealth";
+	const size_t maxHealthLen = strlen(MAX_HEALTH);
+	const char* expr = text.str();
+
+	SubdualValue* value = (SubdualValue*)store;
+	value->m_flat = 0.0f;
+	value->m_maxHealthFactor = 0.0f;
+	value->m_isSet = TRUE;
+
+	if (strnicmp(expr, MAX_HEALTH, maxHealthLen) != 0)
+	{
+		value->m_flat = INI::scanReal(expr);
+		return;
+	}
+
+	const char* rest = expr + maxHealthLen;
+	if (*rest == '\0')
+	{
+		value->m_maxHealthFactor = 1.0f;
+	}
+	else if (*rest == '*')
+	{
+		value->m_maxHealthFactor = INI::scanReal(rest + 1);
+	}
+	else if (*rest == '/')
+	{
+		Real divisor = INI::scanReal(rest + 1);
+		if (divisor == 0.0f)
+		{
+			throw INI_INVALID_DATA;
+		}
+		value->m_maxHealthFactor = 1.0f / divisor;
+	}
+	else
+	{
+		throw INI_INVALID_DATA;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/*static*/ void SubdualValue::parseDurationFromINI( INI* ini, void* instance, void* store, const void* userData )
+{
+	UnsignedInt frames = 0;
+	INI::parseDurationUnsignedInt(ini, instance, &frames, userData);
+
+	SubdualValue* value = (SubdualValue*)store;
+	value->m_flat = (Real)frames;
+	value->m_maxHealthFactor = 0.0f;
+	value->m_isSet = TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/*static*/ void GlobalData::parseSubdualDamageDefaults(INI* ini, void* /*instance*/, void* store, const void* /*userData*/)
+{
+	static const FieldParse fieldParse[] =
+	{
+		{ "KindOf",									KindOfMaskType::parseFromINI,			nullptr,	offsetof( SubdualDamageDefaults, m_kindOf ) },
+		{ "SubdualDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageCap ) },
+		{ "SubdualDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealRate ) },
+		{ "SubdualDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealAmount ) },
+		{ "JammingDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageCap ) },
+		{ "JammingDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealRate ) },
+		{ "JammingDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealAmount ) },
+		{ "ChronoDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealRate ) },
+		{ "ChronoDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealAmount ) },
+		{ nullptr, nullptr, nullptr, 0 }
+	};
+
+	std::vector<SubdualDamageDefaults>* rules = (std::vector<SubdualDamageDefaults>*)store;
+	rules->push_back(SubdualDamageDefaults());
+	ini->initFromINI(&rules->back(), fieldParse);
+}
+
+//-------------------------------------------------------------------------------------------------
+const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, SubdualValue SubdualDamageDefaults::*field ) const
+{
+	for (std::vector<SubdualDamageDefaults>::const_reverse_iterator it = m_subdualDamageDefaults.rbegin(); it != m_subdualDamageDefaults.rend(); ++it)
+	{
+		const SubdualValue& value = (*it).*field;
+		if (!value.m_isSet)
+		{
+			continue;
+		}
+		if (it->m_kindOf.any() && !tmpl->isAnyKindOf(it->m_kindOf))
+		{
+			continue;
+		}
+		return &value;
+	}
+	return nullptr;
 }
 
 
@@ -593,6 +696,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{"ChronoDamageDisableThreshold", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageDisableThreshold)},
 	{"ChronoDamageHealRate", INI::parseDurationUnsignedInt, NULL, offsetof(GlobalData, m_chronoDamageHealRate)},
 	{"ChronoDamageHealAmountPercent", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageHealAmount) },
+	{ "SubdualDamageDefaults",	GlobalData::parseSubdualDamageDefaults,	nullptr,	offsetof( GlobalData, m_subdualDamageDefaults ) },
 	{"ChronoDamageOpacityStart", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaStart) },
 	{"ChronoDamageOpacityEnd", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaEnd) },
 
