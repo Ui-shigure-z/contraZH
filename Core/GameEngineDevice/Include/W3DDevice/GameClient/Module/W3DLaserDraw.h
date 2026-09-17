@@ -37,6 +37,7 @@
 class SegmentedLineClass;
 class TextureClass;
 class W3DDynamicLight;
+class LaserUpdate;
 
 enum { MAX_LASER_GROUND_LIGHTS = 8 };
 
@@ -111,5 +112,6 @@ protected:
 
 	void acquireGroundLights( Int count );
 	void releaseGroundLights();
+	void updateGroundLights( LaserUpdate *update );
 
 };

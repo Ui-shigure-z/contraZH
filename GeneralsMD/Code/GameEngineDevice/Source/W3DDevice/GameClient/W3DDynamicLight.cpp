@@ -36,6 +36,7 @@ LightClass(LightClass::POINT)
 	m_priorEnable = false;
 	m_enabled = true;
 	m_terrainOnly = false;
+	m_owner = nullptr;
 
 }
 
