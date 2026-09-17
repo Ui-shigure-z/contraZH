@@ -486,6 +486,7 @@ enum { MAX_BUILD_QUEUE_BUTTONS = 9 };// physical button count for the build queu
 enum { MAX_SPECIAL_POWER_SHORTCUTS = 32};
 enum { MAX_SMART_SELECTION_BUTTONS = 16 };	///< TheSuperHackers @feature per type cameos above the command bar
 enum { MAX_COMMAND_GROUP_BUTTONS = 10 };		///< TheSuperHackers @feature one cameo per hotkey squad, under the smart selection row
+enum { CAMEO_SCALE_PERCENT = 60 };								///< cameo size as a share of a command button
 enum { CAMEO_ROW_GAP = 2 };									///< pixels between cameos in a row, and between the rows
 enum { MAX_CAMEO_COUNT_BADGE = 999 };				///< a count past this gets no badge, it would not fit
 class CommandSet : public Overridable
@@ -967,7 +968,6 @@ protected:
 	// the following methods are for the smart selection row and the command group row under it
 	GameWindow *createCameoRow( GameWinSystemFunc systemFunc, Int slotCount, Bool rightClick, GameWindow **buttons );
 	static const Image *getCameoImage( const ThingTemplate *thingTemplate );
-	static const ThingTemplate *getCameoType( const Object *obj );
 	Int getCameoRowWidth( Int cameoCount ) const;
 	void initSmartSelectionBar( const ICoord2D &commandButtonSize );
 	void destroySmartSelectionBar();
@@ -1049,7 +1049,7 @@ protected:
 
 	struct SmartSelectionGroup
 	{
-		const ThingTemplate *thingTemplate;
+		const ThingTemplate *thingTemplate;	///< always a reskin root, so reskins share a group
 		Int count;
 		ObjectID objectID;	///< the one member when count is 1, else INVALID_ID
 	};

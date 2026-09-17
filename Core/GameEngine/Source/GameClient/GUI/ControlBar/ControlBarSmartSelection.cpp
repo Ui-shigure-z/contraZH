@@ -172,19 +172,6 @@ const Image *ControlBar::getCameoImage( const ThingTemplate *thingTemplate )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** The type a cameo stands for. Reskins count as the type they were reskinned from. */
-//-------------------------------------------------------------------------------------------------
-const ThingTemplate *ControlBar::getCameoType( const Object *obj )
-{
-	const ThingTemplate *thingTemplate = obj->getTemplate();
-	while( thingTemplate->getReskinnedFrom() )
-	{
-		thingTemplate = thingTemplate->getReskinnedFrom();
-	}
-	return thingTemplate;
-}
-
-//-------------------------------------------------------------------------------------------------
 Int ControlBar::getCameoRowWidth( Int cameoCount ) const
 {
 	return cameoCount * ( m_smartSelectionButtonSize.x + CAMEO_ROW_GAP ) - CAMEO_ROW_GAP;
@@ -194,8 +181,8 @@ Int ControlBar::getCameoRowWidth( Int cameoCount ) const
 //-------------------------------------------------------------------------------------------------
 void ControlBar::initSmartSelectionBar( const ICoord2D &commandButtonSize )
 {
-	m_smartSelectionButtonSize.x = commandButtonSize.x * 3 / 5;
-	m_smartSelectionButtonSize.y = commandButtonSize.y * 3 / 5;
+	m_smartSelectionButtonSize.x = commandButtonSize.x * CAMEO_SCALE_PERCENT / 100;
+	m_smartSelectionButtonSize.y = commandButtonSize.y * CAMEO_SCALE_PERCENT / 100;
 	if( m_smartSelectionButtonSize.x <= 0 || m_smartSelectionButtonSize.y <= 0 )
 	{
 		return;
@@ -296,7 +283,7 @@ Bool ControlBar::isSmartSelectionFocused( const Object *obj ) const
 		return true;
 
 	//ShigureUi 14/09/2026 If focus on a type
-	if (count > 1 && getCameoType( obj ) == m_smartSelectionGroups[m_smartSelectionActive].thingTemplate)
+	if (count > 1 && obj->getTemplate()->getReskinRoot() == m_smartSelectionGroups[m_smartSelectionActive].thingTemplate)
 		return true;
 	
 	return false;
@@ -342,7 +329,7 @@ void ControlBar::populateSmartSelection()
 			continue;
 		}
 
-		const ThingTemplate *thingTemplate = getCameoType( obj );
+		const ThingTemplate *thingTemplate = obj->getTemplate()->getReskinRoot();
 		size_t g = 0;
 		for( ; g < groups.size(); g++ )
 		{
@@ -494,7 +481,7 @@ void ControlBar::updateSmartSelection()
 			GadgetButtonDrawHealthBar( m_smartSelectionButtons[ g ], body->getHealth() / body->getMaxHealth() );
 		}
 		Int clipSize, ammoInClip;
-		if( obj->getAmmoPipShowingInfo( clipSize, ammoInClip ) && clipSize > 0 )
+		if( obj->getAmmoPipShowingInfo( clipSize, ammoInClip ) )
 		{
 			GadgetButtonDrawAmmoBar( m_smartSelectionButtons[ g ], ammoInClip, clipSize );
 		}
@@ -645,7 +632,7 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 		{
 			continue;
 		}
-		const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : getCameoType( obj ) == group.thingTemplate;
+		const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate()->getReskinRoot() == group.thingTemplate;
 		if( inGroup != keepGroup )
 		{
 			members.push_back( *it );
@@ -726,7 +713,7 @@ void ControlBar::updateFocusGroup()
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
 		Object *obj = ( *it )->getObject();
-		if( obj && getCameoType( obj ) == focus )
+		if( obj && obj->getTemplate()->getReskinRoot() == focus )
 		{
 			msg->appendObjectIDArgument( obj->getID() );
 		}

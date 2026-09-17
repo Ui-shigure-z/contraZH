@@ -1631,6 +1631,19 @@ UnsignedInt ThingTemplate::getMaxSimultaneousOfType() const
 
 
 //-------------------------------------------------------------------------------------------------
+/** The template a reskin chain starts from, or this when not a reskin. */
+//-------------------------------------------------------------------------------------------------
+const ThingTemplate* ThingTemplate::getReskinRoot() const
+{
+	const ThingTemplate* tt = this;
+	while( tt->m_reskinnedFrom )
+	{
+		tt = tt->m_reskinnedFrom;
+	}
+	return tt;
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool ThingTemplate::isEquivalentTo(const ThingTemplate* tt) const
 {
 	// sanity

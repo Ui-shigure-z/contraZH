@@ -660,7 +660,7 @@ public:
 	void setCopiedFromDefaultExtended();
 
 	void setReskinnedFrom(const ThingTemplate* tt) { DEBUG_ASSERTCRASH(m_reskinnedFrom == nullptr, ("should be null")); m_reskinnedFrom = tt; }
-	const ThingTemplate* getReskinnedFrom() const { return m_reskinnedFrom; }
+	const ThingTemplate* getReskinRoot() const;
 
 	Bool isPrerequisite() const { return m_isPrerequisite; }
 

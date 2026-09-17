@@ -180,11 +180,11 @@ static void drawButtonCountdown( GameWindow *window, Int seconds )
 		GameMakeColor( 255, 255, 255, 255 ), GameMakeColor( 0, 0, 0, 255 ) );
 }
 
-// drawButtonHealthBar ========================================================
-/** TheSuperHackers @feature A thin health bar along the bottom of a cameo, green through
-	* yellow to red like the in world bar. */
+// drawButtonBar ==============================================================
+/** A thin bar stacked up from the bottom of a cameo, row 0 lowest. The fill covers filled of
+	* segments, with a divider between segments. */
 //=============================================================================
-static void drawButtonHealthBar( GameWindow *window, Real ratio )
+static void drawButtonBar( GameWindow *window, Int row, Int filled, Int segments, Color frameColor, Color fillColor )
 {
 	ICoord2D origin, size;
 	window->winGetScreenPosition( &origin.x, &origin.y );
@@ -193,11 +193,27 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 	const Int inset = 2;
 	const Int frameHeight = 5;
 	const Int barX = origin.x + inset;
-	const Int barY = origin.y + size.y - inset - frameHeight;
-	const Int barWidth = size.x - inset * 2;
-	if( barWidth <= 2 )
+	const Int barY = origin.y + size.y - inset - frameHeight * ( row + 1 );
+	const Int innerWidth = size.x - inset * 2 - 2;
+	if( innerWidth <= 0 )
 		return;
 
+	TheDisplay->beginBatch();
+	TheDisplay->drawOpenRect( barX, barY, innerWidth + 2, frameHeight, 1.0f, frameColor );
+	TheDisplay->drawFillRect( barX + 1, barY + 1, innerWidth * filled / segments, frameHeight - 2, fillColor );
+	for( Int i = 1; i < segments; i++ )
+	{
+		TheDisplay->drawFillRect( barX + 1 + innerWidth * i / segments, barY + 1, 1, frameHeight - 2, frameColor );
+	}
+	TheDisplay->endBatch();
+}
+
+// drawButtonHealthBar ========================================================
+/** TheSuperHackers @feature Health along the bottom of a cameo, green through yellow to red
+	* like the in world bar. */
+//=============================================================================
+static void drawButtonHealthBar( GameWindow *window, Real ratio )
+{
 	Real red, green;
 	if( ratio >= 0.5f )
 	{
@@ -210,37 +226,17 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 		green = ratio / 0.5f;
 	}
 
-	TheDisplay->drawOpenRect( barX, barY, barWidth, frameHeight, 1.0f, GameMakeColor( red * 128, green * 128, 0, 255 ) );
-	TheDisplay->drawFillRect( barX + 1, barY + 1, ( barWidth - 2 ) * ratio, frameHeight - 2, GameMakeColor( red * 255, green * 255, 0, 255 ) );
+	// a thousand steps keeps the float ratio's resolution through the integer fill
+	drawButtonBar( window, 0, (Int)( ratio * 1000 ), 1000,
+		GameMakeColor( red * 128, green * 128, 0, 255 ), GameMakeColor( red * 255, green * 255, 0, 255 ) );
 }
 
 // drawButtonAmmoBar ==========================================================
-/** A light orange clip bar stacked above the health bar, one segment per shot. */
+/** A light orange clip bar above the health bar, one segment per shot. */
 //=============================================================================
 static void drawButtonAmmoBar( GameWindow *window, Int ammoInClip, Int clipSize )
 {
-	ICoord2D origin, size;
-	window->winGetScreenPosition( &origin.x, &origin.y );
-	window->winGetSize( &size.x, &size.y );
-
-	const Int inset = 2;
-	const Int frameHeight = 5;
-	const Int barX = origin.x + inset;
-	const Int barY = origin.y + size.y - inset - frameHeight * 2;
-	const Int barWidth = size.x - inset * 2;
-	if( barWidth <= 2 )
-		return;
-
-	const Color frameColor = GameMakeColor( 128, 88, 40, 255 );
-	const Real ratio = (Real)ammoInClip / (Real)clipSize;
-	TheDisplay->drawOpenRect( barX, barY, barWidth, frameHeight, 1.0f, frameColor );
-	TheDisplay->drawFillRect( barX + 1, barY + 1, ( barWidth - 2 ) * ratio, frameHeight - 2, GameMakeColor( 255, 176, 80, 255 ) );
-
-	for( Int i = 1; i < clipSize; i++ )
-	{
-		const Int dividerX = barX + 1 + ( barWidth - 2 ) * i / clipSize;
-		TheDisplay->drawFillRect( dividerX, barY + 1, 1, frameHeight - 2, frameColor );
-	}
+	drawButtonBar( window, 1, ammoInClip, clipSize, GameMakeColor( 128, 88, 40, 255 ), GameMakeColor( 255, 176, 80, 255 ) );
 }
 
 // drawButtonCornerLetter =====================================================

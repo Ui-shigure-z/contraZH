@@ -134,7 +134,7 @@ void ControlBar::updateCommandGroupBar()
 			typeCounts.clear();
 			for( size_t m = 0; m < members.size(); m++ )
 			{
-				typeCounts[ getCameoType( members[ m ] ) ]++;
+				typeCounts[ members[ m ]->getTemplate()->getReskinRoot() ]++;
 			}
 			CommandGroupEntry entry;
 			entry.group = group;
