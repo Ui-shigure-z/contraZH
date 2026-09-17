@@ -35,6 +35,8 @@ LightClass(LightClass::POINT)
 
 	m_priorEnable = false;
 	m_enabled = true;
+	m_terrainOnly = false;
+	m_owner = nullptr;
 
 }
 
@@ -58,7 +60,7 @@ void W3DDynamicLight::On_Frame_Update()
 	}	else {
 		m_curDecayFrameCount--;
 		if (m_curDecayFrameCount == 0) {
-			m_enabled = false;
+			setEnabled(false);
 			return;
 		}
 		factor = m_curDecayFrameCount/(Real)m_decayFrameCount;

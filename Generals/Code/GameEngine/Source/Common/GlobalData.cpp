@@ -546,6 +546,10 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "ExtraLogging",								INI::parseBool,				nullptr,			offsetof( GlobalData, m_extraLogging ) },
 #endif
 
+	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
+	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
+	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
+
 	{ nullptr,					nullptr,						nullptr,						0 }
 
 };
@@ -575,6 +579,10 @@ GlobalData::GlobalData()
   m_useBloom = FALSE;
   m_bloomStrength = 0.5f;
   m_bloomDebug = FALSE;
+  m_laserRef = FALSE;
+  m_laserGlowColor = 0;
+  m_laserGlowRadius = 0.0f;
+  m_laserGlowIntensity = 0.7f;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_smartSelectionUseMouse = TRUE;
@@ -1250,6 +1258,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useBloom = optionPref.getBloomEnabled();
 	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
 	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
+	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.

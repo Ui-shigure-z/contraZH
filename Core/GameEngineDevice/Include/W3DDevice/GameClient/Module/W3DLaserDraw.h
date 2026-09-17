@@ -36,6 +36,10 @@
 
 class SegmentedLineClass;
 class TextureClass;
+class W3DDynamicLight;
+class LaserUpdate;
+
+enum { MAX_LASER_GROUND_LIGHTS = 8 };
 
 class W3DLaserDrawModuleData : public ModuleData
 {
@@ -59,6 +63,9 @@ public:
 	UnsignedInt m_gridColumnsTotal;
 	Bool m_useHouseColorInner;
 	Bool m_useHouseColorOuter;
+	Color m_groundGlowColor;
+	Real m_groundGlowRadius;
+	Real m_groundGlowIntensity;
 
 	W3DLaserDrawModuleData();
 	virtual ~W3DLaserDrawModuleData() override;
@@ -83,7 +90,7 @@ public:
 	virtual void releaseShadows() override {};	///< we don't care about preserving temporary shadows.
 	virtual void allocateShadows() override {};	///< we don't care about preserving temporary shadows.
 	virtual void setShadowsEnabled(Bool enable) override { }
-	virtual void setFullyObscuredByShroud(Bool fullyObscured) override { };
+	virtual void setFullyObscuredByShroud(Bool fullyObscured) override;
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override { }
 	virtual void reactToGeometryChange() override { }
 	virtual Bool isLaser() const override { return true; }
@@ -100,5 +107,13 @@ protected:
 	Bool m_selfDirty;								// not saved
 
 	Int	        m_hexColor;  ///< player house color
+	W3DDynamicLight *m_groundLights[MAX_LASER_GROUND_LIGHTS];	///< terrain-only lights spaced along the beam, runtime only
+	Int m_numGroundLights;
+	RGBColor m_tintedInner;			///< beam colors with house color applied, set on each dirty draw
+	RGBColor m_tintedOuter;
+
+	void acquireGroundLights( Int count );
+	void releaseGroundLights();
+	void updateGroundLights( LaserUpdate *update, Bool beamChanged );
 
 };
