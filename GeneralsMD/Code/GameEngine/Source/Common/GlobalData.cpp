@@ -586,6 +586,8 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "JammingOverlayTexture",	INI::parseAsciiString,	NULL,	offsetof(GlobalData, m_jammingOverlayTexture) },
 	{ "JammingOverlayScrollU",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScrollU) },
 	{ "JammingOverlayScrollV",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScrollV) },
+	{ "JammingOverlayScale",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScale) },
+	{ "JammingOverlayColor",	INI::parseRGBColor,		NULL,	offsetof(GlobalData, m_jammingOverlayColor) },
 	{ "JammingOverlayAdditive",	INI::parseBool,			NULL,	offsetof(GlobalData, m_jammingOverlayAdditive) },
 
 	{"ChronoDamageDisableThreshold", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageDisableThreshold)},
@@ -1189,6 +1191,10 @@ GlobalData::GlobalData()
 	m_jammingOverlayTexture.clear();
 	m_jammingOverlayScrollU = 0.5f;
 	m_jammingOverlayScrollV = 0.0f;
+	m_jammingOverlayScale = 1.0f;
+	m_jammingOverlayColor.red = 1.0f;
+	m_jammingOverlayColor.green = 1.0f;
+	m_jammingOverlayColor.blue = 1.0f;
 	m_jammingOverlayAdditive = TRUE;
 
 	// --------------------------------------------------------------------------

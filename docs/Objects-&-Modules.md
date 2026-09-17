@@ -1970,6 +1970,8 @@ Configured globally in `GameData.ini`:
 JammingOverlayTexture  = JammingFX   ; texture name; omit or leave empty to disable
 JammingOverlayScrollU  = 0.5         ; horizontal scroll per second
 JammingOverlayScrollV  = 0.0         ; vertical scroll per second
+JammingOverlayScale    = 1.0         ; UV tiling; >1 repeats the texture more densely
+JammingOverlayColor    = R:255 G:255 B:255  ; tint multiplied into the texture
 JammingOverlayAdditive = Yes         ; Yes = additive glow, No = alpha blend
 ```
 

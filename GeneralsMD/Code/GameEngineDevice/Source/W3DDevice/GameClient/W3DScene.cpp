@@ -621,13 +621,16 @@ MaterialPassClass *RTS3DScene::getJammingOverlayPass(void)
 	jamMtl->Set_Lighting(true);
 	jamMtl->Set_Ambient(0,0,0);
 	jamMtl->Set_Diffuse(0,0,0);
-	jamMtl->Set_Emissive(1.0f,1.0f,1.0f);
+	jamMtl->Set_Emissive(TheGlobalData->m_jammingOverlayColor.red,
+		TheGlobalData->m_jammingOverlayColor.green,
+		TheGlobalData->m_jammingOverlayColor.blue);
 	jamMtl->Set_UV_Source(0, 0);
 
 	// Self-driving scroll; the mapper advances itself off the render sync time.
 	LinearOffsetTextureMapperClass *jamMapper = NEW_REF(LinearOffsetTextureMapperClass,
 		(Vector2(TheGlobalData->m_jammingOverlayScrollU, TheGlobalData->m_jammingOverlayScrollV),
-		 Vector2(0.0f, 0.0f), false, Vector2(1.0f, 1.0f), 0));
+		 Vector2(0.0f, 0.0f), false,
+		 Vector2(TheGlobalData->m_jammingOverlayScale, TheGlobalData->m_jammingOverlayScale), 0));
 	jamMtl->Set_Mapper(jamMapper, 0);
 	jamMapper->Release_Ref();
 
@@ -793,7 +796,9 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		MaterialPassClass *jammingPass = (draw->getJammingOverlayIntensity() > 0.0f) ? getJammingOverlayPass() : nullptr;
 		if (jammingPass)
 		{
+			// Alpha mode blends by alpha, so intensity has to reach that channel too.
 			rinfo.materialPassEmissiveOverride = draw->getJammingOverlayIntensity();
+			rinfo.materialPassAlphaOverride = draw->getJammingOverlayIntensity();
 			rinfo.Push_Material_Pass(jammingPass);
 
 			doExtraMaterialPop = TRUE;
