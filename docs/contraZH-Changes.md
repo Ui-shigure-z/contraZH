@@ -690,6 +690,29 @@ middle when `NumberOfShots` is larger than `ClipSize`. A weapon that runs dry wi
 * Firing the power again replaces the queue: new target point, count reset.
 * A dying unit drops its remaining shots. The queue survives a save and load.
 
+# Animation2D.ini
+
+## Texture
+
+An `Animation` block can name a texture file directly for a frame with
+`Texture = <file> [width height]`, instead of pointing at a `MappedImage`. The whole file is the
+frame. This is what the low-power and jammed health-bar icons use, and it is the quickest way to
+add a one-image icon: drop a `.tga` in `Art\Textures\` and reference it, with no `MappedImage`
+entry to write.
+
+* `Texture = jammer.tga` - (The file to draw. Width and height default to `32 32`.)
+* `Texture = jammer.tga 64 64` - (Explicit draw size. Match the file's real pixel size, or the
+image is scaled to fit.)
+
+`Texture` and `Image` lines can be mixed in one block. Each fills the next frame in order, so
+`NumberImages` must count both kinds. The file name doubles as the image name, so every animation
+naming the same file shares one image, and an existing `MappedImage` of that name is reused rather
+than replaced. The file resolves like any texture, so a `.dds` of the same name anywhere in the
+archives wins over a loose `.tga`.
+
+A static icon is `NumberImages = 1`, `AnimationMode = ONCE` and `AnimationDelay = 0`. Icons only
+change what is drawn, so this does not affect replays.
+
 # Turret modules
 
 ## MaxPhysicalPitch
