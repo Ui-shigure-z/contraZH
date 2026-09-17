@@ -967,6 +967,7 @@ protected:
 	// the following methods are for the smart selection row and the command group row under it
 	GameWindow *createCameoRow( GameWinSystemFunc systemFunc, Int slotCount, Bool rightClick, GameWindow **buttons );
 	static const Image *getCameoImage( const ThingTemplate *thingTemplate );
+	static const ThingTemplate *getCameoType( const Object *obj );
 	Int getCameoRowWidth( Int cameoCount ) const;
 	void initSmartSelectionBar( const ICoord2D &commandButtonSize );
 	void destroySmartSelectionBar();

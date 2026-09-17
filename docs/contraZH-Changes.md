@@ -299,10 +299,12 @@ in GameData decides whether a goal in front of the unit is also driven to in rev
 
 ## Smart selection
 
-Shows a row of half size cameos above the command bar. A selection of different unit types gets one
-cameo per type with a count of how many are selected; a selection of a single type gets one cameo
-per object. A cameo standing for one object shows a small health bar instead of a count. The row
-holds 16 cameos; anything beyond that gets none. A count past 999 gets no badge.
+Shows a row of small cameos, three fifths of a command button, above the command bar. A selection
+of different unit types gets one cameo per type with a count of how many are selected; a selection
+of a single type gets one cameo per object. A cameo standing for one object shows a small health
+bar instead of a count, and a light orange clip bar above it when the object shows ammo pips, split
+into one segment per shot. The row holds 16 cameos; anything beyond that gets none. A count past
+999 gets no badge. Objects that are reskins of one type share that type's cameo.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
 * `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on
@@ -325,7 +327,7 @@ CommandMap.ini) step the focus through the row, skipping cameos that are already
 
 ### Command group row
 
-A second row of half size cameos sits on the command bar frame, one per command group (Ctrl+1
+A second row of small cameos sits on the command bar frame, one per command group (Ctrl+1
 to Ctrl+0) that still has live members, in key order 1 to 9 then 0. Each cameo shows the group's
 most common unit type, the group number top left and the live member count bottom right; the
 count drops as members die. The row shows whenever any group has members, even with nothing
