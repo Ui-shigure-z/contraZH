@@ -1895,9 +1895,8 @@ End
 - `MovePenalty` never touches lift, so helicopters keep hovering. `LiftPenalty` lowers lift on
   its own. Once lift no longer beats gravity the unit sinks, so keep it small. 100% is ignored.
 - `Icon` names an `Animation` block from `animation2d.ini`, like the stock `Disabled` one. It sits
-  above the health bar, beside the disabled icon when both show. An `Animation` block can now take
-  `Texture = file.tga [width height]` per frame instead of a `MappedImage` name; size defaults to
-  32 x 32.
+  above the health bar, beside the disabled icon when both show. See
+  [Animation2D.ini](#animation2dini) for the single-image `Texture` form.
 - Losing power with `IsMobile = No` stops the current move order. Attack orders still work, so a
   turreted unit keeps firing from where it stands.
 - The effects follow the owner. A captured object takes the new owner's power state.
@@ -1989,15 +1988,16 @@ independent strengths.
 ## Icon
 
 A jammed unit shows its own icon beside the health bar, next to the disabled icon when both
-apply. Define the animation in `Animation2D.ini`; the icon is not drawn until this exists:
+apply. Define an `Animation Jammed` block in `Animation2D.ini`; the icon is not drawn until this
+exists. The single-image `Texture` form is the natural fit — see
+[Animation2D.ini](#animation2dini):
 
 ```
 Animation Jammed
-  AnimationMode       = LOOP
-  AnimationDelay      = 66
-  RandomizeStartFrame = No
-  NumberImages        = 1
-  Image               = SomeJamIcon
+  NumberImages   = 1
+  Texture        = jammer.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
 End
 ```
 
@@ -2036,6 +2036,35 @@ Weapon JammerGun
   ; ...other weapon fields...
 End
 ```
+
+# Animation2D.ini
+
+## Texture (single image frames)
+
+An `Animation` block can name a texture file directly for a frame instead of a `MappedImage`.
+This is the simplest way to make a one-frame icon such as the low-power or jammed indicators:
+
+```
+Animation Jammed
+  NumberImages   = 1
+  Texture        = jammer.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
+End
+```
+
+Syntax is `Texture = <file> [width height]`. The whole texture is used as the frame.
+
+- Width and height are optional and default to `32 32`. They set the size the frame is drawn
+  at, so they should match the file's real pixel size or the image will be scaled.
+- `Texture` and `Image` lines can be mixed in one block; each fills the next frame slot in order,
+  so `NumberImages` must still count them all.
+- The file name doubles as the image name. Every animation that names the same file shares one
+  image, and a `MappedImage` already defined under that name is reused rather than replaced.
+- The file is resolved like any other texture, so a `.dds` of the same name anywhere in the
+  archives takes priority over a loose `.tga`. Loose files go in `Art\Textures\`.
+
+A static icon wants `NumberImages = 1`, `AnimationMode = ONCE` and `AnimationDelay = 0`, as above.
 
 # Misc Improvements
 
