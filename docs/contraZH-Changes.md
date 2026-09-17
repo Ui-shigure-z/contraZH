@@ -422,26 +422,24 @@ target moves. Roads are not lit, since road dynamic lighting is disabled in the 
 * `LaserRef = No` - (Yes turns the glow on. Also the `Lasers light the ground` checkbox in Game
 Options, where it applies on Accept without a restart.)
 
-`GameData.ini` tunes it for every laser:
+`GameData.ini` tunes it for every laser, and a `W3DLaserDraw` module can override each key for
+its own laser with `GroundGlowColor`, `GroundGlowRadius` and `GroundGlowIntensity`. A module value
+above zero (or not black) wins, then the `GameData.ini` value, else the default named below.
 
 * `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black picks `OuterColor` when the laser
 has more than one beam, else `InnerColor`, since the inner color is usually a white core. The
 color is normalized to full brightness either way.)
 * `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
-`OuterBeamWidth`. Anything under 5 is raised to 5.)
+`OuterBeamWidth`, floored at 5.)
 * `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
-
-`W3DLaserDraw` modules can override those per laser with `GroundGlowColor`, `GroundGlowRadius`
-and `GroundGlowIntensity`, which take the same values. Leaving a module key out (or black, or 0)
-falls back to the `GameData.ini` value.
 
 Note on small radii: the terrain is lit per vertex on a 10 unit grid, and the lights sit one
 radius apart with at most eight per beam. Below about 20 the lit vertices thin out into dots
-rather than a strip, and a long beam only gets its first `8 * radius` units lit. The 5 unit floor
-only stops the light from vanishing entirely.
+rather than a strip, and a long beam only gets its first `8 * radius` units lit.
 
-The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the key
-still works from the file. The terrain used to accept 20 dynamic lights a frame; it now accepts 64.
+* The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the
+key still works from the file.
+* The terrain lights up to 64 dynamic lights a frame, for every kind of dynamic light.
 
 # ParticleSystem.ini
 

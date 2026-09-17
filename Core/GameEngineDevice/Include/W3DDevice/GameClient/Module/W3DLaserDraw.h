@@ -90,7 +90,7 @@ public:
 	virtual void releaseShadows() override {};	///< we don't care about preserving temporary shadows.
 	virtual void allocateShadows() override {};	///< we don't care about preserving temporary shadows.
 	virtual void setShadowsEnabled(Bool enable) override { }
-	virtual void setFullyObscuredByShroud(Bool fullyObscured) override { };
+	virtual void setFullyObscuredByShroud(Bool fullyObscured) override;
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override { }
 	virtual void reactToGeometryChange() override { }
 	virtual Bool isLaser() const override { return true; }
@@ -109,9 +109,11 @@ protected:
 	Int	        m_hexColor;  ///< player house color
 	W3DDynamicLight *m_groundLights[MAX_LASER_GROUND_LIGHTS];	///< terrain-only lights spaced along the beam, runtime only
 	Int m_numGroundLights;
+	RGBColor m_tintedInner;			///< beam colors with house color applied, set on each dirty draw
+	RGBColor m_tintedOuter;
 
 	void acquireGroundLights( Int count );
 	void releaseGroundLights();
-	void updateGroundLights( LaserUpdate *update );
+	void updateGroundLights( LaserUpdate *update, Bool beamChanged );
 
 };
