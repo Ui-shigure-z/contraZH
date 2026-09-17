@@ -334,6 +334,7 @@ public:
 	void						Add_Bloom_Category(DX8TextureCategoryClass* category);
 	void						Flush_Bloom();
 	void						Clear_Bloom_Lists();
+	bool						Has_Bloom_Tasks() const { return bloom_categories.Count() > 0; }
 
 	void						Log_Statistics_String(bool only_visible);
 	static void				Request_Log_Statistics();
