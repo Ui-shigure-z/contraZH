@@ -1300,7 +1300,6 @@ void Drawable::imitateStealthLook( Drawable& otherDraw )
   m_hiddenByStealth = otherDraw.isDrawableEffectivelyHidden();
   m_stealthLook = otherDraw.getStealthLook();
   m_secondMaterialPassOpacity = otherDraw.getSecondMaterialPassOpacity();
-  m_jammingOverlayIntensity = otherDraw.getJammingOverlayIntensity();
 
 }
 

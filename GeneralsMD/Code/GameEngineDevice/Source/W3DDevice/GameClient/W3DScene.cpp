@@ -793,12 +793,13 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 
 		// Jamming takes the pass ahead of heat vision. materialPassEmissiveOverride is one float for
 		// the whole render call, so the two effects cannot carry independent opacities.
-		MaterialPassClass *jammingPass = (draw->getJammingOverlayIntensity() > 0.0f) ? getJammingOverlayPass() : nullptr;
+		const Real jammingIntensity = draw->getJammingOverlayIntensity();
+		MaterialPassClass *jammingPass = (jammingIntensity > 0.0f) ? getJammingOverlayPass() : nullptr;
 		if (jammingPass)
 		{
 			// Alpha mode blends by alpha, so intensity has to reach that channel too.
-			rinfo.materialPassEmissiveOverride = draw->getJammingOverlayIntensity();
-			rinfo.materialPassAlphaOverride = draw->getJammingOverlayIntensity();
+			rinfo.materialPassEmissiveOverride = jammingIntensity;
+			rinfo.materialPassAlphaOverride = jammingIntensity;
 			rinfo.Push_Material_Pass(jammingPass);
 
 			doExtraMaterialPop = TRUE;
