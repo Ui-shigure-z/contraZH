@@ -391,8 +391,8 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update )
 		{
 			radius = 2.0f * data->m_outerBeamWidth;
 		}
-		// terrain lighting is per vertex on a 10 unit grid, so anything under two cells shows nothing
-		radius = MAX( radius * update->getWidthScale(), 20.0f );
+		// terrain lighting is per vertex on a 10 unit grid, so a small radius lights scattered vertices
+		radius = MAX( radius * update->getWidthScale(), 5.0f );
 
 		// centers one radius apart so the linear falloffs sum to a level strip
 		Int count = (Int)ceil( beamLength / radius );

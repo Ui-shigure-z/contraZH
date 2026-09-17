@@ -428,13 +428,17 @@ Options, where it applies on Accept without a restart.)
 has more than one beam, else `InnerColor`, since the inner color is usually a white core. The
 color is normalized to full brightness either way.)
 * `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
-`OuterBeamWidth`, and anything under 20 is raised to 20 because terrain lighting is per vertex
-on a 10 unit grid.)
+`OuterBeamWidth`. Anything under 5 is raised to 5.)
 * `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
 
 `W3DLaserDraw` modules can override those per laser with `GroundGlowColor`, `GroundGlowRadius`
 and `GroundGlowIntensity`, which take the same values. Leaving a module key out (or black, or 0)
 falls back to the `GameData.ini` value.
+
+Note on small radii: the terrain is lit per vertex on a 10 unit grid, and the lights sit one
+radius apart with at most eight per beam. Below about 20 the lit vertices thin out into dots
+rather than a strip, and a long beam only gets its first `8 * radius` units lit. The 5 unit floor
+only stops the light from vanishing entirely.
 
 The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the key
 still works from the file. The terrain used to accept 20 dynamic lights a frame; it now accepts 64.
