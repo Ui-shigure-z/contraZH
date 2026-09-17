@@ -25,6 +25,22 @@ Some of them change the simulation - the timing of a reload or a snipe, the path
 any replay recorded before them will not play back identically. Others only change what is drawn, and
 leave replay playback alone. Each entry says which kind it is.
 
+## Guard mode holds its ground
+
+Guarding units used to be interrupted by any hit they took. Being shot while returning to the guard
+post, or while attacking inside the guard circle, kicked the unit into chasing the attacker, so the
+move and the fire fought each other and the unit stuttered. That transition is gone; a guarding unit
+finishes its return, or its current attack, and picks up the attacker through its normal enemy scan.
+
+Units that deploy to fire, the Nuke Cannon above all, had it worse, because every one of those
+interruptions packed them up. Three more cases now leave them deployed. When a target dies and
+another enemy is still inside the guard circle, the unit fires at the next one without leaving its
+attack state. A guard order at the spot the unit already stands on no longer issues a zero-length
+move that would pack it up. And a unit still unpacking when its target walks out of range reverses
+the unpack instead of finishing it. A manually deployed unit keeps its stance in all of these.
+
+This changes the simulation. Ported from CookieLandProjects/CLP_AI.
+
 ## Weapon bonus no longer restarts the reload
 
 A weapon bonus changing mid-reload used to throw away the progress already made and start the timer
