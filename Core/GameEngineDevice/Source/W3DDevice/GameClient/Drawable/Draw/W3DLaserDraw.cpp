@@ -632,7 +632,12 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 
 			// the inner color is usually a white core, the outer color carries the hue
 			Real glowRed, glowGreen, glowBlue;
-			Color glowColor = data->m_groundGlowColor != 0 ? data->m_groundGlowColor : TheGlobalData->m_laserGlowColor;
+			// a parsed color always carries alpha, so black means unset only once alpha is masked off
+			Color glowColor = data->m_groundGlowColor & 0x00FFFFFF;
+			if (glowColor == 0)
+			{
+				glowColor = TheGlobalData->m_laserGlowColor & 0x00FFFFFF;
+			}
 			if (glowColor != 0)
 			{
 				Real glowAlpha;
