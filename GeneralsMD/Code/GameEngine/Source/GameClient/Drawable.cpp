@@ -115,6 +115,7 @@ static const char *const TheDrawableIconNames[] =
 	"CarBomb",
 	"Status",
 	"Jammed",
+	"Frozen",
 	nullptr
 };
 static_assert(ARRAY_SIZE(TheDrawableIconNames) == MAX_ICONS + 1, "Incorrect array size");
@@ -389,6 +390,7 @@ const Int MAX_ENABLED_MODULES								= 16;
 	s_animationTemplates[ICON_CARBOMB]			= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_CARBOMB]);
 	s_animationTemplates[ICON_STATUS]				= nullptr; //Set per object by name, so there is no single template.
 	s_animationTemplates[ICON_JAMMED]				= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_JAMMED]);
+	s_animationTemplates[ICON_FROZEN]				= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_FROZEN]);
 
 	s_staticImagesInited = true;
 
@@ -541,6 +543,7 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_hiddenByStealth = false;
 	m_secondMaterialPassOpacity = 0.0f;
 	m_jammingOverlayIntensity = 0.0f;
+	m_frozenOverlayIntensity = 0.0f;
 	m_drawableFullyObscuredByShroud = false;
 
   m_receivesDynamicLights = TRUE; // a good default... overridden by one of my draw modules if at all
@@ -762,6 +765,7 @@ Bool Drawable::getShouldAnimate( Bool considerPower ) const
 				|| obj->isDisabledByType( DISABLED_PARALYZED )
 				|| obj->isDisabledByType( DISABLED_EMP )
 				|| obj->isDisabledByType( DISABLED_SUBDUED )
+				|| obj->isDisabledByType( DISABLED_FROZEN )
 				// srj sez: unmanned things also should not animate. (eg, gattling tanks,
 				// which have a slight barrel animation even when at rest). if this causes
 				// a problem, we will need to fix gattling tanks in another way.
@@ -3576,6 +3580,7 @@ void Drawable::drawIconUI()
 #endif
 		drawDisabled( healthBarRegion );
 		drawJammed( healthBarRegion );
+		drawFrozen( healthBarRegion );
 		drawStatusIcon( healthBarRegion );
 
 		drawAmmo( healthBarRegion );
@@ -4823,6 +4828,39 @@ void Drawable::drawJammed(const IRegion2D* healthBarRegion)
 	}
 }
 
+// ------------------------------------------------------------------------------------------------
+/** Frozen icon, after the disabled and jammed ones. Inert until Animation2D.ini defines "Frozen". */
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawFrozen(const IRegion2D* healthBarRegion)
+{
+	const Object *obj = getObject();
+	const BodyModuleInterface *body = obj ? obj->getBodyModule() : nullptr;
+
+	if( body && body->isFrozen() && s_animationTemplates[ ICON_FROZEN ] )
+	{
+		if( getIconInfo()->m_icon[ ICON_FROZEN ] == nullptr )
+		{
+			getIconInfo()->m_icon[ ICON_FROZEN ] = newInstance(Anim2D)
+			( s_animationTemplates[ ICON_FROZEN ], TheAnim2DCollection );
+		}
+
+		Int xOffset = 0;
+		if( getIconInfo()->m_icon[ ICON_DISABLED ] )
+		{
+			xOffset += getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		}
+		if( getIconInfo()->m_icon[ ICON_JAMMED ] )
+		{
+			xOffset += getIconInfo()->m_icon[ ICON_JAMMED ]->getCurrentFrameWidth();
+		}
+		drawIconAboveBar( ICON_FROZEN, healthBarRegion, xOffset );
+	}
+	else
+	{
+		killIcon(ICON_FROZEN);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Draw a live icon slot at the left of the health bar, sitting on top of it */
 //-------------------------------------------------------------------------------------------------
@@ -4860,7 +4898,7 @@ void Drawable::drawStatusIcon(const IRegion2D* healthBarRegion)
 		return;
 	}
 
-	// sit beside the disabled and jammed icons when they are showing
+	// sit beside the disabled, jammed and frozen icons when they are showing
 	Int xOffset = 0;
 	if( getIconInfo()->m_icon[ ICON_DISABLED ] )
 	{
@@ -4869,6 +4907,10 @@ void Drawable::drawStatusIcon(const IRegion2D* healthBarRegion)
 	if( getIconInfo()->m_icon[ ICON_JAMMED ] )
 	{
 		xOffset += getIconInfo()->m_icon[ ICON_JAMMED ]->getCurrentFrameWidth();
+	}
+	if( getIconInfo()->m_icon[ ICON_FROZEN ] )
+	{
+		xOffset += getIconInfo()->m_icon[ ICON_FROZEN ]->getCurrentFrameWidth();
 	}
 	drawIconAboveBar( ICON_STATUS, healthBarRegion, xOffset );
 }
@@ -6244,6 +6286,8 @@ void Drawable::xferDrawableModules( Xfer *xfer )
 	* 6: Added m_ambientSoundEnabledFromScript flag (Added in Zero Hour)
 	* 7: Save the customize ambient sound info (Added in Zero Hour)
 	* 8: TheSuperHackers @bugfix Removed m_prevTintStatus because loading its value is unnecessary and undesirable
+	* 9: jamming overlay intensity
+	* 10: frozen overlay intensity
 	*/
 // ------------------------------------------------------------------------------------------------
 void Drawable::xfer( Xfer *xfer )
@@ -6255,7 +6299,7 @@ void Drawable::xfer( Xfer *xfer )
 #elif RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 7;
 #else
-	const XferVersion currentVersion = 9;
+	const XferVersion currentVersion = 10;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -6754,6 +6798,11 @@ void Drawable::xfer( Xfer *xfer )
 	if( version >= 9 )
 	{
 		xfer->xferReal( &m_jammingOverlayIntensity );
+	}
+
+	if( version >= 10 )
+	{
+		xfer->xferReal( &m_frozenOverlayIntensity );
 	}
 }
 

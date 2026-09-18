@@ -147,6 +147,9 @@ void ActiveBodyModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "JammingDamageCap",					SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageCap ) },
 		{ "JammingDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealRate ) },
 		{ "JammingDamageHealAmount",	SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_jammingDamageHealAmount ) },
+		{ "FrozenDamageCap",					SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_frozenDamageCap ) },
+		{ "FrozenDamageHealRate",			SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_frozenDamageHealRate ) },
+		{ "FrozenDamageHealAmount",		SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_frozenDamageHealAmount ) },
 		{ "ChronoDamageHealRate",			SubdualValue::parseDurationFromINI,	nullptr,		offsetof( ActiveBodyModuleData, m_chronoDamageHealRate ) },
 		{ "ChronoDamageHealAmount",		SubdualValue::parseFromINI,					nullptr,		offsetof( ActiveBodyModuleData, m_chronoDamageHealAmount ) },
 		{ nullptr, nullptr, nullptr, 0 }
@@ -172,6 +175,7 @@ ActiveBody::ActiveBody( Thing *thing, const ModuleData* moduleData ) :
 	m_currentSubdualDamage(0),
 	m_currentJammingDamage(0),
 	m_jammingSetUnselectable(FALSE),
+	m_currentFrozenDamage(0),
 	m_indestructible(false),
 	m_damageFXOverride(false)
 {
@@ -293,6 +297,9 @@ Real ActiveBody::estimateDamage( DamageInfoInput& damageInfo ) const
 
 	//Subdual damage can't affect you if you can't be subdued
 	if( IsSubdualDamage(damageInfo.m_damageType)  &&  !canBeSubdued() )
+		return 0.0f;
+
+	if( IsSubdualFrozenDamage(damageInfo.m_damageType)  &&  !canBeFrozen() )
 		return 0.0f;
 
 	if( damageInfo.m_damageType == DAMAGE_KILL_GARRISONED )
@@ -584,6 +591,25 @@ void ActiveBody::attemptDamage( DamageInfo *damageInfo )
 		}
 
 		getObject()->notifyJammingDamage(amount);
+	}
+
+	if( IsSubdualFrozenDamage(damageInfo->in.m_damageType) )
+	{
+		if( !canBeFrozen() )
+			return;
+
+		Bool wasFrozen = isFrozen();
+		internalAddFrozenDamage(amount);
+		Bool nowFrozen = m_maxHealth <= m_currentFrozenDamage;
+		alreadyHandled = TRUE;
+		allowModifier = FALSE;
+
+		if( wasFrozen != nowFrozen )
+		{
+			onFrozenChange(nowFrozen);
+		}
+
+		getObject()->notifyFrozenDamage(amount);
 	}
 
 	if (allowModifier)
@@ -1365,6 +1391,9 @@ void ActiveBody::resolveSubdualDefaults()
 	resolveSubdualValue(m_jammingDamageCap,        data->m_jammingDamageCap,        tmpl, &SubdualDamageDefaults::m_jammingDamageCap,        none);
 	resolveSubdualValue(m_jammingDamageHealRate,   data->m_jammingDamageHealRate,   tmpl, &SubdualDamageDefaults::m_jammingDamageHealRate,   none);
 	resolveSubdualValue(m_jammingDamageHealAmount, data->m_jammingDamageHealAmount, tmpl, &SubdualDamageDefaults::m_jammingDamageHealAmount, none);
+	resolveSubdualValue(m_frozenDamageCap,         data->m_frozenDamageCap,         tmpl, &SubdualDamageDefaults::m_frozenDamageCap,         none);
+	resolveSubdualValue(m_frozenDamageHealRate,    data->m_frozenDamageHealRate,    tmpl, &SubdualDamageDefaults::m_frozenDamageHealRate,    none);
+	resolveSubdualValue(m_frozenDamageHealAmount,  data->m_frozenDamageHealAmount,  tmpl, &SubdualDamageDefaults::m_frozenDamageHealAmount,  none);
 
 	// the old global chrono keys stay as the default of last resort
 	SubdualValue chronoRate;
@@ -1583,6 +1612,105 @@ Real ActiveBody::getJammingDamageHealAmount() const
 Bool ActiveBody::hasAnyJammingDamage() const
 {
 	return m_currentJammingDamage > 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void ActiveBody::internalAddFrozenDamage( Real delta )
+{
+	m_currentFrozenDamage += delta;
+	m_currentFrozenDamage = clamp(0.0f, m_currentFrozenDamage, m_frozenDamageCap.evaluate(m_maxHealth));
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::canBeFrozen() const
+{
+	return m_frozenDamageCap.evaluate(m_maxHealth) > 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+// The disabled bit is the truth for units, so a max health change cannot leave it stuck
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::isFrozen() const
+{
+	if (getObject()->isKindOf(KINDOF_PROJECTILE))
+		return m_maxHealth <= m_currentFrozenDamage;
+
+	return getObject()->isDisabledByType(DISABLED_FROZEN);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void ActiveBody::onFrozenChange( Bool isNowFrozen )
+{
+	Object *me = getObject();
+
+	AudioEventRTS sound;
+	const AudioEventRTS *unitSound = me->getTemplate()->getPerUnitSound( isNowFrozen ? "SoundFrozen" : "SoundUnfrozen" );
+	if( unitSound && !unitSound->getEventName().isEmpty() )
+	{
+		sound = *unitSound;
+	}
+	else
+	{
+		sound = isNowFrozen ? TheAudio->getMiscAudio()->m_unitFrozen : TheAudio->getMiscAudio()->m_unitUnfrozen;
+	}
+
+	if( !sound.getEventName().isEmpty() )
+	{
+		sound.setPosition( me->getPosition() );
+		TheAudio->addAudioEvent( &sound );
+	}
+
+	// Projectiles only get the sound; subdual already jams them and frozen leaves them alone.
+	if( me->isKindOf(KINDOF_PROJECTILE) )
+	{
+		return;
+	}
+
+	if( isNowFrozen )
+	{
+		me->setDisabled(DISABLED_FROZEN);
+		me->setModelConditionState(MODELCONDITION_FROZEN);
+
+		ContainModuleInterface *contain = me->getContain();
+		if ( contain )
+			contain->orderAllPassengersToIdle( CMD_FROM_AI );
+	}
+	else
+	{
+		me->clearDisabled(DISABLED_FROZEN);
+		me->clearModelConditionState(MODELCONDITION_FROZEN);
+
+		if( me->isKindOf( KINDOF_FS_INTERNET_CENTER ) )
+		{
+			ContainModuleInterface *contain = me->getContain();
+			if ( contain )
+				contain->orderAllPassengersToHackInternet( CMD_FROM_AI );
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+UnsignedInt ActiveBody::getFrozenDamageHealRate() const
+{
+	return (UnsignedInt)m_frozenDamageHealRate.evaluate(m_maxHealth);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Real ActiveBody::getFrozenDamageHealAmount() const
+{
+	return m_frozenDamageHealAmount.evaluate(m_maxHealth);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Bool ActiveBody::hasAnyFrozenDamage() const
+{
+	return m_currentFrozenDamage > 0;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1935,13 +2063,14 @@ void ActiveBody::crc( Xfer *xfer )
 /** Xfer method
 	* Version Info:
 	* 1: Initial version
-	* 2: jamming damage and unselectable ownership */
+	* 2: jamming damage and unselectable ownership
+	* 3: frozen damage */
 // ------------------------------------------------------------------------------------------------
 void ActiveBody::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 2;
+	XferVersion currentVersion = 3;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2051,6 +2180,11 @@ void ActiveBody::xfer( Xfer *xfer )
 	{
 		xfer->xferReal( &m_currentJammingDamage );
 		xfer->xferBool( &m_jammingSetUnselectable );
+	}
+
+	if( version >= 3 )
+	{
+		xfer->xferReal( &m_currentFrozenDamage );
 	}
 
 }

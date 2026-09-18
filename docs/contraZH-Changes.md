@@ -498,9 +498,9 @@ terrain fit, which is not visible on the effects that actually reach that size.
 
 ## Subdual damage defaults
 
-Subdual, jamming and chrono tuning no longer has to be repeated on every ActiveBody. GameData.ini
+Subdual, jamming, frozen and chrono tuning no longer has to be repeated on every ActiveBody. GameData.ini
 accepts any number of `SubdualDamageDefaults` blocks, each optionally limited to a `KindOf`
-list, and values may be written against max health:
+list and kept off a `ForbiddenKindOf` list, and values may be written against max health:
 
 ```
 SubdualDamageDefaults
@@ -515,6 +515,17 @@ means immune, and an ActiveBody with no key at all now falls back to the global 
 of zero. The `MaxHealth` forms work on ActiveBody too, and ActiveBody gains `ChronoDamageHealRate`
 and `ChronoDamageHealAmount` for per-unit chrono tuning. Details in
 [GameData](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
+## Subdual frozen
+
+`SUBDUAL_FROZEN` is a third subdual damage pool beside retail subdual and jamming. It disables
+the unit the way retail subdual does, through its own `DISABLED_FROZEN` type, and sets a `FROZEN`
+condition state while it holds. It gets the same customization as jamming: `FrozenDamageCap`,
+`FrozenDamageHealRate` and `FrozenDamageHealAmount` on ActiveBody or in `SubdualDamageDefaults`,
+an armor coefficient, a `Frozen` health-bar icon from Animation2D.ini, `SoundFrozen` /
+`SoundUnfrozen` per unit with `UnitFrozen` / `UnitUnfrozen` in MiscAudio.ini as fallback, and a
+`FrozenOverlay*` texture block in GameData.ini. The jamming and frozen overlays stack on one unit.
+Details in [Subdual Frozen](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#subdual-frozen).
 
 ## BatchParticles
 

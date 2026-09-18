@@ -2008,7 +2008,8 @@ such as frost, and needs the texture to carry an alpha channel.
 
 Note: a unit that is both jammed and stealth-detected shows the jamming overlay only. The
 engine carries one opacity value per render call, so the two effects cannot be layered with
-independent strengths.
+independent strengths. The [frozen overlay](#subdual-frozen) stacks with this one and shares
+that single value.
 
 ## Icon
 
@@ -2057,6 +2058,148 @@ Weapon JammerGun
   PrimaryDamage     = 50.0
   PrimaryDamageRadius = 0.0
   DamageType        = SUBDUAL_JAMMING
+  DeathType         = NORMAL
+  ; ...other weapon fields...
+End
+```
+
+# Subdual Frozen
+
+Frozen damage is a third subdual pool beside retail subdual and [jamming](#subdual-jamming). It
+accumulates on the body, interacts with armor, and disables the unit the way retail subdual does
+once it reaches the threshold. Healing ticks remove the damage over time. The three pools are
+independent: each has its own counter, cap, heal rate and effect, and a unit can be subdued,
+jammed and frozen at the same time.
+
+## New Damage Types
+
+Two new entries in `DamageType`:
+
+* `SUBDUAL_FROZEN` - frozen damage adjusted by armor coefficients
+* `SUBDUAL_FROZEN_UNRESISTABLE` - bypasses armor entirely (used internally for healing ticks)
+
+Neither type reduces health. Set these on a weapon's `DamageType` field.
+
+## Freeze Effect
+
+When frozen damage reaches the unit's max health, the unit gains the `DISABLED_FROZEN` disabled
+type and the `FROZEN` condition state, and its passengers are ordered to idle. Both clear once the
+frozen damage heals below the threshold.
+
+`DISABLED_FROZEN` is checked everywhere the game checks `DISABLED_SUBDUED`, so a frozen unit
+behaves exactly like a subdued one: it cannot move, fire, animate, sell, evacuate or auto-target,
+transports refuse to load or unload it, a frozen stinger site silences its soldiers, and its
+command buttons grey out. A unit that is both frozen and EMP'd, subdued or hacked stays disabled
+until the last of those clears.
+
+The `FROZEN` condition state lets art react. A `ConditionState = FROZEN` block on a draw module can
+swap the model or play an animation for as long as the unit is frozen.
+
+A frozen unit does not take the dark-gray disabled tint that EMP and subdual apply, so the
+frozen overlay and any `FROZEN` art carry the look on their own.
+
+Projectiles take frozen damage but are never disabled by it; only the sound plays.
+
+## ActiveBody Fields
+
+```
+Body = ActiveBody ModuleTag_Body
+  ; ...existing ActiveBody fields...
+  FrozenDamageCap        = 100.0 ; max frozen damage this unit can accumulate (0 = immune)
+  FrozenDamageHealRate   = 500   ; milliseconds between each healing tick
+  FrozenDamageHealAmount = 5.0   ; frozen damage removed per tick
+End
+```
+
+A unit with `FrozenDamageCap = 0` ignores `SUBDUAL_FROZEN` damage entirely. The unit freezes when
+accumulated frozen damage reaches `MaxHealth`. Healing begins automatically after the first hit,
+with the same [recovery timing](#recovery-timing) as jamming.
+
+Any of these keys may be omitted. An omitted key takes its value from the matching
+`SubdualDamageDefaults` block in GameData.ini, and is 0 if no block matches. Cap and HealAmount
+keys accept `MaxHealth * 2` or `MaxHealth / 16.25` as well as a plain number. See
+[Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
+## Armor
+
+`SUBDUAL_FROZEN` interacts with armor normally. Define coefficients in `Armor.ini`:
+
+```
+Armor ChinaTankArmor
+  Armor = SUBDUAL_FROZEN 200%   ; takes twice as long to freeze
+End
+```
+
+`SUBDUAL_FROZEN_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
+
+## Overlay Texture
+
+A texture can be drawn over units taking frozen damage, with the same fade rule as the jamming
+overlay: opacity is the stored frozen damage divided by `MaxHealth`, clamped to 1. Configured
+globally in `GameData.ini` with the same keys as the jamming overlay:
+
+```
+FrozenOverlayTexture  = FrostFX.tga  ; texture name; omit or leave empty to disable
+FrozenOverlayScrollU  = 0.0          ; horizontal scroll per second
+FrozenOverlayScrollV  = 0.0          ; vertical scroll per second
+FrozenOverlayScale    = 1.0          ; UV tiling; >1 repeats the texture more densely
+FrozenOverlayColor    = R:255 G:255 B:255  ; tint multiplied into the texture
+FrozenOverlayAdditive = No           ; Yes = additive glow, No = alpha blend
+```
+
+The effect is off by default. The defaults differ from jamming: no scroll and alpha blend, which
+suits a static frost layer with an alpha channel.
+
+The jamming and frozen overlays stack, so a unit that is both jammed and frozen draws both
+textures. The engine carries one opacity value per render call, so both passes use the stronger
+of the two intensities and fade together. A unit that is also stealth-detected shows the subdual
+overlays only.
+
+## Icon
+
+A frozen unit shows its own icon beside the health bar, after the disabled and jammed icons when
+those apply. Define an `Animation Frozen` block in `Animation2D.ini`; the icon is not drawn until
+this exists. See [Animation2D.ini](#animation2dini):
+
+```
+Animation Frozen
+  NumberImages   = 1
+  Texture        = frozen.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
+End
+```
+
+## Per-Unit Sounds
+
+Units can define custom freeze/thaw sounds via their `UnitSpecificSounds` block:
+
+```
+Object SomeUnit
+  UnitSpecificSounds
+    SoundFrozen   = FrozenSoundEvent
+    SoundUnfrozen = UnfrozenSoundEvent
+  End
+End
+```
+
+If no per-unit sound is defined, the unit falls back to the global sounds in `MiscAudio.ini`,
+and is silent if those are unset too:
+
+```
+UnitFrozen   = FrozenSoundEvent
+UnitUnfrozen = UnfrozenSoundEvent
+```
+
+Freezing never borrows the building-disabled or vehicle-disabled sounds.
+
+## Example Weapon
+
+```
+Weapon FreezeGun
+  PrimaryDamage     = 50.0
+  PrimaryDamageRadius = 0.0
+  DamageType        = SUBDUAL_FROZEN
   DeathType         = NORMAL
   ; ...other weapon fields...
 End

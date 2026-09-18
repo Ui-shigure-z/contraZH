@@ -592,7 +592,7 @@ Bool ActionManager::canEnterObject( const Object *obj, const Object *objectToEnt
 	}
 
 
-  if (objectToEnter->isDisabledByType( DISABLED_SUBDUED ))
+  if (objectToEnter->isDisabledByType( DISABLED_SUBDUED ) || objectToEnter->isDisabledByType( DISABLED_FROZEN ))
     return FALSE; // a microwave tank has soldered the doors shut
 
 
@@ -893,6 +893,7 @@ CanAttackResult ActionManager::getCanAttackObject( const Object *obj, const Obje
 				if( rider->isDisabledByType( DISABLED_HACKED )
 						|| rider->isDisabledByType( DISABLED_EMP )
 						|| rider->isDisabledByType( DISABLED_SUBDUED )
+						|| rider->isDisabledByType( DISABLED_FROZEN )
 						|| rider->isDisabledByType( DISABLED_PARALYZED ) )
 				{
 					continue;

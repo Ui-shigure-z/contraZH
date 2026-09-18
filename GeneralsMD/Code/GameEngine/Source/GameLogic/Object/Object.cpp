@@ -99,6 +99,7 @@
 #include "GameLogic/Module/SubdualDamageHelper.h"
 #include "GameLogic/Module/ChronoDamageHelper.h"
 #include "GameLogic/Module/JammingDamageHelper.h"
+#include "GameLogic/Module/FrozenDamageHelper.h"
 #include "GameLogic/Module/TempWeaponBonusHelper.h"
 #include "GameLogic/Module/BuffEffectHelper.h"
 #include "GameLogic/Module/ToppleUpdate.h"
@@ -247,6 +248,7 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 	m_subdualDamageHelper(nullptr),
 	m_chronoDamageHelper(nullptr),
 	m_jammingDamageHelper(nullptr),
+	m_frozenDamageHelper(nullptr),
 	m_smcHelper(nullptr),
 	m_wsHelper(nullptr),
 	m_defectionHelper(nullptr),
@@ -407,6 +409,12 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 		jammingModuleData.setModuleTagNameKey(jammingHelperModuleDataTagNameKey);
 		m_jammingDamageHelper = newInstance(JammingDamageHelper)(this, &jammingModuleData);
 		*curB++ = m_jammingDamageHelper;
+
+		static const NameKeyType frozenHelperModuleDataTagNameKey = NAMEKEY("ModuleTag_FrozenDamageHelper");
+		static FrozenDamageHelperModuleData frozenModuleData;
+		frozenModuleData.setModuleTagNameKey(frozenHelperModuleDataTagNameKey);
+		m_frozenDamageHelper = newInstance(FrozenDamageHelper)(this, &frozenModuleData);
+		*curB++ = m_frozenDamageHelper;
 	}
 
 	if (TheAI != nullptr
@@ -737,6 +745,7 @@ Object::~Object()
 	m_subdualDamageHelper = nullptr;
 	m_chronoDamageHelper = nullptr;
 	m_jammingDamageHelper = nullptr;
+	m_frozenDamageHelper = nullptr;
 	m_buffEffectHelper = nullptr;
 	m_smcHelper = nullptr;
 	m_wsHelper = nullptr;
@@ -2430,7 +2439,7 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 				// Doh. Also shouldn't be tinting when disabled by scripting.
 				// Doh^2. Also shouldn't be CLEARING tinting if we're disabling by held or script disabledness
 				// Doh^3. Unmanned is no tint too
-				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO && type != DISABLED_TELEPORT_RECOVER)
+				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO && type != DISABLED_TELEPORT_RECOVER && type != DISABLED_FROZEN)
 				{
 					m_drawable->setTintStatus( TINT_STATUS_DISABLED );
 				}
@@ -2623,6 +2632,7 @@ Bool Object::clearDisabled( DisabledType type )
 	exceptions.set(DISABLED_TELEPORT);
 	exceptions.set(DISABLED_CHRONO);
 	exceptions.set(DISABLED_TELEPORT_RECOVER);
+	exceptions.set(DISABLED_FROZEN);
 
 	DisabledMaskType myFlagsMinusExceptions = getDisabledFlags();
 	myFlagsMinusExceptions.clearAndSet(exceptions, DISABLEDMASK_NONE);
@@ -3550,7 +3560,7 @@ Bool Object::isAbleToAttack() const
 	if( testStatus(OBJECT_STATUS_SOLD) )
 		return false;
 
-  if ( isDisabledByType( DISABLED_SUBDUED ) )
+  if ( isDisabledByType( DISABLED_SUBDUED ) || isDisabledByType( DISABLED_FROZEN ) )
     return FALSE; // A Microwave Tank is cooking me
 
 	//We can't fire if we, as a portable structure, are aptly disabled
@@ -3570,7 +3580,7 @@ Bool Object::isAbleToAttack() const
           if ( slaverID != INVALID_ID )
           {
             Object *slaver = TheGameLogic->findObjectByID( slaverID );
-            if ( slaver && slaver->isDisabledByType( DISABLED_SUBDUED ))
+            if ( slaver && ( slaver->isDisabledByType( DISABLED_SUBDUED ) || slaver->isDisabledByType( DISABLED_FROZEN ) ))
               return FALSE;// if my stinger site is subdued, so am I
           }
 
@@ -5781,6 +5791,25 @@ void Object::notifyJammingDamage( Real amount )
 			intensity = clamp( 0.0f, body->getCurrentJammingDamageAmount() / maxHealth, 1.0f );
 
 		draw->setJammingOverlayIntensity( intensity );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Object::notifyFrozenDamage( Real amount )
+{
+	if(m_frozenDamageHelper)
+		m_frozenDamageHelper->notifyFrozenDamage( amount );
+
+	Drawable *draw = getDrawable();
+	BodyModuleInterface *body = getBodyModule();
+	if( draw && body )
+	{
+		Real maxHealth = body->getMaxHealth();
+		Real intensity = 0.0f;
+		if( maxHealth > 0.0f )
+			intensity = clamp( 0.0f, body->getCurrentFrozenDamageAmount() / maxHealth, 1.0f );
+
+		draw->setFrozenOverlayIntensity( intensity );
 	}
 }
 
