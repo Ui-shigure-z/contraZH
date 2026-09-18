@@ -1942,7 +1942,7 @@ what set it, so a docked, slaved, or status-held unit keeps that state.
 Body = ActiveBody ModuleTag_Body
   ; ...existing ActiveBody fields...
   JammingDamageCap  = 100.0   ; max jamming damage this unit can accumulate (0 = immune)
-  JammingDamageHealRate   = 10  ; frames between each healing tick
+  JammingDamageHealRate   = 500 ; milliseconds between each healing tick
   JammingDamageHealAmount = 5.0 ; jamming damage removed per tick
 End
 ```
@@ -1950,6 +1950,23 @@ End
 A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
 The unit becomes jammed when accumulated jamming damage reaches `MaxHealth`. Healing begins
 automatically after the first hit.
+
+### Recovery timing
+
+Every hit resets the heal countdown, so the first healing tick lands one full `HealRate` after
+the last hit. Each tick then removes `HealAmount` until the stored damage reaches zero. The unit
+unjams as soon as the stored damage drops below `MaxHealth`; the overlay only disappears once it
+reaches zero. `JammingDamageCap` bounds the stored damage and therefore the longest recovery.
+
+```
+time to unjam        = HealRate * ceil((stored - MaxHealth) / HealAmount)
+time to clear overlay = HealRate * ceil(stored / HealAmount)
+```
+
+With the defaults in [Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults)
+(cap `MaxHealth * 2`, heal `MaxHealth / 16.25` every 500 ms) a fully capped unit unjams after
+8.5 s and its overlay clears after 16.5 s. Subdual damage heals the same way, but its blue tint
+is a flag rather than a level and clears on the first healing tick.
 
 Any of these keys, and the `SubdualDamage*` trio, may be omitted. An omitted key takes its value
 from the matching `SubdualDamageDefaults` block in GameData.ini, and is 0 if no block matches.
@@ -1972,9 +1989,10 @@ End
 
 ## Overlay Texture
 
-A scrolling texture can be drawn over units taking jamming damage. Its opacity tracks the
-accumulated jamming damage, so it fades in as the unit is jammed and fades out as it heals.
-Configured globally in `GameData.ini`:
+A scrolling texture can be drawn over units taking jamming damage. Its opacity is the stored
+jamming damage divided by `MaxHealth`, clamped to 1, so it fades in as the unit is jammed, holds
+full strength while damage sits above `MaxHealth`, and fades out as it heals (see
+[Recovery timing](#recovery-timing)). Configured globally in `GameData.ini`:
 
 ```
 JammingOverlayTexture  = JammingFX   ; texture name; omit or leave empty to disable
