@@ -240,6 +240,35 @@ CBCommandStatus ControlBar::processCommandTransitionUI( GameWindow *control, Gad
 
 }
 
+// contraZH: the same unit type for a shift click exit, counting build variations either way
+static Bool isSameExitType(const ThingTemplate *a, const ThingTemplate *b)
+{
+	if (a->isEquivalentTo(b))
+	{
+		return TRUE;
+	}
+
+	const std::vector<AsciiString> &av = a->getBuildVariations();
+	for (std::vector<AsciiString>::const_iterator it = av.begin(); it != av.end(); ++it)
+	{
+		if (b->getName() == *it)
+		{
+			return TRUE;
+		}
+	}
+
+	const std::vector<AsciiString> &bv = b->getBuildVariations();
+	for (std::vector<AsciiString>::const_iterator it = bv.begin(); it != bv.end(); ++it)
+	{
+		if (a->getName() == *it)
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Process a button selected message from the window system that should be for one of
 	* our GUI commands */
@@ -1271,6 +1300,28 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// send message to exit
 			GameMessage *exitMsg = TheMessageStream->appendMessage( GameMessage::MSG_EXIT );
 			exitMsg->appendObjectIDArgument( objWantingExit->getID() ); // 0 is the thing inside coming out
+
+			// contraZH: shift click exits every passenger of the clicked unit's type
+			if (TheKeyboard && TheKeyboard->isShift())
+			{
+				const ThingTemplate *exitType = objWantingExit->getTemplate();
+				for (i = 0; i < MAX_COMMANDS_PER_SET; i++)
+				{
+					if (m_containData[i].control == control || m_containData[i].objectID == INVALID_ID)
+					{
+						continue;
+					}
+
+					Object *other = TheGameLogic->findObjectByID( m_containData[i].objectID );
+					if (other == nullptr || !isSameExitType(exitType, other->getTemplate()))
+					{
+						continue;
+					}
+
+					exitMsg = TheMessageStream->appendMessage( GameMessage::MSG_EXIT );
+					exitMsg->appendObjectIDArgument( other->getID() );
+				}
+			}
 
 			break;
 

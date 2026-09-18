@@ -361,7 +361,8 @@ says it is ready, rather than being thrown away. The cooldown itself is untouche
 asked of `SpecialPowerModule::isReady` every frame rather than predicted, so a queued cast can never
 fire earlier than a manual one could.
 * Shift+click queues five units at once, from either the mouse or the hotkey. Shift+click on a
-queue entry cancels every queued unit of that type in the factory.
+queue entry cancels every queued unit of that type in the factory. Shift+click on a passenger
+cameo unloads every passenger of that type from the transport.
 
 ## Clipboard paste
 
