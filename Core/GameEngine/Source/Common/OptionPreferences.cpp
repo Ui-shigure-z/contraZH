@@ -227,6 +227,27 @@ HealthBarDisplayMode OptionPreferences::getHealthBarDisplayMode(void) const
 	return HealthBarDisplayMode_Default;
 }
 
+// Options.ini: AlliedDecalMode = Hidden | House | Army (a plain index also works).
+AlliedDecalMode OptionPreferences::getAlliedDecalMode(void) const
+{
+	OptionPreferences::const_iterator it = find("AlliedDecalMode");
+	if (it == end())
+		return AlliedDecalMode_Default;
+
+	if (stricmp(it->second.str(), "Army") == 0)
+		return AlliedDecalMode_ArmyColor;
+	if (stricmp(it->second.str(), "House") == 0)
+		return AlliedDecalMode_HouseColor;
+	if (stricmp(it->second.str(), "Hidden") == 0)
+		return AlliedDecalMode_Hidden;
+
+	Int mode = atoi(it->second.str());
+	if (mode >= 0 && mode < AlliedDecalMode_Count)
+		return (AlliedDecalMode)mode;
+
+	return AlliedDecalMode_Default;
+}
+
 // TheSuperHackers @feature Draw each command bar cameo's keyboard hotkey over the cameo.
 // Options.ini: KeyboardOverlay = Yes
 Bool OptionPreferences::getKeyboardOverlayEnabled(void) const

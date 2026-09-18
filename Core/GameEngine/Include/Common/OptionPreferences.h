@@ -87,6 +87,16 @@ enum HealthBarDisplayMode CPP_11(: Int)
 	HealthBarDisplayMode_Default = HealthBarDisplayMode_Classic
 };
 
+enum AlliedDecalMode CPP_11(: Int)
+{
+	AlliedDecalMode_Hidden = 0,	///< only your own power decals are drawn (retail behavior)
+	AlliedDecalMode_HouseColor,	///< allied power decals drawn in the ally's player color
+	AlliedDecalMode_ArmyColor,	///< allied power decals drawn in the ally's faction color
+
+	AlliedDecalMode_Count,
+	AlliedDecalMode_Default = AlliedDecalMode_HouseColor
+};
+
 //-----------------------------------------------------------------------------
 // OptionsPreferences options menu class
 //-----------------------------------------------------------------------------
@@ -121,6 +131,7 @@ public:
 	Bool getRightMouseScrollWithAlternateMouseEnabled() const;
 	Bool getRetaliationModeEnabled();
 	HealthBarDisplayMode getHealthBarDisplayMode() const;
+	AlliedDecalMode getAlliedDecalMode() const;
 	BuildTimerDisplayMode getBuildTimerDisplayMode() const;
 	CastMode getCastMode() const;
 	Bool getSelectionCircleEnabled() const;
