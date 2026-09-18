@@ -155,6 +155,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	static const FieldParse fieldParse[] =
 	{
 		{ "KindOf",									KindOfMaskType::parseFromINI,			nullptr,	offsetof( SubdualDamageDefaults, m_kindOf ) },
+		{ "ForbiddenKindOf",				KindOfMaskType::parseFromINI,			nullptr,	offsetof( SubdualDamageDefaults, m_forbiddenKindOf ) },
 		{ "SubdualDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageCap ) },
 		{ "SubdualDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealRate ) },
 		{ "SubdualDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealAmount ) },
@@ -185,6 +186,10 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 			continue;
 		}
 		if (it->m_kindOf.any() && !tmpl->isAnyKindOf(it->m_kindOf))
+		{
+			continue;
+		}
+		if (it->m_forbiddenKindOf.any() && tmpl->isAnyKindOf(it->m_forbiddenKindOf))
 		{
 			continue;
 		}

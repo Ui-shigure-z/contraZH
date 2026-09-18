@@ -500,7 +500,7 @@ terrain fit, which is not visible on the effects that actually reach that size.
 
 Subdual, jamming, frozen and chrono tuning no longer has to be repeated on every ActiveBody. GameData.ini
 accepts any number of `SubdualDamageDefaults` blocks, each optionally limited to a `KindOf`
-list, and values may be written against max health:
+list and kept off a `ForbiddenKindOf` list, and values may be written against max health:
 
 ```
 SubdualDamageDefaults

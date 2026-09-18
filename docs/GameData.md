@@ -52,7 +52,8 @@ Tint Colors:
 ## Subdual Damage Defaults
 
 Global defaults for the subdual, jamming, frozen and chrono values that otherwise repeat on every
-ActiveBody. Any number of blocks may appear; each one can be restricted to a KindOf.
+ActiveBody. Any number of blocks may appear; each one can be restricted to a KindOf and can
+exclude a KindOf.
 
 ```
 SubdualDamageDefaults
@@ -74,10 +75,18 @@ SubdualDamageDefaults
   SubdualDamageCap        = MaxHealth
   SubdualDamageHealRate   = 1000
 End
+
+SubdualDamageDefaults
+  KindOf                  = VEHICLE
+  ForbiddenKindOf         = AIRCRAFT DRONE
+  FrozenDamageCap         = MaxHealth * 3
+End
 ```
 
 Every key is optional. `KindOf` takes a list of KindOf bits and matches an object that has any of
-them; a block without `KindOf` matches every object. Blocks are searched from last to first, so
+them; a block without `KindOf` matches every object. `ForbiddenKindOf` takes the same list and
+skips the block for any object that has any of those bits, whatever `KindOf` says. Both may be
+omitted. Blocks are searched from last to first, so
 put general blocks first and specific ones after them. A map's own `GameData` block appends its
 `SubdualDamageDefaults` after the global ones and therefore wins.
 

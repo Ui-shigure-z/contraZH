@@ -94,10 +94,11 @@ struct SubdualValue
 };
 
 //-------------------------------------------------------------------------------------------------
-// One GameData SubdualDamageDefaults block; an empty KindOf matches every object
+// One GameData SubdualDamageDefaults block; an empty KindOf matches every object not in ForbiddenKindOf
 struct SubdualDamageDefaults
 {
 	KindOfMaskType m_kindOf;
+	KindOfMaskType m_forbiddenKindOf;
 	SubdualValue m_subdualDamageCap;
 	SubdualValue m_subdualDamageHealRate;
 	SubdualValue m_subdualDamageHealAmount;
