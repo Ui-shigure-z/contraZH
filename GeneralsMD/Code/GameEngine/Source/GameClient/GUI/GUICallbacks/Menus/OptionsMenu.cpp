@@ -183,6 +183,7 @@ static GameWindow *   buttonMainBack              = nullptr;
 static GameWindow *   buttonMainDefaults          = nullptr;
 
 static GameWindow *   comboBoxHealthBars          = nullptr;
+static GameWindow *   comboBoxAlliedDecals        = nullptr;
 static GameWindow *   comboBoxBuildTimers         = nullptr;
 static GameWindow *   comboBoxCastMode            = nullptr;
 static GameWindow *   comboBoxTextureFilter       = nullptr;
@@ -224,6 +225,8 @@ static const char *const BuildTimerModeNames[] = { "None", "Seconds", "Auto" };
 static const char *const CastModeNames[] = { "Normal", "QuickCast", "QuickCastWithIndicator" };
 static const Int AnisotropyLevels[] = { 2, 4, 8, 16 };
 static_assert( ARRAY_SIZE(HealthBarModeNames) == HealthBarDisplayMode_Count, "HealthBarModeNames out of date" );
+static const char *const AlliedDecalModeNames[] = { "Hidden", "House", "Army" };
+static_assert( ARRAY_SIZE(AlliedDecalModeNames) == AlliedDecalMode_Count, "AlliedDecalModeNames out of date" );
 static_assert( ARRAY_SIZE(BuildTimerModeNames) == BuildTimerDisplayMode_Count, "BuildTimerModeNames out of date" );
 static_assert( ARRAY_SIZE(CastModeNames) == CastMode_Count, "CastModeNames out of date" );
 
@@ -511,6 +514,7 @@ static void populateGameOptions()
 	}
 
 	setComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() );
+	setComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() );
 	setComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() );
 	setComboPos( comboBoxCastMode, pref->getCastMode() );
 	setComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
@@ -541,6 +545,7 @@ static void setGameOptionsDefaults()
 	}
 
 	setComboPos( comboBoxHealthBars, HealthBarDisplayMode_Default );
+	setComboPos( comboBoxAlliedDecals, AlliedDecalMode_Default );
 	setComboPos( comboBoxBuildTimers, BuildTimerDisplayMode_Default );
 	setComboPos( comboBoxCastMode, CastMode_Default );
 	setComboPos( comboBoxTextureFilter, TextureFilterClass::TEXTURE_FILTER_BILINEAR );
@@ -1017,6 +1022,10 @@ static void saveOptions()
 		(*pref)["HealthBarDisplayMode"] = HealthBarModeNames[idx];
 		TheWritableGlobalData->m_healthBarDisplayMode = idx;
 
+		idx = clamp( 0, getComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() ), (Int)AlliedDecalMode_Count - 1 );
+		(*pref)["AlliedDecalMode"] = AlliedDecalModeNames[idx];
+		TheWritableGlobalData->m_alliedDecalMode = idx;
+
 		idx = clamp( 0, getComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() ), (Int)BuildTimerDisplayMode_Count - 1 );
 		(*pref)["BuildTimerDisplayMode"] = BuildTimerModeNames[idx];
 		TheWritableGlobalData->m_buildTimerDisplayMode = idx;
@@ -1483,6 +1492,7 @@ static void initGameOptionsWindows()
 	buttonMainDefaults = findOptionsWindow( "OptionsMenu.wnd:ButtonDefaults" );
 
 	comboBoxHealthBars = findOptionsWindow( "OptionsMenu.wnd:ComboBoxHealthBars" );
+	comboBoxAlliedDecals = findOptionsWindow( "OptionsMenu.wnd:ComboBoxAlliedDecals" );
 	comboBoxBuildTimers = findOptionsWindow( "OptionsMenu.wnd:ComboBoxBuildTimers" );
 	comboBoxCastMode = findOptionsWindow( "OptionsMenu.wnd:ComboBoxCastMode" );
 	comboBoxTextureFilter = findOptionsWindow( "OptionsMenu.wnd:ComboBoxTextureFilter" );
@@ -1522,6 +1532,7 @@ static void initGameOptionsWindows()
 	setLabelText( "OptionsMenu.wnd:GameOptionsTitle", "GUI:GameOptions", L"Game Options" );
 	setLabelText( "OptionsMenu.wnd:DisplayGroupLabel", "GUI:GameOptionsDisplay", L"Display" );
 	setLabelText( "OptionsMenu.wnd:HealthBarsLabel", "GUI:HealthBars", L"Health bars" );
+	setLabelText( "OptionsMenu.wnd:AlliedDecalsLabel", "GUI:AlliedDecals", L"Allied power decals" );
 	setLabelText( "OptionsMenu.wnd:BuildTimersLabel", "GUI:BuildTimers", L"Build timers" );
 	setLabelText( "OptionsMenu.wnd:InputGroupLabel", "GUI:GameOptionsInput", L"Input" );
 	setLabelText( "OptionsMenu.wnd:CastModeLabel", "GUI:CastMode", L"Special powers" );
@@ -1560,6 +1571,7 @@ static void initGameOptionsWindows()
 	setCheckText( checkLaserRef, "GUI:LaserRef", L"Lasers light the ground", "TOOLTIP:LaserRef", L"Laser beams cast a colored light on the terrain along their length" );
 
 	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
+	setTooltip( comboBoxAlliedDecals, "TOOLTIP:AlliedDecals", L"Show where allies aim their general powers, in their player or faction color" );
 	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
 	setTooltip( comboBoxCastMode, "TOOLTIP:CastMode", L"How special power hotkeys fire" );
 	setTooltip( comboBoxTextureFilter, "TOOLTIP:TextureFilter", L"Texture filtering mode" );
@@ -1583,6 +1595,8 @@ static void initGameOptionsWindows()
 	static_assert( ARRAY_SIZE(textureFilterNames) == TextureFilterClass::TEXTURE_FILTER_COUNT, "textureFilterNames out of date" );
 	static_assert( ARRAY_SIZE(anisotropyNames) == ARRAY_SIZE(AnisotropyLevels), "anisotropyNames out of date" );
 	addComboEntries( comboBoxHealthBars, "GUI:HealthBars", healthBarNames, HealthBarDisplayMode_Count, 2 );
+	static const WideChar *const alliedDecalNames[] = { L"Hidden", L"House color", L"Army color" };
+	addComboEntries( comboBoxAlliedDecals, "GUI:AlliedDecals", alliedDecalNames, AlliedDecalMode_Count, 2 );
 	addComboEntries( comboBoxBuildTimers, "GUI:BuildTimers", buildTimerNames, BuildTimerDisplayMode_Count, 2 );
 	addComboEntries( comboBoxCastMode, "GUI:CastMode", castModeNames, CastMode_Count, 2 );
 	addComboEntries( comboBoxTextureFilter, "GUI:TextureFilter", textureFilterNames, TextureFilterClass::TEXTURE_FILTER_COUNT, 4 );

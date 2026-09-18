@@ -212,6 +212,12 @@ none.)
 
 * `HealthBarDisplayMode = Classic` - (`Classic` | `Damaged` | `Always`. `Damaged` shows a bar only on
 hurt objects, `Always` shows one on everything.)
+* `AlliedDecalMode = House` - (`Hidden` | `House` | `Army`. Draws the ground decal of an ally's
+general power (nuke, scud storm, carpet bomb, gunship, paradrop and the like) once it fires, so allies
+see each other's targeting. `House` tints it in the ally's player color, `Army` in the faction color
+of the general they picked, `Hidden` keeps retail behavior where only your own decals show. Enemy
+decals stay hidden. Applies to the next power fired. The Game Options combo needs `ComboBoxAlliedDecals`
+and `AlliedDecalsLabel` windows in `OptionsMenu.wnd`; without them the key still works from the file.)
 * `NumericalHealth = No` - (Yes prints the hit points beside the health bar. Follows
 `HealthBarDisplayMode`, so the number appears exactly where a bar does.)
 * `SelectionCircle = No` - (Yes draws a green ring on the ground under selected objects. Retail draws

@@ -193,6 +193,7 @@ public:
 	// Holds a HealthBarDisplayMode; stored as Int so this widely included header does not
 	// have to pull in OptionPreferences.h.
 	Int m_healthBarDisplayMode;
+	Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn
 	// TheSuperHackers @feature Countdown numbers on build queue and cooldown cameos.
 	// Holds a BuildTimerDisplayMode; stored as Int to avoid pulling OptionPreferences.h in here.
 	Int m_buildTimerDisplayMode;
