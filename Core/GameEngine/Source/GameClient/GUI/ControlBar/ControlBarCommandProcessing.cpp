@@ -240,35 +240,6 @@ CBCommandStatus ControlBar::processCommandTransitionUI( GameWindow *control, Gad
 
 }
 
-// contraZH: the same unit type for a shift click exit, counting build variations either way
-static Bool isSameExitType(const ThingTemplate *a, const ThingTemplate *b)
-{
-	if (a->isEquivalentTo(b))
-	{
-		return TRUE;
-	}
-
-	const std::vector<AsciiString> &av = a->getBuildVariations();
-	for (std::vector<AsciiString>::const_iterator it = av.begin(); it != av.end(); ++it)
-	{
-		if (b->getName() == *it)
-		{
-			return TRUE;
-		}
-	}
-
-	const std::vector<AsciiString> &bv = b->getBuildVariations();
-	for (std::vector<AsciiString>::const_iterator it = bv.begin(); it != bv.end(); ++it)
-	{
-		if (a->getName() == *it)
-		{
-			return TRUE;
-		}
-	}
-
-	return FALSE;
-}
-
 //-------------------------------------------------------------------------------------------------
 /** Process a button selected message from the window system that should be for one of
 	* our GUI commands */
@@ -1313,7 +1284,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 					}
 
 					Object *other = TheGameLogic->findObjectByID( m_containData[i].objectID );
-					if (other == nullptr || !isSameExitType(exitType, other->getTemplate()))
+					if (other == nullptr || !other->getTemplate()->isEquivalentTo(exitType))
 					{
 						continue;
 					}
