@@ -3890,6 +3890,58 @@ void Drawable::drawProgress( const IRegion2D *healthBarRegion )
 }
 
 // ------------------------------------------------------------------------------------------------
+// Vertical screen span drawAmmo uses for this object. Returns FALSE when it has no ammo pips.
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::getAmmoPipsScreenSpan( const IRegion2D *healthBarRegion, Int &top, Int &bottom ) const
+{
+	const Object *obj = getObject();
+
+	Int numTotal;
+	Int numFull;
+	if (!obj->getAmmoPipShowingInfo(numTotal, numFull))
+	{
+		return FALSE;
+	}
+
+	AmmoPipsStyle pipsStyle = obj->getTemplate()->getAmmoPipsStyle();
+	if (pipsStyle == AMMO_PIPS_BAR)
+	{
+		top = healthBarRegion->lo.y + 5;
+		bottom = top + REAL_TO_INT(max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f);
+		return TRUE;
+	}
+
+	const Image *pip = (pipsStyle == AMMO_PIPS_THIN) ? s_emptyAmmoThin : s_emptyAmmo;
+	if (!pip)
+	{
+		return FALSE;
+	}
+
+	Real scale = 1.0f;
+#ifdef SCALE_ICONS_WITH_ZOOM_ML
+	if (pipsStyle != AMMO_PIPS_THIN)
+	{
+		scale = TheGlobalData->m_ammoPipScaleFactor / CLAMP_ICON_ZOOM_FACTOR(TheTacticalView->getZoom());
+	}
+#endif
+
+	ICoord2D screenCenter;
+	Coord3D pos = *obj->getPosition();
+	pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
+	pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
+	pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+	if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
+	{
+		return FALSE;
+	}
+
+	Real bounding = obj->getGeometryInfo().getBoundingSphereRadius() * scale;
+	top = screenCenter.y + REAL_TO_INT(TheGlobalData->m_ammoPipScreenOffset.y * bounding) + 1;
+	bottom = top + REAL_TO_INT(pip->getImageHeight() * scale);
+	return TRUE;
+}
+
+// ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
 {
@@ -3948,6 +4000,16 @@ void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
 
 	// Sits below the health bar. drawProgress owns the slot above.
 	Real yOffset = 5;
+
+	Int ammoTop, ammoBottom;
+	if (getAmmoPipsScreenSpan(healthBarRegion, ammoTop, ammoBottom))
+	{
+		Real barTop = healthBarRegion->lo.y + yOffset;
+		if (barTop <= ammoBottom && barTop + healthBoxHeight >= ammoTop)
+		{
+			yOffset = ammoBottom + 1 - healthBarRegion->lo.y;
+		}
+	}
 
 	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
 		healthBoxOutlineSize, outlineColor);

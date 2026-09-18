@@ -836,6 +836,7 @@ private:
 	//new:
 	void drawProgress(const IRegion2D* healthBarRegion);							///< draw progress bar (shield, deploy, teleport, etc.)
 	void drawProductionBar( const IRegion2D* healthBarRegion );			///< draw progress of the head of the production queue
+	Bool getAmmoPipsScreenSpan( const IRegion2D* healthBarRegion, Int &top, Int &bottom ) const;	///< vertical span drawAmmo occupies
 
 	void drawEmoticon( const IRegion2D* healthBarRegion );
 	void drawHealthBar( const IRegion2D* healthBarRegion );					///< draw heath bar
