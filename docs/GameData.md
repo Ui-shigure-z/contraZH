@@ -51,7 +51,7 @@ Tint Colors:
 
 ## Subdual Damage Defaults
 
-Global defaults for the subdual, jamming and chrono values that otherwise repeat on every
+Global defaults for the subdual, jamming, frozen and chrono values that otherwise repeat on every
 ActiveBody. Any number of blocks may appear; each one can be restricted to a KindOf.
 
 ```
@@ -62,6 +62,9 @@ SubdualDamageDefaults
   JammingDamageCap        = MaxHealth * 2
   JammingDamageHealRate   = 500
   JammingDamageHealAmount = MaxHealth / 16.25
+  FrozenDamageCap         = MaxHealth * 2
+  FrozenDamageHealRate    = 500
+  FrozenDamageHealAmount  = MaxHealth / 16.25
   ChronoDamageHealRate    = 500
   ChronoDamageHealAmount  = MaxHealth * 0.1
 End
@@ -94,12 +97,38 @@ Precedence for each value on each unit:
 1. The value written on the unit's ActiveBody, if present. An explicit `SubdualDamageCap = 0`
    still means immune.
 2. The last matching `SubdualDamageDefaults` block that sets that value.
-3. Zero for subdual and jamming. For chrono, `ChronoDamageHealRate` and
+3. Zero for subdual, jamming and frozen. For chrono, `ChronoDamageHealRate` and
    `ChronoDamageHealAmountPercent` from GameData.
 
 The same value forms are accepted on ActiveBody itself, and ActiveBody also accepts
 `ChronoDamageHealRate` and `ChronoDamageHealAmount`; see [ActiveBody subdual fields](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#activebody-fields).
   
+## Subdual Overlay Textures
+
+A texture can be drawn over units taking jamming or frozen damage. Each overlay has its own key
+set; the effect is off until a texture is named.
+
+```
+JammingOverlayTexture  = JammingFX.tga
+JammingOverlayScrollU  = 0.5
+JammingOverlayScrollV  = 0.0
+JammingOverlayScale    = 1.0
+JammingOverlayColor    = R:255 G:255 B:255
+JammingOverlayAdditive = Yes
+
+FrozenOverlayTexture   = FrostFX.tga
+FrozenOverlayScrollU   = 0.0
+FrozenOverlayScrollV   = 0.0
+FrozenOverlayScale     = 1.0
+FrozenOverlayColor     = R:255 G:255 B:255
+FrozenOverlayAdditive  = No
+```
+
+The values shown are the defaults apart from the texture names. See
+[Subdual Jamming](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#overlay-texture)
+and [Subdual Frozen](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#subdual-frozen)
+for what each key does and how the two overlays stack.
+
 ## Water Depth Terrain Lighting
 
 Note: these keys now live in the map's `MapData` entry rather than in GameData, which is what
@@ -219,4 +248,6 @@ water. They can now be drawn on the water surface instead — see `RenderAboveWa
 The following new entries in MiscAudio.ini are available
 
 *`ChronoDisabledSoundAmbient = <AudioEvent>` - (looping) audio to play when an object is being removed/disabled by a CHRONO_GUN
+*`UnitJammed = <AudioEvent>` / `UnitUnjammed = <AudioEvent>` - fallback jam and unjam cues when the unit defines no `SoundJammed` / `SoundUnjammed`
+*`UnitFrozen = <AudioEvent>` / `UnitUnfrozen = <AudioEvent>` - fallback freeze and thaw cues when the unit defines no `SoundFrozen` / `SoundUnfrozen`
 

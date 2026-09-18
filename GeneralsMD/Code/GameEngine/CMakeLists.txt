@@ -1149,6 +1149,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/ChronoDamageHelper.h
     Include/GameLogic/Module/ChronoDeathBehavior.h
     Include/GameLogic/Module/JammingDamageHelper.h
+    Include/GameLogic/Module/FrozenDamageHelper.h
     Include/GameLogic/Module/ChronoSphereUpdateModule.h
     Include/GameLogic/Module/CrateApplyUpgrade.h
     Include/GameLogic/Module/CreateObjectOnKillBehavior.h
@@ -1208,6 +1209,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Helper/BuffEffectHelper.cpp
     Source/GameLogic/Object/Helper/ChronoDamageHelper.cpp
     Source/GameLogic/Object/Helper/JammingDamageHelper.cpp
+    Source/GameLogic/Object/Helper/FrozenDamageHelper.cpp
     Source/GameLogic/Object/SpecialPower/UpgradeSpecialPower.cpp
     Source/GameLogic/Object/Update/AIUpdate/CarrierDroneAIUpdate.cpp
     Source/GameLogic/Object/Update/AIUpdate/DroneCarrierAIUpdate.cpp

@@ -168,6 +168,12 @@ public:
 	virtual Bool isJammed() const = 0;
 	virtual Real getCurrentJammingDamageAmount() const = 0;
 
+	virtual UnsignedInt getFrozenDamageHealRate() const = 0;
+	virtual Real getFrozenDamageHealAmount() const = 0;
+	virtual Bool hasAnyFrozenDamage() const = 0;
+	virtual Bool isFrozen() const = 0;
+	virtual Real getCurrentFrozenDamageAmount() const = 0;
+
 	virtual BodyDamageType getDamageState() const = 0;
 	virtual void setDamageState( BodyDamageType newState ) = 0;	///< control damage state directly.  Will adjust hitpoints.
 	virtual void setAflame( Bool setting ) = 0;///< This is a major change like a damage state.
@@ -260,6 +266,12 @@ public:
 	virtual Bool hasAnyJammingDamage() const override { return FALSE; }
 	virtual Bool isJammed() const override { return FALSE; }
 	virtual Real getCurrentJammingDamageAmount() const override { return 0.0f; }
+
+	virtual UnsignedInt getFrozenDamageHealRate() const override { return 0; }
+	virtual Real getFrozenDamageHealAmount() const override { return 0.0f; }
+	virtual Bool hasAnyFrozenDamage() const override { return FALSE; }
+	virtual Bool isFrozen() const override { return FALSE; }
+	virtual Real getCurrentFrozenDamageAmount() const override { return 0.0f; }
 
 	virtual BodyDamageType getDamageState() const = 0;
 	virtual void setDamageState( BodyDamageType newState ) = 0;	///< control damage state directly.  Will adjust hitpoints.

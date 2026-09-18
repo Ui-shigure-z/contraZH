@@ -62,6 +62,10 @@ public:
 	SubdualValue m_jammingDamageHealRate;
 	SubdualValue m_jammingDamageHealAmount;
 
+	SubdualValue m_frozenDamageCap;
+	SubdualValue m_frozenDamageHealRate;
+	SubdualValue m_frozenDamageHealAmount;
+
 	SubdualValue m_chronoDamageHealRate;
 	SubdualValue m_chronoDamageHealAmount;
 
@@ -105,6 +109,11 @@ public:
 	virtual Real getJammingDamageHealAmount() const override;
 	virtual Bool hasAnyJammingDamage() const override;
 	virtual Real getCurrentJammingDamageAmount() const override { return m_currentJammingDamage; }
+
+	virtual UnsignedInt getFrozenDamageHealRate() const override;
+	virtual Real getFrozenDamageHealAmount() const override;
+	virtual Bool hasAnyFrozenDamage() const override;
+	virtual Real getCurrentFrozenDamageAmount() const override { return m_currentFrozenDamage; }
 
 	virtual const DamageInfo *getLastDamageInfo() const { return &m_lastDamageInfo; }	///< return info on last damage dealt to this object
 	virtual UnsignedInt getLastDamageTimestamp() const { return m_lastDamageTimestamp; }	///< return frame of last damage dealt
@@ -154,6 +163,10 @@ public:
 	virtual Bool canBeJammed() const;
 	virtual void onJammingChange(Bool isNowJammed);
 
+	// Frozen
+	virtual Bool isFrozen() const override;
+	virtual Bool canBeFrozen() const;
+	virtual void onFrozenChange(Bool isNowFrozen);
 
 	virtual void overrideDamageFX(DamageFX* damageFX);
 
@@ -183,6 +196,7 @@ protected:
 	virtual void internalAddSubdualDamage( Real delta );
 	virtual void internalAddChronoDamage( Real delta );
 	virtual void internalAddJammingDamage( Real delta );
+	virtual void internalAddFrozenDamage( Real delta );
 
 	virtual void applyChronoParticleSystems(void);
 
@@ -198,6 +212,7 @@ private:
 	Real									m_currentChronoDamage;	///< Same as Subdual, but for CHRONO_GUN
 	Real									m_currentJammingDamage;
 	Bool									m_jammingSetUnselectable;	///< jam set UNSELECTABLE, so unjam may clear it
+	Real									m_currentFrozenDamage;
 
 	// resolved from the module data or GameData at creation; evaluated against the live max health
 	SubdualValue					m_subdualDamageCap;
@@ -206,6 +221,9 @@ private:
 	SubdualValue					m_jammingDamageCap;
 	SubdualValue					m_jammingDamageHealRate;
 	SubdualValue					m_jammingDamageHealAmount;
+	SubdualValue					m_frozenDamageCap;
+	SubdualValue					m_frozenDamageHealRate;
+	SubdualValue					m_frozenDamageHealAmount;
 	SubdualValue					m_chronoDamageHealRate;
 	SubdualValue					m_chronoDamageHealAmount;
 

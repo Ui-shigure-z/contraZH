@@ -104,6 +104,9 @@ struct SubdualDamageDefaults
 	SubdualValue m_jammingDamageCap;
 	SubdualValue m_jammingDamageHealRate;
 	SubdualValue m_jammingDamageHealAmount;
+	SubdualValue m_frozenDamageCap;
+	SubdualValue m_frozenDamageHealRate;
+	SubdualValue m_frozenDamageHealAmount;
 	SubdualValue m_chronoDamageHealRate;
 	SubdualValue m_chronoDamageHealAmount;
 };
@@ -687,6 +690,13 @@ public:
 	Real m_jammingOverlayScale;				///< UV tiling; >1 repeats the texture more densely
 	RGBColor m_jammingOverlayColor;			///< tint multiplied into the texture
 	Bool m_jammingOverlayAdditive;
+
+	AsciiString m_frozenOverlayTexture;	///< empty disables the frozen overlay entirely
+	Real m_frozenOverlayScrollU;
+	Real m_frozenOverlayScrollV;
+	Real m_frozenOverlayScale;
+	RGBColor m_frozenOverlayColor;
+	Bool m_frozenOverlayAdditive;
 
 	Bool m_useOldMoveSpeed;
 

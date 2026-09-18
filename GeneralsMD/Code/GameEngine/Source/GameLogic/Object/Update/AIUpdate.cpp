@@ -4156,7 +4156,7 @@ void AIUpdateInterface::privateExit( Object *objectToExit, CommandSourceType cmd
 #endif
 	}
 
-  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) || objectToExit->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 	// we must go thru this state (rather than calling exitObjectViaDoor directly!),
@@ -4194,7 +4194,7 @@ void AIUpdateInterface::privateExitInstantly( Object *objectToExit, CommandSourc
 #endif
 	}
 
-  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) || objectToExit->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 	// we must go thru this state (rather than calling exitObjectViaDoor directly!),
@@ -4234,7 +4234,7 @@ void AIUpdateInterface::doQuickExit( std::vector<Coord3D>* path )
 void AIUpdateInterface::privateEvacuate( Int exposeStealthUnits, CommandSourceType cmdSource )
 {
 
-  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) || getObject()->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 
@@ -4256,7 +4256,7 @@ void AIUpdateInterface::privateEvacuate( Int exposeStealthUnits, CommandSourceTy
 void AIUpdateInterface::privateEvacuateInstantly( Int exposeStealthUnits, CommandSourceType cmdSource )
 {
 
-  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) || getObject()->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 

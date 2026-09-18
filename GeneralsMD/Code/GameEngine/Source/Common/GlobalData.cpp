@@ -161,6 +161,9 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 		{ "JammingDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageCap ) },
 		{ "JammingDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealRate ) },
 		{ "JammingDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealAmount ) },
+		{ "FrozenDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageCap ) },
+		{ "FrozenDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageHealRate ) },
+		{ "FrozenDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageHealAmount ) },
 		{ "ChronoDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealRate ) },
 		{ "ChronoDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealAmount ) },
 		{ nullptr, nullptr, nullptr, 0 }
@@ -692,6 +695,12 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "JammingOverlayScale",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScale) },
 	{ "JammingOverlayColor",	INI::parseRGBColor,		NULL,	offsetof(GlobalData, m_jammingOverlayColor) },
 	{ "JammingOverlayAdditive",	INI::parseBool,			NULL,	offsetof(GlobalData, m_jammingOverlayAdditive) },
+	{ "FrozenOverlayTexture",	INI::parseAsciiString,	NULL,	offsetof(GlobalData, m_frozenOverlayTexture) },
+	{ "FrozenOverlayScrollU",	INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScrollU) },
+	{ "FrozenOverlayScrollV",	INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScrollV) },
+	{ "FrozenOverlayScale",		INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScale) },
+	{ "FrozenOverlayColor",		INI::parseRGBColor,		NULL,	offsetof(GlobalData, m_frozenOverlayColor) },
+	{ "FrozenOverlayAdditive",	INI::parseBool,			NULL,	offsetof(GlobalData, m_frozenOverlayAdditive) },
 
 	{"ChronoDamageDisableThreshold", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageDisableThreshold)},
 	{"ChronoDamageHealRate", INI::parseDurationUnsignedInt, NULL, offsetof(GlobalData, m_chronoDamageHealRate)},
@@ -1309,6 +1318,15 @@ GlobalData::GlobalData()
 	m_jammingOverlayColor.green = 1.0f;
 	m_jammingOverlayColor.blue = 1.0f;
 	m_jammingOverlayAdditive = TRUE;
+
+	m_frozenOverlayTexture.clear();
+	m_frozenOverlayScrollU = 0.0f;
+	m_frozenOverlayScrollV = 0.0f;
+	m_frozenOverlayScale = 1.0f;
+	m_frozenOverlayColor.red = 1.0f;
+	m_frozenOverlayColor.green = 1.0f;
+	m_frozenOverlayColor.blue = 1.0f;
+	m_frozenOverlayAdditive = FALSE;
 
 	// --------------------------------------------------------------------------
 	// INIT TINT STATUS TYPES:

@@ -81,6 +81,8 @@ Real ArmorTemplate::adjustDamage(DamageType t, Real damage) const
 		return damage;
 	if (t == DAMAGE_SUBDUAL_JAMMING_UNRESISTABLE)
 		return damage;
+	if (t == DAMAGE_SUBDUAL_FROZEN_UNRESISTABLE)
+		return damage;
 
 	damage *= m_damageCoefficient[t];
 

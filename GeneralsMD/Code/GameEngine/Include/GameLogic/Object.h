@@ -108,6 +108,7 @@ class StatusDamageHelper;
 class SubdualDamageHelper;
 class ChronoDamageHelper;
 class JammingDamageHelper;
+class FrozenDamageHelper;
 class TempWeaponBonusHelper;
 class BuffEffectHelper;
 class ObjectWeaponStatusHelper;
@@ -239,6 +240,7 @@ public:
 	void notifySubdualDamage( Real amount );
 	void notifyChronoDamage( Real amount );
 	void notifyJammingDamage( Real amount );
+	void notifyFrozenDamage( Real amount );
 	void doStatusDamage( ObjectStatusTypes status, Real duration );///< At this level, we just pass this on to our helper
 	void doTempWeaponBonus( WeaponBonusConditionType status, UnsignedInt duration, TintStatus tintStatus = TINT_STATUS_INVALID );///< At this level, we just pass this on to our helper
 	void applyBuff(const BuffTemplate* buffTemp, UnsignedInt duration, Object* sourceObj);
@@ -796,6 +798,7 @@ private:
 	SubdualDamageHelper*					m_subdualDamageHelper;
 	ChronoDamageHelper*					m_chronoDamageHelper;
 	JammingDamageHelper*					m_jammingDamageHelper;
+	FrozenDamageHelper*						m_frozenDamageHelper;
 	TempWeaponBonusHelper*				m_tempWeaponBonusHelper;
 	BuffEffectHelper*				m_buffEffectHelper;
 	FiringTracker*								m_firingTracker;	///< Tracker is really a "helper" and is included NUM_SLEEP_HELPERS
