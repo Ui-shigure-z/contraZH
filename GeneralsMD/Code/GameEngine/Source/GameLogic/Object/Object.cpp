@@ -2439,7 +2439,7 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 				// Doh. Also shouldn't be tinting when disabled by scripting.
 				// Doh^2. Also shouldn't be CLEARING tinting if we're disabling by held or script disabledness
 				// Doh^3. Unmanned is no tint too
-				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO && type != DISABLED_TELEPORT_RECOVER)
+				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO && type != DISABLED_TELEPORT_RECOVER && type != DISABLED_FROZEN)
 				{
 					m_drawable->setTintStatus( TINT_STATUS_DISABLED );
 				}
@@ -2632,6 +2632,7 @@ Bool Object::clearDisabled( DisabledType type )
 	exceptions.set(DISABLED_TELEPORT);
 	exceptions.set(DISABLED_CHRONO);
 	exceptions.set(DISABLED_TELEPORT_RECOVER);
+	exceptions.set(DISABLED_FROZEN);
 
 	DisabledMaskType myFlagsMinusExceptions = getDisabledFlags();
 	myFlagsMinusExceptions.clearAndSet(exceptions, DISABLEDMASK_NONE);

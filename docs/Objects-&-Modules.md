@@ -2095,6 +2095,9 @@ until the last of those clears.
 The `FROZEN` condition state lets art react. A `ConditionState = FROZEN` block on a draw module can
 swap the model or play an animation for as long as the unit is frozen.
 
+A frozen unit does not take the dark-gray disabled tint that EMP and subdual apply, so the
+frozen overlay and any `FROZEN` art carry the look on their own.
+
 Projectiles take frozen damage but are never disabled by it; only the sound plays.
 
 ## ActiveBody Fields
