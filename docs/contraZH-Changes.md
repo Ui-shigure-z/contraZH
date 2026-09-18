@@ -240,6 +240,10 @@ centred on the monitor, so it covers the screen when the resolution matches the 
 by the Borderless checkbox beside the Resolution label in the Options menu and applied on Accept,
 like a resolution change. `-win` is unaffected and still gives a captioned window.)
 
+Note: a blue bar under the health bar shows the progress of the unit or upgrade at the head of a
+building's production queue. It appears while the building is selected or moused over, or all the
+time when `HealthBarDisplayMode = Always`. Own buildings only.
+
 Note: `NewRadar` cannot hide roads the way the RA3 minimap does. Roads are painted into the terrain
 textures themselves rather than drawn as their own radar layer, so by the time the radar samples a
 road cell it is indistinguishable from the ground around it. Bridges do still draw in their own

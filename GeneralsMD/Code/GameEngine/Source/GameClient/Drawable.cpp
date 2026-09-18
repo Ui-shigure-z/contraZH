@@ -62,6 +62,7 @@
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/StealthUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
@@ -3584,6 +3585,7 @@ void Drawable::drawIconUI()
 		drawVeterancy( healthBarRegion );
 
 		drawProgress( healthBarRegion );
+		drawProductionBar( healthBarRegion );
 	}
 }
 
@@ -3885,6 +3887,77 @@ void Drawable::drawProgress( const IRegion2D *healthBarRegion )
 			color);
 	}
 
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
+{
+	if (!healthBarRegion)
+	{
+		return;
+	}
+
+	const Object* obj = getObject();
+
+	const Bool alwaysVisible = TheGlobalData->m_healthBarDisplayMode == HealthBarDisplayMode_Always;
+
+	if (!(
+				TheGlobalData->m_showObjectHealth &&
+				(alwaysVisible || isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
+			))
+	{
+		return;
+	}
+
+	if (obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION))
+	{
+		return;
+	}
+
+	ProductionUpdateInterface *pui = const_cast<Object*>(obj)->getProductionUpdateInterface();
+	if (!pui)
+	{
+		return;
+	}
+
+	// The queue head is a unit or an upgrade.
+	const ProductionEntry *production = pui->firstProduction();
+	if (!production)
+	{
+		return;
+	}
+
+	Real progress = production->getPercentComplete() / 100.0f;
+	if (progress < 0.0f)
+	{
+		progress = 0.0f;
+	}
+	if (progress > 1.0f)
+	{
+		progress = 1.0f;
+	}
+
+	Color color = GameMakeColor(0x01, 0xA6, 0xFF, 255);
+	Color outlineColor = GameMakeColor(0, 0, 0, 255);
+
+	Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
+	Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f;
+	Real healthBoxOutlineSize = 1.0f;
+
+	// Sits below the health bar. drawProgress owns the slot above.
+	Real yOffset = 5;
+
+	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
+		healthBoxOutlineSize, outlineColor);
+
+	if (progress > 0)
+	{
+		TheDisplay->drawFillRect(healthBarRegion->lo.x + 1, healthBarRegion->lo.y + yOffset + 1,
+			(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
+			color);
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
