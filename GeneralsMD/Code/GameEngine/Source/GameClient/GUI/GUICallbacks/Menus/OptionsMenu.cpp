@@ -1303,12 +1303,8 @@ static void saveOptions()
 	{
 		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
 
-		// The display reads the borderless flag while switching, so it is set before the call and undone on failure
-		const Bool oldBorderless = TheGlobalData->m_borderlessWindow;
-		const Bool borderless = getCheck( checkBorderlessWindow, oldBorderless );
+		const Bool borderless = getCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
 		const Bool windowed = TheGlobalData->m_windowed || borderless;
-		TheWritableGlobalData->m_borderlessWindow = borderless;
-		(*pref)["BorderlessWindow"] = borderless ? "yes" : "no";
 
 		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres || windowed != TheDisplay->getWindowed())
 		{
@@ -1317,6 +1313,8 @@ static void saveOptions()
 				dispChanged = TRUE;
 				TheWritableGlobalData->m_xResolution = xres;
 				TheWritableGlobalData->m_yResolution = yres;
+				TheWritableGlobalData->m_borderlessWindow = borderless;
+				(*pref)["BorderlessWindow"] = borderless ? "yes" : "no";
 
 				TheHeaderTemplateManager->onResolutionChanged();
 				TheMouse->onResolutionChanged();
@@ -1335,11 +1333,6 @@ static void saveOptions()
 				TheInGameUI->recreateControlBar();
 				TheShell->recreateWindowLayouts();
 				TheInGameUI->refreshCustomUiResources();
-			}
-			else
-			{
-				TheWritableGlobalData->m_borderlessWindow = oldBorderless;
-				(*pref)["BorderlessWindow"] = oldBorderless ? "yes" : "no";
 			}
 		}
 	}
@@ -1658,6 +1651,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 	checkBorderlessWindow = findOptionsWindow( "OptionsMenu.wnd:CheckBorderlessWindow", checkBorderlessWindowID );
 	setCheckText( checkBorderlessWindow, "GUI:BorderlessWindow", L"Borderless", "TOOLTIP:BorderlessWindow", L"Runs the game in a frameless window at the selected resolution instead of exclusive fullscreen." );
+	enableWindow( checkBorderlessWindow, !TheGlobalData->m_windowed );
 	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxAntiAliasing" );
 	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxAntiAliasingID );
 	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxResolution" );

@@ -739,7 +739,6 @@ void DeclineResolution()
 		optionPref["BorderlessWindow"] = TheGlobalData->m_borderlessWindow ? "yes" : "no";
 		optionPref.write();
 
-		// Same order as the accept path so the rebuilt shell stays above the control bar roots
 		TheInGameUI->recreateControlBar();
 		TheShell->recreateWindowLayouts();
 	}

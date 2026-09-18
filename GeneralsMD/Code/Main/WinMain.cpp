@@ -511,14 +511,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 					if (TheAudio)
 						TheAudio->unmuteAudio(AudioManager::MuteAudioReason_WindowFocus);
 
-					// A display mode switch can deactivate the app without a matching WM_ACTIVATEAPP
-					if (!isWinMainActive)
-					{
-						isWinMainActive = TRUE;
-						if (TheGameEngine)
-							TheGameEngine->setIsActive(TRUE);
-					}
-
 					// Cursor can only be captured after one of the activation events.
 					if (TheMouse)
 						TheMouse->refreshCursorCapture();
