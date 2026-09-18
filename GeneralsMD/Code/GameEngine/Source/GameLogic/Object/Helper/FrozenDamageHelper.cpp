@@ -56,7 +56,8 @@ UpdateSleepTime FrozenDamageHelper::update()
 {
 	BodyModuleInterface *body = getObject()->getBodyModule();
 
-	m_healingStepCountdown--;
+	if( m_healingStepCountdown > 0 )
+		m_healingStepCountdown--;
 	if( m_healingStepCountdown > 0 )
 		return UPDATE_SLEEP_NONE;
 

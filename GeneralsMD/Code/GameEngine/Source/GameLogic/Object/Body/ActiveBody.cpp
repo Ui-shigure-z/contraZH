@@ -299,6 +299,9 @@ Real ActiveBody::estimateDamage( DamageInfoInput& damageInfo ) const
 	if( IsSubdualDamage(damageInfo.m_damageType)  &&  !canBeSubdued() )
 		return 0.0f;
 
+	if( IsSubdualFrozenDamage(damageInfo.m_damageType)  &&  !canBeFrozen() )
+		return 0.0f;
+
 	if( damageInfo.m_damageType == DAMAGE_KILL_GARRISONED )
 	{
 		ContainModuleInterface* contain = getObject()->getContain();
