@@ -733,11 +733,15 @@ void DeclineResolution()
 
 		OptionPreferences optionPref;
 		optionPref["Resolution"] = prefString;
+
+		// The options menu already stored the new borderless flag, so declining has to take it back
+		TheWritableGlobalData->m_borderlessWindow = oldDispSettings.windowed && !TheGlobalData->m_windowed;
+		optionPref["BorderlessWindow"] = TheGlobalData->m_borderlessWindow ? "yes" : "no";
 		optionPref.write();
 
-		TheShell->recreateWindowLayouts();
-
+		// Same order as the accept path so the rebuilt shell stays above the control bar roots
 		TheInGameUI->recreateControlBar();
+		TheShell->recreateWindowLayouts();
 	}
 }
 

@@ -235,6 +235,10 @@ was.)
 * `BlipSize = Large` - (`Small` | `Large`. How big the object blips draw. `Small` is 3 pixels for a
 unit and 5 for a structure, `Large` is 5 and 7. Larger blips are easier to pick out at a glance but
 run together sooner when units are packed in. Ignored unless `NewRadar` is on.)
+* `BorderlessWindow = No` - (Yes runs the game in a frameless window at the selected resolution,
+centred on the monitor, so it covers the screen when the resolution matches the desktop. Toggled
+by the Borderless checkbox beside the Resolution label in the Options menu and applied on Accept,
+like a resolution change. `-win` is unaffected and still gives a captioned window.)
 
 Note: `NewRadar` cannot hide roads the way the RA3 minimap does. Roads are painted into the terrain
 textures themselves rather than drawn as their own radar layer, so by the time the radar samples a

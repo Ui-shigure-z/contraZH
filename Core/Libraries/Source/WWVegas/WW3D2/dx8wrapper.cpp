@@ -1283,6 +1283,11 @@ bool DX8Wrapper::Set_Device_Resolution(int width,int height,int bits,int windowe
 {
 	if (D3DDevice != nullptr) {
 
+		// A windowed switch needs the present parameters rebuilt, which only Set_Render_Device does
+		if (windowed != -1 && (windowed != 0) != IsWindowed) {
+			return Set_Render_Device(-1, width, height, bits, windowed, resize_window, true, true);
+		}
+
 		if (width != -1) {
 			_PresentParameters.BackBufferWidth = ResolutionWidth = width;
 		}
@@ -1293,7 +1298,7 @@ bool DX8Wrapper::Set_Device_Resolution(int width,int height,int bits,int windowe
 		{
 			Resize_And_Position_Window();
 		}
-#pragma message("TODO: support changing windowed status and changing the bit depth")
+#pragma message("TODO: support changing the bit depth")
 		WWDEBUG_SAY(("DX8Wrapper::Set_Device_Resolution is resetting the device."));
 		return Reset_Device();
 	} else {
