@@ -235,6 +235,14 @@ was.)
 * `BlipSize = Large` - (`Small` | `Large`. How big the object blips draw. `Small` is 3 pixels for a
 unit and 5 for a structure, `Large` is 5 and 7. Larger blips are easier to pick out at a glance but
 run together sooner when units are packed in. Ignored unless `NewRadar` is on.)
+* `BorderlessWindow = No` - (Yes runs the game in a frameless window at the selected resolution,
+centred on the monitor, so it covers the screen when the resolution matches the desktop. Toggled
+by the Borderless checkbox beside the Resolution label in the Options menu and applied on Accept,
+like a resolution change. `-win` is unaffected and still gives a captioned window.)
+
+Note: a blue bar under the health bar shows the progress of the unit or upgrade at the head of a
+building's production queue. It appears while the building is selected or moused over, or all the
+time when `HealthBarDisplayMode = Always`. Own buildings only.
 
 Note: `NewRadar` cannot hide roads the way the RA3 minimap does. Roads are painted into the terrain
 textures themselves rather than drawn as their own radar layer, so by the time the radar samples a
@@ -299,10 +307,12 @@ in GameData decides whether a goal in front of the unit is also driven to in rev
 
 ## Smart selection
 
-Shows a row of half size cameos above the command bar. A selection of different unit types gets one
-cameo per type with a count of how many are selected; a selection of a single type gets one cameo
-per object. A cameo standing for one object shows a small health bar instead of a count. The row
-holds 16 cameos; anything beyond that gets none. A count past 999 gets no badge.
+Shows a row of small cameos, three fifths of a command button, above the command bar. A selection
+of different unit types gets one cameo per type with a count of how many are selected; a selection
+of a single type gets one cameo per object. A cameo standing for one object shows a small health
+bar instead of a count, and a light orange clip bar above it when the object shows ammo pips, split
+into one segment per shot. The row holds 16 cameos; anything beyond that gets none. A count past
+999 gets no badge. Objects that are reskins of one type share that type's cameo.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
 * `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on
@@ -325,7 +335,7 @@ CommandMap.ini) step the focus through the row, skipping cameos that are already
 
 ### Command group row
 
-A second row of half size cameos sits on the command bar frame, one per command group (Ctrl+1
+A second row of small cameos sits on the command bar frame, one per command group (Ctrl+1
 to Ctrl+0) that still has live members, in key order 1 to 9 then 0. Each cameo shows the group's
 most common unit type, the group number top left and the live member count bottom right; the
 count drops as members die. The row shows whenever any group has members, even with nothing

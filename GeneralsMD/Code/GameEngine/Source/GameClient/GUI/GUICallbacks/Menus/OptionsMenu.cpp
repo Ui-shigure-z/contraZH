@@ -115,6 +115,9 @@ static GameWindow *		checkMaxCameraHeight		= nullptr;
 static NameKeyType		textEntryMaxCameraHeightID	= NAMEKEY_INVALID;
 static GameWindow *		textEntryMaxCameraHeight		= nullptr;
 
+static NameKeyType		checkBorderlessWindowID	= NAMEKEY_INVALID;
+static GameWindow *		checkBorderlessWindow		= nullptr;
+
 static NameKeyType    checkLanguageFilterID = NAMEKEY_INVALID;
 static GameWindow *   checkLanguageFilter   = nullptr;
 
@@ -608,6 +611,7 @@ static void setDefaults()
 	GadgetCheckBoxSetChecked(checkAlternateMouse, FALSE);
 	GadgetCheckBoxSetChecked(checkRetaliation, TRUE );
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, FALSE );
+	setCheck( checkBorderlessWindow, FALSE );
 
 	//-------------------------------------------------------------------------------------------------
 //	// scroll speed val
@@ -1298,13 +1302,19 @@ static void saveOptions()
 	if (comboBoxResolution && comboBoxResolution->winGetEnabled() && index < TheDisplay->getDisplayModeCount() && index >= 0)
 	{
 		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
-		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres)
+
+		const Bool borderless = getCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
+		const Bool windowed = TheGlobalData->m_windowed || borderless;
+
+		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres || windowed != TheDisplay->getWindowed())
 		{
-			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,TheDisplay->getWindowed()))
+			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,windowed))
 			{
 				dispChanged = TRUE;
 				TheWritableGlobalData->m_xResolution = xres;
 				TheWritableGlobalData->m_yResolution = yres;
+				TheWritableGlobalData->m_borderlessWindow = borderless;
+				(*pref)["BorderlessWindow"] = borderless ? "yes" : "no";
 
 				TheHeaderTemplateManager->onResolutionChanged();
 				TheMouse->onResolutionChanged();
@@ -1319,9 +1329,9 @@ static void saveOptions()
 				prefString.format("%d %d", xres, yres );
 				(*pref)["Resolution"] = prefString;
 
-				TheShell->recreateWindowLayouts();
-
+				// The control bar goes first so its full screen roots stay below the rebuilt shell, as at launch
 				TheInGameUI->recreateControlBar();
+				TheShell->recreateWindowLayouts();
 				TheInGameUI->refreshCustomUiResources();
 			}
 		}
@@ -1639,6 +1649,9 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	{
 		textEntryMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:MaxCameraHeight", L"Max camera height, 210 to 1000" ) );
 	}
+	checkBorderlessWindow = findOptionsWindow( "OptionsMenu.wnd:CheckBorderlessWindow", checkBorderlessWindowID );
+	setCheckText( checkBorderlessWindow, "GUI:BorderlessWindow", L"Borderless", "TOOLTIP:BorderlessWindow", L"Runs the game in a frameless window at the selected resolution instead of exclusive fullscreen." );
+	enableWindow( checkBorderlessWindow, !TheGlobalData->m_windowed );
 	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxAntiAliasing" );
 	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxAntiAliasingID );
 	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxResolution" );
@@ -2044,6 +2057,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GadgetCheckBoxSetChecked(checkAlternateMouse, TheGlobalData->m_useAlternateMouse);
 	GadgetCheckBoxSetChecked(checkRetaliation, TheGlobalData->m_clientRetaliationModeEnabled);
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, TheGlobalData->m_doubleClickAttackMove );
+	setCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
 
 	// set scroll speed slider
 	// TheSuperHackers @tweak xezon 11/07/2025 No longer sets the slider position if the user setting
@@ -2099,6 +2113,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		if (comboBoxResolution)
 			comboBoxResolution->winEnable(FALSE);
+
+		enableWindow( checkBorderlessWindow, FALSE );
 
 		if (textEntryFirewallPortOverride)
 			textEntryFirewallPortOverride->winEnable(FALSE);

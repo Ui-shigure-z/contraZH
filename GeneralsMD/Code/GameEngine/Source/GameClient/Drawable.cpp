@@ -62,6 +62,7 @@
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/StealthUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
@@ -3584,6 +3585,7 @@ void Drawable::drawIconUI()
 		drawVeterancy( healthBarRegion );
 
 		drawProgress( healthBarRegion );
+		drawProductionBar( healthBarRegion );
 	}
 }
 
@@ -3885,6 +3887,139 @@ void Drawable::drawProgress( const IRegion2D *healthBarRegion )
 			color);
 	}
 
+}
+
+// ------------------------------------------------------------------------------------------------
+// Vertical screen span drawAmmo uses for this object. Returns FALSE when it has no ammo pips.
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::getAmmoPipsScreenSpan( const IRegion2D *healthBarRegion, Int &top, Int &bottom ) const
+{
+	const Object *obj = getObject();
+
+	Int numTotal;
+	Int numFull;
+	if (!obj->getAmmoPipShowingInfo(numTotal, numFull))
+	{
+		return FALSE;
+	}
+
+	AmmoPipsStyle pipsStyle = obj->getTemplate()->getAmmoPipsStyle();
+	if (pipsStyle == AMMO_PIPS_BAR)
+	{
+		top = healthBarRegion->lo.y + 5;
+		bottom = top + REAL_TO_INT(max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f);
+		return TRUE;
+	}
+
+	const Image *pip = (pipsStyle == AMMO_PIPS_THIN) ? s_emptyAmmoThin : s_emptyAmmo;
+	if (!pip)
+	{
+		return FALSE;
+	}
+
+	Real scale = 1.0f;
+#ifdef SCALE_ICONS_WITH_ZOOM_ML
+	if (pipsStyle != AMMO_PIPS_THIN)
+	{
+		scale = TheGlobalData->m_ammoPipScaleFactor / CLAMP_ICON_ZOOM_FACTOR(TheTacticalView->getZoom());
+	}
+#endif
+
+	ICoord2D screenCenter;
+	Coord3D pos = *obj->getPosition();
+	pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
+	pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
+	pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+	if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
+	{
+		return FALSE;
+	}
+
+	Real bounding = obj->getGeometryInfo().getBoundingSphereRadius() * scale;
+	top = screenCenter.y + REAL_TO_INT(TheGlobalData->m_ammoPipScreenOffset.y * bounding) + 1;
+	bottom = top + REAL_TO_INT(pip->getImageHeight() * scale);
+	return TRUE;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
+{
+	if (!healthBarRegion)
+	{
+		return;
+	}
+
+	const Object* obj = getObject();
+
+	const Bool alwaysVisible = TheGlobalData->m_healthBarDisplayMode == HealthBarDisplayMode_Always;
+
+	if (!(
+				TheGlobalData->m_showObjectHealth &&
+				(alwaysVisible || isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
+			))
+	{
+		return;
+	}
+
+	if (obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION))
+	{
+		return;
+	}
+
+	ProductionUpdateInterface *pui = const_cast<Object*>(obj)->getProductionUpdateInterface();
+	if (!pui)
+	{
+		return;
+	}
+
+	// The queue head is a unit or an upgrade.
+	const ProductionEntry *production = pui->firstProduction();
+	if (!production)
+	{
+		return;
+	}
+
+	Real progress = production->getPercentComplete() / 100.0f;
+	if (progress < 0.0f)
+	{
+		progress = 0.0f;
+	}
+	if (progress > 1.0f)
+	{
+		progress = 1.0f;
+	}
+
+	Color color = GameMakeColor(0x01, 0xA6, 0xFF, 255);
+	Color outlineColor = GameMakeColor(0, 0, 0, 255);
+
+	Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
+	Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f;
+	Real healthBoxOutlineSize = 1.0f;
+
+	// Sits below the health bar. drawProgress owns the slot above.
+	Real yOffset = 5;
+
+	Int ammoTop, ammoBottom;
+	if (getAmmoPipsScreenSpan(healthBarRegion, ammoTop, ammoBottom))
+	{
+		Real barTop = healthBarRegion->lo.y + yOffset;
+		if (barTop <= ammoBottom && barTop + healthBoxHeight >= ammoTop)
+		{
+			yOffset = ammoBottom + 1 - healthBarRegion->lo.y;
+		}
+	}
+
+	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
+		healthBoxOutlineSize, outlineColor);
+
+	if (progress > 0)
+	{
+		TheDisplay->drawFillRect(healthBarRegion->lo.x + 1, healthBarRegion->lo.y + yOffset + 1,
+			(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
+			color);
+	}
 }
 
 // ------------------------------------------------------------------------------------------------

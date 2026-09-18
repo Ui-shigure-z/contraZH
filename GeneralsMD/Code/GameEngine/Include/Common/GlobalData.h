@@ -162,6 +162,9 @@ public:
 	Bool m_headless;
 
 	Bool m_windowed;
+
+	// Frameless window at the chosen resolution; runs the device windowed even without -win
+	Bool m_borderlessWindow;
 	Int m_xResolution;
 	Int m_yResolution;
 	Int m_maxShellScreens;  ///< this many shells layouts can be loaded at once

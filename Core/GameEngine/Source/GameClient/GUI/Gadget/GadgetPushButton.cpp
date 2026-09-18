@@ -604,6 +604,8 @@ PushButtonData * getNewPushButtonData()
 	// TheSuperHackers @feature no countdown until someone asks for one
 	p->countdownSeconds = -1;
 	p->healthRatio = -1.0f;
+	p->ammoInClip = 0;
+	p->ammoClipSize = 0;
 	p->cornerLetter = 0;
 	return p;
 }
@@ -704,6 +706,26 @@ void GadgetButtonDrawHealthBar( GameWindow *g, Real ratio )
 		pData = getNewPushButtonData();
 	}
 	pData->healthRatio = ratio;
+	g->winSetUserData(pData);
+
+}
+
+// GadgetButtonDrawAmmoBar ====================================================
+/** Show a clip bar above the health bar. One shot like the health bar. */
+//=============================================================================
+void GadgetButtonDrawAmmoBar( GameWindow *g, Int ammoInClip, Int clipSize )
+{
+
+	if( g == nullptr )
+		return;
+
+	PushButtonData *pData = (PushButtonData *)g->winGetUserData();
+	if(!pData)
+	{
+		pData = getNewPushButtonData();
+	}
+	pData->ammoInClip = ammoInClip;
+	pData->ammoClipSize = clipSize;
 	g->winSetUserData(pData);
 
 }

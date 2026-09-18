@@ -552,6 +552,25 @@ void W3DDisplay::setGamma(Real gamma, Real bright, Real contrast, Bool calibrate
 	DX8Wrapper::Set_Gamma(gamma,bright,contrast,calibrate, false);
 }
 
+// Gives the game window the frame its mode needs; the wrapper then sizes and centres it from that style.
+// Only -win keeps the caption, so a windowed device without it is the borderless mode.
+static void applyWindowStyle( Bool windowed )
+{
+	if (!ApplicationHWnd)
+	{
+		return;
+	}
+
+	const LONG frameBits = WS_CAPTION | WS_DLGFRAME | WS_MINIMIZEBOX;
+	LONG style = ::GetWindowLong( ApplicationHWnd, GWL_STYLE ) & ~frameBits;
+	if (windowed && TheGlobalData->m_windowed)
+	{
+		style |= frameBits;
+	}
+	::SetWindowLong( ApplicationHWnd, GWL_STYLE, style );
+	::SetWindowPos( ApplicationHWnd, windowed ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED );
+}
+
 /** Set resolution of display */
 //=============================================================================
 Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt bitdepth, Bool windowed )
@@ -561,6 +580,10 @@ Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt
 	const UnsignedInt oldBitDepth = getBitDepth();
 	const Bool oldWindowed = getWindowed();
 
+	if (windowed != oldWindowed)
+	{
+		applyWindowStyle( windowed );
+	}
 	if (WW3D_ERROR_OK == WW3D::Set_Device_Resolution(xres,yres,bitdepth,windowed,true))
 	{
 		Render2DClass::Set_Screen_Resolution(RectClass(0, 0, xres, yres));
@@ -569,6 +592,10 @@ Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt
 	}
 
 	//set back to the original mode.
+	if (windowed != oldWindowed)
+	{
+		applyWindowStyle( oldWindowed );
+	}
 	WW3D::Set_Device_Resolution(oldWidth, oldHeight, oldBitDepth, oldWindowed, true);
 	Render2DClass::Set_Screen_Resolution(RectClass(0, 0, oldWidth, oldHeight));
 	Display::setDisplayMode(oldWidth, oldHeight, oldBitDepth, oldWindowed);
@@ -832,7 +859,11 @@ void W3DDisplay::init()
 		WW3D::Set_Thumbnail_Enabled(false);
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
 
-		setWindowed( TheGlobalData->m_windowed );
+		setWindowed( TheGlobalData->m_windowed || TheGlobalData->m_borderlessWindow );
+		if (getWindowed() && !TheGlobalData->m_windowed)
+		{
+			applyWindowStyle( TRUE );
+		}
 
 		// create a 2D renderer helper
 		m_2DRender = NEW Render2DClass;

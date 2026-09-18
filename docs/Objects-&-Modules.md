@@ -43,7 +43,7 @@ Note: This parameter might be moved to individual weapons in the future, to allo
 A ground decal drawn under the object, for auras, faction markers and similar. It is separate from
 the object's shadow: an object can carry a `Shadow` and a display decal at the same time, and the
 decal keeps drawing when the player turns 2D or 3D shadows off in the video options. It does hide
-under shroud and while the object is hidden.
+under shroud, while the object is hidden, and once the object dies, slow death included.
 
 Added new parameters for object definitions:
 

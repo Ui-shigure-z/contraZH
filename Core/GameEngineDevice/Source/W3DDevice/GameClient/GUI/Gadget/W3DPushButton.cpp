@@ -180,11 +180,11 @@ static void drawButtonCountdown( GameWindow *window, Int seconds )
 		GameMakeColor( 255, 255, 255, 255 ), GameMakeColor( 0, 0, 0, 255 ) );
 }
 
-// drawButtonHealthBar ========================================================
-/** TheSuperHackers @feature A thin health bar along the bottom of a cameo, green through
-	* yellow to red like the in world bar. */
+// drawButtonBar ==============================================================
+/** A thin bar stacked up from the bottom of a cameo, row 0 lowest, with a divider between
+	* segments when there is more than one. */
 //=============================================================================
-static void drawButtonHealthBar( GameWindow *window, Real ratio )
+static void drawButtonBar( GameWindow *window, Int row, Real ratio, Int segments, Color frameColor, Color fillColor )
 {
 	ICoord2D origin, size;
 	window->winGetScreenPosition( &origin.x, &origin.y );
@@ -193,11 +193,27 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 	const Int inset = 2;
 	const Int frameHeight = 5;
 	const Int barX = origin.x + inset;
-	const Int barY = origin.y + size.y - inset - frameHeight;
-	const Int barWidth = size.x - inset * 2;
-	if( barWidth <= 2 )
+	const Int barY = origin.y + size.y - inset - frameHeight * ( row + 1 );
+	const Int innerWidth = size.x - inset * 2 - 2;
+	if( innerWidth <= 0 )
 		return;
 
+	TheDisplay->beginBatch();
+	TheDisplay->drawOpenRect( barX, barY, innerWidth + 2, frameHeight, 1.0f, frameColor );
+	TheDisplay->drawFillRect( barX + 1, barY + 1, innerWidth * ratio, frameHeight - 2, fillColor );
+	for( Int i = 1; i < segments; i++ )
+	{
+		TheDisplay->drawFillRect( barX + 1 + innerWidth * i / segments, barY + 1, 1, frameHeight - 2, frameColor );
+	}
+	TheDisplay->endBatch();
+}
+
+// drawButtonHealthBar ========================================================
+/** TheSuperHackers @feature Health along the bottom of a cameo, green through yellow to red
+	* like the in world bar. */
+//=============================================================================
+static void drawButtonHealthBar( GameWindow *window, Real ratio )
+{
 	Real red, green;
 	if( ratio >= 0.5f )
 	{
@@ -210,8 +226,17 @@ static void drawButtonHealthBar( GameWindow *window, Real ratio )
 		green = ratio / 0.5f;
 	}
 
-	TheDisplay->drawOpenRect( barX, barY, barWidth, frameHeight, 1.0f, GameMakeColor( red * 128, green * 128, 0, 255 ) );
-	TheDisplay->drawFillRect( barX + 1, barY + 1, ( barWidth - 2 ) * ratio, frameHeight - 2, GameMakeColor( red * 255, green * 255, 0, 255 ) );
+	drawButtonBar( window, 0, ratio, 1,
+		GameMakeColor( red * 128, green * 128, 0, 255 ), GameMakeColor( red * 255, green * 255, 0, 255 ) );
+}
+
+// drawButtonAmmoBar ==========================================================
+/** A light orange clip bar above the health bar, one segment per shot. */
+//=============================================================================
+static void drawButtonAmmoBar( GameWindow *window, Int ammoInClip, Int clipSize )
+{
+	drawButtonBar( window, 1, (Real)ammoInClip / (Real)clipSize, clipSize,
+		GameMakeColor( 128, 88, 40, 255 ), GameMakeColor( 255, 176, 80, 255 ) );
 }
 
 // drawButtonCornerLetter =====================================================
@@ -518,6 +543,13 @@ void W3DGadgetPushButtonDraw( GameWindow *window, WinInstanceData *instData )
 			window->winSetUserData(pData);
 		}
 
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
+			window->winSetUserData(pData);
+		}
+
 		if( pData->drawBorder && pData->colorBorder != GAME_COLOR_UNDEFINED )
 		{
 			TheDisplay->drawOpenRect(origin.x -1, origin.y - 1, size.x + 2, size.y + 2,1 , pData->colorBorder);
@@ -700,6 +732,13 @@ void W3DGadgetPushButtonImageDrawOne( GameWindow *window,
 		{
 			drawButtonHealthBar( window, pData->healthRatio );
 			pData->healthRatio = -1.0f;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
 			window->winSetUserData(pData);
 		}
 
@@ -987,6 +1026,13 @@ void W3DGadgetPushButtonImageDrawThree(GameWindow *window, WinInstanceData *inst
 		{
 			drawButtonHealthBar( window, pData->healthRatio );
 			pData->healthRatio = -1.0f;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
 			window->winSetUserData(pData);
 		}
 
