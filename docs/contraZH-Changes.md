@@ -332,8 +332,8 @@ the map still go to everyone, but a command off the bar goes to the focused obje
 type, alone. Plain orders are the exception and always go to everyone, even when armed off the bar:
 move, attack move, guard, stop, scatter, cheer, formation, waypoints, enter, dock, repair and heal.
 A building placed from a focused dozer is built by it, and the other selected dozers go to help.
-Click a pushed in cameo again to go back to the group's common commands.
-* Right click a cameo to drop its unit, or its whole type, from the selection.
+* Right click the pushed in cameo to go back to the group's common commands. Right click any
+other cameo to drop its unit, or its whole type, from the selection.
 * Double click a cameo (or Ctrl+Shift+click it with `SmartSelectionUseMouse = No`) to keep only its
 unit, or its whole type, and drop everything else.
 * Tab and Shift+Tab (`SMART_SELECTION_NEXT_TYPE` / `SMART_SELECTION_PREV_TYPE` in

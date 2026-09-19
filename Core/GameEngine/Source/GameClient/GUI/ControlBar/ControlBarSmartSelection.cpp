@@ -19,10 +19,11 @@
 // TheSuperHackers @feature Smart selection (Options.ini: SmartSelection). A row of small
 // cameos above the command bar. A mixed selection gets one cameo per type with a count; a
 // selection of one type gets one cameo per object. A cameo for a single object shows its health
-// bar. Left click and Tab focus a cameo: the whole group stays selected, but the bar shows the
+// bar. Left click and Tab focus a cameo, so the whole group stays selected but the bar shows the
 // command set of that cameo's type, or of its one object, instead of the group's common subset.
-// Right click drops the cameo's units from the selection, double click (or Ctrl+Shift click
-// with SmartSelectionUseMouse = No) keeps only them.
+// Right click clears the focus on the focused cameo, and drops the cameo's units from the
+// selection on any other. Double click (or Ctrl+Shift click with SmartSelectionUseMouse = No)
+// keeps only them.
 //
 // The row is built in code rather than from ControlBar.wnd, which ships in the game data.
 // The container is a top level window because the hit test only descends into a top level
