@@ -1952,7 +1952,10 @@ bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curren
 	if (producer == nullptr || producer->getControllingPlayer() != msgPlayer)
 		return false;
 
-	// ShigureUi 13/9/2026 check added, maybe invalid might be sent
+	if (TheControlBar)
+		TheControlBar->removeUpgradeFromBuildQueueCache(producer, upgradeT);
+
+	// ShigureUi 13/9/2026 check added, invalid might be sent
 	if (!TheUpgradeCenter->canAffordUpgrade(producer->getControllingPlayer(), upgradeT, FALSE))
 	{
 		return false;
@@ -2056,6 +2059,9 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 	// the player must actually control the producer object
 	if (producer->getControllingPlayer() != getMessagePlayer(msg))
 		return false;
+
+	if (TheControlBar)
+		TheControlBar->removeUnitFromBuildQueueCache(producer, productionID);
 
 	// get the production interface for the producer
 	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();

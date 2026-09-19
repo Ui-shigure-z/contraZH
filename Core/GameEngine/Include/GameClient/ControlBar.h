@@ -998,6 +998,7 @@ protected:
 
 	void setUpDownImages();
 		// methods for flashing cameos
+
 public:
 	void setFlash( Bool b ) { m_flash = b; }
 
@@ -1152,6 +1153,30 @@ private:
 	void setCommandBarBorder( GameWindow *button, CommandButtonMappedBorderType type);
 public:
 	void updateCommandBarBorderColors(Color build, Color action, Color upgrade, Color system );
+
+protected:
+	
+	//ShigureUi 20/09/2026 cache of build unit/upgrade command to avoid sending wrong MSG
+	struct BuildQueueCacheNode
+	{
+		ProductionType m_type;														///< production type
+		ProductionID m_productionID;
+		union
+		{
+			const ThingTemplate* m_objectToProduce;					///< what we're going to produce
+			const UpgradeTemplate* m_upgradeToResearch;			///< what upgrade we're researching
+		};
+		//Object *m_producer;
+	};
+
+	std::multimap<Object*, BuildQueueCacheNode> m_multiSelectQueueCache;
+	Real calcEstimatedProductionFinishedTime(Object* obj);
+	UnsignedInt calcBuildQueueRoomLeft(Object* obj, const ThingTemplate* thing, const UpgradeTemplate* upgrade);
+	UnsignedInt calcBuildLimitLeft(Player* player, const ThingTemplate* thing);
+
+public:
+	void removeUnitFromBuildQueueCache(Object *obj, ProductionID productionID);
+	void removeUpgradeFromBuildQueueCache(Object* obj, const UpgradeTemplate *upgrade);
 
 private:
 
