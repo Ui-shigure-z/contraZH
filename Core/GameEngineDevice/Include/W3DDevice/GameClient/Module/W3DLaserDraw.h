@@ -39,7 +39,7 @@ class TextureClass;
 class W3DDynamicLight;
 class LaserUpdate;
 
-enum { MAX_LASER_GROUND_LIGHTS = 8 };
+enum { MAX_LASER_GROUND_LIGHTS = 12 };
 
 class W3DLaserDrawModuleData : public ModuleData
 {
@@ -111,7 +111,9 @@ protected:
 	Int m_numGroundLights;
 	RGBColor m_tintedInner;			///< beam colors with house color applied, set on each dirty draw
 	RGBColor m_tintedOuter;
+	RGBColor m_textureColor;		///< average color of the beam texture, white without one
 
+	void getGroundGlowColor( Real &red, Real &green, Real &blue ) const;
 	void acquireGroundLights( Int count );
 	void releaseGroundLights();
 	void updateGroundLights( LaserUpdate *update, Bool beamChanged );

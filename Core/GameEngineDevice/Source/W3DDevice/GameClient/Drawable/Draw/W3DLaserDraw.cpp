@@ -52,7 +52,69 @@
 #include "WW3D2/segline.h"
 #include "WWMath/vector3.h"
 #include "WW3D2/assetmgr.h"
+#include "WW3D2/surfaceclass.h"
+#include "WW3D2/texture.h"
 
+#include <map>
+
+enum { GLOW_SAMPLE_SIZE = 8 };
+
+// lasers spawn constantly, so each texture is sampled once and remembered by name
+static RGBColor getAverageTextureColor( const AsciiString &name, TextureClass *texture )
+{
+	static std::map<AsciiString, RGBColor> cache;
+
+	std::map<AsciiString, RGBColor>::const_iterator it = cache.find( name );
+	if (it != cache.end())
+	{
+		return it->second;
+	}
+
+	RGBColor average;
+	average.red = average.green = average.blue = 1.0f;
+
+	SurfaceClass *source = (texture && name.isNotEmpty()) ? texture->Get_Surface_Level( 0 ) : nullptr;
+	if (source)
+	{
+		SurfaceClass::SurfaceDescription desc;
+		source->Get_Description( desc );
+
+		// the stretch copy decompresses DXT and filters the whole image down to a few readable texels
+		SurfaceClass *sample = NEW_REF( SurfaceClass, ( GLOW_SAMPLE_SIZE, GLOW_SAMPLE_SIZE, WW3D_FORMAT_A8R8G8B8 ) );
+		sample->Stretch_Copy( 0, 0, GLOW_SAMPLE_SIZE, GLOW_SAMPLE_SIZE, 0, 0, desc.Width, desc.Height, source );
+
+		int pitch = 0;
+		SurfaceClass::LockedSurfacePtr bits = sample->Lock( &pitch );
+		if (bits)
+		{
+			Vector3 sum( 0.0f, 0.0f, 0.0f );
+			for( Int y = 0; y < GLOW_SAMPLE_SIZE; y++ )
+			{
+				for( Int x = 0; x < GLOW_SAMPLE_SIZE; x++ )
+				{
+					Vector3 texel;
+					sample->Get_Pixel( texel, x, y, bits, pitch );
+					sum += texel;
+				}
+			}
+			sample->Unlock();
+
+			// a black texture has no hue to give
+			if (sum.X + sum.Y + sum.Z > 0.0f)
+			{
+				average.red = sum.X;
+				average.green = sum.Y;
+				average.blue = sum.Z;
+			}
+		}
+
+		REF_PTR_RELEASE( sample );
+		REF_PTR_RELEASE( source );
+	}
+
+	cache[ name ] = average;
+	return average;
+}
 
 
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////////////////////////
@@ -149,6 +211,7 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 		m_texture->Get_Level_Description(surfaceDesc);
 		m_textureAspectRatio = (Real)surfaceDesc.Width / (Real)surfaceDesc.Height;
 	}
+	m_textureColor = getAverageTextureColor( data->m_textureName, m_texture );
 
 	//Get the color components for calculation purposes.
 	Real innerRed, innerGreen, innerBlue, innerAlpha, outerRed, outerGreen, outerBlue, outerAlpha;
@@ -326,6 +389,58 @@ static Color pickGlowColor( Color moduleColor, Color globalColor )
 	return globalColor & 0x00FFFFFF;
 }
 
+static const Real MIN_GROUND_LIGHT_RADIUS = 15.0f;
+
+// widens every light past its sharp radius, which stretches the falloff over more vertices
+static const Real GROUND_LIGHT_BLUR = 1.5f;
+
+// one terrain cell of extra falloff is the most the blur may add
+static const Real MAX_GROUND_LIGHT_BLUR = 10.0f;
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void W3DLaserDraw::getGroundGlowColor( Real &red, Real &green, Real &blue ) const
+{
+	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
+
+	Color glowColor = pickGlowColor( data->m_groundGlowColor, TheGlobalData->m_laserGlowColor );
+	if (glowColor != 0)
+	{
+		Real alpha;
+		GameGetColorComponentsReal( glowColor, &red, &green, &blue, &alpha );
+	}
+	else
+	{
+		Real innerRed, innerGreen, innerBlue, innerAlpha;
+		GameGetColorComponentsReal( data->m_innerColor, &innerRed, &innerGreen, &innerBlue, &innerAlpha );
+
+		// the beam lines are additive, so the light they give off is every line's color weighed by its width
+		red = green = blue = 0.0f;
+		for( UnsignedInt i = 0; i < data->m_numBeams; i++ )
+		{
+			Real scale = data->m_numBeams > 1 ? i / ( data->m_numBeams - 1.0f ) : 0.0f;
+			Real width = data->m_innerBeamWidth + scale * (data->m_outerBeamWidth - data->m_innerBeamWidth);
+			red += width * (m_tintedInner.red + scale * (m_tintedOuter.red - m_tintedInner.red) * innerAlpha);
+			green += width * (m_tintedInner.green + scale * (m_tintedOuter.green - m_tintedInner.green) * innerAlpha);
+			blue += width * (m_tintedInner.blue + scale * (m_tintedOuter.blue - m_tintedInner.blue) * innerAlpha);
+		}
+
+		// textured beams often leave the ini colors white and carry the hue in the texture
+		red *= m_textureColor.red;
+		green *= m_textureColor.green;
+		blue *= m_textureColor.blue;
+	}
+
+	// normalize so a dim color still lights at the same strength as a bright one
+	Real brightest = MAX( red, MAX( green, blue ) );
+	if (brightest > 0.0f)
+	{
+		red /= brightest;
+		green /= brightest;
+		blue /= brightest;
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void W3DLaserDraw::setFullyObscuredByShroud( Bool fullyObscured )
@@ -410,9 +525,8 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 	Real dy = beamEnd->y - beamStart->y;
 	Real beamLength = sqrt( dx * dx + dy * dy );
 
-	// terrain lighting is per vertex on a 10 unit grid, so a small radius lights scattered vertices
-	Real spacing = MAX( pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, 2.0f * data->m_outerBeamWidth ), 5.0f );
-	Real radius = MAX( spacing * update->getWidthScale(), 5.0f );
+	// terrain lighting is per vertex on a 10 unit grid, so a radius under 1.5 cells lights scattered vertices
+	Real spacing = MAX( pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, 2.0f * data->m_outerBeamWidth ), MIN_GROUND_LIGHT_RADIUS );
 
 	// centers one spacing apart so the linear falloffs sum to a level strip; the unscaled spacing keeps the count steady while the beam widens
 	Int count = (Int)ceil( beamLength / spacing );
@@ -422,42 +536,28 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 		acquireGroundLights( count );
 	}
 
-	{
-		// the inner color is usually a white core, the outer color carries the hue
-		Real glowRed, glowGreen, glowBlue;
-		Color glowColor = pickGlowColor( data->m_groundGlowColor, TheGlobalData->m_laserGlowColor );
-		if (glowColor != 0)
-		{
-			Real glowAlpha;
-			GameGetColorComponentsReal( glowColor, &glowRed, &glowGreen, &glowBlue, &glowAlpha );
-		}
-		else if (data->m_numBeams > 1)
-		{
-			glowRed = m_tintedOuter.red;
-			glowGreen = m_tintedOuter.green;
-			glowBlue = m_tintedOuter.blue;
-		}
-		else
-		{
-			glowRed = m_tintedInner.red;
-			glowGreen = m_tintedInner.green;
-			glowBlue = m_tintedInner.blue;
-		}
+	// a beam longer than its lights can cover widens them until they meet again
+	Real wantedRadius = spacing * update->getWidthScale();
+	Real lightSpacing = beamLength / count;
+	Real sharpRadius = MAX( MAX( wantedRadius, MIN_GROUND_LIGHT_RADIUS ), lightSpacing );
+	Real radius = sharpRadius + MIN( sharpRadius * (GROUND_LIGHT_BLUR - 1.0f), MAX_GROUND_LIGHT_BLUR );
 
-		// normalize so a dim ini color still lights at the same strength as a bright one
-		Real brightest = MAX( glowRed, MAX( glowGreen, glowBlue ) );
-		if (brightest > 0.0f)
-		{
-			glowRed /= brightest;
-			glowGreen /= brightest;
-			glowBlue /= brightest;
-		}
+	{
+		Real glowRed, glowGreen, glowBlue;
+		getGroundGlowColor( glowRed, glowGreen, glowBlue );
 
 		// diffuse only, so the hue survives being added onto sunlit ground
 		Real intensity = pickGlowReal( data->m_groundGlowIntensity, TheGlobalData->m_laserGlowIntensity, 0.7f );
+		// a light forced wider than wanted dims by as much, so the strip gives off the same light in total
+		intensity *= wantedRadius / sharpRadius;
+		// blurred lights overlap their neighbors, so each gives less to keep the middle of the strip level
+		if (count > 1)
+		{
+			intensity *= MIN( lightSpacing / radius, 1.0f );
+		}
 		Vector3 lightColor( glowRed * intensity, glowGreen * intensity, glowBlue * intensity );
-		// the light must sit inside its own radius or it never reaches the ground
-		Real lightHeight = MIN( MAX( data->m_outerBeamWidth, 4.0f ), radius * 0.5f );
+		// halfway up its radius the light still reaches the ground and meets nearby vertices at a steep angle
+		Real lightHeight = radius * 0.5f;
 
 		for( Int i = 0; i < m_numGroundLights; i++ )
 		{
