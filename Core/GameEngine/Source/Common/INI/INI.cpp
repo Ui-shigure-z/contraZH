@@ -1722,6 +1722,9 @@ Type scanType(std::string_view token)
 {
 	DEBUG_ASSERTCRASH(!token.empty(), ("token is not expected to be empty"));
 
+	// Capture the sign before any prefix stripping so overflow saturation stays correct.
+	const Bool negative = !token.empty() && token[0] == '-';
+
 	// Unlike sscanf, std::from_chars cannot parse "+".
 	// Consume the plus symbol to accommodate custom ini files that have numbers prefixed with a plus.
 	if (token[0] == '+')
@@ -1734,11 +1737,11 @@ Type scanType(std::string_view token)
 	WideType result{};
 	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
 
-	// Saturate instead of failing, matching the legacy sscanf behaviour that accepted
-	// out of range numbers. Custom ini files rely on it, so rejecting them breaks loading.
+	// Saturate out of range numbers instead of failing, so custom ini files that rely on
+	// the old lenient parsing still load. Signed types clamp to their bounds; unsigned
+	// negatives clamp to zero rather than wrapping the way legacy sscanf did.
 	if (ec == std::errc::result_out_of_range)
 	{
-		const Bool negative = !token.empty() && token[0] == '-';
 		return negative ? std::numeric_limits<Type>::lowest() : (std::numeric_limits<Type>::max)();
 	}
 
