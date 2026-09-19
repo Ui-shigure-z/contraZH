@@ -333,7 +333,7 @@ WindowMsgHandledType LeftHUDInput( GameWindow *window, UnsignedInt msg,
 
 	}
 
-	TheInGameUI->clearAttackMoveToMode();
+	TheInGameUI->clearArmedMoveMode();
 	return MSG_HANDLED;
 
 }

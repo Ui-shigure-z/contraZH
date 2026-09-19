@@ -51,6 +51,7 @@ public:
 	virtual Int getOnScreenParticleCount() override { return m_onScreenParticleCount; }
 
 private:
+	void drawSystems(RenderInfoClass &rinfo, Bool additiveOnly);	///< draws m_drawOrder; additiveOnly feeds the bloom pass
 	Bool finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture);
 	void initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture);
 	void flushParticleBatch(RenderInfoClass& rinfo, UnsignedInt& pointCount);

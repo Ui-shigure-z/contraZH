@@ -95,6 +95,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/FlatHeightMap.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 
 
@@ -425,6 +426,11 @@ void BaseHeightMapRenderObjClass::ReleaseResources()
 
 	if (TheSmudgeManager)
 		TheSmudgeManager->ReleaseResources();
+
+	if (TheW3DBloom)
+	{
+		TheW3DBloom->ReleaseResources();
+	}
 
 	if (TheSnowManager)
 		((W3DSnowManager *)TheSnowManager)->ReleaseResources();

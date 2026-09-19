@@ -1460,6 +1460,7 @@ StateReturnType AIIdleState::update()
 				! obj->isDisabledByType( DISABLED_UNMANNED ) &&
 				! obj->isDisabledByType( DISABLED_EMP ) &&
 				! obj->isDisabledByType( DISABLED_SUBDUED ) &&
+				! obj->isDisabledByType( DISABLED_FROZEN ) &&
 				! obj->isDisabledByType( DISABLED_HACKED ) )
 		{
 			// mood targeting
@@ -5032,7 +5033,8 @@ StateReturnType AIAttackAimAtTargetState::onEnter()
 	if (victimAI)
 		victimAI->addTargeter(source->getID(), true);
 
-	if( sourceAI->areTurretsLinked() )
+	// ForceFireAllWeapons hands a ground target to every turret; those without a ground weapon drop it
+	if( sourceAI->areTurretsLinked() || ( !m_isAttackingObject && sourceAI->forceFiresAllWeapons() ) )
 	{
 		//Order all turrets to attack.
 		for( Int i = 0; i < MAX_TURRETS; i++ )
@@ -5245,9 +5247,12 @@ StateReturnType AIAttackAimAtTargetState::update()
 		}
 
 		Real desiredAngle = 0;
+
+		// the turret fires once step 1 sees the target inside its arc, so the hull itself never succeeds here
 		Bool hasPreferredAngle = false;
 		if (sourceAI->useAttackAngle())
 		{ // Check our preferred angle on how to move.
+			hasPreferredAngle = true;
 
 			//We ignore AimDelta here.
 			//aimDelta = REL_THRESH * 5;  // about 10 degrees
@@ -5261,7 +5266,6 @@ StateReturnType AIAttackAimAtTargetState::update()
 				// DEBUG_LOG((">>> ObjAngle = %f, DesiredAngle = %f", source->getOrientation() * 180.0 / PI, desiredAngle * 180.0 / PI));
 				sourceAI->setLocomotorGoalOrientation(desiredAngle);
 				m_setLocomotor = true;
-				hasPreferredAngle = true;
 			}
 			else
 			{ // TODO
@@ -5271,6 +5275,7 @@ StateReturnType AIAttackAimAtTargetState::update()
 		}
 		else if (sourceAI->hasLimitedTurretAngle(tur))
 		{ // Check limited turret angles how to move
+			hasPreferredAngle = true;
 
 			Real maxAngle = sourceAI->getMaxTurretAngle(tur) + aimDelta;
 			Real minAngle = sourceAI->getMinTurretAngle(tur) - aimDelta;
@@ -5281,7 +5286,6 @@ StateReturnType AIAttackAimAtTargetState::update()
 			
 			if (m_canTurnInPlace)
 			{
-				hasPreferredAngle = true;
 				// if out of turret turn range:
 				if (relAngle > maxAngle || relAngle < minAngle) {
 
@@ -5354,8 +5358,7 @@ StateReturnType AIAttackAimAtTargetState::update()
 			}
 		}
 
-		if (fabs(stdAngleDiff(desiredAngle,relAngle)) < aimDelta /*&& !m_preAttackFrames*/ )
-		//if (fabs(relAngle) < aimDelta && !hasPreferredAngle /*&& !m_preAttackFrames*/)
+		if (!hasPreferredAngle && fabs(relAngle) < aimDelta /*&& !m_preAttackFrames*/ )
 		{
 			AIUpdateInterface* victimAI = victim ? victim->getAI() : nullptr;
 			// add ourself as a targeter BEFORE calling isTemporarilyPreventingAimSuccess().
@@ -5498,6 +5501,20 @@ StateReturnType AIAttackFireWeaponState::update()
 		return STATE_FAILURE;
 	}
 
+	const AIUpdateInterface* ai = obj->getAI();
+	const CommandSourceType cmdSource = ai->getLastCommandSource();
+	const Bool fireAllAtGround = !m_att->isAttackingObject() && ai->forceFiresAllWeapons() && !obj->isCurWeaponLocked();
+	if (fireAllAtGround && !m_att->ownsWeaponSlot(wslot))
+	{
+		// the current weapon fires elsewhere, so lead with our own first ground weapon
+		wslot = m_att->findOwnedGroundSlot(obj, cmdSource);
+		if (wslot == WEAPONSLOT_COUNT)
+		{
+			return STATE_FAILURE;
+		}
+		weapon = obj->getWeaponInWeaponSlot(wslot);
+	}
+
 	WeaponStatus status = weapon->getStatus();
 	if (status == PRE_ATTACK)
 	{
@@ -5520,7 +5537,7 @@ StateReturnType AIAttackFireWeaponState::update()
 	}
 
 	// must adjust the state BEFORE calling fireWeapon, for FX to work correctly...
-	obj->setFiringConditionForCurrentWeapon();
+	obj->setFiringConditionForWeaponSlot(wslot);
 
 	if (m_att->isAttackingObject())
 	{
@@ -5576,18 +5593,28 @@ StateReturnType AIAttackFireWeaponState::update()
 	}
 	else
 	{
-		if (getMachineOwner()->getAI()->areTurretsLinked()) //LINKED TURRETS
-		{// it doesn;t matter which weapon slot is locked, current or whatever
+		const Bool linked = ai->areTurretsLinked();
+		if (linked || fireAllAtGround)
+		{
+			// linked turrets fire every barrel; force fire adds only ground weapons that are ready and in range
 			for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
-			{// were firing with all barrels
-				Weapon* weapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
-				if (weapon)
+			{
+				Weapon* slotWeapon = obj->getWeaponInWeaponSlot((WeaponSlotType)slot);
+				if (slotWeapon == nullptr)
 				{
-					if (weapon->fireWeapon(obj, getMachineGoalPosition())) //fire() returns 'reloaded'
-						obj->releaseWeaponLock(LOCKED_TEMPORARILY);// unlock, 'cause we're loaded
-
-					obj->notifyFiringTrackerShotFired(weapon, INVALID_ID);
+					continue;
 				}
+				if (!linked && slot != wslot
+					&& (!m_att->ownsWeaponSlot((WeaponSlotType)slot) || !obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource)
+						|| slotWeapon->getStatus() != READY_TO_FIRE || !slotWeapon->isWithinAttackRange(obj, getMachineGoalPosition())))
+				{
+					continue;
+				}
+				if (slotWeapon->fireWeapon(obj, getMachineGoalPosition())) //fire() returns 'reloaded'
+				{
+					obj->releaseWeaponLock(LOCKED_TEMPORARILY);// unlock, 'cause we're loaded
+				}
+				obj->notifyFiringTrackerShotFired(slotWeapon, INVALID_ID);
 			}
 		}
 		else
@@ -6006,6 +6033,26 @@ StateReturnType AIAttackState::update()
 	 * sleeps, we still need to be called every frame.
 	 */
 	return CONVERT_SLEEP_TO_CONTINUE(m_attackMachine->updateStateMachine());
+}
+
+//----------------------------------------------------------------------------------------------------------
+WeaponSlotType NotifyWeaponFiredInterface::findOwnedGroundSlot( const Object* obj, CommandSourceType cmdSource ) const
+{
+	for (Int slot = PRIMARY_WEAPON; slot < WEAPONSLOT_COUNT; slot++)
+	{
+		if (ownsWeaponSlot((WeaponSlotType)slot) && obj->canWeaponSlotAttackGround((WeaponSlotType)slot, cmdSource))
+		{
+			return (WeaponSlotType)slot;
+		}
+	}
+	return WEAPONSLOT_COUNT;
+}
+
+//----------------------------------------------------------------------------------------------------------
+Bool AIAttackState::ownsWeaponSlot( WeaponSlotType wslot ) const
+{
+	const AIUpdateInterface* ai = getMachineOwner()->getAI();
+	return ai == nullptr || ai->getWhichTurretForWeaponSlot( wslot, nullptr ) == TURRET_INVALID;
 }
 
 //----------------------------------------------------------------------------------------------------------

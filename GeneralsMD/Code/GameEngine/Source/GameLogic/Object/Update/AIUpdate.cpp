@@ -89,6 +89,7 @@ AIUpdateModuleData::AIUpdateModuleData()
 
     m_forbidPlayerCommands = FALSE;
 	m_turretsLinked = FALSE;
+	m_forceFireAllWeapons = FALSE;
 	// TheSuperHackers @feature Default to allowing return fire while holding fire, so a held unit is not defenseless.
 	m_holdFireAllowsRetaliation = TRUE;
 	//m_attackAngle = 0.0f;
@@ -158,6 +159,7 @@ struct AttackAngleData
 #endif
     { "ForbidPlayerCommands",				INI::parseBool,										nullptr, offsetof(AIUpdateModuleData, m_forbidPlayerCommands) },
     { "TurretsLinked",							INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_turretsLinked ) },
+    { "ForceFireAllWeapons",			INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_forceFireAllWeapons ) },
     // TheSuperHackers @feature If No, this object stays silent even when attacked while holding fire.
     { "HoldFireAllowsRetaliation",	INI::parseBool,										nullptr, offsetof( AIUpdateModuleData, m_holdFireAllowsRetaliation ) },
 		{ "PreferredAttackAngle",				AIUpdateModuleData::parseAttackAngle,					NULL, NULL },
@@ -4154,7 +4156,7 @@ void AIUpdateInterface::privateExit( Object *objectToExit, CommandSourceType cmd
 #endif
 	}
 
-  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) || objectToExit->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 	// we must go thru this state (rather than calling exitObjectViaDoor directly!),
@@ -4192,7 +4194,7 @@ void AIUpdateInterface::privateExitInstantly( Object *objectToExit, CommandSourc
 #endif
 	}
 
-  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( objectToExit->isDisabledByType( DISABLED_SUBDUED ) || objectToExit->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 	// we must go thru this state (rather than calling exitObjectViaDoor directly!),
@@ -4232,7 +4234,7 @@ void AIUpdateInterface::doQuickExit( std::vector<Coord3D>* path )
 void AIUpdateInterface::privateEvacuate( Int exposeStealthUnits, CommandSourceType cmdSource )
 {
 
-  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) || getObject()->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 
@@ -4254,7 +4256,7 @@ void AIUpdateInterface::privateEvacuate( Int exposeStealthUnits, CommandSourceTy
 void AIUpdateInterface::privateEvacuateInstantly( Int exposeStealthUnits, CommandSourceType cmdSource )
 {
 
-  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) )
+  if ( getObject()->isDisabledByType( DISABLED_SUBDUED ) || getObject()->isDisabledByType( DISABLED_FROZEN ) )
     return;
 
 

@@ -1272,6 +1272,28 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			GameMessage *exitMsg = TheMessageStream->appendMessage( GameMessage::MSG_EXIT );
 			exitMsg->appendObjectIDArgument( objWantingExit->getID() ); // 0 is the thing inside coming out
 
+			// contraZH: shift click exits every passenger of the clicked unit's type
+			if (TheKeyboard && TheKeyboard->isShift())
+			{
+				const ThingTemplate *exitType = objWantingExit->getTemplate();
+				for (i = 0; i < MAX_COMMANDS_PER_SET; i++)
+				{
+					if (m_containData[i].control == control || m_containData[i].objectID == INVALID_ID)
+					{
+						continue;
+					}
+
+					Object *other = TheGameLogic->findObjectByID( m_containData[i].objectID );
+					if (other == nullptr || !other->getTemplate()->isEquivalentTo(exitType))
+					{
+						continue;
+					}
+
+					exitMsg = TheMessageStream->appendMessage( GameMessage::MSG_EXIT );
+					exitMsg->appendObjectIDArgument( other->getID() );
+				}
+			}
+
 			break;
 
 		}

@@ -46,6 +46,7 @@ enum _TerrainLOD CPP_11(: Int);
 class CommandLine;
 class GlobalData;
 class INI;
+class ThingTemplate;
 class WeaponBonusSet;
 enum BodyDamageType CPP_11(: Int);
 enum AIDebugOptions CPP_11(: Int);
@@ -73,6 +74,42 @@ class CommandLineData
 	Bool m_hasParsedCommandLineForStartup;
 	Bool m_hasParsedCommandLineForEngineInit;
 	BoolVector m_parsedArguments;
+};
+
+//-------------------------------------------------------------------------------------------------
+// A subdual tuning value: a plain number, or a multiple of the unit's max health ("MaxHealth * 2").
+// Unset until an INI key writes it, so callers can tell "absent" from an explicit zero.
+struct SubdualValue
+{
+	Real m_flat;
+	Real m_maxHealthFactor;
+	Bool m_isSet;
+
+	SubdualValue() : m_flat(0.0f), m_maxHealthFactor(0.0f), m_isSet(FALSE) { }
+
+	Real evaluate( Real maxHealth ) const { return m_flat + maxHealth * m_maxHealthFactor; }
+
+	static void parseFromINI( INI* ini, void* instance, void* store, const void* userData );
+	static void parseDurationFromINI( INI* ini, void* instance, void* store, const void* userData );
+};
+
+//-------------------------------------------------------------------------------------------------
+// One GameData SubdualDamageDefaults block; an empty KindOf matches every object not in ForbiddenKindOf
+struct SubdualDamageDefaults
+{
+	KindOfMaskType m_kindOf;
+	KindOfMaskType m_forbiddenKindOf;
+	SubdualValue m_subdualDamageCap;
+	SubdualValue m_subdualDamageHealRate;
+	SubdualValue m_subdualDamageHealAmount;
+	SubdualValue m_jammingDamageCap;
+	SubdualValue m_jammingDamageHealRate;
+	SubdualValue m_jammingDamageHealAmount;
+	SubdualValue m_frozenDamageCap;
+	SubdualValue m_frozenDamageHealRate;
+	SubdualValue m_frozenDamageHealAmount;
+	SubdualValue m_chronoDamageHealRate;
+	SubdualValue m_chronoDamageHealAmount;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -129,6 +166,9 @@ public:
 	Bool m_headless;
 
 	Bool m_windowed;
+
+	// Frameless window at the chosen resolution; runs the device windowed even without -win
+	Bool m_borderlessWindow;
 	Int m_xResolution;
 	Int m_yResolution;
 	Int m_maxShellScreens;  ///< this many shells layouts can be loaded at once
@@ -153,6 +193,7 @@ public:
 	// Holds a HealthBarDisplayMode; stored as Int so this widely included header does not
 	// have to pull in OptionPreferences.h.
 	Int m_healthBarDisplayMode;
+	Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn
 	// TheSuperHackers @feature Countdown numbers on build queue and cooldown cameos.
 	// Holds a BuildTimerDisplayMode; stored as Int to avoid pulling OptionPreferences.h in here.
 	Int m_buildTimerDisplayMode;
@@ -410,6 +451,7 @@ public:
 	AsciiString m_initialFile;				///< If this is specified, load a specific map from the command-line
 	AsciiString m_pendingFile;				///< If this is specified, use this map at the next game start
 	AsciiString m_loadSaveGame;				///< If this is specified, load a save game file from the command-line
+	AsciiString m_loadReplayGame;			///< If this is specified, play a replay file from the command-line
 
 	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
 	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
@@ -566,6 +608,13 @@ public:
   Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
   Bool m_skipTranslucencySort;    ///< skips the per-triangle translucency sorter; off unless GameData or the LOD level enables it
   Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
+  Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
+  Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
+  Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
+  Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
+  Real m_laserGlowRadius;         ///< GameData LaserGroundGlowRadius: 0 uses twice the outer beam width
+  Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	Bool m_shroudOn;
@@ -637,11 +686,30 @@ public:
 	DrawableColorTint	m_colorTintTypes[TINT_STATUS_COUNT];
 	Bool	m_colorTintTypes2; // [TINT_STATUS_COUNT] ;
 
+	AsciiString m_jammingOverlayTexture;	///< empty disables the jamming overlay entirely
+	Real m_jammingOverlayScrollU;
+	Real m_jammingOverlayScrollV;
+	Real m_jammingOverlayScale;				///< UV tiling; >1 repeats the texture more densely
+	RGBColor m_jammingOverlayColor;			///< tint multiplied into the texture
+	Bool m_jammingOverlayAdditive;
+
+	AsciiString m_frozenOverlayTexture;	///< empty disables the frozen overlay entirely
+	Real m_frozenOverlayScrollU;
+	Real m_frozenOverlayScrollV;
+	Real m_frozenOverlayScale;
+	RGBColor m_frozenOverlayColor;
+	Bool m_frozenOverlayAdditive;
+
 	Bool m_useOldMoveSpeed;
 
 	Real m_chronoDamageDisableThreshold;
 	UnsignedInt m_chronoDamageHealRate;
 	Real m_chronoDamageHealAmount;
+
+	std::vector<SubdualDamageDefaults> m_subdualDamageDefaults;	///< later blocks win over earlier ones
+
+	/// the last block matching the template's KindOf that sets the given field, or nullptr
+	const SubdualValue* findSubdualDefault( const ThingTemplate* tmpl, SubdualValue SubdualDamageDefaults::*field ) const;
 
 	Real m_chronoDisableAlphaStart;
 	Real m_chronoDisableAlphaEnd;
@@ -696,6 +764,7 @@ private:
 
 	static void setColorTintEntry(DrawableColorTint* arr, int index, RGBColor color, RGBColor colorInfantry, UnsignedInt attackFrames, UnsignedInt decayFrames);
 	static void parseTintStatusType(INI* ini, void* instance, void* store, const void* userData);
+	static void parseSubdualDamageDefaults(INI* ini, void* instance, void* store, const void* userData);
 
 };
 

@@ -36,7 +36,7 @@
 #include "Common/GameType.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 
-#define MAX_ENABLED_DYNAMIC_LIGHTS 20
+#define MAX_ENABLED_DYNAMIC_LIGHTS 64
 class W3DTreeBuffer;
 class W3DBibBuffer;
 class W3DRoadBuffer;

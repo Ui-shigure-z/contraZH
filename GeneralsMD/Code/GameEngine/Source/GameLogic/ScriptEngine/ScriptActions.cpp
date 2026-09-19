@@ -3281,7 +3281,7 @@ void ScriptActions::doDisableInput()
 		TheInGameUI->setInputEnabled(false);
 		TheMouse->setVisibility(false);
 		TheInGameUI->deselectAllDrawables();
-		TheInGameUI->clearAttackMoveToMode();
+		TheInGameUI->clearArmedMoveMode();
 		TheInGameUI->setWaypointMode( FALSE );
 		TheControlBar->deleteBuildTooltipLayout();
 		TheLookAtTranslator->resetModes();

@@ -101,6 +101,8 @@ enum DrawableIconType CPP_11(: Int)
 	ICON_ENTHUSIASTIC_SUBLIMINAL,
 	ICON_CARBOMB,
 	ICON_STATUS,
+	ICON_JAMMED,
+	ICON_FROZEN,
 
 	MAX_ICONS,
 	ICON_FIRST = 0,
@@ -583,6 +585,12 @@ public:
 	Real getSecondMaterialPassOpacity() const { return m_secondMaterialPassOpacity; }		///< get alpha/opacity value used to render add'l  rendering pass.
 	void setSecondMaterialPassOpacity( Real op ) { m_secondMaterialPassOpacity = op; }; ///< set alpha/opacity value used to render add'l  rendering pass.
 
+	// Written authoritatively from jamming damage, so Draw() does not fade it.
+	Real getJammingOverlayIntensity() const { return m_jammingOverlayIntensity; }
+	void setJammingOverlayIntensity( Real intensity ) { m_jammingOverlayIntensity = intensity; }
+	Real getFrozenOverlayIntensity() const { return m_frozenOverlayIntensity; }
+	void setFrozenOverlayIntensity( Real intensity ) { m_frozenOverlayIntensity = intensity; }
+
 	// both of these assume that you are starting at one extreme 100% or 0% opacity and are trying to go to the other!! -- amit
 	void fadeOut( UnsignedInt frames );		///< fade object out...how gradually this is done is determined by frames
 	void fadeIn( UnsignedInt frames );		///< fade object in...how gradually this is done is determined by frames
@@ -769,6 +777,8 @@ private:
 #endif
 
 	Real m_secondMaterialPassOpacity;			///< drawable gets rendered again in hardware with an extra material layer
+	Real m_jammingOverlayIntensity;			///< opacity of the scrolling jamming overlay pass, 0 = no pass
+	Real m_frozenOverlayIntensity;			///< opacity of the frozen overlay pass, 0 = no pass
 	// --------- BYTE-SIZED THINGS GO HERE
 	Byte m_selected;						///< drawable is selected or not
 
@@ -829,6 +839,8 @@ private:
 
 	//new:
 	void drawProgress(const IRegion2D* healthBarRegion);							///< draw progress bar (shield, deploy, teleport, etc.)
+	void drawProductionBar( const IRegion2D* healthBarRegion );			///< draw progress of the head of the production queue
+	Bool getAmmoPipsScreenSpan( const IRegion2D* healthBarRegion, Int &top, Int &bottom ) const;	///< vertical span drawAmmo occupies
 
 	void drawEmoticon( const IRegion2D* healthBarRegion );
 	void drawHealthBar( const IRegion2D* healthBarRegion );					///< draw heath bar
@@ -838,6 +850,8 @@ private:
 	void drawDemoralized( const IRegion2D* healthBarRegion );				///< draw icons
 #endif
 	void drawBombed( const IRegion2D* healthBarRegion );						///< draw icons
+	void drawJammed( const IRegion2D* healthBarRegion );
+	void drawFrozen( const IRegion2D* healthBarRegion );
 	void drawDisabled( const IRegion2D* healthBarRegion );					///< draw icons
 	void drawStatusIcon( const IRegion2D* healthBarRegion );				///< draw the module-set status icon
 	void drawIconAboveBar( DrawableIconType slot, const IRegion2D* healthBarRegion, Int xOffset );

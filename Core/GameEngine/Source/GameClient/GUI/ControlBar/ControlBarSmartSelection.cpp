@@ -16,7 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// TheSuperHackers @feature Smart selection (Options.ini: SmartSelection). A row of half size
+// TheSuperHackers @feature Smart selection (Options.ini: SmartSelection). A row of small
 // cameos above the command bar. A mixed selection gets one cameo per type with a count; a
 // selection of one type gets one cameo per object. A cameo for a single object shows its health
 // bar. Left click and Tab focus a cameo: the whole group stays selected, but the bar shows the
@@ -97,7 +97,7 @@ static Object *getSmartSelectionObject( Drawable *draw )
 }
 
 //-------------------------------------------------------------------------------------------------
-/** A top level row of half size cameos, hidden, with one based slots in the button data so an
+/** A top level row of small cameos, hidden, with one based slots in the button data so an
 	* unset payload never reads as slot zero. */
 //-------------------------------------------------------------------------------------------------
 GameWindow *ControlBar::createCameoRow( GameWinSystemFunc systemFunc, Int slotCount, Bool rightClick, GameWindow **buttons )
@@ -181,8 +181,8 @@ Int ControlBar::getCameoRowWidth( Int cameoCount ) const
 //-------------------------------------------------------------------------------------------------
 void ControlBar::initSmartSelectionBar( const ICoord2D &commandButtonSize )
 {
-	m_smartSelectionButtonSize.x = commandButtonSize.x / 2;
-	m_smartSelectionButtonSize.y = commandButtonSize.y / 2;
+	m_smartSelectionButtonSize.x = commandButtonSize.x * CAMEO_SCALE_PERCENT / 100;
+	m_smartSelectionButtonSize.y = commandButtonSize.y * CAMEO_SCALE_PERCENT / 100;
 	if( m_smartSelectionButtonSize.x <= 0 || m_smartSelectionButtonSize.y <= 0 )
 	{
 		return;
@@ -283,7 +283,7 @@ Bool ControlBar::isSmartSelectionFocused( const Object *obj ) const
 		return true;
 
 	//ShigureUi 14/09/2026 If focus on a type
-	if (count > 1 && obj->getTemplate() == m_smartSelectionGroups[m_smartSelectionActive].thingTemplate)
+	if (count > 1 && obj->getTemplate()->getReskinRoot() == m_smartSelectionGroups[m_smartSelectionActive].thingTemplate)
 		return true;
 	
 	return false;
@@ -329,7 +329,7 @@ void ControlBar::populateSmartSelection()
 			continue;
 		}
 
-		const ThingTemplate *thingTemplate = obj->getTemplate();
+		const ThingTemplate *thingTemplate = obj->getTemplate()->getReskinRoot();
 		size_t g = 0;
 		for( ; g < groups.size(); g++ )
 		{
@@ -463,7 +463,7 @@ void ControlBar::updateSmartSelection()
 	m_smartSelectionParent->winSetPosition( commandPos.x, rowY );
 	m_smartSelectionParent->winHide( FALSE );
 
-	// the bar is one shot on the button, so a lone member's health goes on every frame
+	// the bars are one shot on the button, so a lone member's health and clip go on every frame
 	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
 	{
 		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID || m_smartSelectionButtons[ g ] == nullptr )
@@ -479,6 +479,11 @@ void ControlBar::updateSmartSelection()
 		if( body->getMaxHealth() > 0.0f )
 		{
 			GadgetButtonDrawHealthBar( m_smartSelectionButtons[ g ], body->getHealth() / body->getMaxHealth() );
+		}
+		Int clipSize, ammoInClip;
+		if( obj->getAmmoPipShowingInfo( clipSize, ammoInClip ) )
+		{
+			GadgetButtonDrawAmmoBar( m_smartSelectionButtons[ g ], ammoInClip, clipSize );
 		}
 	}
 }
@@ -627,7 +632,7 @@ void ControlBar::smartSelectionRemove( Int groupIndex, Bool keepGroup )
 		{
 			continue;
 		}
-		const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate() == group.thingTemplate;
+		const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate()->getReskinRoot() == group.thingTemplate;
 		if( inGroup != keepGroup )
 		{
 			members.push_back( *it );
@@ -708,7 +713,7 @@ void ControlBar::updateFocusGroup()
 	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 	{
 		Object *obj = ( *it )->getObject();
-		if( obj && obj->getTemplate() == focus )
+		if( obj && obj->getTemplate()->getReskinRoot() == focus )
 		{
 			msg->appendObjectIDArgument( obj->getID() );
 		}

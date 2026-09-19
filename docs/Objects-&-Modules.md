@@ -43,7 +43,7 @@ Note: This parameter might be moved to individual weapons in the future, to allo
 A ground decal drawn under the object, for auras, faction markers and similar. It is separate from
 the object's shadow: an object can carry a `Shadow` and a display decal at the same time, and the
 decal keeps drawing when the player turns 2D or 3D shadows off in the video options. It does hide
-under shroud and while the object is hidden.
+under shroud, while the object is hidden, and once the object dies, slow death included.
 
 Added new parameters for object definitions:
 
@@ -148,7 +148,9 @@ New paramters for Turret or AltTurret entries
 * `MinTurretAngle = 0` - Minimum angle the turret is allowed to turn
 * `MaxTurretAngle = 0` - Maximum angle the turret is allowed to turn
 Notes:
-- for backwards facing configurations, MaxTurretAngle can be > MinTurretAngle; Currently this is not working 100% reliably
+- Angles are relative to the hull. Positive turns the turret to its left, negative to its right, so `MinTurretAngle` is always the rightmost edge of the arc and `MaxTurretAngle` the leftmost.
+- To mirror an arc onto the other side, negate and swap the values: a left sponson with `MinTurretAngle = 0` / `MaxTurretAngle = 50` becomes `MinTurretAngle = -50` / `MaxTurretAngle = 0` on the right.
+- For backwards facing configurations, set MaxTurretAngle < MinTurretAngle; the arc then wraps through the rear (e.g. `150` / `-150` covers the rear 60 degrees). Currently this is not working 100% reliably.
 - Remove the angle limit lines to use unlimited angle. A value of 0 will use 0 as limit.
 - If the turret cannot turn to the front (e.g. side mounted gun on a helicopter), the unit will attempt to turn to the turret's firing arc
   - this feature only works for locomotors that can turn in place (minTurnSpeed = 0)
@@ -1893,9 +1895,8 @@ End
 - `MovePenalty` never touches lift, so helicopters keep hovering. `LiftPenalty` lowers lift on
   its own. Once lift no longer beats gravity the unit sinks, so keep it small. 100% is ignored.
 - `Icon` names an `Animation` block from `animation2d.ini`, like the stock `Disabled` one. It sits
-  above the health bar, beside the disabled icon when both show. An `Animation` block can now take
-  `Texture = file.tga [width height]` per frame instead of a `MappedImage` name; size defaults to
-  32 x 32.
+  above the health bar, beside the disabled icon when both show. See
+  [Animation2D.ini](#animation2dini) for the single-image `Texture` form.
 - Losing power with `IsMobile = No` stops the current move order. Attack orders still work, so a
   turreted unit keeps firing from where it stands.
 - The effects follow the owner. A captured object takes the new owner's power state.
@@ -1910,6 +1911,328 @@ End
 The named object is expected to carry a [TornadoUpdate](#tornadoupdate-new). Give it
 `FullStrengthTime = 0` and a `RampDownTime` matching the cannon `WidthGrowTime`, so that the tornado
 follows the beam for as long as it fires and then fades out with it.
+
+# Subdual Jamming
+
+Jamming damage that accumulates on the body like subdual damage, interacts with armor, and disables
+the unit when the threshold is reached. Healing ticks remove the damage over time.
+
+## New Damage Types
+
+Two new entries in `DamageType`:
+
+* `SUBDUAL_JAMMING` - jamming damage adjusted by armor coefficients
+* `SUBDUAL_JAMMING_UNRESISTABLE` - bypasses armor entirely (used internally for healing ticks)
+
+Neither type reduces health. Set these on a weapon's `DamageType` field.
+
+## Jam Effect
+
+When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status and
+its passengers are ordered to idle. The status clears once the jamming damage heals below the
+threshold.
+
+Jamming is independent of the `DISABLED_*` states: it neither waits for them nor ends them, and a
+disabled unit stays disabled through a jam. On unjam it only clears `UNSELECTABLE` if the jam was
+what set it, so a docked, slaved, or status-held unit keeps that state.
+
+## ActiveBody Fields
+
+```
+Body = ActiveBody ModuleTag_Body
+  ; ...existing ActiveBody fields...
+  JammingDamageCap  = 100.0   ; max jamming damage this unit can accumulate (0 = immune)
+  JammingDamageHealRate   = 500 ; milliseconds between each healing tick
+  JammingDamageHealAmount = 5.0 ; jamming damage removed per tick
+End
+```
+
+A unit with `JammingDamageCap = 0` ignores `SUBDUAL_JAMMING` damage entirely.
+The unit becomes jammed when accumulated jamming damage reaches `MaxHealth`. Healing begins
+automatically after the first hit.
+
+### Recovery timing
+
+Every hit resets the heal countdown, so the first healing tick lands one full `HealRate` after
+the last hit. Each tick then removes `HealAmount` until the stored damage reaches zero. The unit
+unjams as soon as the stored damage drops below `MaxHealth`; the overlay only disappears once it
+reaches zero. `JammingDamageCap` bounds the stored damage and therefore the longest recovery.
+
+```
+time to unjam        = HealRate * ceil((stored - MaxHealth) / HealAmount)
+time to clear overlay = HealRate * ceil(stored / HealAmount)
+```
+
+With the defaults in [Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults)
+(cap `MaxHealth * 2`, heal `MaxHealth / 16.25` every 500 ms) a fully capped unit unjams after
+8.5 s and its overlay clears after 16.5 s. Subdual damage heals the same way, but its blue tint
+is a flag rather than a level and clears on the first healing tick.
+
+Any of these keys, and the `SubdualDamage*` trio, may be omitted. An omitted key takes its value
+from the matching `SubdualDamageDefaults` block in GameData.ini, and is 0 if no block matches.
+Cap and HealAmount keys accept `MaxHealth * 2` or `MaxHealth / 16.25` as well as a plain number,
+evaluated against the unit's current max health. ActiveBody also accepts `ChronoDamageHealRate`
+and `ChronoDamageHealAmount` in the same forms, which override the global chrono keys for that
+unit. See [Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
+## Armor
+
+`SUBDUAL_JAMMING` interacts with armor normally. Define coefficients in `Armor.ini`:
+
+```
+Armor ChinaTankArmor
+  Armor = SUBDUAL_JAMMING 200%   ; takes twice as long to jam
+End
+```
+
+`SUBDUAL_JAMMING_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
+
+## Overlay Texture
+
+A scrolling texture can be drawn over units taking jamming damage. Its opacity is the stored
+jamming damage divided by `MaxHealth`, clamped to 1, so it fades in as the unit is jammed, holds
+full strength while damage sits above `MaxHealth`, and fades out as it heals (see
+[Recovery timing](#recovery-timing)). Configured globally in `GameData.ini`:
+
+```
+JammingOverlayTexture  = JammingFX   ; texture name; omit or leave empty to disable
+JammingOverlayScrollU  = 0.5         ; horizontal scroll per second
+JammingOverlayScrollV  = 0.0         ; vertical scroll per second
+JammingOverlayScale    = 1.0         ; UV tiling; >1 repeats the texture more densely
+JammingOverlayColor    = R:255 G:255 B:255  ; tint multiplied into the texture
+JammingOverlayAdditive = Yes         ; Yes = additive glow, No = alpha blend
+```
+
+The effect is off by default. `Yes` suits an electrical shimmer; `No` suits an opaque layer
+such as frost, and needs the texture to carry an alpha channel.
+
+Note: a unit that is both jammed and stealth-detected shows the jamming overlay only. The
+engine carries one opacity value per render call, so the two effects cannot be layered with
+independent strengths. The [frozen overlay](#subdual-frozen) stacks with this one and shares
+that single value.
+
+## Icon
+
+A jammed unit shows its own icon beside the health bar, next to the disabled icon when both
+apply. Define an `Animation Jammed` block in `Animation2D.ini`; the icon is not drawn until this
+exists. The single-image `Texture` form is the natural fit — see
+[Animation2D.ini](#animation2dini):
+
+```
+Animation Jammed
+  NumberImages   = 1
+  Texture        = jammer.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
+End
+```
+
+## Per-Unit Sounds
+
+Units can define custom jam/unjam sounds via their `UnitSpecificSounds` block:
+
+```
+Object SomeUnit
+  UnitSpecificSounds
+    SoundJammed   = JammedSoundEvent
+    SoundUnjammed = UnjammedSoundEvent
+  End
+End
+```
+
+If no per-unit sound is defined, the unit falls back to the global jam sounds in
+`MiscAudio.ini`, and is silent if those are unset too:
+
+```
+UnitJammed   = JammedSoundEvent
+UnitUnjammed = UnjammedSoundEvent
+```
+
+Jamming never borrows the building-disabled or vehicle-disabled sounds, so an EMP'd unit that
+is also jammed plays two distinct cues rather than a repeated one.
+
+## Example Weapon
+
+```
+Weapon JammerGun
+  PrimaryDamage     = 50.0
+  PrimaryDamageRadius = 0.0
+  DamageType        = SUBDUAL_JAMMING
+  DeathType         = NORMAL
+  ; ...other weapon fields...
+End
+```
+
+# Subdual Frozen
+
+Frozen damage is a third subdual pool beside retail subdual and [jamming](#subdual-jamming). It
+accumulates on the body, interacts with armor, and disables the unit the way retail subdual does
+once it reaches the threshold. Healing ticks remove the damage over time. The three pools are
+independent: each has its own counter, cap, heal rate and effect, and a unit can be subdued,
+jammed and frozen at the same time.
+
+## New Damage Types
+
+Two new entries in `DamageType`:
+
+* `SUBDUAL_FROZEN` - frozen damage adjusted by armor coefficients
+* `SUBDUAL_FROZEN_UNRESISTABLE` - bypasses armor entirely (used internally for healing ticks)
+
+Neither type reduces health. Set these on a weapon's `DamageType` field.
+
+## Freeze Effect
+
+When frozen damage reaches the unit's max health, the unit gains the `DISABLED_FROZEN` disabled
+type and the `FROZEN` condition state, and its passengers are ordered to idle. Both clear once the
+frozen damage heals below the threshold.
+
+`DISABLED_FROZEN` is checked everywhere the game checks `DISABLED_SUBDUED`, so a frozen unit
+behaves exactly like a subdued one: it cannot move, fire, animate, sell, evacuate or auto-target,
+transports refuse to load or unload it, a frozen stinger site silences its soldiers, and its
+command buttons grey out. A unit that is both frozen and EMP'd, subdued or hacked stays disabled
+until the last of those clears.
+
+The `FROZEN` condition state lets art react. A `ConditionState = FROZEN` block on a draw module can
+swap the model or play an animation for as long as the unit is frozen.
+
+A frozen unit does not take the dark-gray disabled tint that EMP and subdual apply, so the
+frozen overlay and any `FROZEN` art carry the look on their own.
+
+Projectiles take frozen damage but are never disabled by it; only the sound plays.
+
+## ActiveBody Fields
+
+```
+Body = ActiveBody ModuleTag_Body
+  ; ...existing ActiveBody fields...
+  FrozenDamageCap        = 100.0 ; max frozen damage this unit can accumulate (0 = immune)
+  FrozenDamageHealRate   = 500   ; milliseconds between each healing tick
+  FrozenDamageHealAmount = 5.0   ; frozen damage removed per tick
+End
+```
+
+A unit with `FrozenDamageCap = 0` ignores `SUBDUAL_FROZEN` damage entirely. The unit freezes when
+accumulated frozen damage reaches `MaxHealth`. Healing begins automatically after the first hit,
+with the same [recovery timing](#recovery-timing) as jamming.
+
+Any of these keys may be omitted. An omitted key takes its value from the matching
+`SubdualDamageDefaults` block in GameData.ini, and is 0 if no block matches. Cap and HealAmount
+keys accept `MaxHealth * 2` or `MaxHealth / 16.25` as well as a plain number. See
+[Subdual Damage Defaults](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
+## Armor
+
+`SUBDUAL_FROZEN` interacts with armor normally. Define coefficients in `Armor.ini`:
+
+```
+Armor ChinaTankArmor
+  Armor = SUBDUAL_FROZEN 200%   ; takes twice as long to freeze
+End
+```
+
+`SUBDUAL_FROZEN_UNRESISTABLE` bypasses armor (like `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE`).
+
+## Overlay Texture
+
+A texture can be drawn over units taking frozen damage, with the same fade rule as the jamming
+overlay: opacity is the stored frozen damage divided by `MaxHealth`, clamped to 1. Configured
+globally in `GameData.ini` with the same keys as the jamming overlay:
+
+```
+FrozenOverlayTexture  = FrostFX.tga  ; texture name; omit or leave empty to disable
+FrozenOverlayScrollU  = 0.0          ; horizontal scroll per second
+FrozenOverlayScrollV  = 0.0          ; vertical scroll per second
+FrozenOverlayScale    = 1.0          ; UV tiling; >1 repeats the texture more densely
+FrozenOverlayColor    = R:255 G:255 B:255  ; tint multiplied into the texture
+FrozenOverlayAdditive = No           ; Yes = additive glow, No = alpha blend
+```
+
+The effect is off by default. The defaults differ from jamming: no scroll and alpha blend, which
+suits a static frost layer with an alpha channel.
+
+The jamming and frozen overlays stack, so a unit that is both jammed and frozen draws both
+textures. The engine carries one opacity value per render call, so both passes use the stronger
+of the two intensities and fade together. A unit that is also stealth-detected shows the subdual
+overlays only.
+
+## Icon
+
+A frozen unit shows its own icon beside the health bar, after the disabled and jammed icons when
+those apply. Define an `Animation Frozen` block in `Animation2D.ini`; the icon is not drawn until
+this exists. See [Animation2D.ini](#animation2dini):
+
+```
+Animation Frozen
+  NumberImages   = 1
+  Texture        = frozen.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
+End
+```
+
+## Per-Unit Sounds
+
+Units can define custom freeze/thaw sounds via their `UnitSpecificSounds` block:
+
+```
+Object SomeUnit
+  UnitSpecificSounds
+    SoundFrozen   = FrozenSoundEvent
+    SoundUnfrozen = UnfrozenSoundEvent
+  End
+End
+```
+
+If no per-unit sound is defined, the unit falls back to the global sounds in `MiscAudio.ini`,
+and is silent if those are unset too:
+
+```
+UnitFrozen   = FrozenSoundEvent
+UnitUnfrozen = UnfrozenSoundEvent
+```
+
+Freezing never borrows the building-disabled or vehicle-disabled sounds.
+
+## Example Weapon
+
+```
+Weapon FreezeGun
+  PrimaryDamage     = 50.0
+  PrimaryDamageRadius = 0.0
+  DamageType        = SUBDUAL_FROZEN
+  DeathType         = NORMAL
+  ; ...other weapon fields...
+End
+```
+
+# Animation2D.ini
+
+## Texture (single image frames)
+
+An `Animation` block can name a texture file directly for a frame instead of a `MappedImage`.
+This is the simplest way to make a one-frame icon such as the low-power or jammed indicators:
+
+```
+Animation Jammed
+  NumberImages   = 1
+  Texture        = jammer.tga
+  AnimationMode  = ONCE
+  AnimationDelay = 0
+End
+```
+
+Syntax is `Texture = <file> [width height]`. The whole texture is used as the frame.
+
+- Width and height are optional and default to `32 32`. They set the size the frame is drawn
+  at, so they should match the file's real pixel size or the image will be scaled.
+- `Texture` and `Image` lines can be mixed in one block; each fills the next frame slot in order,
+  so `NumberImages` must still count them all.
+- The file name doubles as the image name. Every animation that names the same file shares one
+  image, and a `MappedImage` already defined under that name is reused rather than replaced.
+- The file is resolved like any other texture, so a `.dds` of the same name anywhere in the
+  archives takes priority over a loose `.tga`. Loose files go in `Art\Textures\`.
+
+A static icon wants `NumberImages = 1`, `AnimationMode = ONCE` and `AnimationDelay = 0`, as above.
 
 # Misc Improvements
 

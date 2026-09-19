@@ -25,6 +25,22 @@ Some of them change the simulation - the timing of a reload or a snipe, the path
 any replay recorded before them will not play back identically. Others only change what is drawn, and
 leave replay playback alone. Each entry says which kind it is.
 
+## Guard mode holds its ground
+
+Guarding units used to be interrupted by any hit they took. Being shot while returning to the guard
+post, or while attacking inside the guard circle, kicked the unit into chasing the attacker, so the
+move and the fire fought each other and the unit stuttered. That transition is gone; a guarding unit
+finishes its return, or its current attack, and picks up the attacker through its normal enemy scan.
+
+Units that deploy to fire, the Nuke Cannon above all, had it worse, because every one of those
+interruptions packed them up. Three more cases now leave them deployed. When a target dies and
+another enemy is still inside the guard circle, the unit fires at the next one without leaving its
+attack state. A guard order at the spot the unit already stands on no longer issues a zero-length
+move that would pack it up. And a unit still unpacking when its target walks out of range reverses
+the unpack instead of finishing it. A manually deployed unit keeps its stance in all of these.
+
+This changes the simulation. Ported from CookieLandProjects/CLP_AI.
+
 ## Weapon bonus no longer restarts the reload
 
 A weapon bonus changing mid-reload used to throw away the progress already made and start the timer
@@ -133,6 +149,23 @@ into hulks.
 A dying unit also kept catching the mouse, so a click on a corpse never reached the unit or ground
 behind it. Anything effectively dead now drops its pick bit, unless it is `ALWAYS_SELECTABLE`.
 
+## Jammed units deselect properly
+
+Setting `UNSELECTABLE` status (e.g. from a jam weapon) left the drawable in the selection list. After
+the status cleared, the unit appeared selected but the control bar did not respond, forcing the player
+to click elsewhere and reselect. `setStatus(UNSELECTABLE)` now deselects the drawable immediately.
+This changes selection state, so it affects replays.
+
+## Portable addons no longer block building
+
+Placing a building over your own units normally shoves them out of the footprint, but a carrier
+with a `PORTABLE_STRUCTURE` addon - an Overlord with a Gattling Cannon, or any of the mod's
+multi-addon vehicles - refused the placement outright. The addon stays a live collision object
+riding on its carrier, and the build check treated it as a held, immovable unit rather than as
+part of the vehicle that would have driven off. Contained objects are now skipped by that check
+and only their carrier is judged, so an enemy or otherwise stuck carrier still blocks as before.
+This changes build legality, so it affects replays.
+
 # Game Setup
 
 ## Random army per faction
@@ -179,6 +212,12 @@ none.)
 
 * `HealthBarDisplayMode = Classic` - (`Classic` | `Damaged` | `Always`. `Damaged` shows a bar only on
 hurt objects, `Always` shows one on everything.)
+* `AlliedDecalMode = House` - (`Hidden` | `House` | `Army`. Draws the ground decal of an ally's
+general power (nuke, scud storm, carpet bomb, gunship, paradrop and the like) once it fires, so allies
+see each other's targeting. `House` tints it in the ally's player color, `Army` in the faction color
+of the general they picked, `Hidden` keeps retail behavior where only your own decals show. Enemy
+decals stay hidden. Applies to the next power fired. The Game Options combo needs `ComboBoxAlliedDecals`
+and `AlliedDecalsLabel` windows in `OptionsMenu.wnd`; without them the key still works from the file.)
 * `NumericalHealth = No` - (Yes prints the hit points beside the health bar. Follows
 `HealthBarDisplayMode`, so the number appears exactly where a bar does.)
 * `SelectionCircle = No` - (Yes draws a green ring on the ground under selected objects. Retail draws
@@ -202,6 +241,14 @@ was.)
 * `BlipSize = Large` - (`Small` | `Large`. How big the object blips draw. `Small` is 3 pixels for a
 unit and 5 for a structure, `Large` is 5 and 7. Larger blips are easier to pick out at a glance but
 run together sooner when units are packed in. Ignored unless `NewRadar` is on.)
+* `BorderlessWindow = No` - (Yes runs the game in a frameless window at the selected resolution,
+centred on the monitor, so it covers the screen when the resolution matches the desktop. Toggled
+by the Borderless checkbox beside the Resolution label in the Options menu and applied on Accept,
+like a resolution change. `-win` is unaffected and still gives a captioned window.)
+
+Note: a blue bar under the health bar shows the progress of the unit or upgrade at the head of a
+building's production queue. It appears while the building is selected or moused over, or all the
+time when `HealthBarDisplayMode = Always`. Own buildings only.
 
 Note: `NewRadar` cannot hide roads the way the RA3 minimap does. Roads are painted into the terrain
 textures themselves rather than drawn as their own radar layer, so by the time the radar samples a
@@ -249,12 +296,29 @@ while the button still works the way it did before grid hotkeys existed. If that
 live grid letter the slot gets no hotkey instead, since `addHotKey` keeps whichever slot registered
 first and silently drops the other.
 
+## Reverse move hotkey
+
+Caps Lock arms a reverse move for the whole selection, whatever their command sets hold. The next
+terrain click sends the same order as the `REVERSE_MOVE` command button, so the unit drives to the
+spot in reverse. Pressing Caps Lock again, or arming attack move, drops the mode.
+
+* `TOGGLE_REVERSEMOVE` in CommandMap.ini rebinds it. The Caps Lock default only fills an empty slot.
+* `KEY_CAPS` is new as a CommandMap key name. The press still toggles the Caps Lock state.
+* While armed, the cursor shows the `ReverseMove` block from Mouse.ini, e.g.
+`MouseCursor ReverseMove` with `Image = SCCMove` and `Texture = SCCMove`. A Mouse.ini without that
+block keeps the plain move cursor.
+
+The order needs a locomotor with `CanMoveBackwards = Yes`, and `ReverseMoveIgnoreAngleThreshold`
+in GameData decides whether a goal in front of the unit is also driven to in reverse.
+
 ## Smart selection
 
-Shows a row of half size cameos above the command bar. A selection of different unit types gets one
-cameo per type with a count of how many are selected; a selection of a single type gets one cameo
-per object. A cameo standing for one object shows a small health bar instead of a count. The row
-holds 16 cameos; anything beyond that gets none. A count past 999 gets no badge.
+Shows a row of small cameos, three fifths of a command button, above the command bar. A selection
+of different unit types gets one cameo per type with a count of how many are selected; a selection
+of a single type gets one cameo per object. A cameo standing for one object shows a small health
+bar instead of a count, and a light orange clip bar above it when the object shows ammo pips, split
+into one segment per shot. The row holds 16 cameos; anything beyond that gets none. A count past
+999 gets no badge. Objects that are reskins of one type share that type's cameo.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
 * `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on
@@ -277,7 +341,7 @@ CommandMap.ini) step the focus through the row, skipping cameos that are already
 
 ### Command group row
 
-A second row of half size cameos sits on the command bar frame, one per command group (Ctrl+1
+A second row of small cameos sits on the command bar frame, one per command group (Ctrl+1
 to Ctrl+0) that still has live members, in key order 1 to 9 then 0. Each cameo shows the group's
 most common unit type, the group number top left and the live member count bottom right; the
 count drops as members die. The row shows whenever any group has members, even with nothing
@@ -303,7 +367,8 @@ says it is ready, rather than being thrown away. The cooldown itself is untouche
 asked of `SpecialPowerModule::isReady` every frame rather than predicted, so a queued cast can never
 fire earlier than a manual one could.
 * Shift+click queues five units at once, from either the mouse or the hotkey. Shift+click on a
-queue entry cancels every queued unit of that type in the factory.
+queue entry cancels every queued unit of that type in the factory. Shift+click on a passenger
+cameo unloads every passenger of that type from the transport.
 
 ## Clipboard paste
 
@@ -319,6 +384,15 @@ filters the paste the same way, and hidden fields keep showing asterisks.
 * Text longer than the space left is truncated to fit, the same way typing stops at the limit.
 * A multi-line paste stops at the first line break, so half a pasted paragraph cannot become a
 chat message on its own.
+
+## Command line
+
+* `-loadreplay <file>` starts the game straight into a replay with the full game context, so the
+menus and Options are loaded as usual. `<file>` is a name inside the Replays folder or an absolute
+path. A replay that cannot be read, or whose map is not installed, shows a message box in the
+shell instead of starting a broken game.
+* `-loadsave <file>` likewise accepts an absolute path as well as a name inside the Save folder,
+and a save that cannot be read shows a message box instead of failing silently.
 
 ## Rendering
 
@@ -347,6 +421,68 @@ to defaults, and when the driver supports anisotropic filtering for only one of
 minification/magnification the other falls back to linear per capability, instead of both dropping
 to point sampling as the merged code did.
 
+### Bloom
+
+A soft glow around additive particle effects (fire, muzzle flashes, tracers, lasers, explosions)
+and around model meshes whose W3D material uses the `Add` blend mode, such as building lights and
+glowing panels. Smoke and other alpha blended effects do not glow. Built from DX8 render targets and
+fixed function blur passes, so it needs no shader support.
+
+* `Bloom = No` - (Yes turns the glow on. Also the `Glow around additive effects` checkbox in
+Game Options, where it applies on Accept without a restart.)
+* `BloomStrength = 0.5` - (0 to 1. How bright the glow is. 0 is the same as off. Edited as a
+percentage, `Strength %`, in Game Options.)
+* `BloomDebug = No` - (Yes replaces the scene with the blurred glow buffer on black, full strength.
+Only the additive effects and meshes that feed the bloom show up, so it tells at a glance whether
+the effect is running and what is feeding it. The UI still draws on top. `Debug view` in Game
+Options.)
+
+The Game Options controls need the `BloomGroupLabel`, `CheckBloom`, `TextEntryBloomStrength` and
+`CheckBloomDebug` windows in `OptionsMenu.wnd`; without them the keys still work from the file.
+
+Notes:
+* The glow source is a second draw of the additive particles into an offscreen target, so the
+effect costs fill rate on particle heavy scenes in proportion to how many additive particles are
+on screen.
+* Off while `AntiAliasing` is above 1, because DirectX 8 cannot redirect a multisampled scene into a
+texture. Turning anti-aliasing off brings it back without a restart.
+* Particles hidden behind terrain or buildings cast no glow, since the second draw shares the
+scene's depth buffer.
+* Additive meshes on skinned models (infantry and other bone deformed meshes) do not glow. Their
+vertices only exist for the duration of the normal draw, so there is nothing left to draw again.
+
+### Laser ground glow
+
+Each laser beam lights the terrain along its whole length with a row of small dynamic lights
+(up to twelve per beam), so the ground under the beam picks up the beam color. The lights are
+terrain only, so units and buildings do not light up. They take the beam color (house colored
+when the laser asks for it), switch on and off with the beam and follow a continuous beam as its
+target moves. Roads are not lit, since road dynamic lighting is disabled in the engine.
+
+* `LaserRef = No` - (Yes turns the glow on. Also the `Lasers light the ground` checkbox in Game
+Options, where it applies on Accept without a restart.)
+
+`GameData.ini` tunes it for every laser, and a `W3DLaserDraw` module can override each key for
+its own laser with `GroundGlowColor`, `GroundGlowRadius` and `GroundGlowIntensity`. A module value
+above zero (or not black) wins, then the `GameData.ini` value, else the default named below.
+
+* `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black derives it from the beam: every
+beam layer's color weighed by its width, times the average color of the laser texture, so a
+textured laser with white ini colors still glows in its texture's hue. The color is normalized
+to full brightness either way.)
+* `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
+`OuterBeamWidth`. Floored at 15.)
+* `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
+
+The terrain is lit per vertex on a 10 unit grid, so the radius is floored at 15 to keep the lit
+vertices a strip rather than dots. The lights sit one radius apart with at most twelve per beam;
+a beam longer than that widens its lights until they meet and dims them by as much. Each light
+also reaches up to 10 units past its radius for a softer edge.
+
+* The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the
+key still works from the file.
+* The terrain lights up to 64 dynamic lights a frame, for every kind of dynamic light.
+
 # ParticleSystem.ini
 
 ## ConformToTerrain
@@ -368,6 +504,37 @@ instead, so a very large particle stops getting more expensive without bound. Th
 terrain fit, which is not visible on the effects that actually reach that size.
 
 # GameData.ini
+
+## Subdual damage defaults
+
+Subdual, jamming, frozen and chrono tuning no longer has to be repeated on every ActiveBody. GameData.ini
+accepts any number of `SubdualDamageDefaults` blocks, each optionally limited to a `KindOf`
+list and kept off a `ForbiddenKindOf` list, and values may be written against max health:
+
+```
+SubdualDamageDefaults
+  SubdualDamageCap        = MaxHealth * 2
+  SubdualDamageHealRate   = 500
+  SubdualDamageHealAmount = MaxHealth / 16.25
+End
+```
+
+An ActiveBody key still wins over the global block, an explicit `SubdualDamageCap = 0` still
+means immune, and an ActiveBody with no key at all now falls back to the global block instead
+of zero. The `MaxHealth` forms work on ActiveBody too, and ActiveBody gains `ChronoDamageHealRate`
+and `ChronoDamageHealAmount` for per-unit chrono tuning. Details in
+[GameData](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/GameData#subdual-damage-defaults).
+
+## Subdual frozen
+
+`SUBDUAL_FROZEN` is a third subdual damage pool beside retail subdual and jamming. It disables
+the unit the way retail subdual does, through its own `DISABLED_FROZEN` type, and sets a `FROZEN`
+condition state while it holds. It gets the same customization as jamming: `FrozenDamageCap`,
+`FrozenDamageHealRate` and `FrozenDamageHealAmount` on ActiveBody or in `SubdualDamageDefaults`,
+an armor coefficient, a `Frozen` health-bar icon from Animation2D.ini, `SoundFrozen` /
+`SoundUnfrozen` per unit with `UnitFrozen` / `UnitUnfrozen` in MiscAudio.ini as fallback, and a
+`FrozenOverlay*` texture block in GameData.ini. The jamming and frozen overlays stack on one unit.
+Details in [Subdual Frozen](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#subdual-frozen).
 
 ## BatchParticles
 
@@ -417,6 +584,29 @@ tracks and water are not reordered.
 Notes:
 * Does nothing while `SkipTranslucencySort = No`; the sorter already orders every triangle.
 * Depth ordering interleaves textures more, so `BatchParticles` gathers slightly smaller batches.
+
+## ForceFireAllWeapons
+
+* `ForceFireAllWeapons = No` - (Default. `Yes` makes an attack ground order fire every weapon that
+can hit the ground, on every turret, instead of only the primary weapon.) Goes in the `AIUpdate`
+block next to `TurretsLinked`.
+
+Attack ground, whether from a Ctrl+click on terrain or a script, always selects the primary weapon
+and fires nothing else. Until now the only way around it was `TurretsLinked = Yes`, which fires
+every slot regardless of what it can hit, anti-air included, and also chains every turret to one
+target during ordinary attacks. `ForceFireAllWeapons = Yes` only changes attack ground. Each weapon
+whose anti mask includes ground fires once it is ready and the target is inside its own range;
+weapons that can only hit aircraft, projectiles or mines stay quiet. A turret that does not hold
+the current weapon turns to the point on its own and fires with its own ground weapon, so a two
+turret unit no longer needs `TurretsLinked` to use both.
+
+Notes:
+* Attacking a unit or building, forced or not, still picks the single best weapon.
+* A weapon slot that fires in sync with another slot keeps that rule and fires only when its lead
+does. A locked weapon, which is how attack ground special powers work, fires alone as before.
+* The weapons beyond the lead skip their `PreAttackDelay` wind-up, the same as linked turrets do.
+* A slot whose `AutoChooseSources` excludes `FROM_PLAYER` is skipped for player orders, the same
+way normal weapon choice skips it.
 
 ## NoOccupantFriendlyFire
 
@@ -565,6 +755,29 @@ middle when `NumberOfShots` is larger than `ClipSize`. A weapon that runs dry wi
 `AutoReloadsClip = No` drops the remaining shots.
 * Firing the power again replaces the queue: new target point, count reset.
 * A dying unit drops its remaining shots. The queue survives a save and load.
+
+# Animation2D.ini
+
+## Texture
+
+An `Animation` block can name a texture file directly for a frame with
+`Texture = <file> [width height]`, instead of pointing at a `MappedImage`. The whole file is the
+frame. This is what the low-power and jammed health-bar icons use, and it is the quickest way to
+add a one-image icon: drop a `.tga` in `Art\Textures\` and reference it, with no `MappedImage`
+entry to write.
+
+* `Texture = jammer.tga` - (The file to draw. Width and height default to `32 32`.)
+* `Texture = jammer.tga 64 64` - (Explicit draw size. Match the file's real pixel size, or the
+image is scaled to fit.)
+
+`Texture` and `Image` lines can be mixed in one block. Each fills the next frame in order, so
+`NumberImages` must count both kinds. The file name doubles as the image name, so every animation
+naming the same file shares one image, and an existing `MappedImage` of that name is reused rather
+than replaced. The file resolves like any texture, so a `.dds` of the same name anywhere in the
+archives wins over a loose `.tga`.
+
+A static icon is `NumberImages = 1`, `AnimationMode = ONCE` and `AnimationDelay = 0`. Icons only
+change what is drawn, so this does not affect replays.
 
 # Turret modules
 

@@ -531,9 +531,17 @@ public:  // ********************************************************************
 	void setForceAttackMode( Bool enabled )		{ m_forceAttackMode = enabled; }
 	void setPreferSelectionMode( Bool enabled )		{ m_preferSelection = enabled; }
 
-	void toggleAttackMoveToMode()				{ m_attackMoveToMode = !m_attackMoveToMode; }
-	Bool isInAttackMoveToMode() const		{ return m_attackMoveToMode; }
-	void clearAttackMoveToMode()				{ m_attackMoveToMode = FALSE; }
+	enum ArmedMoveMode
+	{
+		ARMED_MOVE_NONE,
+		ARMED_MOVE_ATTACK,
+		ARMED_MOVE_REVERSE
+	};
+	void toggleAttackMoveToMode()				{ m_armedMoveMode = (m_armedMoveMode == ARMED_MOVE_ATTACK) ? ARMED_MOVE_NONE : ARMED_MOVE_ATTACK; }
+	void toggleReverseMoveToMode()			{ m_armedMoveMode = (m_armedMoveMode == ARMED_MOVE_REVERSE) ? ARMED_MOVE_NONE : ARMED_MOVE_REVERSE; }
+	Bool isInAttackMoveToMode() const		{ return m_armedMoveMode == ARMED_MOVE_ATTACK; }
+	Bool isInReverseMoveToMode() const	{ return m_armedMoveMode == ARMED_MOVE_REVERSE; }
+	void clearArmedMoveMode()						{ m_armedMoveMode = ARMED_MOVE_NONE; }
 
 	void setCameraRotateLeft( Bool set )		{ m_cameraRotatingLeft = set; }
 	void setCameraRotateRight( Bool set )		{ m_cameraRotatingRight = set; }
@@ -934,7 +942,7 @@ protected:
  	Bool												m_waypointMode;			///< are we in waypoint plotting mode?
 	Bool												m_forceAttackMode;		///< are we in force attack mode?
 	Bool												m_forceMoveToMode;		///< are we in force move mode?
-	Bool												m_attackMoveToMode;	///< are we in attack move mode?
+	ArmedMoveMode										m_armedMoveMode;	///< move order armed for the next terrain click
 	Bool												m_preferSelection;		///< the shift key has been depressed.
 
 	Bool												m_cameraRotatingLeft;
