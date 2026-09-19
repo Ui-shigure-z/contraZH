@@ -454,7 +454,7 @@ vertices only exist for the duration of the normal draw, so there is nothing lef
 ### Laser ground glow
 
 Each laser beam lights the terrain along its whole length with a row of small dynamic lights
-(up to eight per beam), so the ground under the beam picks up the beam color. The lights are
+(up to twelve per beam), so the ground under the beam picks up the beam color. The lights are
 terrain only, so units and buildings do not light up. They take the beam color (house colored
 when the laser asks for it), switch on and off with the beam and follow a continuous beam as its
 target moves. Roads are not lit, since road dynamic lighting is disabled in the engine.
@@ -466,16 +466,18 @@ Options, where it applies on Accept without a restart.)
 its own laser with `GroundGlowColor`, `GroundGlowRadius` and `GroundGlowIntensity`. A module value
 above zero (or not black) wins, then the `GameData.ini` value, else the default named below.
 
-* `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black picks `OuterColor` when the laser
-has more than one beam, else `InnerColor`, since the inner color is usually a white core. The
-color is normalized to full brightness either way.)
+* `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black derives it from the beam: every
+beam layer's color weighed by its width, times the average color of the laser texture, so a
+textured laser with white ini colors still glows in its texture's hue. The color is normalized
+to full brightness either way.)
 * `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
-`OuterBeamWidth`, floored at 5.)
+`OuterBeamWidth`. Floored at 15.)
 * `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
 
-Note on small radii: the terrain is lit per vertex on a 10 unit grid, and the lights sit one
-radius apart with at most eight per beam. Below about 20 the lit vertices thin out into dots
-rather than a strip, and a long beam only gets its first `8 * radius` units lit.
+The terrain is lit per vertex on a 10 unit grid, so the radius is floored at 15 to keep the lit
+vertices a strip rather than dots. The lights sit one radius apart with at most twelve per beam;
+a beam longer than that widens its lights until they meet and dims them by as much. Each light
+also reaches up to 10 units past its radius for a softer edge.
 
 * The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the
 key still works from the file.
