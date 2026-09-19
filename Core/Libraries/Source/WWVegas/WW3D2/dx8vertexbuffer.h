@@ -243,6 +243,7 @@ class SortingVertexBufferClass : public VertexBufferClass
 	friend VertexBufferClass::WriteLockClass;
 	friend VertexBufferClass::AppendLockClass;
 	friend DynamicVBAccessClass::WriteLockClass;
+	friend class DX8RigidFVFCategoryContainer;	// copies a mesh's vertices out for the bloom replay
 
 	VertexFormatXYZNDUV2* VertexBuffer;
 

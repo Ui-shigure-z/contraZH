@@ -86,7 +86,7 @@ class DX8TextureCategoryClass : public MultiListObjectClass
 	PolyRenderTaskClass *						bloom_task_head;			// additive tasks already drawn this frame, kept for the bloom replay
 	static bool											m_gForceMultiply;  // Forces opaque materials to use the multiply blend - pseudo transparent effect.  jba.
 
-	void									Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool allowSorting);
+	void									Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool replay);
 
 public:
 
@@ -249,6 +249,9 @@ public:
 	virtual void Log(bool only_visible) override;
 	virtual bool Check_If_Mesh_Fits(MeshModelClass* mmc) override;
 	virtual bool Bind_Static_Buffers() override;
+	// A sorting container's buffers only ever queue a draw for the end of the scene, so the bloom
+	// replay copies the fragment into plain dynamic buffers and draws it while its target is bound.
+	void Draw_Copied(DX8PolygonRendererClass* renderer, unsigned base_vertex_offset);
 
 	virtual void Render() override;	// Generic render function
 

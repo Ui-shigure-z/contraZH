@@ -819,6 +819,40 @@ bool DX8RigidFVFCategoryContainer::Bind_Static_Buffers()
 	return true;
 }
 
+// the same copy the sorting renderer makes when it flushes, for one fragment, drawn at once
+void DX8RigidFVFCategoryContainer::Draw_Copied(DX8PolygonRendererClass* renderer, unsigned base_vertex_offset)
+{
+	WWASSERT(sorting);
+	SortingVertexBufferClass* src_vb=static_cast<SortingVertexBufferClass*>(vertex_buffer);
+	SortingIndexBufferClass* src_ib=static_cast<SortingIndexBufferClass*>(index_buffer);
+
+	// the indices reference the mesh's own vertices, so the copy starts where those begin
+	const unsigned min_vertex=renderer->Get_Min_Vertex_Index();
+	const unsigned vertex_count=renderer->Get_Vertex_Index_Range();
+	const unsigned index_count=renderer->Get_Index_Count();
+	const VertexFormatXYZNDUV2* src_verts=src_vb->VertexBuffer+base_vertex_offset+min_vertex;
+	const unsigned short* src_indices=src_ib->index_buffer+renderer->Get_Index_Offset();
+
+	DynamicVBAccessClass vb(BUFFER_TYPE_DYNAMIC_DX8,dynamic_fvf_type,vertex_count);
+	{
+		DynamicVBAccessClass::WriteLockClass lock(&vb);
+		memcpy(lock.Get_Formatted_Vertex_Array(),src_verts,sizeof(VertexFormatXYZNDUV2)*vertex_count);
+	}
+
+	DynamicIBAccessClass ib(BUFFER_TYPE_DYNAMIC_DX8,index_count);
+	{
+		DynamicIBAccessClass::WriteLockClass lock(&ib);
+		unsigned short* dst_indices=lock.Get_Index_Array();
+		for (unsigned i=0;i<index_count;++i) {
+			dst_indices[i]=(unsigned short)(src_indices[i]-min_vertex);
+		}
+	}
+
+	DX8Wrapper::Set_Vertex_Buffer(vb);
+	DX8Wrapper::Set_Index_Buffer(ib,0);
+	DX8Wrapper::Draw_Triangles(0,index_count/3,0,vertex_count);
+}
+
 void DX8RigidFVFCategoryContainer::Render()
 {
 	if (!Anything_To_Render()) return;
@@ -1816,7 +1850,7 @@ void DX8TextureCategoryClass::Render()
 		}
 		#endif
 
-		Render_Task(prt, vmaterial, theShader, theAlphaShader, true);
+		Render_Task(prt, vmaterial, theShader, theAlphaShader, false);
 
 		/*
 		** Move to the next render task.  Note that the delete should be fast because prt's are pooled
@@ -1871,7 +1905,7 @@ void DX8TextureCategoryClass::Render_Bloom()
 	{
 		PolyRenderTaskClass* prt = bloom_task_head;
 		bloom_task_head = prt->Get_Next_Visible();
-		Render_Task(prt, vmaterial, theShader, theShader, false);
+		Render_Task(prt, vmaterial, theShader, theShader, true);
 		delete prt;
 	}
 }
@@ -1887,7 +1921,17 @@ void DX8TextureCategoryClass::Clear_Bloom_List()
 }
 
 // draws one visible mesh fragment with the category's state already applied
-void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool allowSorting)
+// the bloom replay of a sorting container cannot go through its buffers, which would only queue the draw
+static void Draw_Polygons(DX8FVFCategoryContainer * container, DX8PolygonRendererClass * renderer, MeshClass * mesh, bool replay)
+{
+	if (replay && container->Is_Sorting()) {
+		static_cast<DX8RigidFVFCategoryContainer*>(container)->Draw_Copied(renderer,mesh->Get_Base_Vertex_Offset());
+	} else {
+		renderer->Render(mesh->Get_Base_Vertex_Offset());
+	}
+}
+
+void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool replay)
 {
 	DX8PolygonRendererClass * renderer = prt->Peek_Polygon_Renderer();
 	MeshClass * mesh = prt->Peek_Mesh();
@@ -1965,7 +2009,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 	//(gth) this if statement's contents are not tabbed to avoid perforce merge problems...
 	if (!DX8RendererDebugger::Is_Enabled() || !mesh->Is_Disabled_By_Debugger()) {
 
-	if (allowSorting && (!!mesh->Peek_Model()->Get_Flag(MeshGeometryClass::SORT)) && WW3D::Is_Sorting_Enabled()) {
+	if (!replay && (!!mesh->Peek_Model()->Get_Flag(MeshGeometryClass::SORT)) && WW3D::Is_Sorting_Enabled()) {
 		renderer->Render_Sorted(mesh->Get_Base_Vertex_Offset(),mesh->Get_Bounding_Sphere());
 	} else {
 		//non-transparent mesh that will be rendered immediately.  Okay to adjust the shader/material
@@ -2014,7 +2058,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 				DX8Wrapper::Apply_Render_State_Changes();
 				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,(int)((float)0x60*mesh->Get_Alpha_Override()));
 
-				renderer->Render(mesh->Get_Base_Vertex_Offset());
+				Draw_Polygons(container,renderer,mesh,replay);
 
 				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0x60);
 				vmaterial->Set_Opacity(oldOpacity);	//restore previous value
@@ -2025,7 +2069,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 				DX8Wrapper::Set_Shader(theShader);	//restore previous value
 			}
 			else
-				renderer->Render(mesh->Get_Base_Vertex_Offset());
+				Draw_Polygons(container,renderer,mesh,replay);
 
 			if (oldMapper)	//did we override the uv offset?
 			{	oldMapper->Set_LastUsedSyncTime(oldUVOffsetSyncTime);
@@ -2035,7 +2079,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 			DX8Wrapper::Set_Material(vmaterial);	//restore previous material.
 		}
 		else
-			renderer->Render(mesh->Get_Base_Vertex_Offset());
+			Draw_Polygons(container,renderer,mesh,replay);
 	}
 //--------------------------------------------------------------------
 	if (mesh->Get_ObjectScale() != 1.0f)
