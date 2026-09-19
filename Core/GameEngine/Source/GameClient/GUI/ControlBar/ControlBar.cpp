@@ -1022,6 +1022,7 @@ ControlBar::ControlBar()
 	m_displayedConstructPercent = -1.0f;
 	m_displayedOCLTimerSeconds = 0;
 	m_displayedQueueCount = 0;
+	m_displayedQueueSignature.clear();
 	resetBuildQueueData();
 	resetContainData();
 	m_lastRecordedInventoryCount = 0;

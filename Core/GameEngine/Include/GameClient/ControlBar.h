@@ -1025,6 +1025,22 @@ protected:
 	Real m_displayedConstructPercent;							///< construct percent last displayed to user
 	UnsignedInt m_displayedOCLTimerSeconds;				///< OCL Timer seconds remaining last displayed to user
 	UnsignedInt m_displayedQueueCount;						///< queue count last displayed to user
+
+	// A summed count hides a gain at one producer that a loss at another cancels, so the
+	// multi select queue tracks each producer's head and count instead.
+	struct QueueSignature
+	{
+		Object *producer;
+		ProductionID head;										///< first entry, PRODUCTIONID_INVALID when the queue is empty
+		UnsignedInt count;
+
+		Bool operator!=( const QueueSignature &other ) const
+		{
+			return producer != other.producer || head != other.head || count != other.count;
+		}
+	};
+	std::vector<QueueSignature> m_displayedQueueSignature;	///< multi select queue state last displayed to user
+
 	UnsignedInt m_lastRecordedInventoryCount;			///< last known UI state of an inventory count
 
 	GameWindow *m_rightHUDWindow;									///< window of the right HUD display
