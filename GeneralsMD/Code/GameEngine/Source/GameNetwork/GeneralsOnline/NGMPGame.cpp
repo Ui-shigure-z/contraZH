@@ -8,6 +8,7 @@
 #include "GameNetwork/GameSpyOverlay.h"
 #include "Common/RandomValue.h"
 #include "Common/OptionPreferences.h"
+#include "Common/FramePacer.h"
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/NetworkInterface.h"
 #include "Common/GlobalData.h"
@@ -31,6 +32,14 @@ NGMPGameSlot::NGMPGameSlot()
 
 NGMPGame::NGMPGame()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_renderSettingsOverridden = FALSE;
+	m_savedFpsLimit = 0;
+	m_savedUseFpsLimit = FALSE;
+	m_savedHorizontalScrollSpeedFactor = 1.0f;
+	m_savedVerticalScrollSpeedFactor = 1.0f;
+#endif
+
 	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
 	if (pLobbyInterface == nullptr)
 	{
@@ -58,11 +67,49 @@ NGMPGame::NGMPGame()
 
 NGMPGame::~NGMPGame()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	restoreRenderSettings();
+#endif
+
 	// Force camera to update from config
     TheTacticalView->setDefaultView(DEG_TO_RADF(TheGlobalData->m_cameraPitch),
         DEG_TO_RADF(TheGlobalData->m_cameraYaw),
         1.0f, true);
 }
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+void NGMPGame::applyMatchRenderSettings(void)
+{
+	if (!m_renderSettingsOverridden)
+	{
+		m_savedFpsLimit = TheFramePacer->getFramesPerSecondLimit();
+		m_savedUseFpsLimit = TheGlobalData->m_useFpsLimit;
+		m_savedHorizontalScrollSpeedFactor = TheGlobalData->m_horizontalScrollSpeedFactor;
+		m_savedVerticalScrollSpeedFactor = TheGlobalData->m_verticalScrollSpeedFactor;
+		m_renderSettingsOverridden = TRUE;
+	}
+
+	const GenOnlineSettings& settings = NGMP_OnlineServicesManager::Settings;
+	TheFramePacer->setFramesPerSecondLimit(settings.Graphics_GetFPSLimit());
+	TheWritableGlobalData->m_useFpsLimit = settings.Graphics_LimitFramerate();
+	TheWritableGlobalData->m_horizontalScrollSpeedFactor = settings.Camera_MoveSpeedRatio();
+	TheWritableGlobalData->m_verticalScrollSpeedFactor = settings.Camera_MoveSpeedRatio();
+}
+
+void NGMPGame::restoreRenderSettings(void)
+{
+	if (!m_renderSettingsOverridden)
+	{
+		return;
+	}
+
+	m_renderSettingsOverridden = FALSE;
+	TheFramePacer->setFramesPerSecondLimit(m_savedFpsLimit);
+	TheWritableGlobalData->m_useFpsLimit = m_savedUseFpsLimit;
+	TheWritableGlobalData->m_horizontalScrollSpeedFactor = m_savedHorizontalScrollSpeedFactor;
+	TheWritableGlobalData->m_verticalScrollSpeedFactor = m_savedVerticalScrollSpeedFactor;
+}
+#endif
 
 void NGMPGame::SyncWithLobby(LobbyEntry& lobby)
 {
@@ -442,11 +489,6 @@ void NGMPGame::launchGame(void)
 	}
 	
 
-#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
-	TheWritableGlobalData->m_horizontalScrollSpeedFactor = NGMP_OnlineServicesManager::Settings.Camera_MoveSpeedRatio();
-	TheWritableGlobalData->m_verticalScrollSpeedFactor = NGMP_OnlineServicesManager::Settings.Camera_MoveSpeedRatio();
-#endif
-
 	setGameInProgress(TRUE);
 
 	for (Int i = 0; i < MAX_SLOTS; ++i)
@@ -528,22 +570,6 @@ void NGMPGame::launchGame(void)
 	// send a message to the logic for a new game
 	GameMessage* msg = TheMessageStream->appendMessage(GameMessage::MSG_NEW_GAME);
 	msg->appendIntegerArgument(GAME_INTERNET);
-
-#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
-
-	if (NGMP_OnlineServicesManager::Settings.Graphics_LimitFramerate())
-	{
-		TheWritableGlobalData->m_framesPerSecondLimit = NGMP_OnlineServicesManager::Settings.Graphics_GetFPSLimit();
-		TheWritableGlobalData->m_useFpsLimit = true;
-	}
-	else
-	{
-		TheWritableGlobalData->m_framesPerSecondLimit = 30000; // game does this... it's not great
-		TheWritableGlobalData->m_useFpsLimit = false;
-	}
-	
-#endif
-	//TheWritableGlobalData->m_useFpsLimit = false;
 
 	// Set the random seed
 	InitRandom(getSeed());

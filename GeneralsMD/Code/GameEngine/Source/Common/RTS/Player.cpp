@@ -76,6 +76,10 @@
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/Eva.h"
+#if defined(GENERALS_ONLINE)
+#include "Common/StatsExporter.h"
+#include "GameClient/InGameUI.h"
+#endif
 #include "GameClient/GameClient.h"
 #include "GameClient/GameText.h"
 
@@ -1598,6 +1602,12 @@ void Player::onUnitCreated( Object *factory, Object *unit )
 
 	// increment our scorekeeper
 	m_scoreKeeper.addObjectBuilt(unit);
+#if defined(GENERALS_ONLINE)
+	if (TheGlobalData->m_exportStats)
+	{
+		StatsExporterRecordBuild(factory, unit);
+	}
+#endif
 
 	if( factory )
 	{
@@ -1711,6 +1721,12 @@ void Player::onStructureConstructionComplete(Object* builder, Object* structure,
 	// increment our scorekeeper
 	if (isRebuild == FALSE) {
 		m_scoreKeeper.addObjectBuilt(structure);
+#if defined(GENERALS_ONLINE)
+		if (TheGlobalData->m_exportStats)
+		{
+			StatsExporterRecordBuild(builder, structure);
+		}
+#endif
 		m_scoreKeeper.addMoneySpent(structure->getTemplate()->calcCostToBuild(this));
 	}
 
@@ -3028,6 +3044,13 @@ Bool Player::attemptToPurchaseScience(ScienceType science, Bool playerAction/* =
 	{
 		TheControlBar->markUIDirty();
 	}
+
+#if defined(GENERALS_ONLINE)
+	if (TheInGameUI)
+	{
+		TheInGameUI->notifyGeneralPromotion(this, science);
+	}
+#endif
 
 	return true;
 }

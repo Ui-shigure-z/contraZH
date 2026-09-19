@@ -1083,6 +1083,72 @@ out by default in this fork.
 * The port is documented in detail in `PORT_NOTES.md` next to the GeneralsOnline
 sources, including every deliberate deviation from upstream.
 
+## Engine differences in the online build
+
+The online build follows the official Generals Online client in more than the network
+stack. These differences apply to the whole executable, skirmish and campaign included,
+and none of them exist in a normal Contra build.
+
+### 60 Hz simulation
+
+The game logic runs at 60 frames per second instead of 30, matching the official
+`gen_online_60hz` client. Unit speeds, reload times and every duration written in
+milliseconds are unchanged, because the engine converts them from the frame rate.
+Code that counted raw frames (turret turn rates, slow death arcs, particle keyframes,
+script timers, deploy animations) keeps its retail timing through a second 30 Hz frame
+counter, the same way Generals Online does it.
+
+Two things follow from this that the player should know:
+
+* Replays are only compatible within the same build. A replay from the 30 Hz build
+  will not play back in the 60 Hz build or the other way round; the game refuses it with
+  the usual version mismatch message.
+* The lowest render frame rate cap is 60, because the render rate can never sit below
+  the logic rate. The FPS presets that were below 60 are gone from the hotkey cycle.
+
+### Frame rate cap during online matches
+
+During an online match the render cap comes from Generals Online's `settings.json`
+(the same file the official client reads), so the whole match runs the way the official
+client would. The moment the match ends, the cap, the FPS limit switch and the camera
+scroll speed all return to Contra's own option values. The shell, skirmish and campaign
+never see the Generals Online values.
+
+### Observer overlay
+
+For spectators the player list gains four columns: science points, kills, losses and
+power surplus (drawn red while a player is short on power), plus the army name. A
+notification feed slides in on the left for general promotions, superweapon and
+generals power use, rank 3 and rank 5, an income of 10k a minute, GLA players gaining
+power, and a player losing all dozers and command centers. The control bar toggle
+hotkey hides and shows both together.
+
+`Options.ini` keys, all optional:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `ObserverNotificationFontSize` | `10` | Feed font size; `0` disables the feed |
+| `ObserverNotificationSpecialPowerUsage` | `yes` | Announce power use |
+| `ObserverNotificationSpecialPowerPurchase` | `yes` | Announce promotions |
+| `ObserverNotificationMilestone` | `yes` | Announce rank, income, power and dozer milestones |
+
+### Widescreen layouts and camera
+
+The user interface is laid out for a 1280x720 reference instead of 800x600, and the
+maximum camera height rises with the aspect ratio so a 16:9 screen sees as much of the
+map vertically as a 4:3 screen does. The layouts themselves come from a Generals Online
+install: the game prefers window files under `GeneralsOnlineGameData\` when they exist.
+Without that folder the control bar and sliders draw at the wrong scale, and with it
+the options menu is Generals Online's, which lacks Contra's own option controls. See
+`PORT_NOTES.md` for the status of the Contra layouts.
+
+### Replay analytics
+
+`-headless -replay <file> -exportStats` writes a gzip compressed JSON summary of the
+match next to the replay (players, build, kill, capture, energy and rank events, plus a
+time series), and `-statsUrl <url>` posts it. The flag refuses to run outside headless
+replay simulation.
+
 ## Runtime requirements
 
 A build made with `RTS_BUILD_GENERALS_ONLINE=ON` links against several libraries that

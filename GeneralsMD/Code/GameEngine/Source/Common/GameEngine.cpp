@@ -116,6 +116,7 @@
 #include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 #include "GameNetwork/GeneralsOnline/DiscordRichPresence.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
+#include "GameNetwork/GeneralsOnline/NGMPGame.h"
 #include "GameNetwork/GameSpyOverlay.h"
 
 static bool g_bTearDownGeneralsOnlineRequested = false;
@@ -989,6 +990,20 @@ void GameEngine::update()
 		{
 			// VERIFY CRC needs to be in this code block.  Please to not pull TheGameLogic->update() inside this block.
 			VERIFY_CRC
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+			if (TheNGMPGame != nullptr)
+			{
+				if (TheGameLogic->isInGame() && !TheShell->isShellActive())
+				{
+					TheNGMPGame->applyMatchRenderSettings();
+				}
+				else
+				{
+					TheNGMPGame->restoreRenderSettings();
+				}
+			}
+#endif
 
 			TheRadar->UPDATE();
 

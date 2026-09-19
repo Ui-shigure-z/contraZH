@@ -845,8 +845,22 @@ Try improving the fit to vertical surfaces like cliffs.
 	//check if there is anything to draw and fill vertex buffer
 	if (m_edgesToFlush >= 2)
 	{
+		// The vertex buffer is gone between ReleaseResources() and ReAcquireResources().
+		if (!m_vertexBuffer)
+		{
+			m_edgesToFlush = 0;
+			return;
+		}
+
 		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexBuffer);
 		VertexFormatXYZDUV1 *verts = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+
+		if (!verts)
+		{
+			m_edgesToFlush = 0;
+			return;
+		}
+
 		trackStartIndex=0;
 
 		mod=m_usedModules;
@@ -857,9 +871,14 @@ Try improving the fit to vertical surfaces like cliffs.
 			Vector3 *endPoint;
 			Vector2 *endPointUV;
 
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible())
+			// A detail change can shrink m_maxTankTrackEdges while tracks still hold more edges.
+			Int activeEdgeCount = mod->m_activeEdgeCount;
+			if (activeEdgeCount > m_maxTankTrackEdges)
+				activeEdgeCount = m_maxTankTrackEdges;
+
+			if (activeEdgeCount >= 2 && mod->Is_Really_Visible())
 			{
-				for (i=0,index=mod->m_bottomIndex; i<mod->m_activeEdgeCount; i++,index++)
+				for (i=0,index=mod->m_bottomIndex; i<activeEdgeCount; i++,index++)
 				{
 					if (index >= m_maxTankTrackEdges)
 						index=0;
@@ -869,10 +888,10 @@ Try improving the fit to vertical surfaces like cliffs.
 
 					distanceFade=1.0f;
 
-					if ((mod->m_activeEdgeCount -1 -i) >= m_maxTankTrackOpaqueEdges)// && i < (MAX_PER_TRACK_EDGE_COUNT-FORCE_FADE_AT_EDGE))
+					if ((activeEdgeCount -1 -i) >= m_maxTankTrackOpaqueEdges)// && i < (MAX_PER_TRACK_EDGE_COUNT-FORCE_FADE_AT_EDGE))
 					{	//we're getting close to the limit on the number of track pieces allowed
 						//so force it to fade out.
-						distanceFade=1.0f-(float)((mod->m_activeEdgeCount -i)-m_maxTankTrackOpaqueEdges)/numFadedEdges;
+						distanceFade=1.0f-(float)((activeEdgeCount -i)-m_maxTankTrackOpaqueEdges)/numFadedEdges;
 					}
 
 					distanceFade *= mod->m_edges[index].alpha;	//adjust fade with distance from start of track
@@ -920,13 +939,18 @@ Try improving the fit to vertical surfaces like cliffs.
 		DX8Wrapper::Set_Transform(D3DTS_WORLD,mod->Transform);
 		while (mod)
 		{
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible())
+			// Same clamp as the fill pass so trackStartIndex stays consistent.
+			Int activeEdgeCount = mod->m_activeEdgeCount;
+			if (activeEdgeCount > m_maxTankTrackEdges)
+				activeEdgeCount = m_maxTankTrackEdges;
+
+			if (activeEdgeCount >= 2 && mod->Is_Really_Visible())
 			{
 				DX8Wrapper::Set_Texture(0,mod->m_stageZeroTexture);
 				DX8Wrapper::Set_Index_Buffer_Index_Offset(trackStartIndex);
-				DX8Wrapper::Draw_Triangles(	0,(mod->m_activeEdgeCount-1)*2, 0, mod->m_activeEdgeCount*2);
+				DX8Wrapper::Draw_Triangles(	0,(activeEdgeCount-1)*2, 0, activeEdgeCount*2);
 
-				trackStartIndex += mod->m_activeEdgeCount*2;
+				trackStartIndex += activeEdgeCount*2;
 			}
 			mod=mod->m_nextSystem;
 		}
