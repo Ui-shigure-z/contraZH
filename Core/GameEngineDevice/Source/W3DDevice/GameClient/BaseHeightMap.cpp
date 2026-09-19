@@ -2393,6 +2393,9 @@ void BaseHeightMapRenderObjClass::renderShoreLines(CameraClass *pCamera)
 	if (DX8Wrapper::getBackBufferFormat() != WW3D_FORMAT_A8R8G8B8)
 		return;	//can't apply effect on cards without destination alpha
 
+	if (!m_map)
+		return;
+
 	Int vertexCount = 0;
 	Int indexCount = 0;
 	Int drawEdgeY=m_map->getDrawOrgY()+m_map->getDrawHeight()-1;
@@ -2555,6 +2558,9 @@ void BaseHeightMapRenderObjClass::renderShoreLinesSorted(CameraClass *pCamera)
 	//Check if video card is capable of using this effect
 	if (DX8Wrapper::getBackBufferFormat() != WW3D_FORMAT_A8R8G8B8)
 		return;	//can't apply effect on cards without destination alpha
+
+	if (!m_map)
+		return;
 
 	Int vertexCount = 0;
 	Int indexCount = 0;

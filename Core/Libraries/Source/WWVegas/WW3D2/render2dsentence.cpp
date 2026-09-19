@@ -677,6 +677,13 @@ Render2DSentenceClass::Allocate_New_Surface (const WCHAR *text, bool justCalcExt
 		//
 		CurSurface = NEW_REF (SurfaceClass, (CurrTextureSize, CurrTextureSize, WW3D_FORMAT_A4R4G4B4));
 		WWASSERT (CurSurface != nullptr);
+
+		if (CurSurface != NULL && !CurSurface->Is_Valid()) {
+			REF_PTR_RELEASE(CurSurface);
+			CurSurface = NULL;
+			return;
+		}
+
 		CurSurface->Add_Ref ();
 
 		//

@@ -197,6 +197,13 @@ SurfaceClass::~SurfaceClass()
 
 void SurfaceClass::Get_Description(SurfaceDescription &surface_desc)
 {
+	if (D3DSurface == NULL) {
+		surface_desc.Format = WW3D_FORMAT_UNKNOWN;
+		surface_desc.Height = 0;
+		surface_desc.Width = 0;
+		return;
+	}
+
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
 	DX8_ErrorCode(D3DSurface->GetDesc(&d3d_desc));
@@ -239,6 +246,9 @@ SurfaceClass::LockedSurfacePtr SurfaceClass::Lock(int *pitch, const Vector2i &mi
 
 void SurfaceClass::Unlock()
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
 	DX8_ErrorCode(D3DSurface->UnlockRect());
 }
 
@@ -259,6 +269,10 @@ void SurfaceClass::Unlock()
  *=============================================================================================*/
 void SurfaceClass::Clear()
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -298,6 +312,10 @@ void SurfaceClass::Clear()
  *=============================================================================================*/
 void SurfaceClass::Copy(const unsigned char *other)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -337,6 +355,10 @@ void SurfaceClass::Copy(const unsigned char *other)
  *=============================================================================================*/
 void SurfaceClass::Copy(const Vector2i &min, const Vector2i &max, const unsigned char *other)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -382,6 +404,13 @@ void SurfaceClass::Copy(const Vector2i &min, const Vector2i &max, const unsigned
  *=============================================================================================*/
 unsigned char *SurfaceClass::CreateCopy(int *width,int *height,int*size,bool flip)
 {
+	if (D3DSurface == NULL) {
+		*width = 0;
+		*height = 0;
+		*size = 0;
+		return NULL;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -443,6 +472,10 @@ void SurfaceClass::Copy(
 	WWASSERT(width);
 	WWASSERT(height);
 
+	if (D3DSurface == NULL || other->D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd,osd;
 	Get_Description(sd);
 	const_cast <SurfaceClass*>(other)->Get_Description(osd);
@@ -500,6 +533,10 @@ void SurfaceClass::Stretch_Copy(
 {
 	WWASSERT(other);
 
+	if (D3DSurface == NULL || other->D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd,osd;
 	Get_Description(sd);
 	const_cast <SurfaceClass*>(other)->Get_Description(osd);
@@ -536,6 +573,10 @@ void SurfaceClass::Stretch_Copy(
  *=============================================================================================*/
 void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -611,6 +652,10 @@ void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
  *=============================================================================================*/
 bool SurfaceClass::Is_Transparent_Column(unsigned int column)
 {
+	if (D3DSurface == NULL) {
+		return true;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -680,6 +725,11 @@ bool SurfaceClass::Is_Transparent_Column(unsigned int column)
  *=============================================================================================*/
 void SurfaceClass::Get_Pixel(Vector3 &rgb, int x, int y, LockedSurfacePtr pBits, int pitch)
 {
+	if (D3DSurface == NULL) {
+		rgb.Set(0, 0, 0);
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -815,6 +865,10 @@ void SurfaceClass::Draw_H_Line(const unsigned int y, const unsigned int x1, cons
  *=============================================================================================*/
 bool SurfaceClass::Is_Monochrome()
 {
+	if (D3DSurface == NULL) {
+		return false;
+	}
+
 	unsigned int x,y;
 	SurfaceDescription sd;
 	Get_Description(sd);
@@ -905,6 +959,10 @@ bool SurfaceClass::Is_Monochrome()
  *=============================================================================================*/
 void SurfaceClass::Hue_Shift(const Vector3 &hsv_shift)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	unsigned int x,y;
 	SurfaceDescription sd;
 	Get_Description(sd);

@@ -139,6 +139,11 @@ public:
 	Bool isInGameLogicUpdate() const { return m_isInUpdate; }
 	Bool hasUpdated() const { return m_hasUpdated; } ///< Returns true if the logic frame has advanced in the current client/render update
 	UnsignedInt getFrame();										///< Returns the current simulation frame number
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	// The legacy frame is the 30 Hz frame that frame-count code was written against.
+	UnsignedInt getFrameLegacy() const;
+	Bool HasLegacyFrameAdvanced() const;
+#endif
 	UnsignedInt getCRC( Int mode = CRC_CACHED, AsciiString deepCRCFileName = AsciiString::TheEmptyString );		///< Returns the CRC
 
 	void setObjectIDCounter( ObjectID nextObjID ) { m_nextObjID = nextObjID; }
@@ -504,6 +509,10 @@ inline Real GameLogic::getWidth() { return m_width; }
 inline void GameLogic::setHeight( Real height ) { m_height = height; }
 inline Real GameLogic::getHeight() { return m_height; }
 inline UnsignedInt GameLogic::getFrame() { return m_frame; }
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+inline UnsignedInt GameLogic::getFrameLegacy() const { return m_frame / GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER; }
+inline Bool GameLogic::HasLegacyFrameAdvanced() const { return (m_frame % GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER) == 0; }
+#endif
 
 inline Bool GameLogic::isInGame() { return m_gameMode != GAME_NONE; }
 inline GameMode GameLogic::getGameMode() { return m_gameMode; }

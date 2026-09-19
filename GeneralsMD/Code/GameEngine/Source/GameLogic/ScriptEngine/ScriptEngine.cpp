@@ -5578,9 +5578,16 @@ void ScriptEngine::update()
 	for (i=1; i<m_numCounters; i++) {
 		if (m_counters[i].isCountdownTimer) {
 			// If counter has any time left, decrement.  Counters go to -1 and stop.
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+			// Script timers count 30 Hz frames, as authored in the map.
+			if (m_counters[i].value >= 0 && TheGameLogic->HasLegacyFrameAdvanced()) {
+				m_counters[i].value--;
+			}
+#else
 			if (m_counters[i].value >= 0) {
 				m_counters[i].value--;
 			}
+#endif
 		}
 	}
 
@@ -6776,7 +6783,11 @@ void ScriptEngine::setTimer( ScriptAction *pAction, Bool millisecondTimer, Bool 
 			Real randomValue = pAction->getParameter(2)->getReal();
 			value = GameLogicRandomValue(value, randomValue);
 		}
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		m_counters[counterNdx].value = REAL_TO_INT_CEIL(value * (Real)BaseFps);
+#else
 		m_counters[counterNdx].value = REAL_TO_INT_CEIL(ConvertDurationFromMsecsToFrames(value*1000));
+#endif
 	} else {
 		Int value = pAction->getParameter(1)->getInt();
 		if (random) {
@@ -6833,7 +6844,11 @@ void ScriptEngine::adjustTimer( ScriptAction *pAction, Bool millisecondTimer, Bo
 		Real value = pAction->getParameter(0)->getReal();
 		if (!add)
 			value = -value;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		m_counters[counterNdx].value += REAL_TO_INT_CEIL(value * (Real)BaseFps);
+#else
 		m_counters[counterNdx].value += REAL_TO_INT_CEIL(ConvertDurationFromMsecsToFrames(value*1000));
+#endif
 	} else {
 		Int value = pAction->getParameter(0)->getInt();
 		if (!add)

@@ -1262,6 +1262,10 @@ if(RTS_BUILD_GENERALS_ONLINE)
     # GeneralsOnlineDevelopmentTeam/GameClient. See
     # Source/GameNetwork/GeneralsOnline/PORT_NOTES.md
     list(APPEND GAMEENGINE_SRC
+        Include/Common/StatsExporter.h
+        Include/Common/StatsUploader.h
+        Source/Common/StatsExporter.cpp
+        Source/Common/StatsUploader.cpp
         Include/GameNetwork/UDPTransport.h
         Source/GameNetwork/UDPTransport.cpp
         Include/GameNetwork/GeneralsOnline/json.hpp

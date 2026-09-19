@@ -150,7 +150,11 @@ void W3DGadgetHorizontalSliderImageDraw( GameWindow *window,
 
 	SliderData *s = (SliderData *)window->winGetUserData();
 
+#if defined(GENERALS_ONLINE_WIDESCREEN)
+	Real xMulti = INT_TO_REAL(TheDisplay->getWidth()) / GENERALS_ONLINE_WIDESCREEN_X_SCALE;
+#else
 	Real xMulti = INT_TO_REAL(TheDisplay->getWidth()) / DEFAULT_DISPLAY_WIDTH;
+#endif
 
 	// figure out how many boxes we draw for this slider
 	Int numBoxes = 0;
@@ -229,8 +233,13 @@ void W3DGadgetHorizontalSliderImageDrawB( GameWindow *window,
 
 	SliderData *s = (SliderData *)window->winGetUserData();
 
+#if defined(GENERALS_ONLINE_WIDESCREEN)
+	Real xMulti = INT_TO_REAL(TheDisplay->getWidth()) / GENERALS_ONLINE_WIDESCREEN_X_SCALE;
+	Real yMulti = INT_TO_REAL(TheDisplay->getHeight()) / GENERALS_ONLINE_WIDESCREEN_Y_SCALE;
+#else
 	Real xMulti = INT_TO_REAL(TheDisplay->getWidth()) / DEFAULT_DISPLAY_WIDTH;
 	Real yMulti = INT_TO_REAL(TheDisplay->getHeight()) / DEFAULT_DISPLAY_HEIGHT;
+#endif
 	// get image offset
 	xOffset = instData->m_imageOffset.x;
 	yOffset = instData->m_imageOffset.y;

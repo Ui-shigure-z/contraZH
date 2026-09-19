@@ -384,6 +384,9 @@ void PhysicsBehavior::applyShock( const Coord3D *force )
 {
 	Coord3D resistedForce = *force;
 	resistedForce.scale( getShockResistanceScale() );
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	resistedForce.scale( 0.5f );
+#endif
 
 	// Apply the processed shock force to the object
 	applyForce(&resistedForce);
@@ -410,13 +413,25 @@ void PhysicsBehavior::applyRandomRotation()
 	Real randomModifier;
 
 	randomModifier = GameLogicRandomValue(-1.0f, 1.0f);
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_yawRate += getPhysicsBehaviorModuleData()->m_shockMaxYaw / 2.f * randomModifier;
+#else
 	m_yawRate += getPhysicsBehaviorModuleData()->m_shockMaxYaw * randomModifier;
+#endif
 
 	randomModifier = GameLogicRandomValue(-1.0f, 1.0f);
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_pitchRate += getPhysicsBehaviorModuleData()->m_shockMaxPitch / 2.f * randomModifier;
+#else
 	m_pitchRate += getPhysicsBehaviorModuleData()->m_shockMaxPitch * randomModifier;
+#endif
 
 	randomModifier = GameLogicRandomValue(-1.0f, 1.0f);
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_rollRate += getPhysicsBehaviorModuleData()->m_shockMaxRoll / 2.f * randomModifier;
+#else
 	m_rollRate += getPhysicsBehaviorModuleData()->m_shockMaxRoll * randomModifier;
+#endif
 
 #ifdef SLEEPY_PHYSICS
 	if (getFlag(IS_IN_UPDATE))

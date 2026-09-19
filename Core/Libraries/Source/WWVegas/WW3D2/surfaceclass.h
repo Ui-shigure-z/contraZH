@@ -143,6 +143,8 @@ class SurfaceClass : public RefCountClass
 
 		WW3DFormat Get_Surface_Format() const { return SurfaceFormat; }
 
+		bool Is_Valid() const { return D3DSurface != NULL; }
+
 	private:
 
 		// Direct3D surface object

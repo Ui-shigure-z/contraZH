@@ -69,6 +69,15 @@ private:
 	
 	std::chrono::system_clock::time_point matchStartTime;
 
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// Contra render settings saved while GO settings.json governs the match.
+	Bool m_renderSettingsOverridden;
+	Int m_savedFpsLimit;
+	Bool m_savedUseFpsLimit;
+	Real m_savedHorizontalScrollSpeedFactor;
+	Real m_savedVerticalScrollSpeedFactor;
+#endif
+
 #if defined(GENERALS_ONLINE_ENABLE_MATCH_START_COUNTDOWN)
 	bool m_bCountdownStarted = false;
 	int64_t m_countdownStartTime = -1;
@@ -173,6 +182,10 @@ public:
 
 	virtual void startGame(Int gameID);														///< Mark our game as started and record the game ID.
 	void launchGame(void);																			///< NAT negotiation has finished - really start
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	void applyMatchRenderSettings(void);											///< GO settings.json governs the render cap and scroll speed during a match
+	void restoreRenderSettings(void);												///< Contra options govern again outside a match
+#endif
 	virtual Int getLocalSlotNum(void) const;										///< Get the local slot number, or -1 if we're not present
 
 	inline void setGameName(UnicodeString name) { m_gameName = name; }
