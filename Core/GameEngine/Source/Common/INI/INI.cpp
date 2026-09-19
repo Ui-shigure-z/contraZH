@@ -70,6 +70,7 @@
 
 #if USE_STD_FROM_CHARS_PARSING
 #include <charconv>
+#include <limits>
 #include <string_view>
 #include <type_traits>
 #endif
@@ -1729,12 +1730,38 @@ Type scanType(std::string_view token)
 	}
 
 	// Unlike sscanf, std::from_chars cannot parse "-" as unsigned integer.
-	std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
+	using WideType = std::conditional_t<std::is_integral_v<Type>, Int64, Type>;
+	WideType result{};
 	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
+
+	// Saturate instead of failing, matching the legacy sscanf behaviour that accepted
+	// out of range numbers. Custom ini files rely on it, so rejecting them breaks loading.
+	if (ec == std::errc::result_out_of_range)
+	{
+		const Bool negative = !token.empty() && token[0] == '-';
+		return negative ? std::numeric_limits<Type>::lowest() : (std::numeric_limits<Type>::max)();
+	}
 
 	if (ec != std::errc{})
 	{
 		throw INI_INVALID_DATA;
+	}
+
+	// The wide type parses values that no longer fit once narrowed, so clamp rather than wrap.
+	if constexpr (std::is_integral_v<Type>)
+	{
+		const WideType lowest = static_cast<WideType>(std::numeric_limits<Type>::lowest());
+		const WideType highest = static_cast<WideType>((std::numeric_limits<Type>::max)());
+
+		if (result < lowest)
+		{
+			return std::numeric_limits<Type>::lowest();
+		}
+
+		if (result > highest)
+		{
+			return (std::numeric_limits<Type>::max)();
+		}
 	}
 
 	return static_cast<Type>(result);
