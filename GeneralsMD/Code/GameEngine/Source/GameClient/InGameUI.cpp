@@ -999,7 +999,21 @@ void INI::parseInGameUIDefinition( INI* ini )
 	{
 		// parse the ini weapon definition
 		ini->initFromINI( TheInGameUI, TheInGameUI->getFieldParse() );
+		TheInGameUI->validate();
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::validate()
+{
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @bugfix bobtista 02/09/2026 Correct the known retail InGameUI.ini message delay typo
+	if (m_messageDelayMS == 75000)
+	{
+		m_messageDelayMS = 7500;
+	}
+#endif
+	m_messageDelayMS = max(0, m_messageDelayMS);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2205,10 +2219,12 @@ void InGameUI::update()
 		checkObserverMilestones();
 	}
 
-	const int messageTimeoutStandard = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
+	// TheSuperHackers @bugfix bobtista 13/08/2026 Convert milliseconds to logic frames
+	const int messageTimeoutStandard = REAL_TO_INT_CEIL( ConvertDurationFromMsecsToFrames( (Real)m_messageDelayMS ) );
 	const int messageTimeoutChat = NGMP_OnlineServicesManager::Settings.GetChatLifeSeconds() * LOGICFRAMES_PER_SECOND;
 #else
-	const int messageTimeout = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
+	// TheSuperHackers @bugfix bobtista 13/08/2026 Convert milliseconds to logic frames
+	const int messageTimeout = REAL_TO_INT_CEIL( ConvertDurationFromMsecsToFrames( (Real)m_messageDelayMS ) );
 #endif
 	UnsignedByte r, g, b, a;
 	Int amount;
