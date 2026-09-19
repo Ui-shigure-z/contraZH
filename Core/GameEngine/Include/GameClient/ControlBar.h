@@ -1059,6 +1059,7 @@ protected:
 	GameWindow *m_smartSelectionButtons[ MAX_SMART_SELECTION_BUTTONS ];
 	ICoord2D m_smartSelectionButtonSize;
 	Int m_smartSelectionActive;																///< cameo whose command set the bar shows, or -1 for the common set
+	std::vector<ObjectID> m_sentFocusGroup;										///< focus group last sent to the logic side, to skip an unchanged resend
 	Int m_smartSelectionLastClickSlot;												///< cameo of the last left click, for double click detection
 	UnsignedInt m_smartSelectionLastClickTime;
 

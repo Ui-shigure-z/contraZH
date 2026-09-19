@@ -686,37 +686,42 @@ void ControlBar::updateFocusGroup()
 
 	TheInGameUI->placeBuildAvailable(nullptr, nullptr);
 
-	if (m_smartSelectionActive == -1)
-	{
-		TheMessageStream->appendMessage(GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-		return;
-	}
+	// Every shape of the focus lands in this list, and an empty one clears the logic side.
+	// Returning without a message would leave it holding the previous focus, which then
+	// filters the next command.
+	std::vector<ObjectID> focusGroup;
 
 	// the bar is that object's own, so anything out of it goes to that object alone
 	const ObjectID focusObject = getSmartSelectionFocusObject();
+	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
 
 	if( focusObject != INVALID_ID )
 	{
-		GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-		msg->appendObjectIDArgument( focusObject );
-		return;
+		focusGroup.push_back( focusObject );
 	}
-
-	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
-	if( focus == nullptr || m_currContext != CB_CONTEXT_MULTI_SELECT )
+	else if( focus )
 	{
-		return;
-	}
-
-	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
-	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
-	{
-		Object *obj = ( *it )->getObject();
-		if( obj && obj->getTemplate()->getReskinRoot() == focus )
+		const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
+		for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 		{
-			msg->appendObjectIDArgument( obj->getID() );
+			Object *obj = ( *it )->getObject();
+			if( obj && obj->getTemplate()->getReskinRoot() == focus )
+			{
+				focusGroup.push_back( obj->getID() );
+			}
 		}
 	}
-	
+
+	// the message is networked, and the callers run far more often than the focus changes
+	if( focusGroup == m_sentFocusGroup )
+	{
+		return;
+	}
+	m_sentFocusGroup.swap( focusGroup );
+
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP );
+	for( size_t i = 0; i < m_sentFocusGroup.size(); i++ )
+	{
+		msg->appendObjectIDArgument( m_sentFocusGroup[ i ] );
+	}
 }

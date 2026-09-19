@@ -1399,6 +1399,8 @@ void ControlBar::reset()
 {
 	hideSpecialPowerShortcut();
 	resetSmartSelection();
+	// the logic side focus goes with the old game, so the next one starts from no cache
+	m_sentFocusGroup.clear();
 	// do not destroy the rally drawables, they get destroyed with everything else during a reset
 	m_rallyPointDrawableIDs.clear();
 	if(m_radarAttackGlowWindow)
