@@ -446,6 +446,15 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, Bool additive
 			pointCount = startCount;
 		}
 
+		// Handle lone streak type particles by drawing them as regular particles.
+		if (sys->isUsingStreak() && (pointCount == 1))
+		{
+			m_onScreenParticleCount += (pointCount - startCount);
+			initializeBatch(*sys, texture);
+			flushParticleBatch(rinfo, pointCount);
+			startCount = 0;
+		}
+
 		if (useTerrainConformingParticles)
 		{
 			m_terrainParticles->Set_Texture( texture.Peek() );
