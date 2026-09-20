@@ -365,8 +365,10 @@ Shows a row of small cameos, three fifths of a command button, above the command
 of different unit types gets one cameo per type with a count of how many are selected; a selection
 of a single type gets one cameo per object. A cameo standing for one object shows a small health
 bar instead of a count, and a light orange clip bar above it when the object shows ammo pips, split
-into one segment per shot. The row holds 16 cameos; anything beyond that gets none. A count past
-999 gets no badge. Objects that are reskins of one type share that type's cameo.
+into one segment per shot. A cameo also shows the veterancy chevron, as the portrait does; a cameo
+standing for a whole type shows the highest rank among the units of that type in the selection. The
+row holds 16 cameos; anything beyond that gets none. A count past 999 gets no badge. Objects that
+are reskins of one type share that type's cameo.
 
 * `SmartSelection = Yes` - (No hides the row and unbinds its keys.)
 * `SmartSelectionUseMouse = Yes` - (Yes keeps only a cameo's units on double click, No on

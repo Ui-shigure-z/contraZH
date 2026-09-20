@@ -935,6 +935,26 @@ void ControlBar::updateContextCommand()
 }
 
 //-------------------------------------------------------------------------------------------------
+const Image* ControlBar::calculateVeterancyOverlayForLevel( VeterancyLevel level )
+{
+	//Return the appropriate image (including nullptr if no veterancy levels)
+	switch( level )
+	{
+		case LEVEL_VETERAN:
+			return m_rankVeteranIcon;
+		case LEVEL_ELITE:
+			return m_rankEliteIcon;
+		case LEVEL_HEROIC:
+			return m_rankHeroicIcon;
+		case LEVEL_FOUR:
+			return m_rankFourIcon;
+		case LEVEL_FIVE:
+			return m_rankFiveIcon;
+	}
+	return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 const Image* ControlBar::calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate )
 {
 	VeterancyLevel level = LEVEL_REGULAR;
@@ -1002,23 +1022,7 @@ const Image* ControlBar::calculateVeterancyOverlayForObject( const Object *obj )
 	{
 		return nullptr;
 	}
-	VeterancyLevel level = obj->getVeterancyLevel();
-
-	//Return the appropriate image (including nullptr if no veterancy levels)
-	switch( level )
-	{
-		case LEVEL_VETERAN:
-			return m_rankVeteranIcon;
-		case LEVEL_ELITE:
-			return m_rankEliteIcon;
-		case LEVEL_HEROIC:
-			return m_rankHeroicIcon;
-		case LEVEL_FOUR:
-			return m_rankFourIcon;
-		case LEVEL_FIVE:
-			return m_rankFiveIcon;
-	}
-	return nullptr;
+	return calculateVeterancyOverlayForLevel( obj->getVeterancyLevel() );
 }
 
 //-------------------------------------------------------------------------------------------------
