@@ -75,6 +75,7 @@ public:
 	Real m_warehouseScanDistance;
  	AudioEventRTS m_suppliesDepletedVoice;						///< Sound played when I take the last box.
 	Int m_upgradedSupplyBoost;
+	DozerRestrictions m_restrictions;
 
 	WorkerAIUpdateModuleData()
 	{
@@ -103,6 +104,11 @@ public:
 			{ "SupplyWarehouseScanDistance", INI::parseReal, nullptr, offsetof( WorkerAIUpdateModuleData, m_warehouseScanDistance ) },
  			{ "SuppliesDepletedVoice", INI::parseAudioEventRTS, nullptr, offsetof( WorkerAIUpdateModuleData, m_suppliesDepletedVoice) },
  			{ "UpgradedSupplyBoost", INI::parseInt, nullptr, offsetof( WorkerAIUpdateModuleData, m_upgradedSupplyBoost) },
+
+			{ "AllowedBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_allowedBuildObjects ) },
+			{ "ForbiddenBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_forbiddenBuildObjects ) },
+			{ "CanRepair", INI::parseBool, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_canRepair ) },
+
 			{ 0, 0, 0, 0 }
 		};
     p.add(dataFieldParse);
@@ -140,6 +146,9 @@ public:
 	virtual Real getRepairHealthPerSecond() const override;	///< get health to repair per second
 	virtual Real getBoredTime() const override;							///< how long till we're bored
 	virtual Real getBoredRange() const override;							///< when we're bored, we look this far away to do things
+
+	virtual Bool canBuildTemplate( const ThingTemplate *what ) const override;
+	virtual Bool canRepairObjects() const override;
 
 	virtual Object *construct( const ThingTemplate *what,
 														 const Coord3D *pos, Real angle,

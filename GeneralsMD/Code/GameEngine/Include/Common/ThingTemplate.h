@@ -133,6 +133,8 @@ enum ThingTemplateAudioType CPP_11(: Int)
 	TTAUDIO_voiceAttackSpecial,				///< Unit is ordered to use a special attack
 	TTAUDIO_voiceAttackAir,						///< Unit is ordered to attack an airborne unit
 	TTAUDIO_voiceGuard,								///< Unit is ordered to guard an area
+	TTAUDIO_soundReverseMoveLoop,			///< Sound when unit is moving in reverse
+	TTAUDIO_soundReverseMoveLoopDamaged,///< Sound when unit is moving in reverse and is damaged
 
 	TTAUDIO_COUNT
 };
@@ -543,6 +545,8 @@ public:
 	const AudioEventRTS *getSoundMoveStartDamaged() const			{ return getAudio(TTAUDIO_soundMoveStartDamaged); }
 	const AudioEventRTS *getSoundMoveLoop() const							{ return getAudio(TTAUDIO_soundMoveLoop); }
 	const AudioEventRTS *getSoundMoveLoopDamaged() const			{ return getAudio(TTAUDIO_soundMoveLoopDamaged); }
+	const AudioEventRTS *getSoundReverseMoveLoop() const			{ return getAudio(TTAUDIO_soundReverseMoveLoop); }
+	const AudioEventRTS *getSoundReverseMoveLoopDamaged() const	{ return getAudio(TTAUDIO_soundReverseMoveLoopDamaged); }
 	const AudioEventRTS *getSoundAmbient() const							{ return getAudio(TTAUDIO_soundAmbient); }
 	const AudioEventRTS *getSoundAmbientDamaged() const				{ return getAudio(TTAUDIO_soundAmbientDamaged); }
 	const AudioEventRTS *getSoundAmbientReallyDamaged() const	{ return getAudio(TTAUDIO_soundAmbientReallyDamaged); }

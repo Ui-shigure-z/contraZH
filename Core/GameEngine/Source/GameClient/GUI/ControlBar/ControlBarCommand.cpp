@@ -1210,6 +1210,9 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			if( dozerAI->isTaskPending( DOZER_TASK_BUILD ) == TRUE )
 				return COMMAND_RESTRICTED;
 
+			if( dozerAI->canBuildTemplate( whatToBuild ) == FALSE )
+				return COMMAND_RESTRICTED;
+
 			// return whether or not the player can build this thing
 			if( player->canBuild( whatToBuild ) == FALSE )
 				return COMMAND_RESTRICTED;

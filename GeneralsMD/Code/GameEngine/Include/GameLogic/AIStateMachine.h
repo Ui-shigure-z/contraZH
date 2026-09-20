@@ -259,6 +259,7 @@ public:
 		m_blockedRepathTimestamp = 0;
 		m_adjustDestinations = true;
 		m_goalLayer = LAYER_INVALID;
+		m_moveSoundState = MOVESOUND_WAITING;
 	}
 
 	virtual StateReturnType onEnter() override;
@@ -298,6 +299,10 @@ protected:
 	Coord3D				m_pathGoalPosition;									///< the position our current path leads to
 private:
 	AudioHandle		m_ambientPlayingHandle;							///< Audio handle for the looping sound that we may play.
+	// The locomotor runs after the state machine, so its reverse flag is only meaningful from the
+	// second update on. The move sound waits for that before it picks forward or reverse.
+	enum MoveSoundState CPP_11(: Int) { MOVESOUND_WAITING, MOVESOUND_LOCOMOTOR_RAN, MOVESOUND_STARTED };
+	MoveSoundState	m_moveSoundState;
 	UnsignedInt		m_pathTimestamp;										///< time of last pathfind
 	UnsignedInt		m_blockedRepathTimestamp;						///< time of last blocked pathfind
 	Bool					m_adjustDestinations;								///< Adjust destinations to avoid stacking units on top of each other.  Normally true, but

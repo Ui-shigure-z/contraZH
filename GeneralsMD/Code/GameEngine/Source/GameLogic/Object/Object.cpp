@@ -1182,11 +1182,6 @@ void Object::setStatus( ObjectStatusMaskType objectStatus, Bool set )
 				m_partitionData->makeDirty(true);
 		}
 
-		if (set && objectStatus.test(OBJECT_STATUS_UNSELECTABLE) && m_drawable)
-		{
-			TheInGameUI->deselectDrawable(m_drawable);
-		}
-
 	}
 
 }

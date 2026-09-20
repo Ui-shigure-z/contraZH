@@ -731,6 +731,67 @@ An aircraft has to pass both to land, so naming it in `AllowedObjects` does not 
 already parked, so changing them does not affect aircraft that are on the airfield.
 * Aircraft with `KINDOF_PRODUCED_AT_HELIPAD` skip these filters, as they already skip the KindOf ones.
 
+## DozerAIUpdate / WorkerAIUpdate
+
+Both modules build and repair structures, and both take the same restriction keys. A module without
+them behaves exactly as before.
+
+### Restricting what may be built
+
+* `ForbiddenBuildObjects = <object list>` - (These may never be built. Checked first, so it beats
+everything else, including `AllowedBuildObjects`.)
+* `AllowedBuildObjects = <object list>` - (If set, ONLY these may be built. Leave it out to allow
+everything the unit's CommandSet offers.)
+
+Example - a worker that may only put up the two cheapest structures:
+```
+Behavior = WorkerAIUpdate ModuleTag_worker
+  RepairHealthPercentPerSecond = 2%
+  BoredTime = 5000
+  BoredRange = 150
+  AllowedBuildObjects = GLAPowerPlant GLABarracks
+End
+```
+
+Both keys take several names on one line, and a second line of the same key adds to the first rather
+than replacing it. Matching is on the object name and ignores case.
+
+Notes:
+* The list gates starting a building, resuming one somebody else began, and a GLA hole rebuild. An AI
+player is held to it too, unlike the normal build validation which AI players skip.
+* A forbidden structure's command button greys out rather than disappearing, so button positions stay
+the same across units that share a CommandSet.
+* This is checked in addition to the unit's CommandSet, not instead of it. Naming something in
+`AllowedBuildObjects` does not let a unit build what its CommandSet never offered.
+
+### Removing the repair ability
+
+* `CanRepair = Yes` - (Default. `No` takes the repair ability away entirely.)
+
+A unit with `CanRepair = No` shows no repair cursor over a damaged building, ignores a repair order,
+and does not go looking for something to repair when it gets bored.
+
+### Giving a dozer to an armed unit
+
+A stock dozer carries no weapon except a mine clearing one. When it has been idle for `BoredTime` it
+looks for something to repair, and failing that it sets its mine clearing weapon set and attacks the
+nearest enemy or neutral object within `BoredRange`. That search does not check that the target is a
+mine - it checks that the target is attackable, which on a stock dozer only mines are.
+
+Put `DozerAIUpdate` or `WorkerAIUpdate` on a unit that keeps a real weapon and the same search starts
+returning ordinary neutral objects, so the unit opens fire on scenery whenever it goes idle. Two ways
+around it:
+
+* `BoredRange = 0` - the search runs with a zero radius and finds nothing, so the unit never picks a
+bored target. This also switches off the bored auto-repair scan, which shares the same range. Direct
+repair orders still work.
+* Give the unit a weapon set under `WEAPONSET_MINE_CLEARING_DETAIL` that cannot hit ordinary ground
+targets. The bored search then fails the attackability test for everything but mines, the same way it
+does on a stock dozer, and bored auto-repair keeps working.
+
+`BoredTime = 0` does not help - the check is `idle time > BoredTime`, so zero makes the unit run the
+search on every idle frame rather than never.
+
 ## PoisonedBehavior
 
 Added Beta and Gamma poison tiers, so the poison-over-time effect can be strengthened once the attacker owns an upgrade. The retail parameters keep working unchanged.
@@ -1928,9 +1989,13 @@ Neither type reduces health. Set these on a weapon's `DamageType` field.
 
 ## Jam Effect
 
-When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status and
-its passengers are ordered to idle. The status clears once the jamming damage heals below the
-threshold.
+When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status, drops
+out of the player's selection, and its passengers are ordered to idle. The status clears once the
+jamming damage heals below the threshold.
+
+`UNSELECTABLE` on its own only blocks a new selection click. Dropping the unit from the current
+selection is something jamming asks for specifically, so other sources of the status - a slaved drone,
+a docked unit, a sold building - leave the selection alone.
 
 Jamming is independent of the `DISABLED_*` states: it neither waits for them nor ends them, and a
 disabled unit stays disabled through a jam. On unjam it only clears `UNSELECTABLE` if the jam was

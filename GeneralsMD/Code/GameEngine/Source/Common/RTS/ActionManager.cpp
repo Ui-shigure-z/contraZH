@@ -434,6 +434,11 @@ Bool ActionManager::canRepairObject( const Object *obj, const Object *objectToRe
 	if( obj->isKindOf( KINDOF_DOZER ) == FALSE )
 		return FALSE;
 
+	// gating here also covers the bored auto-repair scan and the repair cursor
+	const DozerAIInterface *repairDozerAI = obj->getAI() ? obj->getAI()->getDozerAIInterface() : nullptr;
+	if( repairDozerAI && repairDozerAI->canRepairObjects() == FALSE )
+		return FALSE;
+
 	// dozers can only repair buildings
 	if( objectToRepair->isKindOf( KINDOF_STRUCTURE ) == FALSE )
 		return FALSE;
@@ -476,6 +481,11 @@ Bool ActionManager::canResumeConstructionOf( const Object *obj,
 
 	// only dozers or workers can resume construction of things
 	if( obj->isKindOf( KINDOF_DOZER ) == FALSE )
+		return FALSE;
+
+	// a restricted dozer may not pick up somebody else's half-built structure either
+	const DozerAIInterface *resumeDozerAI = obj->getAI() ? obj->getAI()->getDozerAIInterface() : nullptr;
+	if( resumeDozerAI && resumeDozerAI->canBuildTemplate( objectBeingConstructed->getTemplate() ) == FALSE )
 		return FALSE;
 
 	// TheSuperHackers @bugfix Stubbjax 06/01/2026 Ensure only the owner of the construction can resume it.

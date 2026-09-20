@@ -151,9 +151,20 @@ behind it. Anything effectively dead now drops its pick bit, unless it is `ALWAY
 
 ## Jammed units deselect properly
 
-Setting `UNSELECTABLE` status (e.g. from a jam weapon) left the drawable in the selection list. After
-the status cleared, the unit appeared selected but the control bar did not respond, forcing the player
-to click elsewhere and reselect. `setStatus(UNSELECTABLE)` now deselects the drawable immediately.
+A jam weapon left its target in the selection list. The unit appeared selected but the control bar did
+not respond, forcing the player to click elsewhere and reselect. Jamming now deselects the unit as it
+lands.
+
+Only jamming does this. `UNSELECTABLE` on its own blocks a new selection click, which is its job, but
+it no longer empties the player's current selection - a slaved drone, a docking unit or a building you
+have just sold used to take the whole selection with it.
+
+A jammed unit also always gets control back. Whether the jam had worn off was worked out from the
+unit's current max health, so anything that moved that number - a promotion, a health upgrade - moved
+the threshold out from under the unit and left it jammed with nothing left to heal. The jam state is
+now tracked directly, and a unit that stops being jammable heals off a jam it already has instead of
+keeping it forever.
+
 This changes selection state, so it affects replays.
 
 ## Portable addons no longer block building
