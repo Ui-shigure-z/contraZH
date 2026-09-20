@@ -261,9 +261,9 @@ Real ControlBar::calcEstimatedProductionFinishedTime(Object *obj)
 	}
 
 	//ShigureUi 20/09/2026 find this object's cache
-	std::multimap<Object*, BuildQueueCacheNode>::iterator it;
-	std::pair<std::multimap<Object*, BuildQueueCacheNode>::iterator, std::multimap<Object*, BuildQueueCacheNode>::iterator> pr;
-	pr = m_multiSelectQueueCache.equal_range(obj);
+	std::multimap<ObjectID, BuildQueueCacheNode>::iterator it;
+	std::pair<std::multimap<ObjectID, BuildQueueCacheNode>::iterator, std::multimap<ObjectID, BuildQueueCacheNode>::iterator> pr;
+	pr = m_multiSelectQueueCache.equal_range(obj->getID());
 
 	for (it = pr.first; it != pr.second; it++)
 	{
@@ -293,9 +293,9 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 	Player* player = obj->getControllingPlayer();
 
 	//ShigureUi 20/09/2026 find this object's cache
-	std::multimap<Object*, BuildQueueCacheNode>::iterator it;
-	std::pair<std::multimap<Object*, BuildQueueCacheNode>::iterator, std::multimap<Object*, BuildQueueCacheNode>::iterator> pr;
-	pr = m_multiSelectQueueCache.equal_range(obj);
+	std::multimap<ObjectID, BuildQueueCacheNode>::iterator it;
+	std::pair<std::multimap<ObjectID, BuildQueueCacheNode>::iterator, std::multimap<ObjectID, BuildQueueCacheNode>::iterator> pr;
+	pr = m_multiSelectQueueCache.equal_range(obj->getID());
 
 	// how many more this producer takes before its queue, or its parking, full
 	Int roomLeft = pu->getMaxQueueEntries() - pu->getProductionCount();
@@ -379,14 +379,15 @@ UnsignedInt ControlBar::calcBuildLimitLeft(Player *player, const ThingTemplate *
 		return 0;
 
 	//ShigureUi 20/09/2026 find this frame cache and remove others
-	std::multimap<Object*, BuildQueueCacheNode>::iterator it;
-	std::pair<std::multimap<Object*, BuildQueueCacheNode>::iterator, std::multimap<Object*, BuildQueueCacheNode>::iterator> pr;
+	std::multimap<ObjectID, BuildQueueCacheNode>::iterator it;
+	std::pair<std::multimap<ObjectID, BuildQueueCacheNode>::iterator, std::multimap<ObjectID, BuildQueueCacheNode>::iterator> pr;
 	pr = std::make_pair(m_multiSelectQueueCache.begin(), m_multiSelectQueueCache.end());
 
 	UnsignedInt limitLeft = SHIFT_CLICK_BATCH_SIZE;
 	while (limitLeft && !player->canBuildMoreOfType(thing, limitLeft))
 		limitLeft--;
 
+	// ShigureUi 20/09/2026 build limit is global so scan all
 	for (it = pr.first; it != pr.second; it++)
 	{
 		const BuildQueueCacheNode& bqsn = (*it).second;
@@ -794,7 +795,10 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				curFinishTime = calcEstimatedProductionFinishedTime(curFactory);
 
 				if (curFinishTime < 0)
+				{
+					cmt = CANMAKE_FACTORY_IS_DISABLED;
 					break;
+				}
 
 				curCmt = TheBuildAssistant->canMakeUnit(curFactory, whatToBuild);
 
@@ -897,7 +901,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				bqcn.m_type = PRODUCTION_UNIT;
 				bqcn.m_objectToProduce = whatToBuild;
 				bqcn.m_productionID = productionID;
-				m_multiSelectQueueCache.insert(std::make_pair(factory, bqcn));
+				m_multiSelectQueueCache.insert(std::make_pair(factory->getID(), bqcn));
 
 				queued++;
 			}
@@ -1024,8 +1028,11 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				curFactory = (*it)->getObject();
 				curFinishTime = calcEstimatedProductionFinishedTime(curFactory);
 
-				if (curFinishTime < 0.0)
+				if (curFinishTime < 0)
+				{
+					cmt = CANMAKE_NO_PREREQ;
 					break;
+				}
 
 				curCmt = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT) > 0 ? CANMAKE_OK : CANMAKE_QUEUE_FULL;
 
@@ -1049,6 +1056,10 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				TheInGameUI->message("GUI:ProductionQueueFull");
 				break;
 			}
+			else if (cmt != CANMAKE_OK)
+			{
+				break;
+			}
 
 			// send the message
 			GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_QUEUE_UPGRADE );
@@ -1059,7 +1070,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			BuildQueueCacheNode bqcn;
 			bqcn.m_type = PRODUCTION_UPGRADE;
 			bqcn.m_upgradeToResearch = upgradeT;
-			m_multiSelectQueueCache.insert(std::make_pair(bestFactory, bqcn));
+			m_multiSelectQueueCache.insert(std::make_pair(bestFactory->getID(), bqcn));
 
 			break;
 
@@ -1085,7 +1096,6 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			Real minFinishTime[SHIFT_CLICK_BATCH_SIZE], curFinishTime;
 			Object *bestFactories[SHIFT_CLICK_BATCH_SIZE], *curFactory;
-			ProductionUpdateInterface* pu = nullptr;
 			Int i, j;
 			CanMakeType cmt = CANMAKE_QUEUE_FULL, curCmt;
 
@@ -1105,13 +1115,14 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				curFactory = (*it)->getObject();
 				curFinishTime = 0.0;
-				if (!curFactory)
-					break;
-				pu = curFactory->getProductionUpdateInterface();
-				if (!pu)
-					break;
 
 				curFinishTime = calcEstimatedProductionFinishedTime(curFactory);
+
+				if (curFinishTime < 0)
+				{
+					cmt = CANMAKE_NO_PREREQ;
+					break;
+				}
 	
 				curCmt = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT) > 0 ? CANMAKE_OK : CANMAKE_QUEUE_FULL;
 
@@ -1145,6 +1156,10 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				TheInGameUI->message("GUI:ProductionQueueFull");
 				break;
 			}
+			else if (cmt != CANMAKE_OK)
+			{
+				break;
+			}
 
 			GameMessage* msg;
 
@@ -1160,7 +1175,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				BuildQueueCacheNode bqcn;
 				bqcn.m_type = PRODUCTION_UPGRADE;
 				bqcn.m_upgradeToResearch = upgradeT;
-				m_multiSelectQueueCache.insert(std::make_pair(bestFactories[i], bqcn));
+				m_multiSelectQueueCache.insert(std::make_pair(bestFactories[i]->getID(), bqcn));
 			}
 
 			break;
@@ -1619,12 +1634,12 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 //-------------------------------------------------------------------------------------------------
 // ShigureUi 19/09/2026 remove unit from cache message is being processed
 //-------------------------------------------------------------------------------------------------
-void ControlBar::removeUnitFromBuildQueueCache(Object *obj, ProductionID productionID)
+void ControlBar::removeUnitFromBuildQueueCache(ObjectID objID, ProductionID productionID)
 {
 	//ShigureUi 20/09/2026 find this object's cache
-	std::multimap<Object*, BuildQueueCacheNode>::iterator it;
-	std::pair<std::multimap<Object*, BuildQueueCacheNode>::iterator, std::multimap<Object*, BuildQueueCacheNode>::iterator> pr;
-	pr = m_multiSelectQueueCache.equal_range(obj);
+	std::multimap<ObjectID, BuildQueueCacheNode>::iterator it;
+	std::pair<std::multimap<ObjectID, BuildQueueCacheNode>::iterator, std::multimap<ObjectID, BuildQueueCacheNode>::iterator> pr;
+	pr = m_multiSelectQueueCache.equal_range(objID);
 
 	for (it = pr.first; it != pr.second; it++)
 	{
@@ -1640,12 +1655,12 @@ void ControlBar::removeUnitFromBuildQueueCache(Object *obj, ProductionID product
 //-------------------------------------------------------------------------------------------------
 // ShigureUi 19/09/2026 remove upgrade from cache message is being processed
 //-------------------------------------------------------------------------------------------------
-void ControlBar::removeUpgradeFromBuildQueueCache(Object *obj, const UpgradeTemplate *upgrade)
+void ControlBar::removeUpgradeFromBuildQueueCache(ObjectID objID, const UpgradeTemplate *upgrade)
 {
 	//ShigureUi 20/09/2026 find this object's cache
-	std::multimap<Object*, BuildQueueCacheNode>::iterator it;
-	std::pair<std::multimap<Object*, BuildQueueCacheNode>::iterator, std::multimap<Object*, BuildQueueCacheNode>::iterator> pr;
-	pr = m_multiSelectQueueCache.equal_range(obj);
+	std::multimap<ObjectID, BuildQueueCacheNode>::iterator it;
+	std::pair<std::multimap<ObjectID, BuildQueueCacheNode>::iterator, std::multimap<ObjectID, BuildQueueCacheNode>::iterator> pr;
+	pr = m_multiSelectQueueCache.equal_range(objID);
 
 	for (it = pr.first; it != pr.second; it++)
 	{

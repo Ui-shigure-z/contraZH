@@ -1943,17 +1943,20 @@ bool GameLogic::onDoForceAttackGround(MAYBE_UNUSED GameMessage *msg, AIGroupPtr 
 bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
-	Object* producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(0)->objectID);
-	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 1 )->integer) );
+	ObjectID objID = (ObjectID)msg->getArgument(0)->objectID;
+	Object *producer = TheGameLogic->findObjectByID(objID);
+	const UpgradeTemplate* upgradeT = TheUpgradeCenter->findUpgradeByKey((NameKeyType)(msg->getArgument(1)->integer));
+
+	//ShigureUi 20/09/2026 go delete cache even if safe check could possibly fail
+	if (TheControlBar)
+		TheControlBar->removeUpgradeFromBuildQueueCache(objID, upgradeT);
+
 	if (!upgradeT)	// sanity
 		return false;
 
 	// the producer may have died since the click, and the player must actually control it
 	if (producer == nullptr || producer->getControllingPlayer() != msgPlayer)
 		return false;
-
-	if (TheControlBar)
-		TheControlBar->removeUpgradeFromBuildQueueCache(producer, upgradeT);
 
 	// ShigureUi 13/9/2026 check added, invalid might be sent
 	if (!TheUpgradeCenter->canAffordUpgrade(producer->getControllingPlayer(), upgradeT, FALSE))
@@ -2050,6 +2053,10 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 	objID = (ObjectID)msg->getArgument(1)->integer;
 	productionID = (ProductionID)msg->getArgument( 2 )->integer;
 
+	//ShigureUi 20/09/2026 go delete cache even if safe check could possibly fail
+	if (TheControlBar)
+		TheControlBar->removeUnitFromBuildQueueCache(objID, productionID);
+
 	Object* producer = TheGameLogic->findObjectByID(objID);
 
 	// sanity
@@ -2059,9 +2066,6 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 	// the player must actually control the producer object
 	if (producer->getControllingPlayer() != getMessagePlayer(msg))
 		return false;
-
-	if (TheControlBar)
-		TheControlBar->removeUnitFromBuildQueueCache(producer, productionID);
 
 	// get the production interface for the producer
 	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();

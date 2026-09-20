@@ -36,6 +36,7 @@
 #include "Common/Science.h"
 #include "GameClient/Color.h"
 #include "GameClient/GameWindow.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 class Drawable;
@@ -1166,17 +1167,22 @@ protected:
 			const ThingTemplate* m_objectToProduce;					///< what we're going to produce
 			const UpgradeTemplate* m_upgradeToResearch;			///< what upgrade we're researching
 		};
-		//Object *m_producer;
+
+		BuildQueueCacheNode()
+		{
+			m_type = PRODUCTION_INVALID;
+			m_productionID = PRODUCTIONID_INVALID;
+		}
 	};
 
-	std::multimap<Object*, BuildQueueCacheNode> m_multiSelectQueueCache;
+	std::multimap<ObjectID, BuildQueueCacheNode> m_multiSelectQueueCache;
 	Real calcEstimatedProductionFinishedTime(Object* obj);
 	UnsignedInt calcBuildQueueRoomLeft(Object* obj, const ThingTemplate* thing, const UpgradeTemplate* upgrade);
 	UnsignedInt calcBuildLimitLeft(Player* player, const ThingTemplate* thing);
 
 public:
-	void removeUnitFromBuildQueueCache(Object *obj, ProductionID productionID);
-	void removeUpgradeFromBuildQueueCache(Object* obj, const UpgradeTemplate *upgrade);
+	void removeUnitFromBuildQueueCache(ObjectID objID, ProductionID productionID);
+	void removeUpgradeFromBuildQueueCache(ObjectID objID, const UpgradeTemplate *upgrade);
 
 private:
 
