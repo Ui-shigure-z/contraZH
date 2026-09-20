@@ -202,6 +202,8 @@ public:
 	Int m_castMode;
 	// TheSuperHackers @feature Draw a green hexagon under selected objects.
 	Bool m_selectionCircleEnabled;
+	// TheSuperHackers @feature Ring the attack range of an armed structure while it is being placed.
+	Bool m_defensesRangeCircle;
 	// TheSuperHackers @feature Draw the decals objects ask for with DisplayDecal.
 	Bool m_objectDecalsEnabled;
 	// TheSuperHackers @feature Keep ammo and passenger pips on screen when there is something

@@ -2015,6 +2015,7 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	m_selectionDecal = nullptr;
 	m_selectionDecalWanted = FALSE;
 	m_selectionDecalRadius = 0.0f;
+	m_selectionDecalColor = 0;
 	m_objectDecal = nullptr;
 	m_trackRenderObject = nullptr;
 	m_lastTrackWasBackwards = FALSE;
@@ -3258,20 +3259,21 @@ void W3DModelDraw::handleFXEvents()
 //-------------------------------------------------------------------------------------------------
 // TheSuperHackers @feature Selection ring decal.
 //-------------------------------------------------------------------------------------------------
-/** Put a green ring on the ground under this object, or take it away.
+/** Put a ring on the ground under this object, or take it away.
 	*
 	* Uses the projected shadow system rather than screen space lines, so the ring is genuinely
 	* projected onto the terrain and the model draws over it. It lives in its own slot rather than
 	* sharing m_terrainDecal, so selecting a horde unit does not evict its horde ring.
 	*
 	* Expects a PlainRingSelection.tga in the mod's assets. The engine appends the extension, and
-	* the art is tinted green at runtime, so a plain white or greyscale ring works. */
+	* the art is tinted at runtime, so a plain white or greyscale ring works. */
 //-------------------------------------------------------------------------------------------------
-void W3DModelDraw::setSelectionDecal(Bool enable, Real radius)
+void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color)
 {
 	// remembered so the ring can be recreated after a model swap tears the render object down
 	m_selectionDecalWanted = enable;
 	m_selectionDecalRadius = radius;
+	m_selectionDecalColor = color;
 
 	if (m_selectionDecal)
 	{
@@ -3297,8 +3299,8 @@ void W3DModelDraw::setSelectionDecal(Bool enable, Real radius)
 	{
 		m_selectionDecal->enableShadowInvisible(m_fullyObscuredByShroud);
 		m_selectionDecal->enableShadowRender(TRUE);
-		//the art is a plain ring, so tint it to the selection green
-		m_selectionDecal->setColor(GameMakeColor(0, 255, 0, 255));
+		//the art is a plain ring, so the caller's color is what tints it
+		m_selectionDecal->setColor(color);
 	}
 }
 
@@ -3765,7 +3767,9 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		// TheSuperHackers @fix The selection ring was bound to the render object that was just
 		// torn down; the object is still selected, so put the ring back on the new one.
 		if (m_selectionDecalWanted)
-			setSelectionDecal(TRUE, m_selectionDecalRadius);
+		{
+			setSelectionDecal(TRUE, m_selectionDecalRadius, m_selectionDecalColor);
+		}
 
 		if( m_renderObject )
 		{

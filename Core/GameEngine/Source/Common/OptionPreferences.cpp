@@ -376,6 +376,13 @@ Bool OptionPreferences::getSelectionCircleEnabled(void) const
 	return FALSE;
 }
 
+// TheSuperHackers @feature Options.ini: DefensesRangeCircle = Yes rings the attack range of an
+// armed structure while it is being placed.
+Bool OptionPreferences::getDefensesRangeCircleEnabled(void) const
+{
+	return getBool("DefensesRangeCircle", FALSE);
+}
+
 // TheSuperHackers @feature Options.ini: ObjectDecals = No suppresses the decals objects ask for
 // with DisplayDecal. On by default, since the templates opted in.
 Bool OptionPreferences::getObjectDecalsEnabled(void) const

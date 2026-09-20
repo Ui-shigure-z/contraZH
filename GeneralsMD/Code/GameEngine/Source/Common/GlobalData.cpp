@@ -1303,6 +1303,7 @@ GlobalData::GlobalData()
 	m_buildTimerDisplayMode = BuildTimerDisplayMode_Default;
 	m_castMode = CastMode_Default;
 	m_selectionCircleEnabled = FALSE;
+	m_defensesRangeCircle = FALSE;
 	m_objectDecalsEnabled = TRUE;
 	m_smartPips = FALSE;
 	m_numericalHealth = FALSE;
@@ -1543,6 +1544,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_buildTimerDisplayMode = optionPref.getBuildTimerDisplayMode();
 	TheWritableGlobalData->m_castMode = optionPref.getCastMode();
 	TheWritableGlobalData->m_selectionCircleEnabled = optionPref.getSelectionCircleEnabled();
+	TheWritableGlobalData->m_defensesRangeCircle = optionPref.getDefensesRangeCircleEnabled();
 	TheWritableGlobalData->m_objectDecalsEnabled = optionPref.getObjectDecalsEnabled();
 	TheWritableGlobalData->m_smartPips = optionPref.getSmartPipsEnabled();
 	TheWritableGlobalData->m_numericalHealth = optionPref.getNumericalHealthEnabled();

@@ -33,6 +33,7 @@
 #define DEFINE_RADIUSCURSOR_NAMES
 
 #include "Common/ActionManager.h"
+#include "Common/DrawModule.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameType.h"
@@ -108,6 +109,10 @@
 
 // ------------------------------------------------------------------------------------------------
 static const RGBColor IllegalBuildColor = { 1.0, 0.0, 0.0 };
+
+// TheSuperHackers @feature Range ring under a structure being placed. Red marks illegal placement
+// and green marks selection, so the ring takes a third color.
+static const Color PlacementRangeCircleColor = GameMakeColor( 0, 192, 255, 255 );
 
 // ------------------------------------------------------------------------------------------------
 static UnicodeString formatMoneyValue(UnsignedInt amount)
@@ -2102,6 +2107,7 @@ void InGameUI::handleBuildPlacements()
 						UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
 						drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
 						m_placeIcon[ i ] = TheThingFactory->newDrawable( m_pendingPlaceType, drawableStatus );
+						updatePlacementRangeCircle( m_placeIcon[ i ] );
 					}
 
 				}
@@ -3909,6 +3915,80 @@ void InGameUI::destroySpecialPowerLocationDecals( void )
 }
 
 //-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Placement range ring.
+//-------------------------------------------------------------------------------------------------
+/** Widest reach of any weapon the template can ever field.
+	*
+	* Every weapon set counts, not just the default one, so an upgradeable defense shows the reach it
+	* ends up with rather than one the player has to measure again after the upgrade. Matches the
+	* outermost circle WorldBuilder draws for the same template. */
+//-------------------------------------------------------------------------------------------------
+Real InGameUI::getPlacementRangeCircleRadius( const ThingTemplate *build ) const
+{
+	Real widest = 0.0f;
+
+	if( build == nullptr )
+	{
+		return widest;
+	}
+
+	const WeaponTemplateSetVector& sets = build->getWeaponTemplateSets();
+	for( WeaponTemplateSetVector::const_iterator it = sets.begin(); it != sets.end(); ++it )
+	{
+		if( it->hasAnyWeapons() == false )
+		{
+			continue;
+		}
+
+		for( Int slot = 0; slot < WEAPONSLOT_COUNT; ++slot )
+		{
+			const WeaponTemplate *weapon = it->getNth( (WeaponSlotType)slot );
+			if( weapon == nullptr )
+			{
+				continue;
+			}
+
+			const Real range = weapon->getUnmodifiedAttackRange();
+			if( range > widest )
+			{
+				widest = range;
+			}
+		}
+	}
+
+	return widest;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Show or hide the range ring under one placement ghost.
+	*
+	* The ghost has no Object, so it can never be selected and never carries a selection ring; the
+	* decal slot is free for as long as it exists. The decal follows the render object, so the ring
+	* tracks the ghost around the map without any per frame work. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::updatePlacementRangeCircle( Drawable *icon )
+{
+	if( icon == nullptr )
+	{
+		return;
+	}
+
+	Real radius = 0.0f;
+	if( TheGlobalData && TheGlobalData->m_defensesRangeCircle
+			&& m_pendingPlaceType && m_pendingPlaceType->canPossiblyHaveAnyWeapon() )
+	{
+		radius = getPlacementRangeCircleRadius( m_pendingPlaceType );
+	}
+
+	const Bool wanted = radius > 0.0f;
+	for( DrawModule **dm = icon->getDrawModules(); *dm; ++dm )
+	{
+		(*dm)->setSelectionDecal( wanted, radius, PlacementRangeCircleColor );
+		break;	// first draw module only, so rings do not stack
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Destroy any drawables we have in our placement icon array and set to null */
 //-------------------------------------------------------------------------------------------------
 void InGameUI::destroyPlacementIcons()
@@ -4022,6 +4102,8 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 			// set the "icon" in the icon array at the first index
 			DEBUG_ASSERTCRASH( m_placeIcon[ 0 ] == nullptr, ("placeBuildAvailable, build icon array is not empty!") );
 			m_placeIcon[ 0 ] = draw;
+
+			updatePlacementRangeCircle( draw );
 
 		}
 		else

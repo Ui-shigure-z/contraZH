@@ -191,6 +191,7 @@ static GameWindow *   comboBoxAnisotropy          = nullptr;
 static GameWindow *   checkNumericalHealth        = nullptr;
 static GameWindow *   checkSmartPips              = nullptr;
 static GameWindow *   checkSelectionCircle        = nullptr;
+static GameWindow *   checkDefensesRangeCircle    = nullptr;
 static GameWindow *   checkObjectDecals           = nullptr;
 static GameWindow *   checkEasyMilitaryDrag       = nullptr;
 static GameWindow *   checkSmartSelection         = nullptr;
@@ -454,6 +455,7 @@ static const BoolOption BoolOptions[] =
 	{ &checkNumericalHealth, "NumericalHealth", &OptionPreferences::getNumericalHealthEnabled, &GlobalData::m_numericalHealth, FALSE },
 	{ &checkSmartPips, "SmartPips", &OptionPreferences::getSmartPipsEnabled, &GlobalData::m_smartPips, FALSE },
 	{ &checkSelectionCircle, "SelectionCircle", &OptionPreferences::getSelectionCircleEnabled, &GlobalData::m_selectionCircleEnabled, FALSE },
+	{ &checkDefensesRangeCircle, "DefensesRangeCircle", &OptionPreferences::getDefensesRangeCircleEnabled, &GlobalData::m_defensesRangeCircle, FALSE },
 	{ &checkObjectDecals, "ObjectDecals", &OptionPreferences::getObjectDecalsEnabled, &GlobalData::m_objectDecalsEnabled, TRUE },
 	{ &checkEasyMilitaryDrag, "EasyMilitaryDrag", &OptionPreferences::getEasyMilitaryDragEnabled, &GlobalData::m_easyMilitaryDrag, FALSE },
 	{ &checkSmartSelection, "SmartSelection", &OptionPreferences::getSmartSelectionEnabled, &GlobalData::m_smartSelection, TRUE },
@@ -1513,6 +1515,7 @@ static void initGameOptionsWindows()
 	checkNumericalHealth = findOptionsWindow( "OptionsMenu.wnd:CheckNumericalHealth" );
 	checkSmartPips = findOptionsWindow( "OptionsMenu.wnd:CheckSmartPips" );
 	checkSelectionCircle = findOptionsWindow( "OptionsMenu.wnd:CheckSelectionCircle" );
+	checkDefensesRangeCircle = findOptionsWindow( "OptionsMenu.wnd:CheckDefensesRangeCircle" );
 	checkObjectDecals = findOptionsWindow( "OptionsMenu.wnd:CheckObjectDecals" );
 	checkEasyMilitaryDrag = findOptionsWindow( "OptionsMenu.wnd:CheckEasyMilitaryDrag" );
 	checkSmartSelection = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelection" );
@@ -1568,6 +1571,7 @@ static void initGameOptionsWindows()
 	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
 	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
 	setCheckText( checkSelectionCircle, "GUI:SelectionCircle", L"Selection ring under units", "TOOLTIP:SelectionCircle", L"Draws a ring on the ground under selected units" );
+	setCheckText( checkDefensesRangeCircle, "GUI:DefensesRangeCircle", L"Attack range ring while placing", "TOOLTIP:DefensesRangeCircle", L"Rings the attack range of an armed structure while you position it" );
 	setCheckText( checkObjectDecals, "GUI:ObjectDecals", L"Object decals", "TOOLTIP:ObjectDecals", L"Draws the ground decals objects ask for" );
 	setCheckText( checkEasyMilitaryDrag, "GUI:EasyMilitaryDrag", L"Drag select skips builders", "TOOLTIP:EasyMilitaryDrag", L"A drag box that holds combat units leaves dozers and workers out" );
 	setCheckText( checkSmartSelection, "GUI:SmartSelection", L"Smart selection", "TOOLTIP:SmartSelection", L"Selecting a mixed group shows the command bar of the unit type you pick" );

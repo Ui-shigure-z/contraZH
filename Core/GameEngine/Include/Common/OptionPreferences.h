@@ -135,6 +135,8 @@ public:
 	BuildTimerDisplayMode getBuildTimerDisplayMode() const;
 	CastMode getCastMode() const;
 	Bool getSelectionCircleEnabled() const;
+	// Options.ini: DefensesRangeCircle = Yes rings the attack range of an armed structure being placed
+	Bool getDefensesRangeCircleEnabled() const;
 	Bool getObjectDecalsEnabled() const;
 	// Options.ini: Bloom = Yes adds a glow around additive particles, BloomStrength (0..1) sets how bright
 	Bool getBloomEnabled() const;

@@ -85,7 +85,7 @@ public:
 	virtual void setTerrainDecalOpacity(Real o) {};
 	// TheSuperHackers @feature Selection ring decal, in its own slot so it does not evict the
 	// horde or chem suit decal while a unit is selected.
-	virtual void setSelectionDecal(Bool enable, Real radius) {};
+	virtual void setSelectionDecal(Bool enable, Real radius, Color color) {};
 
 	virtual void reactToTeleport() {};	///< object was instantly relocated (e.g. chronosphere) - break tread marks etc.
 

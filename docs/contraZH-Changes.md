@@ -222,6 +222,11 @@ and `AlliedDecalsLabel` windows in `OptionsMenu.wnd`; without them the key still
 `HealthBarDisplayMode`, so the number appears exactly where a bar does.)
 * `SelectionCircle = No` - (Yes draws a green ring on the ground under selected objects. Retail draws
 nothing there; selection is only a brief tint flash on the model.)
+* `DefensesRangeCircle = No` - (Yes draws a ring showing the attack range of an armed structure while
+you are positioning it, so you can see what a defense covers before committing to the spot. Any
+structure with a weapon, not only base defenses. The ring is the widest reach of any weapon the
+structure can ever field, including the ones it only gets from an upgrade. Walls and other line built
+pieces each get their own ring.)
 * `ObjectDecals = Yes` - (No suppresses the ground decals objects ask for with `DisplayDecal`.
 On by default, since a template only gets one when it asks. Independent of the 2D and 3D shadow
 settings, because the decal is an aura marker rather than a shadow.)
@@ -255,8 +260,11 @@ textures themselves rather than drawn as their own radar layer, so by the time t
 road cell it is indistinguishable from the ground around it. Bridges do still draw in their own
 colour, since those come from the bridge list rather than the terrain.
 
-Note: `SelectionCircle` needs a mod-side `PlainRingSelection.tga` — a white or greyscale ring with
-alpha, tinted green at runtime. Until it exists the ring simply does not draw.
+Note: `SelectionCircle` and `DefensesRangeCircle` need a mod-side `PlainRingSelection.tga` — a white
+or greyscale ring with alpha, tinted at runtime. Until it exists the ring simply does not draw.
+
+Note: the `DefensesRangeCircle` checkbox needs a `CheckDefensesRangeCircle` window in
+`OptionsMenu.wnd`; without it the key still works from the file.
 
 Note: `DisplayDecal` likewise needs a mod-side `.tga`, named by `DecalTexture`. There is no default
 texture for it, so an object that asks for a decal without naming one simply does not draw it.
