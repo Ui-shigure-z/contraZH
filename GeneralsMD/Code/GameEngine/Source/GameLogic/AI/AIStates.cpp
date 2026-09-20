@@ -1733,7 +1733,8 @@ StateReturnType AIInternalMoveToState::onEnter()
 	ai->setPathExtraDistance(0);
 	ai->setDesiredSpeed( FAST_AS_POSSIBLE );
 
-	startMoveSound();
+	m_moveSoundState = MOVESOUND_WAITING;
+
 	return STATE_CONTINUE;
 }
 
@@ -1743,6 +1744,11 @@ StateReturnType AIInternalMoveToState::onEnter()
 void AIInternalMoveToState::startMoveSound()
 {
 	Object *obj = getMachineOwner();
+	m_moveSoundState = MOVESOUND_STARTED;
+
+	const AIUpdateInterface *ai = obj->getAI();
+	Bool reversing = ai && ai->getCurLocomotor() && ai->getCurLocomotor()->isMovingBackwards();
+
 	const BodyModuleInterface *objBody = obj->getBodyModule();
 	if (objBody && IS_CONDITION_WORSE(objBody->getDamageState(), BODY_DAMAGED))
 	{
@@ -1754,7 +1760,17 @@ void AIInternalMoveToState::startMoveSound()
 		}
 		else
 		{
-			soundEventMoveDamaged = *obj->getTemplate()->getSoundMoveLoopDamaged();
+			if (reversing)
+			{
+				soundEventMoveDamaged = *obj->getTemplate()->getSoundReverseMoveLoopDamaged();
+			}
+
+			// a template without the reverse loop keeps the forward one
+			if (soundEventMoveDamaged.getEventName().isEmpty())
+			{
+				soundEventMoveDamaged = *obj->getTemplate()->getSoundMoveLoopDamaged();
+			}
+
 			if (!soundEventMoveDamaged.getEventName().isEmpty())
 			{
 				soundEventMoveDamaged.setObjectID(obj->getID());
@@ -1773,7 +1789,16 @@ void AIInternalMoveToState::startMoveSound()
 		}
 		else
 		{
-			soundEventMove = *obj->getTemplate()->getSoundMoveLoop();
+			if (reversing)
+			{
+				soundEventMove = *obj->getTemplate()->getSoundReverseMoveLoop();
+			}
+
+			if (soundEventMove.getEventName().isEmpty())
+			{
+				soundEventMove = *obj->getTemplate()->getSoundMoveLoop();
+			}
+
 			soundEventMove.setObjectID(obj->getID());
 			if (!soundEventMove.getEventName().isEmpty())
 			{
@@ -1822,6 +1847,15 @@ StateReturnType AIInternalMoveToState::update()
 
 	Object *obj = getMachineOwner();
 	AIUpdateInterface *ai = obj->getAI();
+
+	if (m_moveSoundState == MOVESOUND_WAITING)
+	{
+		m_moveSoundState = MOVESOUND_LOCOMOTOR_RAN;
+	}
+	else if (m_moveSoundState == MOVESOUND_LOCOMOTOR_RAN)
+	{
+		startMoveSound();
+	}
 
 	//Kris: 7/01/03 (Temporary debug hook for units not being able to leave maps)
 	Bool blah = FALSE;

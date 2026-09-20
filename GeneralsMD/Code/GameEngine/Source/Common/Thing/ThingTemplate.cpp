@@ -227,6 +227,8 @@ const FieldParse ThingTemplate::s_objectFieldParseTable[] =
 	{ "SoundMoveStartDamaged",INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveStartDamaged]) },
 	{ "SoundMoveLoop",				INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveLoop]) },
 	{ "SoundMoveLoopDamaged",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveLoopDamaged]) },
+	{ "SoundReverseMoveLoop",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundReverseMoveLoop]) },
+	{ "SoundReverseMoveLoopDamaged",INI::parseDynamicAudioEventRTS,	nullptr,	offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundReverseMoveLoopDamaged]) },
 	{ "SoundAmbient",					INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbient ]) },
 	{ "SoundAmbientDamaged",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbientDamaged ]) },
 	{ "SoundAmbientReallyDamaged",INI::parseDynamicAudioEventRTS,	nullptr,offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbientReallyDamaged ]) },
@@ -1225,6 +1227,8 @@ void ThingTemplate::validateAudio()
 	AUDIO_TEST(SoundMoveStartDamaged)
 	AUDIO_TEST(SoundMoveLoop)
 	AUDIO_TEST(SoundMoveLoopDamaged)
+	AUDIO_TEST(SoundReverseMoveLoop)
+	AUDIO_TEST(SoundReverseMoveLoopDamaged)
 	AUDIO_TEST(SoundAmbient)
 	AUDIO_TEST(SoundAmbientDamaged)
 	AUDIO_TEST(SoundAmbientReallyDamaged)
