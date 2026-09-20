@@ -698,6 +698,10 @@ public:
 	Bool isWithinAttackRange(const Object *source, const Object *target) const;
 	Bool isWithinAttackRange(const Object *source, const Coord3D* pos) const;
 
+	// Range test for a target we are already engaging, tolerant of the drift a moving target
+	// accumulates between approach recomputes. Never use it to decide whether to start an attack.
+	Bool isWithinContinueAttackRange(const Object *source, const Object *target) const;
+
 	Bool isTooClose(const Object *source, const Object *target) const;
 	Bool isTooClose(const Object *source, const Coord3D *pos) const;
 
@@ -874,6 +878,8 @@ protected:
 	void processRequestAssistance( const Object *requestingObject, Object *victimObject ); ///< Weapons can call for extra attacks from nearby objects
 
 	void getFiringLineOfSightOrigin(const Object* source, Coord3D& origin) const;
+
+	Bool isWithinAttackRangeInternal(const Object *source, const Object *target, Real attackRange) const;
 
 	void computeBonus(const Object *source, WeaponBonusConditionFlags extraBonusFlags, WeaponBonus& bonus) const;
 
