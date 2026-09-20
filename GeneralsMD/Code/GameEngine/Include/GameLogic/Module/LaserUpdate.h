@@ -125,6 +125,7 @@ public:
 
 	Real getWidthScale() const { return m_currentWidthScalar; }
 	Real getAlphaScale() const { return m_currentAlphaScalar; }
+	Bool isEnding() const { return m_decaying || m_fadingOut; }	///< the beam has started its way out
 
 	Real getLifeTimeProgress() const;
 

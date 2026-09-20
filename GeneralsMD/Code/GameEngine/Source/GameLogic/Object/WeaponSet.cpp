@@ -981,6 +981,38 @@ CanAttackResult WeaponSet::getAbleToUseWeaponAgainstTarget( AbleToAttackType att
 }
 
 //-------------------------------------------------------------------------------------------------
+static const UnsignedInt CMD_SYNC_TO_ANY_BITS = (1 << CMD_SYNC_TO_PRIMARY) | (1 << CMD_SYNC_TO_SECONDARY) | (1 << CMD_SYNC_TO_TERTIARY)
+	| (1 << CMD_SYNC_TO_FOUR) | (1 << CMD_SYNC_TO_FIVE) | (1 << CMD_SYNC_TO_SIX) | (1 << CMD_SYNC_TO_SEVEN) | (1 << CMD_SYNC_TO_EIGHT);
+
+//-------------------------------------------------------------------------------------------------
+Bool WeaponSet::isSlotAllowedForCommandSource( WeaponSlotType wslot, CommandSourceType cmdSource ) const
+{
+	CommandSourceMask okSrcs = m_curWeaponTemplateSet->getNthCommandSourceMask( wslot );
+	return ( okSrcs & (1 << cmdSource) ) != 0 || ( okSrcs & CMD_DEFAULT_SWITCH_WEAPON ) != 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool WeaponSet::canSlotAttackGround( WeaponSlotType wslot, CommandSourceType cmdSource ) const
+{
+	const Weapon* weapon = m_weapons[ wslot ];
+	if( weapon == nullptr || m_curWeaponTemplateSet == nullptr )
+	{
+		return FALSE;
+	}
+	if( ( weapon->getAntiMask() & WEAPON_ANTI_GROUND ) == 0 )
+	{
+		return FALSE;
+	}
+	// the unset mask is 0xffffffff, which the sync lookup treats as no sync bits, so mirror that
+	const UnsignedInt mask = m_curWeaponTemplateSet->getNthCommandSourceMask( wslot );
+	if( (Int)mask >= 0 && ( mask & CMD_SYNC_TO_ANY_BITS ) )
+	{
+		return FALSE;
+	}
+	return isSlotAllowedForCommandSource( wslot, cmdSource );
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool WeaponSet::chooseBestWeaponForTarget(const Object* obj, const Object* victim, WeaponChoiceCriteria criteria, CommandSourceType cmdSource)
 {
 	/*
@@ -1033,13 +1065,9 @@ Bool WeaponSet::chooseBestWeaponForTarget(const Object* obj, const Object* victi
 			continue;
 
 		// weapon not allowed to be specified via this command source.
-		CommandSourceMask okSrcs = m_curWeaponTemplateSet->getNthCommandSourceMask((WeaponSlotType)i);
-		if( ( okSrcs & (1 << cmdSource) ) == 0 )
+		if( !isSlotAllowedForCommandSource( (WeaponSlotType)i, cmdSource ) )
 		{
-			if( !( okSrcs & CMD_DEFAULT_SWITCH_WEAPON ) )
-			{
-				continue;
-			}
+			continue;
 		}
 
 		Weapon* weapon = m_weapons[i];

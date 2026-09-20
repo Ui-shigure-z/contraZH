@@ -44,6 +44,7 @@
 #include "Common/KindOf.h"
 #include "Common/GameMemory.h"
 #include "Common/ModelState.h"
+#include <vector>
 
 // ------------------------------------------------------------------------------------------------
 enum { CONTAIN_MAX_UNKNOWN = -1 };  // means we don't care, infinite, unassigned, whatever
@@ -59,6 +60,8 @@ public:
 	AudioEventRTS m_enterSound;			///< sound to play on entering
 	AudioEventRTS m_exitSound;			///< sound to play on exiting
 	Bool m_passengersAllowedToFire;	///< Can the passengers shoot out of us?
+	Bool m_acceptTargetsForPassengers;	///< can we be ordered to attack what only our passengers' weapons can hit?
+	Bool m_addOnWeaponRangeFromCenter;	///< do our add-ons measure weapon range from our center rather than their own bone?
 	Bool m_passengersInTurret;			///< The Firepoint bones are in our turret, not our chassis
 	Int m_numberOfExitPaths;				///< Will alternate through ExitStart/End paths as we exit people.
 	Real m_damagePercentageToUnits;
@@ -66,6 +69,8 @@ public:
 	UnsignedInt m_doorOpenTime;
 	KindOfMaskType m_allowInsideKindOf;			///< objects must have at least one of these kind of bits set to be contained by us
 	KindOfMaskType m_forbidInsideKindOf;		///< objects must have NONE of these kind of bits set to be contained by us
+	std::vector<AsciiString> m_allowInsideObjects;	///< if not empty, only these objects may be contained by us, whatever their KindOfs
+	std::vector<AsciiString> m_forbidInsideObjects;	///< these objects may never be contained by us, whatever their KindOfs
 	Bool m_weaponBonusPassedToPassengers;		///< Do our passengers get to use our weapon bonuses?
  	Bool m_allowAlliesInside;				///< allow allies inside us
  	Bool m_allowEnemiesInside;			///< allow enemies inside us
@@ -73,8 +78,27 @@ public:
 
 	WeaponBonusConditionTypeVec m_passengerWeaponBonusVec;  ///< weaponBonus types granted to passengers
 
+	Bool m_loadPenaltyEnabled;			///< do our occupants slow us down at all?
+	Real m_loadSpeedPenalty;			///< fraction of speed we lose at a full load
+	Real m_loadTurnRatePenalty;			///< likewise for turn rate
+	Real m_loadAccelerationPenalty;		///< likewise for acceleration
+	Real m_loadLiftPenalty;				///< likewise for lift
+	KindOfMaskType m_loadPenaltyKindOf;		///< only occupants with one of these kind of bits count toward the load
+	KindOfMaskType m_loadPenaltyForbidKindOf;	///< occupants with any of these kind of bits do not count toward the load
+
 	OpenContainModuleData( void );
 	static void buildFieldParse(MultiIniFieldParse& p);
+
+	/// Does the object name pass AllowInsideObjects/ForbidInsideObjects? Containers whose
+	/// isValidContainerFor() does not chain to OpenContain's (TunnelContain, CaveContain)
+	/// call this directly, so the two keys mean the same thing everywhere.
+	Bool isObjectAllowedInside( const Object *obj ) const;
+
+	/// Does this occupant count toward the load that slows us down?
+	Bool doesObjectCountTowardLoad( const Object *obj ) const;
+
+	/// Is any load penalty actually configured? Keeps unaffected containers off the recompute path.
+	Bool hasLoadPenalty() const;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -144,6 +168,7 @@ public:
 	virtual void recalcApparentControllingPlayer() override { }
 
 	virtual void onContaining( Object *obj, Bool wasSelected ) override;		///< object now contains 'obj'
+
 	virtual void onRemoving( Object *obj ) override;			///< object no longer contains 'obj'
 	virtual void onSelling() override;///< Container is being sold.  Open responds by kicking people out
 
@@ -162,6 +187,8 @@ public:
   virtual void harmAndForceExitAllContained( DamageInfo *info ) override; // apply canned damage against those contains
 	virtual Bool isEnclosingContainerFor( const Object *obj ) const override;	///< Does this type of Contain Visibly enclose its contents?
 	virtual Bool isPassengerAllowedToFire( ObjectID id = INVALID_ID ) const override;	///< Hey, can I shoot out of this container?
+	virtual Bool acceptsTargetsForPassengers() const override { return getOpenContainModuleData()->m_acceptTargetsForPassengers; }
+	virtual Bool measuresWeaponRangeFromContainerCenter() const override { return getOpenContainModuleData()->m_addOnWeaponRangeFromCenter; }
 
   virtual void setPassengerAllowedToFire( Bool permission = TRUE ) override { m_passengerAllowedToFire = permission; }	///< Hey, can I shoot out of this container?
 
@@ -269,6 +296,9 @@ protected:
 	ContainedItemsList	m_containList;						///< the list of contained objects
 	UnsignedInt					m_containListSize;							///< size of contained list
 private:
+
+	/// Recompute how much our current occupants slow us down, and tell our locomotor.
+	void recomputeLoadPenalty();
 
 	typedef std::map< ObjectID, ObjectEnterExitType, std::less<ObjectID>/**/> ObjectEnterExitMap;
 

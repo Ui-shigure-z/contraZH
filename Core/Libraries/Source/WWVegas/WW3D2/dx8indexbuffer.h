@@ -188,6 +188,7 @@ class SortingIndexBufferClass : public IndexBufferClass
 	friend IndexBufferClass::WriteLockClass;
 	friend IndexBufferClass::AppendLockClass;
 	friend DynamicIBAccessClass::WriteLockClass;
+	friend class DX8RigidFVFCategoryContainer;	// copies a mesh's indices out for the bloom replay
 public:
 	SortingIndexBufferClass(unsigned short index_count);
 	virtual ~SortingIndexBufferClass() override;

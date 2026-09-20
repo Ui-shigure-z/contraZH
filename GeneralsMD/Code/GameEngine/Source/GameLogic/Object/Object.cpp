@@ -69,6 +69,9 @@
 #include "GameLogic/Module/AutoHealBehavior.h"
 #include "GameLogic/Module/BehaviorModule.h"
 #include "GameLogic/Module/BodyModule.h"
+#if defined(GENERALS_ONLINE)
+#include "Common/StatsExporter.h"
+#endif
 #include "GameLogic/Module/CollideModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/DeployStyleAIUpdate.h"
@@ -98,6 +101,8 @@
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/SubdualDamageHelper.h"
 #include "GameLogic/Module/ChronoDamageHelper.h"
+#include "GameLogic/Module/JammingDamageHelper.h"
+#include "GameLogic/Module/FrozenDamageHelper.h"
 #include "GameLogic/Module/TempWeaponBonusHelper.h"
 #include "GameLogic/Module/BuffEffectHelper.h"
 #include "GameLogic/Module/ToppleUpdate.h"
@@ -245,6 +250,8 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 	m_buffEffectHelper(nullptr),
 	m_subdualDamageHelper(nullptr),
 	m_chronoDamageHelper(nullptr),
+	m_jammingDamageHelper(nullptr),
+	m_frozenDamageHelper(nullptr),
 	m_smcHelper(nullptr),
 	m_wsHelper(nullptr),
 	m_defectionHelper(nullptr),
@@ -399,6 +406,18 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 		chronoModuleData.setModuleTagNameKey(chronoHelperModuleDataTagNameKey);
 		m_chronoDamageHelper = newInstance(ChronoDamageHelper)(this, &chronoModuleData);
 		*curB++ = m_chronoDamageHelper;
+
+		static const NameKeyType jammingHelperModuleDataTagNameKey = NAMEKEY("ModuleTag_JammingDamageHelper");
+		static JammingDamageHelperModuleData jammingModuleData;
+		jammingModuleData.setModuleTagNameKey(jammingHelperModuleDataTagNameKey);
+		m_jammingDamageHelper = newInstance(JammingDamageHelper)(this, &jammingModuleData);
+		*curB++ = m_jammingDamageHelper;
+
+		static const NameKeyType frozenHelperModuleDataTagNameKey = NAMEKEY("ModuleTag_FrozenDamageHelper");
+		static FrozenDamageHelperModuleData frozenModuleData;
+		frozenModuleData.setModuleTagNameKey(frozenHelperModuleDataTagNameKey);
+		m_frozenDamageHelper = newInstance(FrozenDamageHelper)(this, &frozenModuleData);
+		*curB++ = m_frozenDamageHelper;
 	}
 
 	if (TheAI != nullptr
@@ -728,6 +747,8 @@ Object::~Object()
 	m_tempWeaponBonusHelper = nullptr;
 	m_subdualDamageHelper = nullptr;
 	m_chronoDamageHelper = nullptr;
+	m_jammingDamageHelper = nullptr;
+	m_frozenDamageHelper = nullptr;
 	m_buffEffectHelper = nullptr;
 	m_smcHelper = nullptr;
 	m_wsHelper = nullptr;
@@ -1446,9 +1467,14 @@ Real Object::getLargestWeaponRange() const
 //=============================================================================
 void Object::setFiringConditionForCurrentWeapon() const
 {
+	setFiringConditionForWeaponSlot( m_weaponSet.getCurWeaponSlot() );
+}
+
+//=============================================================================
+void Object::setFiringConditionForWeaponSlot( WeaponSlotType wslot ) const
+{
 	if (m_drawable)
 	{
-		WeaponSlotType wslot = m_weaponSet.getCurWeaponSlot();
 		ModelConditionFlags c = m_weaponSet.getModelConditionForWeaponSlot(wslot, WSF_FIRING);
 		m_drawable->clearAndSetModelConditionFlags(s_allWeaponFireFlags[wslot], c);
 	}
@@ -1572,6 +1598,32 @@ const Weapon* Object::getCurrentWeapon(WeaponSlotType* wslot) const
 	if (wslot)
 		*wslot = m_weaponSet.getCurWeaponSlot();
 	return m_weaponSet.getCurWeapon();
+}
+
+//=============================================================================
+Bool Object::isFiringWeaponSlot( WeaponSlotType wslot ) const
+{
+	if( !testStatus( OBJECT_STATUS_IS_ATTACKING ) )
+	{
+		return FALSE;
+	}
+
+	const Weapon* weapon = getCurrentWeapon();
+
+	return weapon != nullptr && weapon->getWeaponSlot() == wslot;
+}
+
+//=============================================================================
+void Object::stopFiringWeaponSlot( WeaponSlotType wslot )
+{
+	// Spending the shots ends the attack next frame by the same path a burst that runs out takes.
+	Weapon* weapon = getWeaponInWeaponSlot( wslot );
+	if( weapon )
+	{
+		weapon->setMaxShotCount( 0 );
+	}
+
+	releaseWeaponLock( LOCKED_TEMPORARILY );
 }
 
 //=============================================================================
@@ -2131,6 +2183,7 @@ void Object::attemptDamage( DamageInfo *damageInfo )
 			!BitIsSet(damageInfo->in.m_sourcePlayerMask, getControllingPlayer()->getPlayerMask()) &&
 			m_radarData != nullptr &&
 			isLocallyControlled() &&
+			!testStatus( OBJECT_STATUS_SCUTTLING ) &&
 			!isKindOf( KINDOF_NO_ATTACK_WARNING ) )
 		TheRadar->tryUnderAttackEvent( this );
 
@@ -2236,10 +2289,17 @@ void Object::healCompletely()
 //-------------------------------------------------------------------------------------------------
 void Object::setEffectivelyDead(Bool dead)
 {
+	const Bool wasDead = BitIsSet(m_privateStatus, EFFECTIVELY_DEAD);
 	if (dead)
 		BitSet(m_privateStatus, EFFECTIVELY_DEAD);
 	else
 		BitClear(m_privateStatus, EFFECTIVELY_DEAD);
+
+	// refresh the pick bit, or a corpse catches clicks meant for what lies behind it
+	if (wasDead != dead && m_drawable)
+	{
+		m_drawable->setSelectable(isSelectable());
+	}
 
 	if (dead)
 	{
@@ -2338,8 +2398,6 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 	}
 	else if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
 	{
-		//We've lost power -- make sure we aren't already out of power as the sounds shouldn't happen
-		//if you were already disabled.
 		if( !isDisabledByType( DISABLED_UNDERPOWERED ) &&
 				!isDisabledByType( DISABLED_EMP ) &&
 				!isDisabledByType( DISABLED_SUBDUED ) &&
@@ -2379,7 +2437,7 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 				// Doh. Also shouldn't be tinting when disabled by scripting.
 				// Doh^2. Also shouldn't be CLEARING tinting if we're disabling by held or script disabledness
 				// Doh^3. Unmanned is no tint too
-				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO)
+				if( type != DISABLED_HELD && type != DISABLED_SCRIPT_DISABLED && type != DISABLED_UNMANNED && type != DISABLED_TELEPORT && type != DISABLED_CHRONO && type != DISABLED_TELEPORT_RECOVER && type != DISABLED_FROZEN)
 				{
 					m_drawable->setTintStatus( TINT_STATUS_DISABLED );
 				}
@@ -2505,7 +2563,6 @@ Bool Object::clearDisabled( DisabledType type )
 
 	if( type == DISABLED_UNDERPOWERED || type == DISABLED_EMP || type == DISABLED_SUBDUED || type == DISABLED_HACKED )
 	{
-		//We've regained power-- make sure we aren't still disabled by another type.
 	 	AudioEventRTS sound;
 		if( (!isDisabledByType( DISABLED_UNDERPOWERED ) || type == DISABLED_UNDERPOWERED ) &&
 				(!isDisabledByType( DISABLED_EMP ) || type == DISABLED_EMP ) &&
@@ -2572,6 +2629,8 @@ Bool Object::clearDisabled( DisabledType type )
 	exceptions.set(DISABLED_UNMANNED);
 	exceptions.set(DISABLED_TELEPORT);
 	exceptions.set(DISABLED_CHRONO);
+	exceptions.set(DISABLED_TELEPORT_RECOVER);
+	exceptions.set(DISABLED_FROZEN);
 
 	DisabledMaskType myFlagsMinusExceptions = getDisabledFlags();
 	myFlagsMinusExceptions.clearAndSet(exceptions, DISABLEDMASK_NONE);
@@ -3225,6 +3284,13 @@ void Object::scoreTheKill( const Object *victim, const DamageInfo *damageInfo )
 		controller->getScoreKeeper()->addObjectDestroyed(victim);
 		controller->addSkillPointsForKill(this, victim);
 		controller->doBountyForKill(this, victim);
+#if defined(GENERALS_ONLINE)
+		if (TheGlobalData->m_exportStats)
+		{
+			const DamageInfo *damageInfo = victim->getBodyModule() ? victim->getBodyModule()->getLastDamageInfo() : nullptr;
+			StatsExporterRecordKill(this, victim, damageInfo);
+		}
+#endif
 	}
 
 	// Now handle experience, if we can gain any
@@ -3499,7 +3565,7 @@ Bool Object::isAbleToAttack() const
 	if( testStatus(OBJECT_STATUS_SOLD) )
 		return false;
 
-  if ( isDisabledByType( DISABLED_SUBDUED ) )
+  if ( isDisabledByType( DISABLED_SUBDUED ) || isDisabledByType( DISABLED_FROZEN ) )
     return FALSE; // A Microwave Tank is cooking me
 
 	//We can't fire if we, as a portable structure, are aptly disabled
@@ -3519,7 +3585,7 @@ Bool Object::isAbleToAttack() const
           if ( slaverID != INVALID_ID )
           {
             Object *slaver = TheGameLogic->findObjectByID( slaverID );
-            if ( slaver && slaver->isDisabledByType( DISABLED_SUBDUED ))
+            if ( slaver && ( slaver->isDisabledByType( DISABLED_SUBDUED ) || slaver->isDisabledByType( DISABLED_FROZEN ) ))
               return FALSE;// if my stinger site is subdued, so am I
           }
 
@@ -3596,6 +3662,17 @@ Bool Object::isAbleToAttack() const
 	const ContainModuleInterface* contain = getContain();
 	if( contain && contain->isPassengerAllowedToFire( getID() ) && contain->getContainCount() > 0 )
 		return true;
+
+	// A container that accepts targets on behalf of its passengers attacks through them the same
+	// way. The clause above cannot answer for it: isPassengerAllowedToFire( getID() ) hands the
+	// container's OWN id to overrides like OverlordContain's, which reject it by KindOf, so a
+	// genuinely weaponless carrier would never think itself able to attack and the delegation in
+	// ActionManager::getCanAttackObject would be unreachable. Like the clause above, this only
+	// says "maybe" -- CanAttack asks the passengers' weapons for the real answer.
+	if( contain && contain->acceptsTargetsForPassengers() && contain->isPassengerAllowedToFire() )
+	{
+		return true;
+	}
 
 	// if we have AI and a weapon, assume we know how to use it
 	if (getAIUpdateInterface() != nullptr && m_weaponSet.hasAnyWeapon())
@@ -4112,24 +4189,6 @@ void Object::onDisabledEdge(Bool becomingDisabled)
 	// rip through the behavior modules and call the onDisabledEdge for any modules that care
 	for( BehaviorModule **module = m_behaviors; *module; ++module )
 		(*module)->onDisabledEdge( becomingDisabled );
-
-	DozerAIInterface *dozerAI = getAI() ? getAI()->getDozerAIInterface() : nullptr;
-	if (dozerAI)
-	{
-		if (becomingDisabled)
-		{
-			// Have to say goodbye to the thing we might be building or repairing so someone else can do it.
-			if (dozerAI->getCurrentTask() != DOZER_TASK_INVALID)
-				dozerAI->cancelTask(dozerAI->getCurrentTask());
-		}
-		else
-		{
-#if !RETAIL_COMPATIBLE_CRC
-			// TheSuperHackers @bugfix Stubbjax 17/11/2025 Resume previous task when re-enabled.
-			dozerAI->resumePreviousTask();
-#endif
-		}
-	}
 
 	Player* controller = getControllingPlayer();
 	// can be called during game teardown, thus controller can be null
@@ -4862,6 +4921,12 @@ void Object::onCapture( Player *oldOwner, Player *newOwner )
 
 	// this gets the new owner some points
 	newOwner->getScoreKeeper()->addObjectCaptured(this);
+#if defined(GENERALS_ONLINE)
+	if (TheGlobalData->m_exportStats)
+	{
+		StatsExporterRecordCapture(this, oldOwner, newOwner);
+	}
+#endif
 
 	// rip through the behavior modules and call the onCapture for any modules that care
 	for( BehaviorModule **module = m_behaviors; *module; ++module )
@@ -4940,7 +5005,9 @@ void Object::onDie( DamageInfo *damageInfo )
 	if(m_team)
 		m_team->notifyTeamOfObjectDeath();
 
-	if (isLocallyViewed() && !selfInflicted) // wasLocallyViewed? :-)
+	// A unit scuttling itself by its own logic, such as a combat bike whose rider dismounted, is not a
+	// loss to report. The status is only ever set by the module staging that death.
+	if (isLocallyViewed() && !selfInflicted && !testStatus( OBJECT_STATUS_SCUTTLING )) // wasLocallyViewed? :-)
 	{
 		if (isKindOf(KINDOF_STRUCTURE) && isKindOf(KINDOF_MP_COUNT_FOR_VICTORY))
 		{
@@ -5719,6 +5786,45 @@ void Object::notifyChronoDamage(Real amount)
 }
 
 //-------------------------------------------------------------------------------------------------
+void Object::notifyJammingDamage( Real amount )
+{
+	if(m_jammingDamageHelper)
+		m_jammingDamageHelper->notifyJammingDamage( amount );
+
+	Drawable *draw = getDrawable();
+	BodyModuleInterface *body = getBodyModule();
+	if( draw && body )
+	{
+		// Normalize against the jam threshold, which is max health, not the accumulation cap.
+		Real maxHealth = body->getMaxHealth();
+		Real intensity = 0.0f;
+		if( maxHealth > 0.0f )
+			intensity = clamp( 0.0f, body->getCurrentJammingDamageAmount() / maxHealth, 1.0f );
+
+		draw->setJammingOverlayIntensity( intensity );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Object::notifyFrozenDamage( Real amount )
+{
+	if(m_frozenDamageHelper)
+		m_frozenDamageHelper->notifyFrozenDamage( amount );
+
+	Drawable *draw = getDrawable();
+	BodyModuleInterface *body = getBodyModule();
+	if( draw && body )
+	{
+		Real maxHealth = body->getMaxHealth();
+		Real intensity = 0.0f;
+		if( maxHealth > 0.0f )
+			intensity = clamp( 0.0f, body->getCurrentFrozenDamageAmount() / maxHealth, 1.0f );
+
+		draw->setFrozenOverlayIntensity( intensity );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void Object::applyBuff(const BuffTemplate* buffTemp, UnsignedInt duration, Object* sourceObj)
 {
@@ -5902,9 +6008,18 @@ void Object::doCommandButton( const CommandButton *commandButton, CommandSourceT
 					return;
 				}
 
+			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_FIRE_WEAPON:
 				if( ai )
 				{
+					// a toggle already firing this weapon stops instead, and starts like FIRE_WEAPON otherwise
+					if( commandButton->getCommandType() == GUI_COMMAND_TOGGLE_FIRE_WEAPON
+						&& isFiringWeaponSlot( commandButton->getWeaponSlot() ) )
+					{
+						stopFiringWeaponSlot( commandButton->getWeaponSlot() );
+						return;
+					}
+
 					if( !BitIsSet( commandButton->getOptions(), COMMAND_OPTION_NEED_OBJECT_TARGET ) && !BitIsSet( commandButton->getOptions(), NEED_TARGET_POS ) )
 					{
 						setWeaponLock( commandButton->getWeaponSlot(), LOCKED_TEMPORARILY );
@@ -6122,6 +6237,7 @@ void Object::doCommandButtonAtObject( const CommandButton *commandButton, Object
 			case GUI_COMMAND_REVERSE_MOVE:
 			case GUI_COMMAND_HOLD_FIRE:
 			case GUI_COMMAND_TOGGLE_DEPLOY:
+			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_AUTO_FILL:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
@@ -6243,6 +6359,7 @@ void Object::doCommandButtonAtPosition( const CommandButton *commandButton, cons
 			case GUI_COMMAND_SWITCH_WEAPON:
 			case GUI_COMMAND_HOLD_FIRE:
 			case GUI_COMMAND_TOGGLE_DEPLOY:
+			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUICOMMANDMODE_HIJACK_VEHICLE:
 			case GUICOMMANDMODE_CONVERT_TO_CARBOMB:
 #ifdef ALLOW_SURRENDER
@@ -6287,6 +6404,7 @@ void Object::doCommandButtonUsingWaypoints( const CommandButton *commandButton, 
 			case GUI_COMMAND_REVERSE_MOVE:
 			case GUI_COMMAND_HOLD_FIRE:
 			case GUI_COMMAND_TOGGLE_DEPLOY:
+			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_AUTO_FILL:
 			case GUI_COMMAND_STOP:
 			case GUI_COMMAND_DOZER_CONSTRUCT:

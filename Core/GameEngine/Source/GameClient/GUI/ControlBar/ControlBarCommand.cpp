@@ -537,6 +537,7 @@ void ControlBar::resetBuildQueueData()
 
 		m_queueData[ i ].control = nullptr;
 		m_queueData[ i ].type = PRODUCTION_INVALID;
+		m_queueData[ i ].producer = nullptr;
 		m_queueData[ i ].productionID = PRODUCTIONID_INVALID;
 		m_queueData[ i ].upgradeToResearch = nullptr;
 
@@ -614,6 +615,8 @@ void ControlBar::populateBuildQueue( Object *producer )
 		// don't go above how many queue windows we have
 		if( windowIndex >= MAX_BUILD_QUEUE_BUTTONS )
 			break;  // exit for
+
+		m_queueData[ windowIndex ].producer = producer;
 
 		// set the command into the queue button
 		if( production->getProductionType() == PRODUCTION_UNIT )
@@ -1119,6 +1122,10 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 		disabled = false;
 	}
 
+	//ShigureUi 08/09/2026 when not finished structure multiselected, must return COMMAND_RESTRICTED
+	if (obj->isStructure() && obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+		return COMMAND_RESTRICTED;
+
  	if (disabled && !forceDisabledEvaluation)
  	{
 
@@ -1203,6 +1210,9 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			if( dozerAI->isTaskPending( DOZER_TASK_BUILD ) == TRUE )
 				return COMMAND_RESTRICTED;
 
+			if( dozerAI->canBuildTemplate( whatToBuild ) == FALSE )
+				return COMMAND_RESTRICTED;
+
 			// return whether or not the player can build this thing
 			if( player->canBuild( whatToBuild ) == FALSE )
 				return COMMAND_RESTRICTED;
@@ -1223,7 +1233,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 				return COMMAND_HIDDEN;
 
     //since the container can be subdued, , M Lorenzen 8/11
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1325,6 +1335,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			break;
 		}
 
+		case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 		case GUI_COMMAND_FIRE_WEAPON:
 		{
 			AIUpdateInterface *ai = obj->getAIUpdateInterface();
@@ -1332,6 +1343,13 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			// no ai, can't possibly fire weapon
 			if( ai == nullptr )
 				return COMMAND_RESTRICTED;
+
+			// Must precede the readiness checks below, which grey the button out between shots.
+			if( command->getCommandType() == GUI_COMMAND_TOGGLE_FIRE_WEAPON
+				&& obj->isFiringWeaponSlot( command->getWeaponSlot() ) )
+			{
+				return COMMAND_ACTIVE;
+			}
 
 			// ask the ai if the weapon is ready to fire
 			const Weapon* w = obj->getWeaponInWeaponSlot( command->getWeaponSlot() );
@@ -1414,7 +1432,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			//
 
     //since the container can be subdued, the above is no longer true, M Lorenzen 8/11
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1427,7 +1445,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			if( !obj->getContain() || obj->getContain()->getContainCount() <= 0 )
 				return COMMAND_RESTRICTED;
 
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1449,7 +1467,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 					return COMMAND_RESTRICTED;	// full
 			}
 
-			if( obj->isDisabledByType( DISABLED_SUBDUED ) )
+			if( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
 				return COMMAND_RESTRICTED;
 
 			break;
@@ -1602,10 +1620,21 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
 			for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 			{
-				Drawable *draw = *it;
-				if( draw && draw->getObject() && draw->getObject()->isLocallyControlled() && draw->getObject()->getCurrentWeapon())
+				if (!*it || !(*it)->getObject())
+					continue;
+
+				Object* obj = (*it)->getObject();
+
+				// TheSuperHackers @feature With a type focused in the smart selection row, only that type
+				// contributes, so the bar shows its command set rather than the group's common subset.
+				if (!isSmartSelectionFocused(obj))
 				{
-					WeaponSlotType wslot = draw->getObject()->getCurrentWeapon()->getWeaponSlot();
+					continue;
+				}
+
+				if (obj->isLocallyControlled() && obj->getCurrentWeapon())
+				{
+					WeaponSlotType wslot = obj->getCurrentWeapon()->getWeaponSlot();
 					if (wslot != command->getWeaponSlot())
 						return COMMAND_AVAILABLE;
 				}

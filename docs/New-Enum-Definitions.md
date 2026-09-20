@@ -36,6 +36,8 @@ For synced weapons (AutoChooseSources) you can use "SYNC_TO_WEAPON_FOUR", etc.
 ### Functional DamageTypes
 
 * `CHRONO_GUN` - Disables units and removes them after a health treshold is reached. Uses parameters from GameData. TODO: detailed tutorial
+* `SUBDUAL_JAMMING` / `SUBDUAL_JAMMING_UNRESISTABLE` - Jamming damage pool; see [Subdual Jamming](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#subdual-jamming)
+* `SUBDUAL_FROZEN` / `SUBDUAL_FROZEN_UNRESISTABLE` - Frozen damage pool that disables like retail subdual; see [Subdual Frozen](https://github.com/Andreas-W/GeneralsGameCode_Modding/wiki/Objects-&-Modules#subdual-frozen)
 
 ## DeathTypes
 
@@ -123,6 +125,9 @@ Conditionstates that are used for VTOL aircraft (i.e. JetAIUpdate with NeedsRunw
 
 Conditionstate used for TeleporterAIUpdate
 * `TELEPORT_RECOVER`
+
+Conditionstate set while a unit is disabled by `SUBDUAL_FROZEN` damage
+* `FROZEN`
 
 ## WeaponBonus types
 

@@ -603,6 +603,10 @@ PushButtonData * getNewPushButtonData()
 	p->overlayImage = nullptr;
 	// TheSuperHackers @feature no countdown until someone asks for one
 	p->countdownSeconds = -1;
+	p->healthRatio = -1.0f;
+	p->ammoInClip = 0;
+	p->ammoClipSize = 0;
+	p->cornerLetter = 0;
 	return p;
 }
 
@@ -682,6 +686,66 @@ void GadgetButtonDrawCountdown( GameWindow *g, Int seconds )
 		pData = getNewPushButtonData();
 	}
 	pData->countdownSeconds = seconds;
+	g->winSetUserData(pData);
+
+}
+
+// GadgetButtonDrawHealthBar ==================================================
+/** TheSuperHackers @feature Show a health bar along the bottom of the button. One shot like
+	* the countdown, so it must be re-set every frame. */
+//=============================================================================
+void GadgetButtonDrawHealthBar( GameWindow *g, Real ratio )
+{
+
+	if( g == nullptr )
+		return;
+
+	PushButtonData *pData = (PushButtonData *)g->winGetUserData();
+	if(!pData)
+	{
+		pData = getNewPushButtonData();
+	}
+	pData->healthRatio = ratio;
+	g->winSetUserData(pData);
+
+}
+
+// GadgetButtonDrawAmmoBar ====================================================
+/** Show a clip bar above the health bar. One shot like the health bar. */
+//=============================================================================
+void GadgetButtonDrawAmmoBar( GameWindow *g, Int ammoInClip, Int clipSize )
+{
+
+	if( g == nullptr )
+		return;
+
+	PushButtonData *pData = (PushButtonData *)g->winGetUserData();
+	if(!pData)
+	{
+		pData = getNewPushButtonData();
+	}
+	pData->ammoInClip = ammoInClip;
+	pData->ammoClipSize = clipSize;
+	g->winSetUserData(pData);
+
+}
+
+// GadgetButtonSetCornerLetter ================================================
+/** TheSuperHackers @feature A letter in the top left of the button, where the hotkey overlay
+	* draws. Stays until set to 0. */
+//=============================================================================
+void GadgetButtonSetCornerLetter( GameWindow *g, Char letter )
+{
+
+	if( g == nullptr )
+		return;
+
+	PushButtonData *pData = (PushButtonData *)g->winGetUserData();
+	if(!pData)
+	{
+		pData = getNewPushButtonData();
+	}
+	pData->cornerLetter = letter;
 	g->winSetUserData(pData);
 
 }

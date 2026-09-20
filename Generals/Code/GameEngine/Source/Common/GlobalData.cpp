@@ -81,6 +81,9 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "UseTrees",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_useTrees ) },
 	{ "UseFPSLimit",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_useFpsLimit ) },
 	{ "QueueReorder",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_queueReorder ) },
+	{ "BatchParticles",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_batchParticles ) },
+	{ "SkipTranslucencySort",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_skipTranslucencySort ) },
+	{ "BackToFront",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_backToFront ) },
 	{ "DumpAssetUsage",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_dumpAssetUsage ) },
 	{ "FramesPerSecondLimit",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_framesPerSecondLimit ) },
 	{ "ChipsetType",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_chipSetType ) },
@@ -543,6 +546,9 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "ExtraLogging",								INI::parseBool,				nullptr,			offsetof( GlobalData, m_extraLogging ) },
 #endif
 
+	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
+	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
+
 	{ nullptr,					nullptr,						nullptr,						0 }
 
 };
@@ -566,7 +572,20 @@ GlobalData::GlobalData()
 
   m_TiVOFastMode = FALSE;
   m_queueReorder = FALSE;
+  m_batchParticles = FALSE;
+  m_skipTranslucencySort = FALSE;
+  m_backToFront = FALSE;
+  m_useBloom = FALSE;
+  m_bloomStrength = 0.5f;
+  m_bloomDebug = FALSE;
+  m_laserRef = FALSE;
+  m_alliedDecalMode = AlliedDecalMode_Default;
+  m_laserGlowColor = 0;
+  m_laserGlowIntensity = 0.7f;
 	m_newRadar = FALSE;
+	m_smartSelection = TRUE;
+	m_smartSelectionUseMouse = TRUE;
+	m_smartCommandGroup = TRUE;
 	m_radarBlipSize = RadarBlipSize_Default;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
@@ -854,6 +873,7 @@ GlobalData::GlobalData()
 #endif
 	m_minCameraHeight = 100.0f;
 	m_maxCameraHeight = 300.0f;
+	m_defaultMaxCameraHeight = 0.0f;
 	m_terrainHeightAtEdgeOfMap = 0.0f;
 
 	m_unitDamagedThresh = 0.5f;
@@ -1193,6 +1213,8 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	// parse the ini weapon definition
 	ini->initFromINI( TheWritableGlobalData, s_GlobalDataFieldParseTable );
 
+	TheWritableGlobalData->m_defaultMaxCameraHeight = TheWritableGlobalData->m_maxCameraHeight;
+
 	TheWritableGlobalData->m_userDataDir.clear();
 	TheWritableGlobalData->m_userDataDir = BuildUserDataPathFromIni();
 	CreateDirectory(TheWritableGlobalData->m_userDataDir.str(), nullptr);
@@ -1201,6 +1223,9 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	OptionPreferences optionPref;
 	TheWritableGlobalData->m_useAlternateMouse = optionPref.getAlternateMouseModeEnabled();
 	TheWritableGlobalData->m_newRadar = optionPref.getNewRadarEnabled();
+	TheWritableGlobalData->m_smartSelection = optionPref.getSmartSelectionEnabled();
+	TheWritableGlobalData->m_smartSelectionUseMouse = optionPref.getSmartSelectionUseMouse();
+	TheWritableGlobalData->m_smartCommandGroup = optionPref.getSmartCommandGroupEnabled();
 	TheWritableGlobalData->m_radarBlipSize = optionPref.getRadarBlipSize();
 	TheWritableGlobalData->m_useRightMouseScrollWithAlternateMouse = optionPref.getRightMouseScrollWithAlternateMouseEnabled();
 	TheWritableGlobalData->m_clientRetaliationModeEnabled = optionPref.getRetaliationModeEnabled();
@@ -1229,6 +1254,11 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_antiAliasLevel = optionPref.getAntiAliasing();
 	TheWritableGlobalData->m_textureFilteringMode = optionPref.getTextureFilterMode();
 	TheWritableGlobalData->m_textureAnisotropyLevel = optionPref.getTextureAnisotropyLevel();
+	TheWritableGlobalData->m_useBloom = optionPref.getBloomEnabled();
+	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
+	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
+	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
+	TheWritableGlobalData->m_alliedDecalMode = optionPref.getAlliedDecalMode();
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.

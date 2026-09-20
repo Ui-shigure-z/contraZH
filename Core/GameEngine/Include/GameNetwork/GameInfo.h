@@ -47,8 +47,17 @@ enum
 {
 	PLAYERTEMPLATE_RANDOM = -1,
 	PLAYERTEMPLATE_OBSERVER = -2,
-	PLAYERTEMPLATE_MIN = PLAYERTEMPLATE_OBSERVER
+	PLAYERTEMPLATE_RANDOM_SIDE_FIRST = -3,	// -3 - n picks a random general of the nth base side
+	PLAYERTEMPLATE_MAX_RANDOM_SIDES = 32,
+	PLAYERTEMPLATE_MIN = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - PLAYERTEMPLATE_MAX_RANDOM_SIDES + 1
 };
+
+Int GetRandomBaseSideCount();
+AsciiString GetRandomBaseSide( Int n );
+Bool IsRandomBaseSidePlayerTemplate( Int playerTemplate );
+Bool IsRandomPlayerTemplate( Int playerTemplate );
+Bool IsValidSlotPlayerTemplate( Int playerTemplate );
+UnicodeString GetRandomPlayerTemplateDisplayName( Int playerTemplate );
 
 /**
   * GameSlot class - maintains information about the contents of a
@@ -80,7 +89,7 @@ public:
 
 	void setPlayerTemplate( Int playerTemplate )
 	{ m_playerTemplate = playerTemplate;
-		if (playerTemplate <= PLAYERTEMPLATE_MIN)
+		if (playerTemplate == PLAYERTEMPLATE_OBSERVER)
 			m_startPos = -1;
 	 }
 	Int getPlayerTemplate() const { return m_playerTemplate; }
@@ -235,6 +244,8 @@ public:
 
   inline Bool oldFactionsOnly() const;
   inline void setOldFactionsOnly( Bool oldFactionsOnly );
+  inline Int getMaxCameraHeight() const;
+  inline void setMaxCameraHeight( Int maxCameraHeight );
 
 protected:
 	Int m_preorderMask;
@@ -257,6 +268,7 @@ protected:
   Money         m_startingCash;
   UnsignedShort m_superweaponRestriction;
   Bool m_oldFactionsOnly; // Only USA, China, GLA -- not USA Air Force General, GLA Toxic General, et al
+  Int m_maxCameraHeight; // Shared camera limit for every player, 0 when the host set none
 };
 
 extern GameInfo *TheGameInfo;
@@ -278,6 +290,8 @@ const Money&GameInfo::getStartingCash() const         { return m_startingCash; }
 UnsignedShort GameInfo::getSuperweaponRestriction() const { return m_superweaponRestriction; }
 Bool        GameInfo::oldFactionsOnly() const           { return m_oldFactionsOnly; }
 void        GameInfo::setOldFactionsOnly( Bool oldFactionsOnly ) { m_oldFactionsOnly = oldFactionsOnly; }
+Int         GameInfo::getMaxCameraHeight() const        { return m_maxCameraHeight; }
+void        GameInfo::setMaxCameraHeight( Int maxCameraHeight ) { m_maxCameraHeight = maxCameraHeight; }
 
 AsciiString GameInfoToAsciiString( const GameInfo *game );
 Bool ParseAsciiStringToGameInfo( GameInfo *game, AsciiString options );

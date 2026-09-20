@@ -70,6 +70,7 @@
 
 #if USE_STD_FROM_CHARS_PARSING
 #include <charconv>
+#include <limits>
 #include <string_view>
 #include <type_traits>
 #endif
@@ -964,7 +965,7 @@ void INI::parsePercentToReal( INI* ini, void * /*instance*/, void *store, const 
 //-------------------------------------------------------------------------------------------------
 void INI::parseBitString8( INI* ini, void * /*instance*/, void *store, const void* userData )
 {
-	UnsignedInt tmp;
+	UnsignedInt tmp = *(Byte*)store;
 	INI::parseBitString32(ini, nullptr, &tmp, userData);
 	if (tmp & 0xffffff00)
 	{
@@ -1721,6 +1722,9 @@ Type scanType(std::string_view token)
 {
 	DEBUG_ASSERTCRASH(!token.empty(), ("token is not expected to be empty"));
 
+	// Capture the sign before any prefix stripping so overflow saturation stays correct.
+	const Bool negative = !token.empty() && token[0] == '-';
+
 	// Unlike sscanf, std::from_chars cannot parse "+".
 	// Consume the plus symbol to accommodate custom ini files that have numbers prefixed with a plus.
 	if (token[0] == '+')
@@ -1729,12 +1733,38 @@ Type scanType(std::string_view token)
 	}
 
 	// Unlike sscanf, std::from_chars cannot parse "-" as unsigned integer.
-	std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
+	using WideType = std::conditional_t<std::is_integral_v<Type>, Int64, Type>;
+	WideType result{};
 	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
+
+	// Saturate out of range numbers instead of failing, so custom ini files that rely on
+	// the old lenient parsing still load. Signed types clamp to their bounds; unsigned
+	// negatives clamp to zero rather than wrapping the way legacy sscanf did.
+	if (ec == std::errc::result_out_of_range)
+	{
+		return negative ? std::numeric_limits<Type>::lowest() : (std::numeric_limits<Type>::max)();
+	}
 
 	if (ec != std::errc{})
 	{
 		throw INI_INVALID_DATA;
+	}
+
+	// The wide type parses values that no longer fit once narrowed, so clamp rather than wrap.
+	if constexpr (std::is_integral_v<Type>)
+	{
+		const WideType lowest = static_cast<WideType>(std::numeric_limits<Type>::lowest());
+		const WideType highest = static_cast<WideType>((std::numeric_limits<Type>::max)());
+
+		if (result < lowest)
+		{
+			return std::numeric_limits<Type>::lowest();
+		}
+
+		if (result > highest)
+		{
+			return (std::numeric_limits<Type>::max)();
+		}
 	}
 
 	return static_cast<Type>(result);

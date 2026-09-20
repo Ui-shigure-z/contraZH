@@ -87,6 +87,16 @@ enum HealthBarDisplayMode CPP_11(: Int)
 	HealthBarDisplayMode_Default = HealthBarDisplayMode_Classic
 };
 
+enum AlliedDecalMode CPP_11(: Int)
+{
+	AlliedDecalMode_Hidden = 0,	///< only your own power decals are drawn (retail behavior)
+	AlliedDecalMode_HouseColor,	///< allied power decals drawn in the ally's player color
+	AlliedDecalMode_ArmyColor,	///< allied power decals drawn in the ally's faction color
+
+	AlliedDecalMode_Count,
+	AlliedDecalMode_Default = AlliedDecalMode_HouseColor
+};
+
 //-----------------------------------------------------------------------------
 // OptionsPreferences options menu class
 //-----------------------------------------------------------------------------
@@ -121,9 +131,20 @@ public:
 	Bool getRightMouseScrollWithAlternateMouseEnabled() const;
 	Bool getRetaliationModeEnabled();
 	HealthBarDisplayMode getHealthBarDisplayMode() const;
+	AlliedDecalMode getAlliedDecalMode() const;
 	BuildTimerDisplayMode getBuildTimerDisplayMode() const;
 	CastMode getCastMode() const;
 	Bool getSelectionCircleEnabled() const;
+	// Options.ini: DefensesRangeCircle = Yes rings the attack range of an armed structure being placed
+	Bool getDefensesRangeCircleEnabled() const;
+	Bool getObjectDecalsEnabled() const;
+	// Options.ini: Bloom = Yes adds a glow around additive particles, BloomStrength (0..1) sets how bright
+	Bool getBloomEnabled() const;
+	Real getBloomStrength() const;
+	Bool getBloomDebugEnabled() const;
+	// Options.ini: LaserRef = Yes lights the ground along each laser beam
+	Bool getLaserRefEnabled() const;
+	Bool getBorderlessWindowEnabled() const;
 	Bool getEasyMilitaryDragEnabled() const;
 	Bool getSmartPipsEnabled() const;
 	Bool getNumericalHealthEnabled() const;
@@ -148,6 +169,11 @@ public:
 	Bool getDoubleClickAttackMoveEnabled();
 	Int getJpegQuality() const;
 	Real getScrollFactor();
+
+	// Options.ini: UseCustomMaxCameraHeight = Yes lets MaxCameraHeight (210..1000) replace GameData's limit
+	enum { MaxCameraHeightMin = 210, MaxCameraHeightMax = 1000 };
+	Bool getUseCustomMaxCameraHeight() const;
+	Real getMaxCameraHeight() const;
 	Bool getDrawScrollAnchor();
 	Bool getMoveScrollAnchor();
 	Bool getCursorCaptureEnabledInWindowedGame() const;
@@ -203,6 +229,16 @@ public:
 	Real getResolutionFontAdjustment();
 
 	Bool getShowMoneyPerMinute() const;
+#if defined(GENERALS_ONLINE)
+	Int getObserverNotificationFontSize() const;
+	Bool getObserverNotificationSpecialPowerUsage() const;
+	Bool getObserverNotificationSpecialPowerPurchase() const;
+	Bool getObserverNotificationMilestone() const;
+#endif
+
+	Bool getSmartSelectionEnabled() const;
+	Bool getSmartSelectionUseMouse() const;
+	Bool getSmartCommandGroupEnabled() const;
 
 	Real getGameWindowTransitionSpeedMultiplier() const;
 

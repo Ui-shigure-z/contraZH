@@ -37,6 +37,7 @@
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
 #include "Common/GameLOD.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
 #include "Common/INI.h"
@@ -722,6 +723,17 @@ static void checkForDuplicateColors( GameInfo *game )
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+static UnsignedInt mixRandomSeed( UnsignedInt seed, Int slot )
+{
+	UnsignedInt h = seed ^ (UnsignedInt)(slot * 0x9E3779B9);
+	h ^= h >> 16;
+	h *= 0x85EBCA6B;
+	h ^= h >> 13;
+	h *= 0xC2B2AE35;
+	h ^= h >> 16;
+	return h;
+}
+
 static void populateRandomSideAndColor( GameInfo *game )
 {
 	if(!game)
@@ -765,10 +777,26 @@ static void populateRandomSideAndColor( GameInfo *game )
 
 		// clean up random factions
 		Int playerTemplateIdx = slot->getPlayerTemplate();
+		const Int requestedTemplateIdx = playerTemplateIdx;
 		DEBUG_LOG(("Player %d has playerTemplate index %d", i, playerTemplateIdx));
+#ifdef MORE_RANDOM
+		std::vector<Int> sideSlots;
+		if (IsRandomBaseSidePlayerTemplate(requestedTemplateIdx))
+		{
+			AsciiString baseSide = GetRandomBaseSide(PLAYERTEMPLATE_RANDOM_SIDE_FIRST - requestedTemplateIdx);
+			for (size_t s = 0; s < startSlots.size(); ++s)
+			{
+				if (ThePlayerTemplateStore->getNthPlayerTemplate(startSlots[s])->getBaseSide() == baseSide)
+				{
+					sideSlots.push_back(startSlots[s]);
+				}
+			}
+		}
+		const std::vector<Int> &pool = sideSlots.empty() ? startSlots : sideSlots;
+#endif
 		while (playerTemplateIdx != PLAYERTEMPLATE_OBSERVER && (playerTemplateIdx < 0 || playerTemplateIdx >= ThePlayerTemplateStore->getPlayerTemplateCount()))
 		{
-			DEBUG_ASSERTCRASH(playerTemplateIdx == PLAYERTEMPLATE_RANDOM, ("Non-random bad playerTemplate %d in slot %d", playerTemplateIdx, i));
+			DEBUG_ASSERTCRASH(IsRandomPlayerTemplate(requestedTemplateIdx), ("Non-random bad playerTemplate %d in slot %d", requestedTemplateIdx, i));
 #ifdef MORE_RANDOM
 			// our RNG is basically shit -- horribly nonrandom at the start of the sequence.
 			// get a few values at random to get rid of the dreck.
@@ -778,8 +806,13 @@ static void populateRandomSideAndColor( GameInfo *game )
 			{
 				GameLogicRandomValue(0, 1);	// ignore result
 			}
-			Int idxIdx = GameLogicRandomValue(0, 1000) % startSlots.size();
-			playerTemplateIdx = startSlots[idxIdx];
+			Int idxIdx = GameLogicRandomValue(0, 1000);
+			if (!sideSlots.empty())
+			{
+				idxIdx += mixRandomSeed(GetGameLogicRandomSeed(), i) % 1000;
+			}
+			idxIdx %= pool.size();
+			playerTemplateIdx = pool[idxIdx];
 #else
 			playerTemplateIdx = GameLogicRandomValue(0, ThePlayerTemplateStore->getPlayerTemplateCount()-1);
 #endif
@@ -817,6 +850,32 @@ static void populateRandomSideAndColor( GameInfo *game )
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 static const WaypointMap s_emptyWaypoints = WaypointMap();
+
+// Picks the camera limit this game plays with: the host's shared value, the INI default when
+// humans share a game without one, or the player's own Options.ini choice otherwise.
+static void applyMaxCameraHeightForGame()
+{
+	Real height = 0.0f;
+	if (TheGameInfo != nullptr && TheGameInfo->getMaxCameraHeight() > 0)
+	{
+		height = (Real)TheGameInfo->getMaxCameraHeight();
+	}
+	else if (TheGameInfo != nullptr && TheGameInfo->isMultiPlayer())
+	{
+		height = TheGlobalData->m_defaultMaxCameraHeight;
+	}
+	else
+	{
+		OptionPreferences prefs;
+		height = prefs.getMaxCameraHeight();
+	}
+
+	TheWritableGlobalData->m_maxCameraHeight = height;
+	if (TheTacticalView != nullptr)
+	{
+		TheTacticalView->setMaxHeightAboveGround(height);
+	}
+}
 
 static void populateRandomStartPosition( GameInfo *game )
 {
@@ -1488,7 +1547,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			d.setInt(TheKey_multiplayerStartIndex, slot->getStartPos());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->isLocalPlayer());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->getIP() == game->getLocalIP());
-			d.setBool(TheKey_multiplayerIsLocal, slot->isHuman() && (slot->getName().compare(TheGameInfo->getSlot(TheGameInfo->getLocalSlotNum())->getName().str()) == 0));
+			const Bool isLocalPlayer = slot->isHuman() && i == TheGameInfo->getLocalSlotNum();
+			d.setBool(TheKey_multiplayerIsLocal, isLocalPlayer);
 
 /*
 			if (slot->getIP() == game->getLocalIP())
@@ -1509,9 +1569,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				}
 			}
 
-			AsciiString slotNameAscii;
-			slotNameAscii.translate(slot->getName());
-			if (slot->isHuman() && TheGameInfo->getSlotNum(slotNameAscii) == TheGameInfo->getLocalSlotNum()) {
+			if (isLocalPlayer)
+			{
 				localSlot = i;
 			}
 			TheSidesList->addSide(&d);
@@ -2093,6 +2152,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_PRELOAD_ASSETS);
 
+	applyMaxCameraHeightForGame();
 	TheTacticalView->setAngleToDefault();
 	TheTacticalView->setPitchToDefault();
 	TheTacticalView->setZoomToDefault();
@@ -2823,11 +2883,6 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 		return;
 	}
 
-	if (!obj->isMassSelectable() && !createNewSelection)
-	{
-		DEBUG_LOG(("GameLogic::selectObject() - Object attempted to be added to selection, but isn't mass-selectable."));
-		return;
-	}
 
 	while( playerMask )
 	{
@@ -2839,6 +2894,32 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 
 		CRCGEN_LOG(( "Creating AIGroup in GameLogic::selectObject()" ));
 		AIGroupPtr group = TheAI->createGroup();
+
+		// a structure may only join a selection made of its own kind
+		if (!createNewSelection && !obj->isMassSelectable())
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			player->getCurrentSelectionAsAIGroup(group);
+#else
+			player->getCurrentSelectionAsAIGroup(group.Peek());
+#endif
+			const VecObjectID &ids = group->getAllIDs();
+			const Object *first = ids.empty() ? nullptr : findObjectByID(ids.front());
+			const Bool sameKind = first && first->getTemplate() == obj->getTemplate();
+#if RETAIL_COMPATIBLE_AIGROUP
+			TheAI->destroyGroup(group);
+#else
+			group->removeAll();
+#endif
+			if (!sameKind)
+			{
+				return;
+			}
+#if RETAIL_COMPATIBLE_AIGROUP
+			group = TheAI->createGroup();
+#endif
+		}
+
 		group->add(obj);
 
 		// add all selected agents to the AI group

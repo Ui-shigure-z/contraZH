@@ -95,6 +95,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/FlatHeightMap.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 
 
@@ -425,6 +426,11 @@ void BaseHeightMapRenderObjClass::ReleaseResources()
 
 	if (TheSmudgeManager)
 		TheSmudgeManager->ReleaseResources();
+
+	if (TheW3DBloom)
+	{
+		TheW3DBloom->ReleaseResources();
+	}
 
 	if (TheSnowManager)
 		((W3DSnowManager *)TheSnowManager)->ReleaseResources();
@@ -2058,12 +2064,9 @@ Int BaseHeightMapRenderObjClass::getStaticDiffuse(Int x, Int y)
 
 	RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 	if (pMyScene) {
-		RefRenderObjListIterator *it = pMyScene->createLightsIterator();
-		doTheLight(&vertex, lightRay, &normalAtTexel, it, 1.0f);
-		if (it) {
-		 pMyScene->destroyLightsIterator(it);
-		 it = nullptr;
-		}
+		RefRenderObjListClass *lightlist = pMyScene->getLightList();
+		RefRenderObjListIterator it(lightlist);
+		doTheLight(&vertex, lightRay, &normalAtTexel, &it, 1.0f);
 	} else {
 		doTheLight(&vertex, lightRay, &normalAtTexel, nullptr, 1.0f);
 	}
@@ -2397,6 +2400,9 @@ void BaseHeightMapRenderObjClass::renderShoreLines(CameraClass *pCamera)
 	if (DX8Wrapper::getBackBufferFormat() != WW3D_FORMAT_A8R8G8B8)
 		return;	//can't apply effect on cards without destination alpha
 
+	if (!m_map)
+		return;
+
 	Int vertexCount = 0;
 	Int indexCount = 0;
 	Int drawEdgeY=m_map->getDrawOrgY()+m_map->getDrawHeight()-1;
@@ -2559,6 +2565,9 @@ void BaseHeightMapRenderObjClass::renderShoreLinesSorted(CameraClass *pCamera)
 	//Check if video card is capable of using this effect
 	if (DX8Wrapper::getBackBufferFormat() != WW3D_FORMAT_A8R8G8B8)
 		return;	//can't apply effect on cards without destination alpha
+
+	if (!m_map)
+		return;
 
 	Int vertexCount = 0;
 	Int indexCount = 0;

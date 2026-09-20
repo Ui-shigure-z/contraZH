@@ -213,6 +213,8 @@ public:
 		MSG_META_VIEW_TEAM9,												///< center view on given user-defined team (but do not affect selection)
 
 		MSG_META_SELECT_MATCHING_UNITS,              ///< selects matching units, used for both on screen and across map
+		MSG_META_SMART_SELECTION_NEXT_TYPE,					///< TheSuperHackers @feature narrow the selection to the next type in the smart selection row
+		MSG_META_SMART_SELECTION_PREV_TYPE,					///< TheSuperHackers @feature narrow the selection to the previous type in the smart selection row
 		MSG_META_SELECT_NEXT_UNIT,									///< select 'next' unit
 		MSG_META_SELECT_PREV_UNIT,									///< select 'prev' unit
 		MSG_META_SELECT_NEXT_WORKER,                ///< select 'next' worker
@@ -261,6 +263,7 @@ public:
 		MSG_META_TAKE_SCREENSHOT_PNG,							///< TheSuperHackers @feature Take lossless PNG screenshot
 		MSG_META_ALL_CHEER,													///< Yay! :)
 		MSG_META_TOGGLE_ATTACKMOVE,									///< enter attack-move mode
+		MSG_META_TOGGLE_REVERSEMOVE,								///< enter reverse-move mode
 
 		MSG_META_BEGIN_CAMERA_ROTATE_LEFT,
 		MSG_META_END_CAMERA_ROTATE_LEFT,
@@ -462,6 +465,9 @@ public:
 		MSG_CHEAT_SHOW_COMMAND_SET,			///< TheSuperHackers @feature show the CommandSet each object uses
 		MSG_CHEAT_SHOW_WEAPON_SET,			///< TheSuperHackers @feature show the WeaponSet flags each object has
 		MSG_CHEAT_SHOW_ARMOR_SET,			///< TheSuperHackers @feature show the Armor each object uses
+		MSG_CHEAT_CYCLE_CAMERA_MODE,		///< cycle default camera -> free camera -> chase selected object
+		MSG_CHEAT_CYCLE_SKYBOX,				///< cycle the skybox through the preset texture sets
+		MSG_CHEAT_CYCLE_TERRAIN_MODE,		///< cycle the terrain: normal -> hidden on black -> hidden on green
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 
@@ -637,6 +643,9 @@ public:
 		MSG_TOGGLE_DEPLOY,													///< Toggle the deployed state of the selected group
 		MSG_MOVE_UNIT_CREATE_EARLIER,								///< (productionID) move the queued unit one position earlier in its production queue
 		MSG_MOVE_UPGRADE_EARLIER,										///< (upgrade name key) move the queued upgrade one position earlier in its production queue
+		MSG_TOGGLE_FIRE_WEAPON,											///< (weapon slot, max shots) start the selected group firing a weapon, or stop it
+		MSG_UPDATE_FOCUSED_GROUP,										///< update and tell every player that we have smart selection focus on this group
+		MSG_DO_REVERSE_MOVETO_HINT,									///< (location) If clicked, a reverse move would be ordered
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 
@@ -675,6 +684,9 @@ public:
 
 	const char *getCommandAsString() const; ///< returns a string representation of the command type.
 	static const char *getCommandTypeAsString(GameMessage::Type t);
+
+	/// ShigureUi 11/09/2026 a plain order acts on the whole selection, never the smart selection focus
+	static Bool isPlainOrder(GameMessage::Type t);
 
 	Int getPlayerIndex() const { return m_playerIndex; }		///< Return the originating player
 

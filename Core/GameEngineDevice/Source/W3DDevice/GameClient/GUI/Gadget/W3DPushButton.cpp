@@ -90,7 +90,10 @@ void W3DGadgetPushButtonImageDrawOne(GameWindow *window, WinInstanceData *instDa
 static DisplayString *s_countdownString = nullptr;
 static Int s_countdownLastSeconds = -1;
 static Int s_countdownLastMode = -1;
-static DisplayString *s_hotKeyStrings[ 256 ] = { nullptr };
+static DisplayString *s_letterStrings[ 256 ] = { nullptr };
+
+// the plate behind a count badge or corner letter over a cameo
+static const Color CAMEO_PLATE_COLOR = GameMakeColor( 0, 0, 0, 160 );
 
 void W3DGadgetPushButtonFreeDisplayStrings( void )
 {
@@ -102,10 +105,19 @@ void W3DGadgetPushButtonFreeDisplayStrings( void )
 
 	for( Int i = 0; i < 256; ++i )
 	{
-		if( s_hotKeyStrings[ i ] != nullptr && TheDisplayStringManager != nullptr )
-			TheDisplayStringManager->freeDisplayString( s_hotKeyStrings[ i ] );
-		s_hotKeyStrings[ i ] = nullptr;
+		if( s_letterStrings[ i ] != nullptr && TheDisplayStringManager != nullptr )
+			TheDisplayStringManager->freeDisplayString( s_letterStrings[ i ] );
+		s_letterStrings[ i ] = nullptr;
 	}
+}
+
+// drawTextPlate ==============================================================
+/** A translucent plate one pixel larger than the text it sits behind. */
+//=============================================================================
+static void drawTextPlate( Int textX, Int textY, Int width, Int height, Color color )
+{
+	const Int pad = 1;
+	TheDisplay->drawFillRect( textX - pad, textY - pad, width + pad * 2, height + pad * 2, color );
 }
 
 // drawButtonCountdown ========================================================
@@ -159,15 +171,123 @@ static void drawButtonCountdown( GameWindow *window, Int seconds )
 	s_countdownString->getSize( &width, &height );
 
 	// centered along the bottom, clear of the hotkey badge in the top left
-	const Int pad = 1;
 	const Int textX = origin.x + (size.x / 2) - (width / 2);
 	const Int textY = origin.y + size.y - height - 2;
 
-	TheDisplay->drawFillRect( textX - pad, textY - pad,
-		width + pad * 2, height + pad * 2, GameMakeColor( 0, 0, 0, 128 ) );
+	drawTextPlate( textX, textY, width, height, GameMakeColor( 0, 0, 0, 128 ) );
 
 	s_countdownString->draw( textX, textY,
 		GameMakeColor( 255, 255, 255, 255 ), GameMakeColor( 0, 0, 0, 255 ) );
+}
+
+// drawButtonBar ==============================================================
+/** A thin bar stacked up from the bottom of a cameo, row 0 lowest, with a divider between
+	* segments when there is more than one. */
+//=============================================================================
+static void drawButtonBar( GameWindow *window, Int row, Real ratio, Int segments, Color frameColor, Color fillColor )
+{
+	ICoord2D origin, size;
+	window->winGetScreenPosition( &origin.x, &origin.y );
+	window->winGetSize( &size.x, &size.y );
+
+	const Int inset = 2;
+	const Int frameHeight = 5;
+	const Int barX = origin.x + inset;
+	const Int barY = origin.y + size.y - inset - frameHeight * ( row + 1 );
+	const Int innerWidth = size.x - inset * 2 - 2;
+	if( innerWidth <= 0 )
+		return;
+
+	TheDisplay->beginBatch();
+	TheDisplay->drawOpenRect( barX, barY, innerWidth + 2, frameHeight, 1.0f, frameColor );
+	TheDisplay->drawFillRect( barX + 1, barY + 1, innerWidth * ratio, frameHeight - 2, fillColor );
+	for( Int i = 1; i < segments; i++ )
+	{
+		TheDisplay->drawFillRect( barX + 1 + innerWidth * i / segments, barY + 1, 1, frameHeight - 2, frameColor );
+	}
+	TheDisplay->endBatch();
+}
+
+// drawButtonHealthBar ========================================================
+/** TheSuperHackers @feature Health along the bottom of a cameo, green through yellow to red
+	* like the in world bar. */
+//=============================================================================
+static void drawButtonHealthBar( GameWindow *window, Real ratio )
+{
+	Real red, green;
+	if( ratio >= 0.5f )
+	{
+		red = 1.0f - ( ratio - 0.5f ) / 0.5f;
+		green = 1.0f;
+	}
+	else
+	{
+		red = 1.0f;
+		green = ratio / 0.5f;
+	}
+
+	drawButtonBar( window, 0, ratio, 1,
+		GameMakeColor( red * 128, green * 128, 0, 255 ), GameMakeColor( red * 255, green * 255, 0, 255 ) );
+}
+
+// drawButtonAmmoBar ==========================================================
+/** A light orange clip bar above the health bar, one segment per shot. */
+//=============================================================================
+static void drawButtonAmmoBar( GameWindow *window, Int ammoInClip, Int clipSize )
+{
+	drawButtonBar( window, 1, (Real)ammoInClip / (Real)clipSize, clipSize,
+		GameMakeColor( 128, 88, 40, 255 ), GameMakeColor( 255, 176, 80, 255 ) );
+}
+
+// drawButtonCornerLetter =====================================================
+/** TheSuperHackers @feature One letter in the top left of a cameo, drawn for the hotkey overlay
+	* and for a caller's own corner letter. */
+//=============================================================================
+static void drawButtonCornerLetter( GameWindow *window, UnsignedByte index, GameFont *font, Bool plate, Color plateColor, Color textColor )
+{
+	if( TheDisplayStringManager == nullptr || font == nullptr )
+		return;
+
+	// One display string per letter, so that drawing many cameos in a row does not
+	// rebuild sentence geometry over and over. There are only ever a handful of
+	// distinct letters on screen, so this stays small.
+	DisplayString *letterString = s_letterStrings[ index ];
+
+	if( letterString == nullptr )
+	{
+		letterString = TheDisplayStringManager->newDisplayString();
+		if( letterString == nullptr )
+			return;
+
+		// the manager stores keys lowercased, but shortcuts read better as capitals
+		UnicodeString text;
+		WideChar upper = (WideChar)toupper( (Int)index );
+		text.concat( upper );
+		letterString->setText( text );
+
+		s_letterStrings[ index ] = letterString;
+	}
+	if( letterString->getFont() != font )
+		letterString->setFont( font );
+
+	ICoord2D origin;
+	window->winGetScreenPosition( &origin.x, &origin.y );
+
+	// tuck it into the top left of the cameo, where no existing decoration lives
+	const Int inset = 2;
+	const Int textX = origin.x + inset;
+	const Int textY = origin.y + inset;
+
+	// Optional plate behind the letter, so it stays readable over busy cameo art.
+	if( plate )
+	{
+		Int width, height;
+		letterString->getSize( &width, &height );
+
+		drawTextPlate( textX, textY, width, height, plateColor );
+	}
+
+	letterString->draw( textX, textY, textColor, GameMakeColor( 0, 0, 0, 255 ) );
 }
 
 // TheSuperHackers @feature Command bar hotkey overlay (Options.ini: KeyboardOverlay).
@@ -184,7 +304,7 @@ static void drawButtonHotKeyOverlay( GameWindow *window )
 	if( !TheGlobalData || !TheGlobalData->m_keyboardOverlayEnabled )
 		return;
 
-	if( TheHotKeyManager == nullptr || TheDisplayStringManager == nullptr )
+	if( TheHotKeyManager == nullptr )
 		return;
 
 	// only cameo style buttons opt into overlay states, so this leaves menu buttons alone
@@ -201,54 +321,13 @@ static void drawButtonHotKeyOverlay( GameWindow *window )
 	if( hotKey.getLength() != 1 || !isprint( (unsigned char)hotKey.getCharAt( 0 ) ) )
 		return;
 
-	// One display string per letter, so that drawing many cameos in a row does not
-	// rebuild sentence geometry over and over. There are only ever a handful of
-	// distinct hotkeys on screen, so this stays small.
-	const UnsignedByte index = (UnsignedByte)hotKey.getCharAt( 0 );
-	DisplayString *hotKeyString = s_hotKeyStrings[ index ];
+	Int pointSize = 10;
+	if( TheGlobalLanguageData )
+		pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
+	GameFont *font = TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, TRUE );
 
-	if( hotKeyString == nullptr )
-	{
-		hotKeyString = TheDisplayStringManager->newDisplayString();
-		if( hotKeyString == nullptr )
-			return;
-
-		Int pointSize = 10;
-		if( TheGlobalLanguageData )
-			pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-		hotKeyString->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, TRUE ) );
-
-		// the manager stores keys lowercased, but shortcuts read better as capitals
-		UnicodeString text;
-		WideChar upper = (WideChar)toupper( (Int)index );
-		text.concat( upper );
-		hotKeyString->setText( text );
-
-		s_hotKeyStrings[ index ] = hotKeyString;
-	}
-
-	ICoord2D origin;
-	window->winGetScreenPosition( &origin.x, &origin.y );
-
-	// tuck it into the top left of the cameo, where no existing decoration lives
-	const Int inset = 2;
-	const Int textX = origin.x + inset;
-	const Int textY = origin.y + inset;
-
-	// Optional plate behind the letter, so it stays readable over busy cameo art.
-	if( TheGlobalData->m_keyboardOverlayBackdrop )
-	{
-		Int width, height;
-		hotKeyString->getSize( &width, &height );
-
-		const Int pad = 1;
-		TheDisplay->drawFillRect( textX - pad, textY - pad,
-			width + pad * 2, height + pad * 2,
-			TheGlobalData->m_keyboardOverlayBackdropColor );
-	}
-
-	hotKeyString->draw( textX, textY,
-		TheGlobalData->m_keyboardOverlayColor, GameMakeColor( 0, 0, 0, 255 ) );
+	drawButtonCornerLetter( window, (UnsignedByte)hotKey.getCharAt( 0 ), font, TheGlobalData->m_keyboardOverlayBackdrop,
+		TheGlobalData->m_keyboardOverlayBackdropColor, TheGlobalData->m_keyboardOverlayColor );
 }
 
 // drawButtonText =============================================================
@@ -297,7 +376,14 @@ static void drawButtonText( GameWindow *window, WinInstanceData *instData )
 	text->getSize( &width, &height );
 
 	// where to draw
-	if( BitIsSet( window->winGetStatus(), WIN_STATUS_SHORTCUT_BUTTON ) )
+	if( BitIsSet( window->winGetStatus(), WIN_STATUS_COUNT_BADGE ) )
+	{
+		// TheSuperHackers @feature A count over a cameo sits bottom right on a translucent plate
+		textPos.x = origin.x + size.x - width - 2;
+		textPos.y = origin.y + size.y - height - 1;
+		drawTextPlate( textPos.x, textPos.y, width, height, CAMEO_PLATE_COLOR );
+	}
+	else if( BitIsSet( window->winGetStatus(), WIN_STATUS_SHORTCUT_BUTTON ) )
 	{
 		// Oh god... this is a total hack for shortcut buttons to handle rendering text top left corner...
 		textPos.x = origin.x + 2;
@@ -447,6 +533,20 @@ void W3DGadgetPushButtonDraw( GameWindow *window, WinInstanceData *instData )
 		{
 			drawButtonCountdown( window, pData->countdownSeconds );
 			pData->countdownSeconds = -1;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->healthRatio >= 0.0f )
+		{
+			drawButtonHealthBar( window, pData->healthRatio );
+			pData->healthRatio = -1.0f;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
 			window->winSetUserData(pData);
 		}
 
@@ -628,6 +728,20 @@ void W3DGadgetPushButtonImageDrawOne( GameWindow *window,
 			window->winSetUserData(pData);
 		}
 
+		if( pData->healthRatio >= 0.0f )
+		{
+			drawButtonHealthBar( window, pData->healthRatio );
+			pData->healthRatio = -1.0f;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
+			window->winSetUserData(pData);
+		}
+
 		if( pData->drawBorder && pData->colorBorder != GAME_COLOR_UNDEFINED )
 		{
 
@@ -676,9 +790,17 @@ void W3DGadgetPushButtonImageDrawOne( GameWindow *window,
 		}
 	}
 
-	// TheSuperHackers @feature Draw the hotkey letter last, so it stays readable on top
-	// of the hilite and pushed overlays.
-	drawButtonHotKeyOverlay( window );
+	// TheSuperHackers @feature Draw the corner letter last, so it stays readable on top of the
+	// hilite and pushed overlays. A caller's own letter takes the corner over the hotkey and
+	// draws in the button's font, so it scales with the badge text.
+	if( pData && pData->cornerLetter != 0 )
+	{
+		drawButtonCornerLetter( window, (UnsignedByte)pData->cornerLetter, window->winGetFont(), TRUE, CAMEO_PLATE_COLOR, GameMakeColor( 255, 255, 255, 255 ) );
+	}
+	else
+	{
+		drawButtonHotKeyOverlay( window );
+	}
 }
 
 
@@ -897,6 +1019,20 @@ void W3DGadgetPushButtonImageDrawThree(GameWindow *window, WinInstanceData *inst
 		{
 			drawButtonCountdown( window, pData->countdownSeconds );
 			pData->countdownSeconds = -1;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->healthRatio >= 0.0f )
+		{
+			drawButtonHealthBar( window, pData->healthRatio );
+			pData->healthRatio = -1.0f;
+			window->winSetUserData(pData);
+		}
+
+		if( pData->ammoClipSize > 0 )
+		{
+			drawButtonAmmoBar( window, pData->ammoInClip, pData->ammoClipSize );
+			pData->ammoClipSize = 0;
 			window->winSetUserData(pData);
 		}
 

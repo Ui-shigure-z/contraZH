@@ -70,6 +70,7 @@
 #include "GameClient/ControlBar.h"
 #include "GameClient/SelectionInfo.h"
 #include "GameClient/SelectionXlat.h"
+#include "GameClient/TerrainVisual.h"
 
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/ExperienceTracker.h"
@@ -512,6 +513,33 @@ void pickAndPlayUnitVoiceResponse( const DrawableList *list, GameMessage::Type m
 		if (!templ)
 		{
 			return;
+		}
+		// TheSuperHackers @feature With a cameo focused, only its units answer a command; a
+		// plain order still goes to the whole selection, so they all answer that
+		if (TheControlBar && !TheControlBar->isSmartSelectionFocused(obj))
+		{
+			switch (msgType)
+			{
+				// selecting is not a command, so the whole group still speaks
+				case GameMessage::MSG_SELECT_TEAM0:
+				case GameMessage::MSG_SELECT_TEAM1:
+				case GameMessage::MSG_SELECT_TEAM2:
+				case GameMessage::MSG_SELECT_TEAM3:
+				case GameMessage::MSG_SELECT_TEAM4:
+				case GameMessage::MSG_SELECT_TEAM5:
+				case GameMessage::MSG_SELECT_TEAM6:
+				case GameMessage::MSG_SELECT_TEAM7:
+				case GameMessage::MSG_SELECT_TEAM8:
+				case GameMessage::MSG_SELECT_TEAM9:
+				case GameMessage::MSG_CREATE_SELECTED_GROUP:
+					break;
+				default:
+					if (!GameMessage::isPlainOrder(msgType))
+					{
+						continue;
+					}
+					break;
+			}
 		}
 
 		switch (msgType)
@@ -1075,6 +1103,10 @@ GameMessage::Type CommandTranslator::issueMoveToLocationCommand( const Coord3D *
 		else if( TheInGameUI->isInAttackMoveToMode())
 		{
 			msgType = GameMessage::MSG_DO_ATTACKMOVETO;
+		}
+		else if( TheInGameUI->isInReverseMoveToMode() )
+		{
+			msgType = GameMessage::MSG_DO_REVERSE_MOVETO;
 		}
 		else if( TheInGameUI->isInForceMoveToMode() )
 		{
@@ -2511,6 +2543,10 @@ GameMessage::Type CommandTranslator::handleDefaultMoveCommand( Drawable *draw, D
 			//Attack move
 			msgType = GameMessage::MSG_DO_ATTACKMOVETO_HINT;
 		}
+		else if( TheInGameUI->isInReverseMoveToMode() )
+		{
+			msgType = GameMessage::MSG_DO_REVERSE_MOVETO_HINT;
+		}
 		else
 		{
 			//Normal and forced move.
@@ -2736,6 +2772,22 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 
 			TheInGameUI->selectUnitsMatchingCurrentSelection();
 
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		//-----------------------------------------------------------------------------------------
+		case GameMessage::MSG_META_SMART_SELECTION_NEXT_TYPE:
+		{
+			TheControlBar->smartSelectionCycle( 1 );
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		//-----------------------------------------------------------------------------------------
+		case GameMessage::MSG_META_SMART_SELECTION_PREV_TYPE:
+		{
+			TheControlBar->smartSelectionCycle( -1 );
 			disp = DESTROY_MESSAGE;
 			break;
 		}
@@ -3610,6 +3662,9 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				}
 
 				ToggleControlBar();
+#if defined(GENERALS_ONLINE)
+				TheInGameUI->toggleObserverOverlay();
+#endif
 			}
 			disp = DESTROY_MESSAGE;
 			break;
@@ -3676,6 +3731,10 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_TOGGLE_ATTACKMOVE:
 			TheInGameUI->toggleAttackMoveToMode();
+			break;
+
+		case GameMessage::MSG_META_TOGGLE_REVERSEMOVE:
+			TheInGameUI->toggleReverseMoveToMode();
 			break;
 
 		case GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_LEFT:
@@ -4148,6 +4207,103 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			break;
 		}
 
+		// Cycle the camera cheat: default -> free camera -> chase the selected object -> default.
+		// Purely a view change on this client, like the overlays above, so it carries no
+		// multiplayer guard. The selection is resolved here and handed to the view so the view
+		// stays independent of the UI.
+		case GameMessage::MSG_CHEAT_CYCLE_CAMERA_MODE:
+		{
+			ObjectID selectedID = INVALID_ID;
+			for( Drawable *draw = TheGameClient->firstDrawable(); draw; draw = draw->getNextDrawable() )
+			{
+				if( draw->isSelected() && draw->getObject() )
+				{
+					selectedID = draw->getObject()->getID();
+					break;
+				}
+			}
+
+			TheTacticalView->cycleCameraMode( selectedID );
+
+			const char *stateKey;
+			const WideChar *stateText;
+			if( !TheTacticalView->isCameraCheatModeActive() )
+			{
+				stateKey = "GUI:DebugCameraDefault";
+				stateText = L"Camera: Default";
+			}
+			else if( TheTacticalView->isCameraChaseModeActive() )
+			{
+				stateKey = "GUI:DebugCameraChase";
+				stateText = L"Camera: Chase";
+			}
+			else if( TheTacticalView->isCameraPerspectiveModeActive() )
+			{
+				stateKey = "GUI:DebugCameraPerspective";
+				stateText = L"Camera: Perspective";
+			}
+			else if( TheTacticalView->isCameraOrthoModeActive() )
+			{
+				stateKey = "GUI:DebugCameraOrtho";
+				stateText = L"Camera: Orthographic";
+			}
+			else
+			{
+				stateKey = "GUI:DebugCameraFree";
+				stateText = L"Camera: Free";
+			}
+			TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE(stateKey, stateText) );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Cycle the skybox through the preset texture sets: the one the map started with, then
+		// each shipped set. Purely a texture swap on this client.
+		case GameMessage::MSG_CHEAT_CYCLE_SKYBOX:
+		{
+			const UnsignedInt preset = TheTerrainVisual ? TheTerrainVisual->cycleSkyboxPreset() : 0;
+
+			switch (preset)
+			{
+				case 1:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugSkyboxMorning", L"Skybox: Morning") );
+					break;
+				case 2:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugSkyboxMoon", L"Skybox: Moon") );
+					break;
+				default:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugSkyboxMapDefault", L"Skybox: Map Default") );
+					break;
+			}
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Cycle the terrain draw mode: normal, hidden over black, hidden over green -- a green
+		// screen for capturing units. Purely a draw change on this client.
+		case GameMessage::MSG_CHEAT_CYCLE_TERRAIN_MODE:
+		{
+			const UnsignedInt mode = TheTerrainVisual ? TheTerrainVisual->cycleTerrainHideMode() : 0;
+
+			switch (mode)
+			{
+				case 1:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugTerrainBlack", L"Terrain: Black") );
+					break;
+				case 2:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugTerrainGreen", L"Terrain: Green Screen") );
+					break;
+				default:
+					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugTerrainNormal", L"Terrain: Normal") );
+					break;
+			}
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
 #endif
 
 		//-----------------------------------------------------------------------------------------
@@ -4443,7 +4599,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					}
 
 					disp = DESTROY_MESSAGE;
-					TheInGameUI->clearAttackMoveToMode();
+					TheInGameUI->clearArmedMoveMode();
 				}
 			}
 
@@ -4524,7 +4680,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				}
 
 				disp = DESTROY_MESSAGE;
-				TheInGameUI->clearAttackMoveToMode();
+				TheInGameUI->clearArmedMoveMode();
 
 				//issueMoveToLocationCommand( &pos, draw, DO_COMMAND );
 			}

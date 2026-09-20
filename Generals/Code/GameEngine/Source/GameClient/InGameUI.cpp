@@ -162,7 +162,7 @@ static Bool kindOfUnitSelection( Drawable *test, void *userData )
 					&& !object->isContained()
 					&& !object->getDrawable()->isSelected()
 					&& !object->isEffectivelyDead()
-					&& object->isMassSelectable()
+			    && object->isMassSelectable()
 					&& !object->isOffMap()
 				)
 		{
@@ -221,7 +221,10 @@ static Bool similarUnitSelection( Drawable *test, void *userData )
 			  && object->isLocallyControlled()
 				&& !object->isContained()
 				&& !( object->getDrawable()->isSelected() )
-				&& object->isMassSelectable() // And only if they can be multiply selected. (otherwise the drawable will be, but the object will not be)
+			  //  ShigureUi 07/09/2026 Allowing similar selection on structures.
+			  // && object->isMassSelectable()
+			  && object->isSelectable()
+			  // // And only if they can be multiply selected. (otherwise the drawable will be, but the object will not be)
 				&& !object->isOffMap()
 				)
 		{
@@ -924,7 +927,21 @@ void INI::parseInGameUIDefinition( INI* ini )
 	{
 		// parse the ini weapon definition
 		ini->initFromINI( TheInGameUI, TheInGameUI->getFieldParse() );
+		TheInGameUI->validate();
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::validate()
+{
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @bugfix bobtista 02/09/2026 Correct the known retail InGameUI.ini message delay typo
+	if (m_messageDelayMS == 75000)
+	{
+		m_messageDelayMS = 7500;
+	}
+#endif
+	m_messageDelayMS = max(0, m_messageDelayMS);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1231,7 +1248,7 @@ InGameUI::InGameUI()
 	m_waypointMode			= false;
 	m_forceAttackMode		= false;
 	m_forceMoveToMode		= false;
-	m_attackMoveToMode	= false;
+	m_armedMoveMode		= ARMED_MOVE_NONE;
 	m_preferSelection		= false;
 
 	m_curRcType = RADIUSCURSOR_NONE;
@@ -1848,7 +1865,8 @@ void InGameUI::update()
 	// frame
 	//
 	UnsignedInt currLogicFrame = TheGameLogic->getFrame();
-	const int messageTimeout = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
+	// TheSuperHackers @bugfix bobtista 13/08/2026 Convert milliseconds to logic frames
+	const int messageTimeout = REAL_TO_INT_CEIL( ConvertDurationFromMsecsToFrames( (Real)m_messageDelayMS ) );
 	UnsignedByte r, g, b, a;
 	Int amount;
 	for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
@@ -2199,7 +2217,7 @@ void InGameUI::reset()
 	setForceMoveMode(false);
 	setForceAttackMode(false);
 	setPreferSelectionMode(false);
-	clearAttackMoveToMode();
+	clearArmedMoveMode();
 
 	// TheSuperHackers @bugfix Disable all camera interactions to prevent them getting stuck after game end.
 	setScrolling(false);
@@ -2910,6 +2928,21 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 						else
 							setMouseCursor( Mouse::ATTACKMOVETO );
 						break;
+					case GameMessage::MSG_DO_REVERSE_MOVETO_HINT:
+						// a mod without a ReverseMove cursor block keeps the plain move cursor
+						if( drawSelectable && obj->isLocallyControlled() )
+						{
+							setMouseCursor( Mouse::SELECTING );
+						}
+						else if( TheMouse->isCursorDefined( Mouse::REVERSE_MOVE ) )
+						{
+							setMouseCursor( Mouse::REVERSE_MOVE );
+						}
+						else
+						{
+							setMouseCursor( Mouse::MOVETO );
+						}
+						break;
 					case GameMessage::MSG_ADD_WAYPOINT_HINT:
 						setMouseCursor( Mouse::WAYPOINT );
 						break;
@@ -2993,6 +3026,7 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 				{
 					case GameMessage::MSG_DO_MOVETO_HINT:
 					case GameMessage::MSG_DO_ATTACKMOVETO_HINT:
+					case GameMessage::MSG_DO_REVERSE_MOVETO_HINT:
 					case GameMessage::MSG_ADD_WAYPOINT:
 						setMouseCursor(Mouse::BUILD_PLACEMENT);
 						break;

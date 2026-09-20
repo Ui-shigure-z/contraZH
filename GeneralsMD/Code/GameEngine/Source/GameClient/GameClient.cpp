@@ -29,12 +29,15 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+
+#include <chrono>
 #include "GameClient/GameClient.h"
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Common/ActionManager.h"
 #include "Common/GameEngine.h"
 #include "Common/GameState.h"
+#include "Common/Recorder.h"
 #include "Common/GameUtility.h"
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
@@ -103,6 +106,12 @@ GameClient::GameClient()
 	m_textBearingDrawableList.clear();
 
 	m_frame = 0;
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+	m_legacyFrameEndLastMs = 0;
+	m_legacyFrameMsAccrued = 0;
+#endif
 
 	m_drawableList = nullptr;
 
@@ -545,6 +554,10 @@ void GameClient::update()
 			{
 				TheGameState->loadQueuedSaveGame();
 			}
+			else if (TheGlobalData->m_loadReplayGame.isNotEmpty())
+			{
+				TheRecorder->loadQueuedReplay();
+			}
 		}
 	}
 
@@ -742,6 +755,22 @@ void GameClient::update()
 		// update the in game UI
 		TheInGameUI->UPDATE();
 	}
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	const Int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	if (!freezeTime)
+	{
+		m_legacyFrameMsAccrued += nowMs - m_legacyFrameEndLastMs;
+	}
+	m_legacyFrameEndLastMs = nowMs;
+
+	m_frameLegacyLast = m_frameLegacy;
+	if (m_legacyFrameMsAccrued >= MSEC_PER_SECOND / BaseFps)
+	{
+		m_legacyFrameMsAccrued = 0;
+		m_frameLegacy++;
+	}
+#endif
 }
 
 void GameClient::draw()

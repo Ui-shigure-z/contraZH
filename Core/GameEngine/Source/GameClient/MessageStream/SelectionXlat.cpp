@@ -123,6 +123,18 @@ Bool CanSelectDrawable( const Drawable *draw, Bool dragSelecting )
 	}
 	const Object *obj = draw->getObject();
 
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	// CapsLock in a camera mode: anything with an object can be selected, by click or drag
+	// box -- unselectable kinds, enemies, structures, the lot. The rules below are gameplay
+	// rules and this is a camera tool -- except stealth: what the player cannot see stays
+	// unpickable, or the tool doubles as a maphack in multiplayer.
+	if (TheTacticalView && TheTacticalView->isCameraCheatModeActive()
+			&& (GetKeyState(VK_CAPITAL) & 0x0001) != 0)
+	{
+		return !draw->isDrawableEffectivelyHidden();
+	}
+#endif
+
 	if( obj->isEffectivelyDead() && !obj->isKindOf(KINDOF_ALWAYS_SELECTABLE))
 	{
 		//Don't select dead/dying units.
@@ -622,8 +634,9 @@ GameMessageDisposition SelectionTranslator::onMouseLeftDoubleClick(MAYBE_UNUSED 
 	if (picked == nullptr)
 		return KEEP_MESSAGE;
 
-	if (!picked->isMassSelectable())
-		return KEEP_MESSAGE;
+	//ShigureUi 07/09/2026 delay "return KEEP_MESSAGE".
+	//if (!picked->isMassSelectable())  
+	//	return KEEP_MESSAGE;
 
 	Object *pickedObj = picked->getObject();
 
@@ -640,6 +653,11 @@ GameMessageDisposition SelectionTranslator::onMouseLeftDoubleClick(MAYBE_UNUSED 
 	if (TheInGameUI->isInPreferSelectionMode()) {
 		listOfSelectedDrawables	= *TheInGameUI->getAllSelectedDrawables();
 	}
+
+	//ShigureUi 07/09/2026 "return KEEP_MESSAGE" was moved here with listOfSelectedDrawables as requirement.
+  if (!listOfSelectedDrawables.empty() && !picked->isMassSelectable() &&
+		  picked->getTemplate() != listOfSelectedDrawables.front()->getTemplate())
+   	return KEEP_MESSAGE;
 
 	// Pick just that one guy.
 	selectSingleDrawableWithoutSound(picked);
@@ -812,7 +830,12 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 	if (si.currentCountEnemies > 0 ||
 			si.currentCountCivilians > 0 ||
 			si.currentCountFriends > 0 ||
-			si.currentCountMineBuildings > 0)
+			(si.currentCountMineBuildings > 0 && si.newCountMineBuildings == 0)
+		  //si.currentCountMineBuildings > 0
+		  //ShigureUi 07/09/2026 this prevent shift select adding new structure into the team.
+		  //Change condition in order to filter illegal selection only.
+		  //This is 1st of the cases.
+		  )
 	{
 		// force a new group creation
 		addToGroup = FALSE;
@@ -826,7 +849,14 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 		// EXACTLY ONE CLICKED OR DRAGGED BUILDING
 		if ( si.newCountMineBuildings == 1 && si.newCountMine == 1 )
 		{
-			addToGroup = FALSE;
+			//ShigureUi 07/09/2026 this prevent shift select adding new structure into the team.
+      //Change condition in order to filter illegal selection only.
+      //This is 2nd of the cases.
+			//addToGroup = FALSE;
+			if (si.currentCountMine > 0 &&
+				(si.currentCountMineBuildings == 0 ||
+				(*currentList->begin())->getTemplate() != (*drawablesThatWillSelect.begin())->getTemplate()))
+			  addToGroup = FALSE;
 			si.selectMineBuildings = TRUE;
 		}
 		else if ( si.newCountMineBuildings > 0 )////////////// SO SORRY, I KNOW THIS IS MICKEY MOUSE ///////////////////
@@ -839,12 +869,13 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 			// -Mark Lorenzen, 6/12/03
 			Bool onlyTheOneBuildingIsSelectableAnyway = TRUE;
 			DrawableID buildingID = INVALID_DRAWABLE_ID;
+			Drawable* thebuilding = nullptr;
 			for (DrawableListIt it = drawablesThatWillSelect.begin(); it != drawablesThatWillSelect.end(); ++it)
 			{
 				const Drawable *d = *it;
 				if ( d->isKindOf( KINDOF_STRUCTURE ) )
 				{// make sure there is really only the one building in the list, as it may be multiply listed
-
+					thebuilding = *it;
 					if ( buildingID == INVALID_DRAWABLE_ID ) // this is the first building
 						buildingID = d->getID();
 					else if ( buildingID != d->getID() )//oops, more than one building!
@@ -858,7 +889,14 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 			}
 			if ( onlyTheOneBuildingIsSelectableAnyway )
 			{
-				addToGroup = FALSE;
+				//ShigureUi 07/09/2026 this prevent shift select adding new structure into the team.
+				//Change condition in order to filter illegal selection only.
+				//This is 3rd of the cases.
+				//addToGroup = FALSE;
+			  if (si.currentCountMine > 0 &&
+				  (si.currentCountMineBuildings == 0 ||
+				  (*currentList->begin())->getTemplate() != thebuilding->getTemplate()))
+			    addToGroup = FALSE;
 				si.selectMineBuildings = TRUE;
 			}
 		}
@@ -1049,7 +1087,7 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 		}
 	}
 
-	TheInGameUI->clearAttackMoveToMode();
+	TheInGameUI->clearArmedMoveMode();
 
 	return DESTROY_MESSAGE;
 }
@@ -1310,15 +1348,18 @@ GameMessageDisposition SelectionTranslator::onMetaAddTeam(MAYBE_UNUSED const Gam
 		}
 		else
 		{
-
 			Drawable *draw = TheInGameUI->getFirstSelectedDrawable();
-			if( draw && draw->isKindOf( KINDOF_STRUCTURE ) )
-			{
-				//Kris: Jan 12, 2005
-				//Can't select other units if you have a structure selected. So deselect the structure to prevent
-				//group force attack exploit.
-				TheInGameUI->deselectAllDrawables();
-			}
+
+			//  ShigureUi 07/09/2026 Shift add team into selection group,
+			// these code prevent same type of structures being selected together.
+			// We're not going to deselect this early and without check.
+			//if( draw && draw->isKindOf( KINDOF_STRUCTURE ) )
+			//{
+			//	//Kris: Jan 12, 2005
+			//	//Can't select other units if you have a structure selected. So deselect the structure to prevent
+			//	//group force attack exploit.
+			//	TheInGameUI->deselectAllDrawables();
+			//}
 
 			// no need to send two messages for selecting the same group.
 			TheMessageStream->appendMessage((GameMessage::Type)(GameMessage::MSG_ADD_TEAM0 + group));
@@ -1331,8 +1372,17 @@ GameMessageDisposition SelectionTranslator::onMetaAddTeam(MAYBE_UNUSED const Gam
 					VecObjectPtr objlist = selectedSquad->getLiveObjects();
 					Int numObjs = objlist.size();
 
-					// TheSuperHackers @bugfix skyaero 22/07/2025 Can't select other units if you have a structure selected. So deselect the structure to prevent group force attack exploit.
-					if (numObjs > 0 && objlist[0]->getDrawable()->isKindOf(KINDOF_STRUCTURE))
+					//  ShigureUi 07/09/2026 Add new conditions to allow same type of structures being selected together
+					// // TheSuperHackers @bugfix skyaero 22/07/2025 Can't select other units if you have a structure selected. So deselect the structure to prevent group force attack exploit.
+					// if (numObjs > 0 && objlist[0]->getDrawable()->isKindOf(KINDOF_STRUCTURE))
+					// {
+					//  	TheInGameUI->deselectAllDrawables();
+					// }
+
+					if (numObjs > 0 && draw &&
+						(objlist[0]->getDrawable()->isKindOf(KINDOF_STRUCTURE) || draw->isKindOf(KINDOF_STRUCTURE)) &&
+						 objlist[0]->getDrawable()->getTemplate() != draw->getTemplate()
+						)
 					{
 						TheInGameUI->deselectAllDrawables();
 					}

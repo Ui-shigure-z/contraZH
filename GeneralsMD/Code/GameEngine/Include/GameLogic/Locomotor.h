@@ -385,13 +385,27 @@ public:
 	// inline void setSpeedMultiplier(Real value) { m_speedMultiplier = value; }
 	inline Real getSpeedMultiplier(void) const { return m_speedMultiplier; }
 
+	/// Lift is kept apart from speed, since a hovering unit with less lift than gravity falls.
+	inline void applyLiftMultiplier(Real scalar) { m_liftMultiplier *= scalar; }
+	inline Real getLiftMultiplier(void) const { return m_liftMultiplier; }
+
+	/// Assigns rather than accumulates, so a container can restore full speed exactly.
+	inline void setLoadFactors(Real speed, Real turnRate, Real accel, Real lift)
+	{
+		m_loadSpeedFactor = speed;
+		m_loadTurnRateFactor = turnRate;
+		m_loadAccelFactor = accel;
+		m_loadLiftFactor = lift;
+	}
+
 protected:
 	void moveTowardsPositionLegs(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionLegsWander(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionClimb(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionWheels(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionTreads(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
-	Bool shouldMoveBackwards(Object* obj, PhysicsBehavior *physics, Real relAngle, Real onPathDistToGoal);	///< decide (with hysteresis) whether to reverse toward a goal that is behind us, for locos that can rotate in place (treads/hover)
+	Bool shouldMoveBackwards(Object* obj, Real relAngle, Real onPathDistToGoal, Real forwardSpeed);	///< decide (with hysteresis) whether to reverse toward a goal that is behind us, for locos that can rotate in place (treads/hover)
+	Bool isForcedReverse(Object* obj, Real relAngle) const;	///< a REVERSE_MOVE order is in effect and the heading allows it
 	void moveTowardsPositionOther(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionHover(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
 	void moveTowardsPositionThrust(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos, Real onPathDistToGoal, Real desiredSpeed);
@@ -480,6 +494,12 @@ private:
 	UnsignedInt m_donutTimer;				///< Frame time to keep units from doing the donut. jba.
 
 	Real			    m_speedMultiplier;  ///< scalar to max speed and acceleration
+	Real			    m_liftMultiplier;   ///< scalar to max lift
+
+	Real			    m_loadSpeedFactor;      ///< how much a container's occupants slow it down
+	Real			    m_loadTurnRateFactor;
+	Real			    m_loadAccelFactor;
+	Real			    m_loadLiftFactor;
 
 };
 

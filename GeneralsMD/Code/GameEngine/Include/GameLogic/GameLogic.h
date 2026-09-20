@@ -139,6 +139,11 @@ public:
 	Bool isInGameLogicUpdate() const { return m_isInUpdate; }
 	Bool hasUpdated() const { return m_hasUpdated; } ///< Returns true if the logic frame has advanced in the current client/render update
 	UnsignedInt getFrame();										///< Returns the current simulation frame number
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	// The legacy frame is the 30 Hz frame that frame-count code was written against.
+	UnsignedInt getFrameLegacy() const;
+	Bool HasLegacyFrameAdvanced() const;
+#endif
 	UnsignedInt getCRC( Int mode = CRC_CACHED, AsciiString deepCRCFileName = AsciiString::TheEmptyString );		///< Returns the CRC
 
 	void setObjectIDCounter( ObjectID nextObjID ) { m_nextObjID = nextObjID; }
@@ -360,7 +365,8 @@ private:
 	bool onPickUpPrisoner(GameMessage *msg, AIGroupPtr &currentlySelectedGroup);
 	bool onReturnToPrison(GameMessage *msg, AIGroupPtr &currentlySelectedGroup);
 #endif
-	bool onCreateSelectedGroup(GameMessage *msg);
+	bool onCreateSelectedGroup(GameMessage* msg);
+	bool onUpdateFocusedGroup(GameMessage* msg);
 	bool onRemoveFromSelectedGroup(GameMessage *msg);
 	bool onDestroySelectedGroup(GameMessage *msg);
 	bool onPlaceBeacon(GameMessage *msg);
@@ -399,6 +405,7 @@ private:
 	typedef std::map<Int, UnsignedInt> CachedCRCMap;
 	CachedCRCMap m_cachedCRCs;															///< CRCs we've seen this frame
 	Bool m_shouldValidateCRCs;															///< Should we validate CRCs this frame?
+	
 	//-----------------------------------------------------------------------------------------------
 	//Bool m_loadingScene;
 	Bool m_loadingMap;
@@ -502,6 +509,10 @@ inline Real GameLogic::getWidth() { return m_width; }
 inline void GameLogic::setHeight( Real height ) { m_height = height; }
 inline Real GameLogic::getHeight() { return m_height; }
 inline UnsignedInt GameLogic::getFrame() { return m_frame; }
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+inline UnsignedInt GameLogic::getFrameLegacy() const { return m_frame / GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER; }
+inline Bool GameLogic::HasLegacyFrameAdvanced() const { return (m_frame % GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER) == 0; }
+#endif
 
 inline Bool GameLogic::isInGame() { return m_gameMode != GAME_NONE; }
 inline GameMode GameLogic::getGameMode() { return m_gameMode; }

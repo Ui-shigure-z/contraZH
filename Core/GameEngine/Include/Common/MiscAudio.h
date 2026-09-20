@@ -55,6 +55,10 @@ struct MiscAudio
 	AudioEventRTS m_buildingReenabled;										///< Building has recovered from being disabled.
 	AudioEventRTS m_vehicleDisabled;											///< Vehicle has been disabled via EMP or hacker attack.
 	AudioEventRTS m_vehicleReenabled;											///< Vehicle has recovered from being disabled.
+	AudioEventRTS m_unitJammed;														///< Unit has been jammed.
+	AudioEventRTS m_unitUnjammed;													///< Unit has recovered from jamming.
+	AudioEventRTS m_unitFrozen;														///< Unit has been frozen.
+	AudioEventRTS m_unitUnfrozen;													///< Unit has thawed.
 	AudioEventRTS m_splatterVehiclePilotsBrain;						///< Pilot has been sniped by Jarmen Kell.
 	AudioEventRTS m_terroristInCarMoveVoice;							///< Terrorist issues a move order while in a car.
 	AudioEventRTS m_terroristInCarAttackVoice;						///< Terrorist issues attack order while in a car.

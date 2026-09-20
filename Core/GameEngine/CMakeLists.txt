@@ -136,13 +136,14 @@ set(GAMEENGINE_SRC
     Include/Common/version.h
 #    Include/Common/WellKnownKeys.h
     Include/Common/WorkerProcess.h
+    Include/Common/WorkingDirectory.h
     Include/Common/Xfer.h
     Include/Common/XferCRC.h
     Include/Common/XferDeepCRC.h
     Include/Common/XferLoad.h
     Include/Common/XferSave.h
     Include/GameClient/Anim2D.h
-#    Include/GameClient/AnimateWindowManager.h
+    Include/GameClient/AnimateWindowManager.h
 #    Include/GameClient/CampaignManager.h
     Include/GameClient/ChallengeGenerals.h
     Include/GameClient/ClientInstance.h
@@ -185,8 +186,8 @@ set(GAMEENGINE_SRC
     Include/GameClient/GameText.h
     Include/GameClient/GameWindow.h
     Include/GameClient/GameWindowGlobal.h
-#    Include/GameClient/GameWindowID.h
-#    Include/GameClient/GameWindowManager.h
+    Include/GameClient/GameWindowID.h
+    Include/GameClient/GameWindowManager.h
     Include/GameClient/GameWindowTransitions.h
     Include/GameClient/GlobalLanguage.h
     Include/GameClient/GraphDraw.h
@@ -703,6 +704,7 @@ set(GAMEENGINE_SRC
     Source/Common/UserPreferences.cpp
     Source/Common/version.cpp
     Source/Common/WorkerProcess.cpp
+    Source/Common/WorkingDirectory.cpp
     Source/GameClient/ClientInstance.cpp
     Source/GameClient/Color.cpp
     Source/GameClient/GlobalLightingModifier.cpp
@@ -723,11 +725,12 @@ set(GAMEENGINE_SRC
     Source/GameClient/GameText.cpp
     Source/GameClient/GlobalLanguage.cpp
     Source/GameClient/GraphDraw.cpp
-#    Source/GameClient/GUI/AnimateWindowManager.cpp
+    Source/GameClient/GUI/AnimateWindowManager.cpp
     Source/GameClient/GUI/ChallengeGenerals.cpp
     Source/GameClient/GUI/ControlBar/ControlBar.cpp
     Source/GameClient/GUI/ControlBar/ControlBarBeacon.cpp
     Source/GameClient/GUI/ControlBar/ControlBarCommand.cpp
+    Source/GameClient/GUI/ControlBar/ControlBarCommandGroups.cpp
     Source/GameClient/GUI/ControlBar/ControlBarCommandProcessing.cpp
     Source/GameClient/GUI/ControlBar/ControlBarMultiSelect.cpp
     Source/GameClient/GUI/ControlBar/ControlBarObserver.cpp
@@ -735,6 +738,7 @@ set(GAMEENGINE_SRC
     Source/GameClient/GUI/ControlBar/ControlBarPrintPositions.cpp
     Source/GameClient/GUI/ControlBar/ControlBarResizer.cpp
     Source/GameClient/GUI/ControlBar/ControlBarScheme.cpp
+    Source/GameClient/GUI/ControlBar/ControlBarSmartSelection.cpp
     Source/GameClient/GUI/ControlBar/ControlBarStructureInventory.cpp
     Source/GameClient/GUI/ControlBar/ControlBarUnderConstruction.cpp
 #    Source/GameClient/GUI/DisconnectMenu/DisconnectMenu.cpp
@@ -753,10 +757,10 @@ set(GAMEENGINE_SRC
     Source/GameClient/GUI/GameFont.cpp
     Source/GameClient/GUI/GameWindow.cpp
     Source/GameClient/GUI/GameWindowGlobal.cpp
-#    Source/GameClient/GUI/GameWindowManager.cpp
-#    Source/GameClient/GUI/GameWindowManagerScript.cpp
+    Source/GameClient/GUI/GameWindowManager.cpp
+    Source/GameClient/GUI/GameWindowManagerScript.cpp
     Source/GameClient/GUI/GameWindowTransitions.cpp
-#    Source/GameClient/GUI/GameWindowTransitionsStyles.cpp
+    Source/GameClient/GUI/GameWindowTransitionsStyles.cpp
     Source/GameClient/GUI/GUICallbacks/ControlBarCallback.cpp
     Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp
     Source/GameClient/GUI/GUICallbacks/Diplomacy.cpp

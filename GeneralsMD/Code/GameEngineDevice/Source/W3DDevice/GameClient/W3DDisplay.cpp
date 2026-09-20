@@ -552,6 +552,25 @@ void W3DDisplay::setGamma(Real gamma, Real bright, Real contrast, Bool calibrate
 	DX8Wrapper::Set_Gamma(gamma,bright,contrast,calibrate, false);
 }
 
+// Gives the game window the frame its mode needs; the wrapper then sizes and centres it from that style.
+// Only -win keeps the caption, so a windowed device without it is the borderless mode.
+static void applyWindowStyle( Bool windowed )
+{
+	if (!ApplicationHWnd)
+	{
+		return;
+	}
+
+	const LONG frameBits = WS_CAPTION | WS_DLGFRAME | WS_MINIMIZEBOX;
+	LONG style = ::GetWindowLong( ApplicationHWnd, GWL_STYLE ) & ~frameBits;
+	if (windowed && TheGlobalData->m_windowed)
+	{
+		style |= frameBits;
+	}
+	::SetWindowLong( ApplicationHWnd, GWL_STYLE, style );
+	::SetWindowPos( ApplicationHWnd, windowed ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED );
+}
+
 /** Set resolution of display */
 //=============================================================================
 Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt bitdepth, Bool windowed )
@@ -561,6 +580,10 @@ Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt
 	const UnsignedInt oldBitDepth = getBitDepth();
 	const Bool oldWindowed = getWindowed();
 
+	if (windowed != oldWindowed)
+	{
+		applyWindowStyle( windowed );
+	}
 	if (WW3D_ERROR_OK == WW3D::Set_Device_Resolution(xres,yres,bitdepth,windowed,true))
 	{
 		Render2DClass::Set_Screen_Resolution(RectClass(0, 0, xres, yres));
@@ -569,6 +592,10 @@ Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt
 	}
 
 	//set back to the original mode.
+	if (windowed != oldWindowed)
+	{
+		applyWindowStyle( oldWindowed );
+	}
 	WW3D::Set_Device_Resolution(oldWidth, oldHeight, oldBitDepth, oldWindowed, true);
 	Render2DClass::Set_Screen_Resolution(RectClass(0, 0, oldWidth, oldHeight));
 	Display::setDisplayMode(oldWidth, oldHeight, oldBitDepth, oldWindowed);
@@ -825,10 +852,18 @@ void W3DDisplay::init()
 		WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
 		WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
 		WW3D::Enable_Static_Sort_Lists(true);
+		if (TheGlobalData->m_skipTranslucencySort)
+		{
+			WW3D::Enable_Sorting(false);
+		}
 		WW3D::Set_Thumbnail_Enabled(false);
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
 
-		setWindowed( TheGlobalData->m_windowed );
+		setWindowed( TheGlobalData->m_windowed || TheGlobalData->m_borderlessWindow );
+		if (getWindowed() && !TheGlobalData->m_windowed)
+		{
+			applyWindowStyle( TRUE );
+		}
 
 		// create a 2D renderer helper
 		m_2DRender = NEW Render2DClass;
@@ -1979,7 +2014,16 @@ AGAIN:
 		{
 			//USE_PERF_TIMER(BigAssRenderLoop)
 			static Bool couldRender = true;
-			if ((TheGlobalData->m_breakTheMovie == FALSE) && (TheGlobalData->m_disableRender == false) && WW3D::Begin_Render( true, true, Vector3( 0.0f, 0.0f, 0.0f ), TheWaterTransparency->m_minWaterOpacity ) == WW3D_ERROR_OK)
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+			// The terrain cheat leaves the scene over the bare clear color: black, or green when
+			// chroma keying.
+			const Vector3 clearColor = (TheTerrainVisual && TheTerrainVisual->getTerrainHideMode() == 2)
+					? Vector3( 0.0f, 1.0f, 0.0f )
+					: Vector3( 0.0f, 0.0f, 0.0f );
+#else
+			const Vector3 clearColor( 0.0f, 0.0f, 0.0f );
+#endif
+			if ((TheGlobalData->m_breakTheMovie == FALSE) && (TheGlobalData->m_disableRender == false) && WW3D::Begin_Render( true, true, clearColor, TheWaterTransparency->m_minWaterOpacity ) == WW3D_ERROR_OK)
 			{
 
 				if(TheGlobalData->m_loadScreenRender == TRUE)

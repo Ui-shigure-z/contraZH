@@ -122,7 +122,11 @@ UpdateSleepTime DeployStyleAIUpdate::update()
 	// when we have a pending command...
 	Object *self = getObject();
 	Weapon *weapon = self->getCurrentWeapon();
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt now = TheGameLogic->getFrameLegacy();
+#else
 	UnsignedInt now = TheGameLogic->getFrame();
+#endif
 	const DeployStyleAIUpdateModuleData *data = getDeployStyleAIUpdateModuleData();
 
 	//Are we attempting to move? If so we can't do it unless we are undeployed.
@@ -167,18 +171,25 @@ UpdateSleepTime DeployStyleAIUpdate::update()
 		}
 	}
 
-	// TheSuperHackers @bugfix Caball009 27/07/2026 The pathfinding code may use a stricter attack range check than used
-	// in this function, so the range check is insufficient. Objects are not allowed to deploy and attack if they're moving.
+	// The target left range mid-deploy, so pack up again rather than finish unpacking.
+	if( m_state == DEPLOY && isTryingToAttack && !isInRange && !m_manualDeploy )
+	{
+		if( m_frameToWaitForDeploy != 0 )
+		{
+			setMyState( UNDEPLOY, TRUE );
+		}
+		else
+		{
+			setMyState( UNDEPLOY );
+		}
+	}
+
+	// The pathfinder may use a stricter range check than isInRange, so a moving unit must never deploy.
 	// A manual deploy holds the stance until the player says otherwise, so it counts as a reason to
 	// be deployed in its own right, and it suppresses the pack-up branch below. Without the second
 	// half a unit ordered to move would pack up again on the next update, which is the whole point
 	// of the latch.
-#if RETAIL_COMPATIBLE_CRC
-	if (isInRange || isInGuardIdleState || m_manualDeploy)
-#else
-	// @todo Simplify the code by moving the second branch up so 'isTryingToMove' is checked first.
 	if ((!isTryingToMove && (isInRange || isInGuardIdleState)) || m_manualDeploy)
-#endif
 	{
 		switch( m_state )
 		{
@@ -280,6 +291,12 @@ UpdateSleepTime DeployStyleAIUpdate::update()
 		case DEPLOY:
 			if( data->m_manualDeployAnimations )
 			{
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+				if (!TheGameLogic->HasLegacyFrameAdvanced())
+				{
+					break;
+				}
+#endif
 				UnsignedInt totalFrames = getPackTime();
 				UnsignedInt framesLeft = m_frameToWaitForDeploy - now;
 				Drawable *draw = self->getDrawable();
@@ -294,6 +311,12 @@ UpdateSleepTime DeployStyleAIUpdate::update()
 		case UNDEPLOY:
 			if( data->m_manualDeployAnimations )
 			{
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+				if (!TheGameLogic->HasLegacyFrameAdvanced())
+				{
+					break;
+				}
+#endif
 				UnsignedInt framesLeft = m_frameToWaitForDeploy - now;
 				Drawable *draw = self->getDrawable();
 				if( draw )
@@ -371,7 +394,11 @@ void DeployStyleAIUpdate::setMyState( DeployStateTypes stateID, Bool reverseDepl
 {
 	m_state = stateID;
 	Object *self = getObject();
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt now = TheGameLogic->getFrameLegacy();
+#else
 	UnsignedInt now = TheGameLogic->getFrame();
+#endif
 	const DeployStyleAIUpdateModuleData *data = getDeployStyleAIUpdateModuleData();
 
 	switch( stateID )

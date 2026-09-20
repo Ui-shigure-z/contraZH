@@ -135,7 +135,7 @@ set(GAMEENGINE_SRC
 #    Include/Common/XferLoad.h
 #    Include/Common/XferSave.h
 #    Include/GameClient/Anim2D.h
-    Include/GameClient/AnimateWindowManager.h
+#    Include/GameClient/AnimateWindowManager.h
     Include/GameClient/CampaignManager.h
 #    Include/GameClient/ChallengeGenerals.h
 #    Include/GameClient/ClientInstance.h
@@ -177,8 +177,8 @@ set(GAMEENGINE_SRC
 #    Include/GameClient/GameText.h
 #    Include/GameClient/GameWindow.h
 #    Include/GameClient/GameWindowGlobal.h
-    Include/GameClient/GameWindowID.h
-    Include/GameClient/GameWindowManager.h
+#    Include/GameClient/GameWindowID.h
+#    Include/GameClient/GameWindowManager.h
 #    Include/GameClient/GameWindowTransitions.h
 #    Include/GameClient/GlobalLanguage.h
 #    Include/GameClient/GraphDraw.h
@@ -380,6 +380,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/PilotFindVehicleUpdate.h
     Include/GameLogic/Module/PointDefenseLaserUpdate.h
     Include/GameLogic/Module/PoisonedBehavior.h
+    Include/GameLogic/Module/PoweredBehavior.h
     Include/GameLogic/Module/PowerPlantUpdate.h
     Include/GameLogic/Module/PowerPlantUpgrade.h
     Include/GameLogic/Module/POWTruckAIUpdate.h
@@ -450,6 +451,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/SupplyWarehouseCripplingBehavior.h
     Include/GameLogic/Module/SupplyWarehouseDockUpdate.h
     Include/GameLogic/Module/TechBuildingBehavior.h
+    Include/GameLogic/Module/ThermiteBehavior.h
     Include/GameLogic/Module/TempWeaponBonusHelper.h
     Include/GameLogic/Module/TensileFormationUpdate.h
     Include/GameLogic/Module/TimeOfDayOverrideUpdate.h
@@ -695,7 +697,7 @@ set(GAMEENGINE_SRC
 #    Source/GameClient/GameText.cpp
 #    Source/GameClient/GlobalLanguage.cpp
 #    Source/GameClient/GraphDraw.cpp
-    Source/GameClient/GUI/AnimateWindowManager.cpp
+#    Source/GameClient/GUI/AnimateWindowManager.cpp
 #    Source/GameClient/GUI/ChallengeGenerals.cpp
 #    Source/GameClient/GUI/ControlBar/ControlBar.cpp
 #    Source/GameClient/GUI/ControlBar/ControlBarBeacon.cpp
@@ -725,10 +727,10 @@ set(GAMEENGINE_SRC
 #    Source/GameClient/GUI/GameFont.cpp
 #    Source/GameClient/GUI/GameWindow.cpp
 #    Source/GameClient/GUI/GameWindowGlobal.cpp
-    Source/GameClient/GUI/GameWindowManager.cpp
-    Source/GameClient/GUI/GameWindowManagerScript.cpp
+#    Source/GameClient/GUI/GameWindowManager.cpp
+#    Source/GameClient/GUI/GameWindowManagerScript.cpp
 #    Source/GameClient/GUI/GameWindowTransitions.cpp
-    Source/GameClient/GUI/GameWindowTransitionsStyles.cpp
+#    Source/GameClient/GUI/GameWindowTransitionsStyles.cpp
 #    Source/GameClient/GUI/GUICallbacks/ControlBarCallback.cpp
 #    Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp
 #    Source/GameClient/GUI/GUICallbacks/Diplomacy.cpp
@@ -860,6 +862,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Behavior/OverchargeBehavior.cpp
     Source/GameLogic/Object/Behavior/ParkingPlaceBehavior.cpp
     Source/GameLogic/Object/Behavior/PoisonedBehavior.cpp
+    Source/GameLogic/Object/Behavior/PoweredBehavior.cpp
     Source/GameLogic/Object/Behavior/POWTruckBehavior.cpp
     Source/GameLogic/Object/Behavior/PrisonBehavior.cpp
     Source/GameLogic/Object/Behavior/PropagandaCenterBehavior.cpp
@@ -869,6 +872,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Behavior/SpawnBehavior.cpp
     Source/GameLogic/Object/Behavior/SupplyWarehouseCripplingBehavior.cpp
     Source/GameLogic/Object/Behavior/TechBuildingBehavior.cpp
+    Source/GameLogic/Object/Behavior/ThermiteBehavior.cpp
     Source/GameLogic/Object/Body/ActiveBody.cpp
     Source/GameLogic/Object/Body/BodyModule.cpp
     Source/GameLogic/Object/Body/HighlanderBody.cpp
@@ -1146,6 +1150,8 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/CarrierDroneAIUpdate.h
     Include/GameLogic/Module/ChronoDamageHelper.h
     Include/GameLogic/Module/ChronoDeathBehavior.h
+    Include/GameLogic/Module/JammingDamageHelper.h
+    Include/GameLogic/Module/FrozenDamageHelper.h
     Include/GameLogic/Module/ChronoSphereUpdateModule.h
     Include/GameLogic/Module/CrateApplyUpgrade.h
     Include/GameLogic/Module/CreateObjectOnKillBehavior.h
@@ -1178,7 +1184,9 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/ShipSlowDeathBehavior.h
     Include/GameLogic/Module/SpecialPowerDesignatorUpdate.h
     Include/GameLogic/Module/StickyBombCrateCollide.h
+    Include/GameLogic/Module/TeleportSelfSpecialPower.h
     Include/GameLogic/Module/TeleporterAIUpdate.h
+    Include/GameLogic/Module/TornadoUpdate.h
     Include/GameLogic/Module/UnitProductionBonusUpgrade.h
     Include/GameLogic/Module/UpgradeSpecialPower.h
     Include/GameLogic/WeaponBonusConditionType.h
@@ -1202,6 +1210,8 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Contain/MultiAddOnContain.cpp
     Source/GameLogic/Object/Helper/BuffEffectHelper.cpp
     Source/GameLogic/Object/Helper/ChronoDamageHelper.cpp
+    Source/GameLogic/Object/Helper/JammingDamageHelper.cpp
+    Source/GameLogic/Object/Helper/FrozenDamageHelper.cpp
     Source/GameLogic/Object/SpecialPower/UpgradeSpecialPower.cpp
     Source/GameLogic/Object/Update/AIUpdate/CarrierDroneAIUpdate.cpp
     Source/GameLogic/Object/Update/AIUpdate/DroneCarrierAIUpdate.cpp
@@ -1225,6 +1235,8 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Update/ScatterShotUpdate.cpp
     Source/GameLogic/Object/Update/ShipSlowDeathBehavior.cpp
     Source/GameLogic/Object/Update/SpecialPowerDesignatorUpdate.cpp
+    Source/GameLogic/Object/Update/TeleportSelfSpecialPower.cpp
+    Source/GameLogic/Object/Update/TornadoUpdate.cpp
     Source/GameLogic/Object/Upgrade/CrateApplyUpgrade.cpp
     Source/GameLogic/Object/Upgrade/ProductionTimeModifierUpgrade.cpp
     Source/GameLogic/Object/Upgrade/PropagateUpgradeToContainedUpgrade.cpp
@@ -1252,6 +1264,10 @@ if(RTS_BUILD_GENERALS_ONLINE)
     # GeneralsOnlineDevelopmentTeam/GameClient. See
     # Source/GameNetwork/GeneralsOnline/PORT_NOTES.md
     list(APPEND GAMEENGINE_SRC
+        Include/Common/StatsExporter.h
+        Include/Common/StatsUploader.h
+        Source/Common/StatsExporter.cpp
+        Source/Common/StatsUploader.cpp
         Include/GameNetwork/UDPTransport.h
         Source/GameNetwork/UDPTransport.cpp
         Include/GameNetwork/GeneralsOnline/json.hpp

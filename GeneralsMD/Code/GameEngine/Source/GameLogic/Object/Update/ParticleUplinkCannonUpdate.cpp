@@ -55,6 +55,7 @@
 #include "GameLogic/TerrainLogic.h"
 #include "GameLogic/Module/SpecialPowerModule.h"
 #include "GameLogic/Module/ParticleUplinkCannonUpdate.h"
+#include "GameLogic/Module/TornadoUpdate.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
 #include "GameLogic/Module/ActiveBody.h"
 
@@ -66,6 +67,28 @@ constexpr const Real ORBITAL_BEAM_Z_OFFSET = 3500.0f;
 constexpr const Real ORBITAL_BEAM_AUDIO_Z_OFFSET = 500.0f;
 
 //-------------------------------------------------------------------------------------------------
+// Returns a scorch type drawn from the mask, or -1 when the mask asks for no scorch at all.
+//-------------------------------------------------------------------------------------------------
+static Int pickScorchTypeFromMask( UnsignedInt mask )
+{
+	Int candidates[SCORCH_COUNT];
+	Int count = 0;
+	for( Int i = 0; i < SCORCH_COUNT; ++i )
+	{
+		if( mask & (1 << i) )
+		{
+			candidates[count++] = i;
+		}
+	}
+
+	if( count == 0 )
+	{
+		return -1;
+	}
+
+	return candidates[GameClientRandomValue( 0, count - 1 )]; //Yes, this is just client fluff!
+}
+
 //-------------------------------------------------------------------------------------------------
 ParticleUplinkCannonUpdateModuleData::ParticleUplinkCannonUpdateModuleData()
 {
@@ -79,6 +102,8 @@ ParticleUplinkCannonUpdateModuleData::ParticleUplinkCannonUpdateModuleData()
 	m_totalFiringFrames							= 0;
 	m_totalScorchMarks							= 0;
 	m_scorchMarkScalar							= 1.0f;
+	// The types the beam picked from before this was configurable; SHADOW_SCORCH was never one of them.
+	m_scorchTypeMask								= (1 << SCORCH_1) | (1 << SCORCH_2) | (1 << SCORCH_3) | (1 << SCORCH_4);
 	m_damageRadiusScalar						= 1.0f;
 	m_groundHitFX										= nullptr;
 	m_beamLaunchFX									= nullptr;
@@ -135,6 +160,7 @@ ParticleUplinkCannonUpdateModuleData::ParticleUplinkCannonUpdateModuleData()
 		{ "SwathOfDeathAmplitude",								INI::parseReal,									nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_swathOfDeathAmplitude ) },
 		{ "TotalScorchMarks",											INI::parseUnsignedInt,					nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_totalScorchMarks ) },
 		{ "ScorchMarkScalar",											INI::parseReal,									nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_scorchMarkScalar ) },
+		{ "ScorchType",														INI::parseBitString32,					ScorchNames, offsetof( ParticleUplinkCannonUpdateModuleData, m_scorchTypeMask ) },
 		{ "BeamLaunchFX",													INI::parseFXList,								nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_beamLaunchFX ) },
 		{ "DelayBetweenLaunchFX",									INI::parseDurationUnsignedInt,  nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_framesBetweenLaunchFXRefresh ) },
 		{ "GroundHitFX",													INI::parseFXList,								nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_groundHitFX ) },
@@ -155,6 +181,7 @@ ParticleUplinkCannonUpdateModuleData::ParticleUplinkCannonUpdateModuleData()
     { "ManualFastDrivingSpeed",								INI::parseReal,									nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_manualFastDrivingSpeed ) },
     { "DoubleClickToFastDriveDelay",					INI::parseDurationUnsignedInt,	nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_doubleClickToFastDriveDelay ) },
     { "HitWaterSurface",											INI::parseBool,									nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_hitWaterSurface ) },
+    { "TornadoObjectName",										INI::parseAsciiString,							nullptr, offsetof( ParticleUplinkCannonUpdateModuleData, m_tornadoObjectName ) },
 
 		{ nullptr, nullptr, nullptr, 0 }
 	};
@@ -181,6 +208,7 @@ ParticleUplinkCannonUpdate::ParticleUplinkCannonUpdate( Thing *thing, const Modu
 	m_manualTargetMode = FALSE;
 	m_scriptedWaypointMode = FALSE;
 	m_nextDestWaypointID = 0;
+	m_tornadoObjectID = INVALID_ID;
 	m_xferVersion = 1;
 	m_initialTargetPosition.zero();
 	m_currentTargetPosition.zero();
@@ -223,6 +251,8 @@ void ParticleUplinkCannonUpdate::killEverything()
 		m_orbitToTargetBeamID = INVALID_DRAWABLE_ID;
 	}
 	m_orbitToTargetLaserRadius = LaserRadiusUpdate();
+
+	destroyTornado();
 
 	TheAudio->removeAudioEvent( m_powerupSound.getPlayingHandle() );
 	TheAudio->removeAudioEvent( m_unpackToReadySound.getPlayingHandle() );
@@ -441,6 +471,7 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 			if( me->isDisabledByType( DISABLED_UNDERPOWERED ) ||
 					me->isDisabledByType( DISABLED_EMP ) ||
 					me->isDisabledByType( DISABLED_SUBDUED ) ||
+					me->isDisabledByType( DISABLED_FROZEN ) ||
 					me->isDisabledByType( DISABLED_HACKED ) )
 			{
 				//We must end the special power early! ABORT! ABORT!
@@ -458,6 +489,7 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 				if( orbitalBirthFrame <= now )
 				{
 					createOrbitToTargetLaser( data->m_widthGrowFrames );
+					createTornado();
 					m_laserStatus = LASERSTATUS_BORN;
 					m_scorchMarksMade		= 0;
 					m_nextScorchMarkFrame = now;
@@ -481,6 +513,7 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 						}
 					}
 					m_orbitToTargetLaserRadius.setDecayFrames( data->m_widthGrowFrames );
+					rampDownTornado();
 					m_laserStatus = LASERSTATUS_DECAYING;
 				}
 				break;
@@ -501,6 +534,7 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 						m_orbitToTargetBeamID = INVALID_DRAWABLE_ID;
 					}
 					m_orbitToTargetLaserRadius = LaserRadiusUpdate();
+					destroyTornado();
 					m_laserStatus = LASERSTATUS_DEAD;
 					m_startAttackFrame = 0;
 					setLogicalStatus( STATUS_IDLE );
@@ -640,6 +674,8 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 				m_currentTargetPosition.z = TheTerrainLogic->getGroundHeight( m_currentTargetPosition.x, m_currentTargetPosition.y );
 			}
 
+			moveTornado();
+
 			Coord3D orbitPosition;
 			orbitPosition.set( m_currentTargetPosition );
 			orbitPosition.z += ORBITAL_BEAM_Z_OFFSET;
@@ -685,8 +721,11 @@ UpdateSleepTime ParticleUplinkCannonUpdate::update()
 				m_scorchMarksMade++;
 
 				//Create the scorch mark now!
-				Scorches scorchID = (Scorches)GameClientRandomValue( SCORCH_1, SCORCH_4 ); //Yes, this is just client fluff!
-				TheGameClient->addScorch( &m_currentTargetPosition, scorchRadius, scorchID );
+				Int scorchID = pickScorchTypeFromMask( data->m_scorchTypeMask );
+				if( scorchID >= 0 )
+				{
+					TheGameClient->addScorch( &m_currentTargetPosition, scorchRadius, (Scorches)scorchID );
+				}
 
 				//Calculate next scorch mark frame.
 				Real nextFactor = (Real)m_scorchMarksMade / (Real)data->m_totalScorchMarks;
@@ -1022,6 +1061,100 @@ void ParticleUplinkCannonUpdate::createGroundToOrbitLaser( UnsignedInt growthFra
 			}
 		}
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+static TornadoUpdate *findTornadoUpdate( Object *tornado )
+{
+	static NameKeyType key_TornadoUpdate = NAMEKEY( "TornadoUpdate" );
+	return (TornadoUpdate*)tornado->findUpdateModule( key_TornadoUpdate );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Put a tornado object where the beam lands, so the beam can drag it around. */
+//-------------------------------------------------------------------------------------------------
+void ParticleUplinkCannonUpdate::createTornado()
+{
+	const ParticleUplinkCannonUpdateModuleData *data = getParticleUplinkCannonUpdateModuleData();
+	if( data->m_tornadoObjectName.isEmpty() )
+	{
+		return;
+	}
+
+	destroyTornado();
+
+	const ThingTemplate *thing = TheThingFactory->findTemplate( data->m_tornadoObjectName );
+	if( thing == nullptr )
+	{
+		return;
+	}
+
+	Object *me = getObject();
+	Object *tornado = TheThingFactory->newObject( thing, me->getTeam() );
+	if( tornado == nullptr )
+	{
+		return;
+	}
+
+	tornado->setProducer( me );
+	tornado->setPosition( &m_currentTargetPosition );
+	m_tornadoObjectID = tornado->getID();
+
+	// We end it with the beam, so it must not end itself first.
+	TornadoUpdate *update = findTornadoUpdate( tornado );
+	if( update )
+	{
+		update->setExternallyControlled();
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+Object *ParticleUplinkCannonUpdate::getTornado() const
+{
+	if( m_tornadoObjectID == INVALID_ID )
+	{
+		return nullptr;
+	}
+	return TheGameLogic->findObjectByID( m_tornadoObjectID );
+}
+
+//-------------------------------------------------------------------------------------------------
+void ParticleUplinkCannonUpdate::moveTornado()
+{
+	Object *tornado = getTornado();
+	if( tornado )
+	{
+		tornado->setPosition( &m_currentTargetPosition );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Fade the tornado out with the beam, so it does not simply vanish with units in the air. */
+//-------------------------------------------------------------------------------------------------
+void ParticleUplinkCannonUpdate::rampDownTornado()
+{
+	Object *tornado = getTornado();
+	if( tornado == nullptr )
+	{
+		return;
+	}
+
+	TornadoUpdate *update = findTornadoUpdate( tornado );
+	if( update )
+	{
+		update->beginRampDown();
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void ParticleUplinkCannonUpdate::destroyTornado()
+{
+	Object *tornado = getTornado();
+	if( tornado )
+	{
+		TheGameLogic->destroyObject( tornado );
+	}
+	m_tornadoObjectID = INVALID_ID;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1413,6 +1546,7 @@ void ParticleUplinkCannonUpdate::crc( Xfer *xfer )
 	* 2: Serialize decay frames
 	* 3: Serialize scripted waypoints (Added for Zero Hour)
 	* 4: TheSuperHackers @tweak Serialize orbit to target laser radius
+	* 5: Serialize the tornado object
 	*/
 // ------------------------------------------------------------------------------------------------
 void ParticleUplinkCannonUpdate::xfer( Xfer *xfer )
@@ -1423,7 +1557,7 @@ void ParticleUplinkCannonUpdate::xfer( Xfer *xfer )
 #if RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 3;
 #else
-	const XferVersion currentVersion = 4;
+	const XferVersion currentVersion = 5;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -1536,6 +1670,11 @@ void ParticleUplinkCannonUpdate::xfer( Xfer *xfer )
 	if( version >= 4 )
 	{
 		m_orbitToTargetLaserRadius.xfer( xfer );
+	}
+
+	if( version >= 5 )
+	{
+		xfer->xferObjectID( &m_tornadoObjectID );
 	}
 
 }

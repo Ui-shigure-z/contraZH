@@ -259,6 +259,7 @@ public:
 		m_blockedRepathTimestamp = 0;
 		m_adjustDestinations = true;
 		m_goalLayer = LAYER_INVALID;
+		m_moveSoundState = MOVESOUND_WAITING;
 	}
 
 	virtual StateReturnType onEnter() override;
@@ -298,6 +299,10 @@ protected:
 	Coord3D				m_pathGoalPosition;									///< the position our current path leads to
 private:
 	AudioHandle		m_ambientPlayingHandle;							///< Audio handle for the looping sound that we may play.
+	// The locomotor runs after the state machine, so its reverse flag is only meaningful from the
+	// second update on. The move sound waits for that before it picks forward or reverse.
+	enum MoveSoundState CPP_11(: Int) { MOVESOUND_WAITING, MOVESOUND_LOCOMOTOR_RAN, MOVESOUND_STARTED };
+	MoveSoundState	m_moveSoundState;
 	UnsignedInt		m_pathTimestamp;										///< time of last pathfind
 	UnsignedInt		m_blockedRepathTimestamp;						///< time of last blocked pathfind
 	Bool					m_adjustDestinations;								///< Adjust destinations to avoid stacking units on top of each other.  Normally true, but
@@ -942,6 +947,8 @@ public:
 	virtual void notifyFired() = 0;
 	virtual void notifyNewVictimChosen(Object* victim) = 0;
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const = 0;
+	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const = 0;	///< the slot fires from this machine, not from a turret of its own
+	WeaponSlotType findOwnedGroundSlot(const Object* obj, CommandSourceType cmdSource) const;	///< first owned slot that can attack the ground, or WEAPONSLOT_COUNT
 	virtual Bool isAttackingObject() const = 0;
 	virtual const Coord3D* getOriginalVictimPos() const = 0;
 };
@@ -995,6 +1002,7 @@ public:
 	virtual void notifyNewVictimChosen(Object* victim) override;
 	virtual const Coord3D* getOriginalVictimPos() const override { return &m_originalVictimPos; }
 	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const override { return true; }
+	virtual Bool ownsWeaponSlot(WeaponSlotType wslot) const override;
 	virtual Bool isAttackingObject() const override { return m_isAttackingObject; }
 	virtual Bool isForceAttacking() const { return m_isForceAttacking; }
 #ifdef STATE_MACHINE_DEBUG

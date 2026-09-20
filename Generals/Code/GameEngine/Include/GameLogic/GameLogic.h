@@ -352,6 +352,7 @@ private:
 	bool onReturnToPrison(GameMessage *msg, AIGroupPtr &currentlySelectedGroup);
 #endif
 	bool onCreateSelectedGroup(GameMessage *msg);
+	bool onUpdateFocusedGroup(GameMessage* msg);
 	bool onRemoveFromSelectedGroup(GameMessage *msg);
 	bool onDestroySelectedGroup(GameMessage *msg);
 	bool onPlaceBeacon(GameMessage *msg);
@@ -388,6 +389,7 @@ private:
 	typedef std::map<Int, UnsignedInt> CachedCRCMap;
 	CachedCRCMap m_cachedCRCs;															///< CRCs we've seen this frame
 	Bool m_shouldValidateCRCs;															///< Should we validate CRCs this frame?
+
 	//-----------------------------------------------------------------------------------------------
 	//Bool m_loadingScene;
 	Bool m_loadingMap;

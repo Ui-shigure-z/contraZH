@@ -38,6 +38,7 @@
 #include "GameClient/TintStatus.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
+#include "Common/KindOf.h"
 
 // FORWARD DECLARATIONS ///////////////////////////////////////////////////////////////////////////
 struct FieldParse;
@@ -45,6 +46,7 @@ enum _TerrainLOD CPP_11(: Int);
 class CommandLine;
 class GlobalData;
 class INI;
+class ThingTemplate;
 class WeaponBonusSet;
 enum BodyDamageType CPP_11(: Int);
 enum AIDebugOptions CPP_11(: Int);
@@ -57,6 +59,8 @@ constexpr const Int MAX_GLOBAL_LIGHTS = 3;
 constexpr const Int SIMULATE_REPLAYS_SEQUENTIAL = -1;
 
 //-------------------------------------------------------------------------------------------------
+// Command-line parsing state is stored here instead of in CommandLine because
+// the parsing result belongs to the GlobalData instance created during startup.
 class CommandLineData
 {
 	friend class CommandLine;
@@ -69,6 +73,43 @@ class CommandLineData
 
 	Bool m_hasParsedCommandLineForStartup;
 	Bool m_hasParsedCommandLineForEngineInit;
+	BoolVector m_parsedArguments;
+};
+
+//-------------------------------------------------------------------------------------------------
+// A subdual tuning value: a plain number, or a multiple of the unit's max health ("MaxHealth * 2").
+// Unset until an INI key writes it, so callers can tell "absent" from an explicit zero.
+struct SubdualValue
+{
+	Real m_flat;
+	Real m_maxHealthFactor;
+	Bool m_isSet;
+
+	SubdualValue() : m_flat(0.0f), m_maxHealthFactor(0.0f), m_isSet(FALSE) { }
+
+	Real evaluate( Real maxHealth ) const { return m_flat + maxHealth * m_maxHealthFactor; }
+
+	static void parseFromINI( INI* ini, void* instance, void* store, const void* userData );
+	static void parseDurationFromINI( INI* ini, void* instance, void* store, const void* userData );
+};
+
+//-------------------------------------------------------------------------------------------------
+// One GameData SubdualDamageDefaults block; an empty KindOf matches every object not in ForbiddenKindOf
+struct SubdualDamageDefaults
+{
+	KindOfMaskType m_kindOf;
+	KindOfMaskType m_forbiddenKindOf;
+	SubdualValue m_subdualDamageCap;
+	SubdualValue m_subdualDamageHealRate;
+	SubdualValue m_subdualDamageHealAmount;
+	SubdualValue m_jammingDamageCap;
+	SubdualValue m_jammingDamageHealRate;
+	SubdualValue m_jammingDamageHealAmount;
+	SubdualValue m_frozenDamageCap;
+	SubdualValue m_frozenDamageHealRate;
+	SubdualValue m_frozenDamageHealAmount;
+	SubdualValue m_chronoDamageHealRate;
+	SubdualValue m_chronoDamageHealAmount;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -125,6 +166,9 @@ public:
 	Bool m_headless;
 
 	Bool m_windowed;
+
+	// Frameless window at the chosen resolution; runs the device windowed even without -win
+	Bool m_borderlessWindow;
 	Int m_xResolution;
 	Int m_yResolution;
 	Int m_maxShellScreens;  ///< this many shells layouts can be loaded at once
@@ -149,6 +193,7 @@ public:
 	// Holds a HealthBarDisplayMode; stored as Int so this widely included header does not
 	// have to pull in OptionPreferences.h.
 	Int m_healthBarDisplayMode;
+	Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn
 	// TheSuperHackers @feature Countdown numbers on build queue and cooldown cameos.
 	// Holds a BuildTimerDisplayMode; stored as Int to avoid pulling OptionPreferences.h in here.
 	Int m_buildTimerDisplayMode;
@@ -157,6 +202,10 @@ public:
 	Int m_castMode;
 	// TheSuperHackers @feature Draw a green hexagon under selected objects.
 	Bool m_selectionCircleEnabled;
+	// TheSuperHackers @feature Ring the attack range of an armed structure while it is being placed.
+	Bool m_defensesRangeCircle;
+	// TheSuperHackers @feature Draw the decals objects ask for with DisplayDecal.
+	Bool m_objectDecalsEnabled;
 	// TheSuperHackers @feature Keep ammo and passenger pips on screen when there is something
 	// to report, rather than only on selection or hover.
 	Bool m_smartPips;
@@ -184,6 +233,10 @@ public:
 	Color m_keyboardOverlayBackdropColor;
 	// TheSuperHackers @feature Leave builders out of drag selections.
 	Bool m_easyMilitaryDrag;
+	// TheSuperHackers @feature Per type cameos with counts above the command bar.
+	Bool m_smartSelection;
+	Bool m_smartSelectionUseMouse;
+	Bool m_smartCommandGroup;
 	Bool m_doubleClickAttackMove;
 	Bool m_rightMouseAlwaysScrolls;
 	Int m_jpegQuality; // TheSuperHackers @feature Quality for JPEG screenshots.
@@ -233,6 +286,7 @@ public:
 	Real m_cameraHeight;
 #endif
 	Real m_maxCameraHeight;
+	Real m_defaultMaxCameraHeight; ///< MaxCameraHeight as parsed from INI, before Options.ini overrides it
 	Real m_minCameraHeight;
 	Real m_terrainHeightAtEdgeOfMap;
 	Real m_unitDamagedThresh;
@@ -399,9 +453,14 @@ public:
 	AsciiString m_initialFile;				///< If this is specified, load a specific map from the command-line
 	AsciiString m_pendingFile;				///< If this is specified, use this map at the next game start
 	AsciiString m_loadSaveGame;				///< If this is specified, load a save game file from the command-line
+	AsciiString m_loadReplayGame;			///< If this is specified, play a replay file from the command-line
 
 	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
 	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
+#if defined(GENERALS_ONLINE)
+	Bool m_exportStats; ///< Write game stats JSON next to each simulated replay
+	AsciiString m_statsUrl; ///< If not empty, POST the compressed stats JSON here
+#endif
 
 	Int m_maxParticleCount;						///< maximum number of particles that can exist
 	Int m_maxFieldParticleCount;			///< maximum number of field-type particles that can exist (roughly)
@@ -472,6 +531,14 @@ public:
 	// TheSuperHackers @feature L3-M 21/08/2025 toggle the money per minute display, false shows only the original current money
 	Bool m_showMoneyPerMinute;
 	Bool m_allowMoneyPerMinuteForPlayer;
+
+#if defined(GENERALS_ONLINE)
+	// Observer notification feed; a font size of zero disables it
+	Int m_observerNotificationFontSize;
+	Bool m_observerNotificationSpecialPowerUsage;
+	Bool m_observerNotificationSpecialPowerPurchase;
+	Bool m_observerNotificationMilestone;
+#endif
 
 	// TheSuperHackers @feature bobtista 28/06/2026 user-configurable speed multiplier for game window transitions
 	Real m_gameWindowTransitionSpeedMultiplier;
@@ -551,6 +618,16 @@ public:
 #endif
   Bool m_TiVOFastMode;            ///< When true, the client speeds up the framerate... set by HOTKEY!
   Bool m_queueReorder;            ///< Ctrl+click moves a build queue entry one position earlier; off unless GameData enables it
+  Bool m_noOccupantFriendlyFire;  ///< spares the container a passenger is riding in from its own splash; off unless GameData enables it
+  Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
+  Bool m_skipTranslucencySort;    ///< skips the per-triangle translucency sorter; off unless GameData or the LOD level enables it
+  Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
+  Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
+  Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
+  Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
+  Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
+  Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	Bool m_shroudOn;
@@ -622,11 +699,30 @@ public:
 	DrawableColorTint	m_colorTintTypes[TINT_STATUS_COUNT];
 	Bool	m_colorTintTypes2; // [TINT_STATUS_COUNT] ;
 
+	AsciiString m_jammingOverlayTexture;	///< empty disables the jamming overlay entirely
+	Real m_jammingOverlayScrollU;
+	Real m_jammingOverlayScrollV;
+	Real m_jammingOverlayScale;				///< UV tiling; >1 repeats the texture more densely
+	RGBColor m_jammingOverlayColor;			///< tint multiplied into the texture
+	Bool m_jammingOverlayAdditive;
+
+	AsciiString m_frozenOverlayTexture;	///< empty disables the frozen overlay entirely
+	Real m_frozenOverlayScrollU;
+	Real m_frozenOverlayScrollV;
+	Real m_frozenOverlayScale;
+	RGBColor m_frozenOverlayColor;
+	Bool m_frozenOverlayAdditive;
+
 	Bool m_useOldMoveSpeed;
 
 	Real m_chronoDamageDisableThreshold;
 	UnsignedInt m_chronoDamageHealRate;
 	Real m_chronoDamageHealAmount;
+
+	std::vector<SubdualDamageDefaults> m_subdualDamageDefaults;	///< later blocks win over earlier ones
+
+	/// the last block matching the template's KindOf that sets the given field, or nullptr
+	const SubdualValue* findSubdualDefault( const ThingTemplate* tmpl, SubdualValue SubdualDamageDefaults::*field ) const;
 
 	Real m_chronoDisableAlphaStart;
 	Real m_chronoDisableAlphaEnd;
@@ -645,6 +741,12 @@ public:
 	Bool m_weaponScatterOnWaterSurfaceDefault;	///< default for WeaponTemplate ScatterOnWaterSurface when not set per-weapon
 	Bool m_reverseMoveIgnoreAngleThreshold;	///< if true, a manual REVERSE_MOVE order reverses regardless of heading; if false, only when the goal is behind us
 	Real m_smartGarrisonRange;	///< radius searched for additional transports by the Smart Garrison command
+	Real m_transportLoadSpeedPenalty;	///< default fraction of speed a container loses at a full load
+	Real m_transportLoadTurnRatePenalty;	///< likewise for turn rate
+	Real m_transportLoadAccelerationPenalty;	///< likewise for acceleration
+	Real m_transportLoadLiftPenalty;	///< likewise for lift
+	KindOfMaskType m_transportLoadPenaltyKindOf;	///< default: only occupants with one of these kind of bits count toward the load
+	KindOfMaskType m_transportLoadPenaltyForbidKindOf;	///< default: occupants with any of these kind of bits do not count toward the load
 
 	// the trailing '\' is included!
   const AsciiString &getPath_UserData() const { return m_userDataDir; }
@@ -675,6 +777,7 @@ private:
 
 	static void setColorTintEntry(DrawableColorTint* arr, int index, RGBColor color, RGBColor colorInfantry, UnsignedInt attackFrames, UnsignedInt decayFrames);
 	static void parseTintStatusType(INI* ini, void* instance, void* store, const void* userData);
+	static void parseSubdualDamageDefaults(INI* ini, void* instance, void* store, const void* userData);
 
 };
 

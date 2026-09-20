@@ -747,7 +747,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
 		{
 			W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
-			if (!pDyna->isEnabled()) {
+			if (!pDyna->isEnabled() || pDyna->isTerrainOnly()) {
 				continue;
 			}
 			SphereClass lSph = pDyna->Get_Bounding_Sphere();
@@ -1595,29 +1595,6 @@ void RTS3DScene::flushTranslucentObjects(RenderInfoClass & rinfo)
 	//function gets called right after we flush regular render objects.
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENT,DX8Wrapper::Convert_Color(this->Get_Ambient_Light(),0.0f));
 }
-
-//=============================================================================
-// RTS3DScene::createLightsIterator
-//=============================================================================
-/** Returns an iterator of the lights in the scene. */
-//=============================================================================
-RefRenderObjListIterator * RTS3DScene::createLightsIterator()
-{
-	RefRenderObjListIterator * it = NEW RefRenderObjListIterator(&LightList);	// poolify
-	return it;
-}
-
-
-//=============================================================================
-// RTS3DScene::destroyLightsIterator
-//=============================================================================
-/** Destroys the iterator returned by createLightsIterator. */
-//=============================================================================
-void RTS3DScene::destroyLightsIterator(RefRenderObjListIterator * it)
-{
-	delete it;
-}
-
 
 //=============================================================================
 // RTS3DScene::addDynamicLight

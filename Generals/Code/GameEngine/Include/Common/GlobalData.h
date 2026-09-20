@@ -54,6 +54,8 @@ constexpr const Int MAX_GLOBAL_LIGHTS = 3;
 constexpr const Int SIMULATE_REPLAYS_SEQUENTIAL = -1;
 
 //-------------------------------------------------------------------------------------------------
+// Command-line parsing state is stored here instead of in CommandLine because
+// the parsing result belongs to the GlobalData instance created during startup.
 class CommandLineData
 {
 	friend class CommandLine;
@@ -66,6 +68,7 @@ class CommandLineData
 
 	Bool m_hasParsedCommandLineForStartup;
 	Bool m_hasParsedCommandLineForEngineInit;
+	BoolVector m_parsedArguments;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -190,6 +193,7 @@ public:
 	Real m_cameraHeight;
 #endif
 	Real m_maxCameraHeight;
+	Real m_defaultMaxCameraHeight; ///< MaxCameraHeight as parsed from INI, before Options.ini overrides it
 	Real m_minCameraHeight;
 	Real m_terrainHeightAtEdgeOfMap;
 	Real m_unitDamagedThresh;
@@ -351,6 +355,7 @@ public:
 	AsciiString m_initialFile;				///< If this is specified, load a specific map from the command-line
 	AsciiString m_pendingFile;				///< If this is specified, use this map at the next game start
 	AsciiString m_loadSaveGame;				///< If this is specified, load a save game file from the command-line
+	AsciiString m_loadReplayGame;			///< If this is specified, play a replay file from the command-line
 
 	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
 	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
@@ -497,10 +502,23 @@ public:
 
   Bool m_TiVOFastMode;            ///< When true, the client speeds up the framerate... set by HOTKEY!
   Bool m_queueReorder;            ///< Ctrl+click moves a build queue entry one position earlier; off unless GameData enables it
+  Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
+  Bool m_skipTranslucencySort;    ///< skips the per-triangle translucency sorter; off unless GameData or the LOD level enables it
+  Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
+  Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
+  Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
+  Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
+  Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn
+  Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
+  Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
 
 	// TheSuperHackers @feature Outline the radar blips and the shoreline, at double radar
 	// resolution. Client side only; the radar never feeds game logic.
 	Bool m_newRadar;
+	Bool m_smartSelection;
+	Bool m_smartSelectionUseMouse;
+	Bool m_smartCommandGroup;
 	// TheSuperHackers @feature How big the NewRadar object blips draw.
 	// Holds a RadarBlipSize; stored as Int to avoid pulling OptionPreferences.h in here.
 	Int m_radarBlipSize;

@@ -133,6 +133,8 @@ enum ThingTemplateAudioType CPP_11(: Int)
 	TTAUDIO_voiceAttackSpecial,				///< Unit is ordered to use a special attack
 	TTAUDIO_voiceAttackAir,						///< Unit is ordered to attack an airborne unit
 	TTAUDIO_voiceGuard,								///< Unit is ordered to guard an area
+	TTAUDIO_soundReverseMoveLoop,			///< Sound when unit is moving in reverse
+	TTAUDIO_soundReverseMoveLoopDamaged,///< Sound when unit is moving in reverse and is damaged
 
 	TTAUDIO_COUNT
 };
@@ -485,6 +487,19 @@ public:
 	Bool hasDynamicShadowLength() const { return m_shadowHasDynamicLength; }
 
 	const AsciiString& getShadowTextureName() const { return m_shadowTextureName; }
+
+	// TheSuperHackers @feature Display decal, drawn under the object independently of its shadow.
+	Bool displaysDecal() const { return m_displayDecal; }
+	Bool hidesDecalWhenDisabled() const { return m_decalHideWhenDisabled; }
+	ShadowType getDecalStyle() const { return (ShadowType)m_decalStyle; }
+	Real getDecalSizeX() const { return m_decalSizeX; }
+	Real getDecalSizeY() const { return m_decalSizeY; }
+	Real getDecalOffsetX() const { return m_decalOffsetX; }
+	Real getDecalOffsetY() const { return m_decalOffsetY; }
+	Real getDecalOpacity() const { return m_decalOpacity; }
+	Color getDecalColor() const { return m_decalColor; }
+	const AsciiString& getDecalTextureName() const { return m_decalTextureName; }
+
 	UnsignedInt getOcclusionDelay() const { return m_occlusionDelay;}
 
 	const ModuleInfo& getBehaviorModuleInfo() const { return m_behaviorModuleInfo; }
@@ -530,6 +545,8 @@ public:
 	const AudioEventRTS *getSoundMoveStartDamaged() const			{ return getAudio(TTAUDIO_soundMoveStartDamaged); }
 	const AudioEventRTS *getSoundMoveLoop() const							{ return getAudio(TTAUDIO_soundMoveLoop); }
 	const AudioEventRTS *getSoundMoveLoopDamaged() const			{ return getAudio(TTAUDIO_soundMoveLoopDamaged); }
+	const AudioEventRTS *getSoundReverseMoveLoop() const			{ return getAudio(TTAUDIO_soundReverseMoveLoop); }
+	const AudioEventRTS *getSoundReverseMoveLoopDamaged() const	{ return getAudio(TTAUDIO_soundReverseMoveLoopDamaged); }
 	const AudioEventRTS *getSoundAmbient() const							{ return getAudio(TTAUDIO_soundAmbient); }
 	const AudioEventRTS *getSoundAmbientDamaged() const				{ return getAudio(TTAUDIO_soundAmbientDamaged); }
 	const AudioEventRTS *getSoundAmbientReallyDamaged() const	{ return getAudio(TTAUDIO_soundAmbientReallyDamaged); }
@@ -647,6 +664,7 @@ public:
 	void setCopiedFromDefaultExtended();
 
 	void setReskinnedFrom(const ThingTemplate* tt) { DEBUG_ASSERTCRASH(m_reskinnedFrom == nullptr, ("should be null")); m_reskinnedFrom = tt; }
+	const ThingTemplate* getReskinRoot() const;
 
 	Bool isPrerequisite() const { return m_isPrerequisite; }
 
@@ -727,6 +745,7 @@ private:
 	AsciiString				m_buttonImageName;
 	AsciiString				m_upgradeCameoUpgradeNames[MAX_UPGRADE_CAMEO_UPGRADES];	///< Use these to find the upgrade images to display on the control bar
 	AsciiString				m_shadowTextureName;					///< name of texture to use for shadow decal
+	AsciiString				m_decalTextureName;						///< name of texture to use for the display decal
 	AsciiString				m_moduleBeingReplacedName;		///< used only during map.ini loading... name (not tag) of Module being replaced, or empty if not inside ReplaceModule block
 	AsciiString				m_moduleBeingReplacedTag;			///< used only during map.ini loading... tag (not name) of Module being replaced, or empty if not inside ReplaceModule block
 #ifdef LOAD_TEST_ASSETS
@@ -789,8 +808,16 @@ private:
 	Real					m_shadowOffsetX;			///< world-space offset of decal shadow texture
 	Real					m_shadowOffsetY;			///< world-space offset of decal shadow texture
 	Bool					m_shadowHasDynamicLength;  ///< dynamic shadow angle scaling based on object height
+	Real					m_decalSizeX;					///< world-space extent of the display decal texture
+	Real					m_decalSizeY;					///< world-space extent of the display decal texture
+	Real					m_decalOffsetX;				///< world-space offset of the display decal texture
+	Real					m_decalOffsetY;				///< world-space offset of the display decal texture
+	Real					m_decalOpacity;				///< 0..1, fades the display decal
+	Bool					m_displayDecal;				///< draw a display decal under this object, independent of its shadow
+	Bool					m_decalHideWhenDisabled;	///< stop drawing the display decal while the object is disabled
 
 	// ---- Int-sized things
+	Color					m_decalColor;					///< ARGB tint for the display decal; alpha comes from DecalOpacity
 	Int						m_energyProduction;						///< how much Energy this takes (negative values produce Energy, rather than consuming it)
 	Int						m_energyBonus;								///< how much extra Energy this produces due to the upgrade
 	Color					m_displayColor;								///< for the editor display color
@@ -824,6 +851,7 @@ private:
 	Byte					m_editorSorting;						///< editor sorting type, see EditorSortingType enum
 	Byte					m_structureRubbleHeight;
 	Byte					m_shadowType;								///< settings which determine the type of shadow rendered
+	Byte					m_decalStyle;								///< blend style of the display decal, kept apart so Shadow keeps all 8 bits
 	Byte					m_moduleParsingMode;
 	UnsignedByte	m_crusherLevel;							///< crusher > crushable level to actually crush
 	UnsignedByte	m_crushableLevel;						///< Specifies the level of crushability (must be hit by a crusher greater than this to crush me).

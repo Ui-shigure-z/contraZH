@@ -187,15 +187,9 @@ AIGuardMachine::AIGuardMachine( Object *owner ) :
 	//Kris: Except that guard return is more like an attack move, and will acquire targets while moving there.
 	//This breaks deployAI units because they have to completely unpack before realizing that there is a target in range.
 	//So I'm making AI_GUARD_INNER the first state.
-#if RETAIL_COMPATIBLE_CRC
-	defineState( AI_GUARD_INNER,						newInstance(AIGuardInnerState)( this ), AI_GUARD_OUTER, AI_GUARD_OUTER, attackAggressors );
-	defineState( AI_GUARD_RETURN,						newInstance(AIGuardReturnState)( this ), AI_GUARD_IDLE, AI_GUARD_INNER, attackAggressors );
-#else
-	// TheSuperHackers @bugfix 09/04/2026 The attack aggressors conditions for AI_GUARD_INNER and AI_GUARD_RETURN
-	// were removed to fix the conflicting movement and fire behavior in guard mode when the unit is under attack.
+	// Inner and return carry no attackAggressors transition, so being shot does not interrupt the move or the attack.
 	defineState( AI_GUARD_INNER,						newInstance(AIGuardInnerState)( this ), AI_GUARD_OUTER, AI_GUARD_OUTER );
 	defineState( AI_GUARD_RETURN,						newInstance(AIGuardReturnState)( this ), AI_GUARD_IDLE, AI_GUARD_INNER );
-#endif
 	defineState( AI_GUARD_IDLE,							newInstance(AIGuardIdleState)( this ), AI_GUARD_INNER, AI_GUARD_RETURN, attackAggressors );
 	defineState( AI_GUARD_OUTER,						newInstance(AIGuardOuterState)( this ), AI_GUARD_GET_CRATE, AI_GUARD_GET_CRATE );
 	defineState( AI_GUARD_GET_CRATE,				newInstance(AIGuardPickUpCrateState)( this ), AI_GUARD_RETURN, AI_GUARD_RETURN );
@@ -423,31 +417,38 @@ StateReturnType AIGuardInnerState::onEnter()
 	// Or try to destroy the target
 	else
 	{
-		Object* targetToGuard = getGuardMachine()->findTargetToGuardByID();
-		Coord3D pos = targetToGuard ? *targetToGuard->getPosition() : *getGuardMachine()->getPositionToGuard();
-		Object* nemesis = TheGameLogic->findObjectByID(getGuardMachine()->getNemesisID()) ;
-		if (nemesis == nullptr)
+		StateReturnType returnVal = startAttackOnNemesis();
+		if (returnVal == STATE_CONTINUE)
 		{
-			DEBUG_LOG(("Unexpected null nemesis in AIGuardInnerState."));
-			return STATE_SUCCESS;
-		}
-		m_exitConditions.m_center = pos;
-		m_exitConditions.m_radiusSqr = sqr(AIGuardMachine::getStdGuardRange(getMachineOwner()));
-		m_exitConditions.m_conditionsToConsider = (ExitConditions::ATTACK_ExitIfOutsideRadius |
-																								ExitConditions::ATTACK_ExitIfNoUnitFound);
-
-		m_attackState = newInstance(AIAttackState)(getMachine(), false, true, false, &m_exitConditions);
-
-		m_attackState->getMachine()->setGoalObject(nemesis);
-
-		StateReturnType returnVal = m_attackState->onEnter();
-		if (returnVal == STATE_CONTINUE) {
 			return STATE_CONTINUE;
 		}
 	}
 
 	// if we had no one to attack, we were successful, so go to the next state.
 	return STATE_SUCCESS;
+}
+
+//--------------------------------------------------------------------------------------
+StateReturnType AIGuardInnerState::startAttackOnNemesis()
+{
+	Object* targetToGuard = getGuardMachine()->findTargetToGuardByID();
+	Coord3D pos = targetToGuard ? *targetToGuard->getPosition() : *getGuardMachine()->getPositionToGuard();
+	Object* nemesis = TheGameLogic->findObjectByID(getGuardMachine()->getNemesisID()) ;
+	if (nemesis == nullptr)
+	{
+		DEBUG_LOG(("Unexpected null nemesis in AIGuardInnerState."));
+		return STATE_SUCCESS;
+	}
+	m_exitConditions.m_center = pos;
+	m_exitConditions.m_radiusSqr = sqr(AIGuardMachine::getStdGuardRange(getMachineOwner()));
+	m_exitConditions.m_conditionsToConsider = (ExitConditions::ATTACK_ExitIfOutsideRadius |
+																							ExitConditions::ATTACK_ExitIfNoUnitFound);
+
+	m_attackState = newInstance(AIAttackState)(getMachine(), false, true, false, &m_exitConditions);
+
+	m_attackState->getMachine()->setGoalObject(nemesis);
+
+	return m_attackState->onEnter();
 }
 
 //--------------------------------------------------------------------------------------
@@ -462,7 +463,23 @@ StateReturnType AIGuardInnerState::update()
 			m_exitConditions.m_center = *targetToGuard->getPosition();
 		}
 
-		return m_attackState->update();
+		StateReturnType returnVal = m_attackState->update();
+		if (returnVal == STATE_CONTINUE || IS_STATE_SLEEP(returnVal))
+		{
+			return returnVal;
+		}
+
+		m_attackState->onExit(EXIT_NORMAL);
+		deleteInstance(m_attackState);
+		m_attackState = nullptr;
+
+		// Pick the next target here rather than leaving the state, which would undeploy a deployed unit.
+		if (returnVal == STATE_SUCCESS && getGuardMachine()->lookForInnerTarget())
+		{
+			return startAttackOnNemesis();
+		}
+
+		return returnVal;
 	}
 	else if (m_enterState)
 	{
@@ -664,6 +681,15 @@ StateReturnType AIGuardReturnState::onEnter()
 	{
 		area->getCenterPoint(&m_goalPosition);
 	}
+
+	// Already home, so skip the move order that would undeploy a deployed unit.
+	Coord3D delta = *getMachineOwner()->getPosition();
+	delta.sub(m_goalPosition);
+	if (delta.lengthSqr() <= sqr(CLOSE_ENOUGH))
+	{
+		return STATE_SUCCESS;
+	}
+
 	AIUpdateInterface *ai = getMachineOwner()->getAIUpdateInterface();
 	if (ai && ai->isDoingGroundMovement())
 	{

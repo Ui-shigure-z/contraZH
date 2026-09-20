@@ -92,9 +92,11 @@
 #include "GameLogic/Module/ParkingPlaceBehavior.h"
 #include "GameLogic/Module/FlightDeckBehavior.h"
 #include "GameLogic/Module/PoisonedBehavior.h"
+#include "GameLogic/Module/PoweredBehavior.h"
 #include "GameLogic/Module/RebuildHoleBehavior.h"
 #include "GameLogic/Module/SupplyWarehouseCripplingBehavior.h"
 #include "GameLogic/Module/TechBuildingBehavior.h"
+#include "GameLogic/Module/ThermiteBehavior.h"
 #include "GameLogic/Module/MinefieldBehavior.h"
 #include "GameLogic/Module/BattleBusSlowDeathBehavior.h"
 #include "GameLogic/Module/JetSlowDeathBehavior.h"
@@ -152,6 +154,7 @@
 #include "GameLogic/Module/DemoTrapUpdate.h"
 #include "GameLogic/Module/ParticleUplinkCannonUpdate.h"
 #include "GameLogic/Module/ChronoSphereUpdateModule.h"
+#include "GameLogic/Module/TeleportSelfSpecialPower.h"
 #include "GameLogic/Module/MultiLocationSpecialPowerUpdate.h"
 #include "GameLogic/Module/SpectreGunshipUpdate.h"
 #include "GameLogic/Module/SpectreGunshipDeploymentUpdate.h"
@@ -205,6 +208,7 @@
 #include "GameLogic/Module/SupplyWarehouseDockUpdate.h"
 #include "GameLogic/Module/TimeOfDayOverrideUpdate.h"
 #include "GameLogic/Module/ToppleUpdate.h"
+#include "GameLogic/Module/TornadoUpdate.h"
 #include "GameLogic/Module/TransportAIUpdate.h"
 #include "GameLogic/Module/WanderAIUpdate.h"
 #include "GameLogic/Module/TeleporterAIUpdate.h"
@@ -412,9 +416,11 @@ void ModuleFactory::init()
 	addModule( ParkingPlaceBehavior );
 	addModule( FlightDeckBehavior );
 	addModule( PoisonedBehavior );
+	addModule( PoweredBehavior );
 	addModule( RebuildHoleBehavior );
 	addModule( SupplyWarehouseCripplingBehavior );
 	addModule( TechBuildingBehavior );
+	addModule( ThermiteBehavior );
 	addModule( MinefieldBehavior );
 	addModule( BattleBusSlowDeathBehavior );
 	addModule( JetSlowDeathBehavior );
@@ -487,7 +493,9 @@ void ModuleFactory::init()
 	addModule( PilotFindVehicleUpdate );
 	addModule( DemoTrapUpdate );
 	addModule( ParticleUplinkCannonUpdate );
+	addModule( TornadoUpdate );
 	addModule( ChronoSphereUpdateModule );
+	addModule( TeleportSelfSpecialPower );
 	addModule( MultiLocationSpecialPowerUpdate );
 	addModule( SpectreGunshipUpdate );
 	addModule( SpectreGunshipDeploymentUpdate );

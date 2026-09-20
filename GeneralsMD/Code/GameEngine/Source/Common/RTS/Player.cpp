@@ -76,6 +76,10 @@
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/Eva.h"
+#if defined(GENERALS_ONLINE)
+#include "Common/StatsExporter.h"
+#include "GameClient/InGameUI.h"
+#endif
 #include "GameClient/GameClient.h"
 #include "GameClient/GameText.h"
 
@@ -329,6 +333,7 @@ Player::Player( Int playerIndex )
 	m_cashBountyPercent = 0.0f;
 	m_color = 0;
 	m_currentSelection = nullptr;
+	m_currentFocus = nullptr;
 	m_rankLevel = 0;
 	m_sciencePurchasePoints = 0;
 	m_side = nullptr;
@@ -396,6 +401,9 @@ void Player::init(const PlayerTemplate* pt)
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance(Squad);
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 
 	deleteInstance(m_tunnelSystem);
 	m_tunnelSystem = nullptr;
@@ -558,6 +566,9 @@ Player::~Player()
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = nullptr;
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 
 	deleteInstance(m_battlePlanBonuses);
 	m_battlePlanBonuses = nullptr;
@@ -1045,6 +1056,9 @@ void Player::initFromDict(const Dict* d)
 
 	deleteInstance(m_currentSelection);
 	m_currentSelection = newInstance( Squad );
+
+	deleteInstance(m_currentFocus);
+	m_currentFocus = nullptr;
 }
 
 //=============================================================================
@@ -1588,6 +1602,21 @@ void Player::onUnitCreated( Object *factory, Object *unit )
 
 	// increment our scorekeeper
 	m_scoreKeeper.addObjectBuilt(unit);
+#if defined(GENERALS_ONLINE)
+	if (TheGlobalData->m_exportStats)
+	{
+		StatsExporterRecordBuild(factory, unit);
+	}
+#endif
+
+	if( factory )
+	{
+		StealthUpdate *stealth = factory->getStealth();
+		if( stealth )
+		{
+			stealth->notifyUnitCreated();
+		}
+	}
 
 	// ai notification callback
 	if( m_ai )
@@ -1692,6 +1721,12 @@ void Player::onStructureConstructionComplete(Object* builder, Object* structure,
 	// increment our scorekeeper
 	if (isRebuild == FALSE) {
 		m_scoreKeeper.addObjectBuilt(structure);
+#if defined(GENERALS_ONLINE)
+		if (TheGlobalData->m_exportStats)
+		{
+			StatsExporterRecordBuild(builder, structure);
+		}
+#endif
 		m_scoreKeeper.addMoneySpent(structure->getTemplate()->calcCostToBuild(this));
 	}
 
@@ -2778,13 +2813,17 @@ void Player::doBountyForKill(const Object* killer, const Object* victim)
 		m_scoreKeeper.addMoneyEarned( bounty );
 
 		//Display cash income floating over the recipient.
-		UnicodeString moneyString;
-		moneyString.format( TheGameText->fetch( "GUI:AddCash" ), bounty );
-		Coord3D pos;
-		pos.zero();
-		pos.add( *killer->getPosition() );
-		pos.z += 10.0f; //add a little z to make it show up above the unit.
-		TheInGameUI->addFloatingText( moneyString, &pos, GameMakeColor( 255, 255, 0, 255 ) );
+		if( killer->isLogicallyVisible() )
+		{
+			// OY LOOK!  I AM USING LOCAL PLAYER.  Do not put anything other than TheInGameUI->addFloatingText in the block this controls!!!
+			UnicodeString moneyString;
+			moneyString.format( TheGameText->fetch( "GUI:AddCash" ), bounty );
+			Coord3D pos;
+			pos.zero();
+			pos.add( *killer->getPosition() );
+			pos.z += 10.0f; //add a little z to make it show up above the unit.
+			TheInGameUI->addFloatingText( moneyString, &pos, GameMakeColor( 255, 255, 0, 255 ) );
+		}
 	}
 }
 
@@ -3005,6 +3044,13 @@ Bool Player::attemptToPurchaseScience(ScienceType science, Bool playerAction/* =
 	{
 		TheControlBar->markUIDirty();
 	}
+
+#if defined(GENERALS_ONLINE)
+	if (TheInGameUI)
+	{
+		TheInGameUI->notifyGeneralPromotion(this, science);
+	}
+#endif
 
 	return true;
 }
@@ -3272,7 +3318,7 @@ static void countExisting( Object *obj, void *userData )
 
 //=============================================================================
 // Make sure that building another of this unit/structure/object won't exceed MaxSimultaneousOfType()
-Bool Player::canBuildMoreOfType( const ThingTemplate *whatToBuild ) const
+Bool Player::canBuildMoreOfType( const ThingTemplate *whatToBuild, UnsignedInt buildCount) const
 {
   // make sure we're not maxed out for this type of unit.
   UnsignedInt maxSimultaneousOfType = whatToBuild->getMaxSimultaneousOfType();
@@ -3291,7 +3337,7 @@ Bool Player::canBuildMoreOfType( const ThingTemplate *whatToBuild ) const
     typeCountData.checkProductionInterface = !whatToBuild->isKindOf( KINDOF_STRUCTURE );
 
     iterateObjects( countExisting, &typeCountData );
-    if( typeCountData.count >= maxSimultaneousOfType )
+    if( typeCountData.count + buildCount > maxSimultaneousOfType )
       return false;
   }
   return true;
@@ -3640,7 +3686,21 @@ Bool Player::hasRadar() const
 static void doPowerDisable( Object *obj, void *userData )
 {
 	Bool disabling = *((Bool*)userData);
-	if( obj && obj->isKindOf(KINDOF_POWERED) )
+	if( !obj )
+	{
+		return;
+	}
+
+	Bool handled = FALSE;
+	for( BehaviorModule **module = obj->getBehaviorModules(); *module; ++module )
+	{
+		if( (*module)->onPowerChange( !disabling ) )
+		{
+			handled = TRUE;
+		}
+	}
+
+	if( !handled && obj->isKindOf(KINDOF_POWERED) )
 	{
 		if( disabling )
 			obj->setDisabled( DISABLED_UNDERPOWERED ); //set disabled has a pauseAllSpecialPowers that prevents double pausing
@@ -4172,6 +4232,12 @@ void Player::getCurrentSelectionAsAIGroup(AIGroup *group) {
 	}
 }
 
+void Player::getCurrentFocusAsAIGroup(AIGroup* group) {
+	if (m_currentFocus != nullptr) {
+		m_currentFocus->aiGroupFromSquad(group);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Select a hotkey team based on this GameMessage */
 //-------------------------------------------------------------------------------------------------
@@ -4184,6 +4250,18 @@ void Player::setCurrentlySelectedAIGroup(AIGroup *group) {
 
 	if (group != nullptr) {
 		m_currentSelection->squadFromAIGroup(group, true);
+	}
+}
+
+void Player::setCurrentlyFocusedAIGroup(AIGroup* group) {
+	if (m_currentFocus == nullptr) {
+		m_currentFocus = newInstance(Squad);
+	}
+
+	m_currentFocus->clearSquad();
+
+	if (group != nullptr) {
+		m_currentFocus->squadFromAIGroup(group, true);
 	}
 }
 

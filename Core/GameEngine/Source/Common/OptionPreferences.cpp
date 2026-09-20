@@ -227,6 +227,27 @@ HealthBarDisplayMode OptionPreferences::getHealthBarDisplayMode(void) const
 	return HealthBarDisplayMode_Default;
 }
 
+// Options.ini: AlliedDecalMode = Hidden | House | Army (a plain index also works).
+AlliedDecalMode OptionPreferences::getAlliedDecalMode(void) const
+{
+	OptionPreferences::const_iterator it = find("AlliedDecalMode");
+	if (it == end())
+		return AlliedDecalMode_Default;
+
+	if (stricmp(it->second.str(), "Army") == 0)
+		return AlliedDecalMode_ArmyColor;
+	if (stricmp(it->second.str(), "House") == 0)
+		return AlliedDecalMode_HouseColor;
+	if (stricmp(it->second.str(), "Hidden") == 0)
+		return AlliedDecalMode_Hidden;
+
+	Int mode = atoi(it->second.str());
+	if (mode >= 0 && mode < AlliedDecalMode_Count)
+		return (AlliedDecalMode)mode;
+
+	return AlliedDecalMode_Default;
+}
+
 // TheSuperHackers @feature Draw each command bar cameo's keyboard hotkey over the cameo.
 // Options.ini: KeyboardOverlay = Yes
 Bool OptionPreferences::getKeyboardOverlayEnabled(void) const
@@ -355,6 +376,47 @@ Bool OptionPreferences::getSelectionCircleEnabled(void) const
 	return FALSE;
 }
 
+// TheSuperHackers @feature Options.ini: DefensesRangeCircle = Yes rings the attack range of an
+// armed structure while it is being placed.
+Bool OptionPreferences::getDefensesRangeCircleEnabled(void) const
+{
+	return getBool("DefensesRangeCircle", FALSE);
+}
+
+// TheSuperHackers @feature Options.ini: ObjectDecals = No suppresses the decals objects ask for
+// with DisplayDecal. On by default, since the templates opted in.
+Bool OptionPreferences::getObjectDecalsEnabled(void) const
+{
+	// the only option here that defaults on, which is exactly what getBool's default expresses
+	return getBool("ObjectDecals", TRUE);
+}
+
+Bool OptionPreferences::getBloomEnabled(void) const
+{
+	return getBool("Bloom", FALSE);
+}
+
+Real OptionPreferences::getBloomStrength(void) const
+{
+	const Real strength = getReal("BloomStrength", 0.5f);
+	return clamp(0.0f, strength, 1.0f);
+}
+
+Bool OptionPreferences::getBloomDebugEnabled(void) const
+{
+	return getBool("BloomDebug", FALSE);
+}
+
+Bool OptionPreferences::getLaserRefEnabled(void) const
+{
+	return getBool("LaserRef", FALSE);
+}
+
+Bool OptionPreferences::getBorderlessWindowEnabled(void) const
+{
+	return getBool("BorderlessWindow", FALSE);
+}
+
 // TheSuperHackers @feature Options.ini: NumericalHealth = Yes prints the hit points beside the
 // health bar. Follows HealthBarDisplayMode, so the number appears exactly where a bar does.
 Bool OptionPreferences::getNumericalHealthEnabled(void) const
@@ -452,6 +514,28 @@ Bool OptionPreferences::getEasyMilitaryDragEnabled(void) const
 		return TRUE;
 	}
 	return FALSE;
+}
+
+// TheSuperHackers @feature Options.ini: SmartSelection = Yes shows a row of cameos above the
+// command bar, one per selected unit type with a count, that narrows the selection on click
+// and cycles it with Tab. On by default.
+Bool OptionPreferences::getSmartSelectionEnabled(void) const
+{
+	return getBool("SmartSelection", TRUE);
+}
+
+// TheSuperHackers @feature Options.ini: SmartSelectionUseMouse = Yes keeps only a cameo's units
+// on double click, No on Ctrl+Shift click. On by default.
+Bool OptionPreferences::getSmartSelectionUseMouse(void) const
+{
+	return getBool("SmartSelectionUseMouse", TRUE);
+}
+
+// TheSuperHackers @feature Options.ini: SmartCommandGroup = Yes shows a row of cameos for the
+// command groups under the smart selection row. On by default.
+Bool OptionPreferences::getSmartCommandGroupEnabled(void) const
+{
+	return getBool("SmartCommandGroup", TRUE);
 }
 
 // TheSuperHackers @feature Options.ini: CastMode = Normal | QuickCast | QuickCastWithIndicator
@@ -599,6 +683,25 @@ Real OptionPreferences::getScrollFactor()
 		factor = 1;
 
 	return factor/100.0f;
+}
+
+Bool OptionPreferences::getUseCustomMaxCameraHeight() const
+{
+	return getBool("UseCustomMaxCameraHeight", FALSE);
+}
+
+Real OptionPreferences::getMaxCameraHeight() const
+{
+	if (!getUseCustomMaxCameraHeight())
+	{
+		return TheGlobalData->m_defaultMaxCameraHeight;
+	}
+	const Int height = getInt("MaxCameraHeight", 0);
+	if (height <= 0)
+	{
+		return TheGlobalData->m_defaultMaxCameraHeight;
+	}
+	return (Real)clamp((Int)MaxCameraHeightMin, height, (Int)MaxCameraHeightMax);
 }
 
 Bool OptionPreferences::getDrawScrollAnchor()
@@ -1217,6 +1320,41 @@ Bool OptionPreferences::getShowMoneyPerMinute() const
 	}
 	return FALSE;
 }
+
+#if defined(GENERALS_ONLINE)
+Int OptionPreferences::getObserverNotificationFontSize() const
+{
+	OptionPreferences::const_iterator it = find("ObserverNotificationFontSize");
+	if (it == end())
+		return TheGlobalData->m_observerNotificationFontSize;
+
+	return clamp(0, atoi(it->second.str()), 15);
+}
+
+static Bool getYesNoPreference(const OptionPreferences &prefs, const char *key, Bool defaultValue)
+{
+	OptionPreferences::const_iterator it = prefs.find(key);
+	if (it == prefs.end())
+		return defaultValue;
+
+	return stricmp(it->second.str(), "yes") == 0;
+}
+
+Bool OptionPreferences::getObserverNotificationSpecialPowerUsage() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationSpecialPowerUsage", TheGlobalData->m_observerNotificationSpecialPowerUsage);
+}
+
+Bool OptionPreferences::getObserverNotificationSpecialPowerPurchase() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationSpecialPowerPurchase", TheGlobalData->m_observerNotificationSpecialPowerPurchase);
+}
+
+Bool OptionPreferences::getObserverNotificationMilestone() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationMilestone", TheGlobalData->m_observerNotificationMilestone);
+}
+#endif
 
 Real OptionPreferences::getGameWindowTransitionSpeedMultiplier() const
 {

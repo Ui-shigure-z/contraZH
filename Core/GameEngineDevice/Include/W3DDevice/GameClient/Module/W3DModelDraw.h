@@ -391,7 +391,7 @@ public:
 	virtual void setTerrainDecal(TerrainDecalType type) override;
 	// TheSuperHackers @feature Selection ring, kept in its own slot so it does not evict the
 	// horde or chem suit decal while a unit is selected.
-	virtual void setSelectionDecal(Bool enable, Real radius) override;
+	virtual void setSelectionDecal(Bool enable, Real radius, Color color) override;
 
 	virtual Bool isVisible() const override;
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override;
@@ -555,6 +555,10 @@ private:
 	// stays selected.
 	Bool													m_selectionDecalWanted;
 	Real													m_selectionDecalRadius;
+	Color													m_selectionDecalColor;
+	// TheSuperHackers @feature Display decal from the template, in its own slot so it coexists
+	// with the object's shadow.
+	Shadow*												m_objectDecal;
 	TerrainTracksRenderObjClass*	m_trackRenderObject;							///< This is rendered under object
 	Bool													m_lastTrackWasBackwards;					///< travel direction of the last laid tread edge, to detect fwd<->rev flips
 	ParticleSystemIDVec						m_particleSystemIDs;							///< The ID numbers of the particle systems currently running.
@@ -571,6 +575,8 @@ private:
 	void rebuildWeaponRecoilInfo(const ModelConditionInfo* state, bool clear = TRUE);
 	void doHideShowProjectileObjects( UnsignedInt showCount, UnsignedInt maxCount, WeaponSlotType slot );///< Means effectively, show m of n.
 	void nukeCurrentRender(Matrix3D* xform);
+	void createObjectDecal();
+	void updateObjectDecalVisibility();
 	void doStartOrStopParticleSys();
 	void adjustAnimSpeedToMovementSpeed();
 	static void hideAllMuzzleFlashes(const ModelConditionInfo* state, RenderObjClass* renderObject);

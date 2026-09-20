@@ -83,6 +83,7 @@ public:
 	Real						m_swathOfDeathAmplitude;
 	UnsignedInt			m_totalScorchMarks;
 	Real						m_scorchMarkScalar;
+	UnsignedInt			m_scorchTypeMask;
 
 	UnsignedInt			m_totalDamagePulses;
 	Real						m_damagePerSecond;
@@ -104,6 +105,7 @@ public:
   Real					m_manualFastDrivingSpeed;
   UnsignedInt		m_doubleClickToFastDriveDelay;
 	Bool          m_hitWaterSurface;
+	AsciiString   m_tornadoObjectName;
 
 	ParticleUplinkCannonUpdateModuleData();
 	static void buildFieldParse(MultiIniFieldParse& p);
@@ -186,13 +188,19 @@ public:
 	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) override;
 
 	// Disabled conditions to process (termination conditions!)
-	virtual DisabledMaskType getDisabledTypesToProcess() const override { return MAKE_DISABLED_MASK4( DISABLED_SUBDUED, DISABLED_UNDERPOWERED, DISABLED_EMP, DISABLED_HACKED ); }
+	virtual DisabledMaskType getDisabledTypesToProcess() const override { return MAKE_DISABLED_MASK5( DISABLED_SUBDUED, DISABLED_UNDERPOWERED, DISABLED_EMP, DISABLED_HACKED, DISABLED_FROZEN ); }
 
 protected:
 
 	void setLogicalStatus( PUCStatus status );
 	void setClientStatus( PUCStatus status, Bool revealThisFrame );
 	void killEverything();
+
+	void createTornado();
+	void moveTornado();
+	void rampDownTornado();
+	void destroyTornado();
+	Object *getTornado() const;
 
 	SpecialPowerModuleInterface* m_specialPowerModule;
 
@@ -231,6 +239,7 @@ protected:
 	UnsignedInt			m_lastDrivingClickFrame;
 	UnsignedInt			m_2ndLastDrivingClickFrame;
 	UnsignedInt			m_nextDestWaypointID;
+	ObjectID				m_tornadoObjectID;
 
 	XferVersion			m_xferVersion;
 

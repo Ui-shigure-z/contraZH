@@ -227,6 +227,8 @@ const FieldParse ThingTemplate::s_objectFieldParseTable[] =
 	{ "SoundMoveStartDamaged",INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveStartDamaged]) },
 	{ "SoundMoveLoop",				INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveLoop]) },
 	{ "SoundMoveLoopDamaged",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundMoveLoopDamaged]) },
+	{ "SoundReverseMoveLoop",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundReverseMoveLoop]) },
+	{ "SoundReverseMoveLoopDamaged",INI::parseDynamicAudioEventRTS,	nullptr,	offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundReverseMoveLoopDamaged]) },
 	{ "SoundAmbient",					INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbient ]) },
 	{ "SoundAmbientDamaged",	INI::parseDynamicAudioEventRTS,	nullptr,		offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbientDamaged ]) },
 	{ "SoundAmbientReallyDamaged",INI::parseDynamicAudioEventRTS,	nullptr,offsetof( ThingTemplate, m_audioarray.m_audio[TTAUDIO_soundAmbientReallyDamaged ]) },
@@ -258,6 +260,16 @@ const FieldParse ThingTemplate::s_objectFieldParseTable[] =
 	{ "ShadowOffsetY",				INI::parseReal,						nullptr,	offsetof(ThingTemplate, m_shadowOffsetY) },
 	{ "ShadowTexture",				INI::parseAsciiString,		nullptr,	offsetof(ThingTemplate, m_shadowTextureName) },
 	{ "ShadowDynamicLengthWhenAirborne",	INI::parseBool,		nullptr,	offsetof( ThingTemplate, m_shadowHasDynamicLength) },
+	{ "DisplayDecal",					INI::parseBool,				nullptr,	offsetof(ThingTemplate, m_displayDecal) },
+	{ "DecalHideWhenDisabled",	INI::parseBool,				nullptr,	offsetof(ThingTemplate, m_decalHideWhenDisabled) },
+	{ "DecalStyle",						INI::parseBitString8,	TheShadowNames,	offsetof(ThingTemplate, m_decalStyle) },
+	{ "DecalSizeX",						INI::parseReal,				nullptr,	offsetof(ThingTemplate, m_decalSizeX) },
+	{ "DecalSizeY",						INI::parseReal,				nullptr,	offsetof(ThingTemplate, m_decalSizeY) },
+	{ "DecalOffsetX",					INI::parseReal,				nullptr,	offsetof(ThingTemplate, m_decalOffsetX) },
+	{ "DecalOffsetY",					INI::parseReal,				nullptr,	offsetof(ThingTemplate, m_decalOffsetY) },
+	{ "DecalTexture",					INI::parseAsciiString,	nullptr,	offsetof(ThingTemplate, m_decalTextureName) },
+	{ "DecalColor",						INI::parseColorInt,		nullptr,	offsetof(ThingTemplate, m_decalColor) },
+	{ "DecalOpacity",					INI::parsePercentToReal,	nullptr,	offsetof(ThingTemplate, m_decalOpacity) },
 	{ "OcclusionDelay",					INI::parseDurationUnsignedInt,		nullptr, offsetof( ThingTemplate, m_occlusionDelay ) },
 	{ "AddModule",						ThingTemplate::parseAddModule,			nullptr, 0 },
 	{ "RemoveModule",					ThingTemplate::parseRemoveModule,		nullptr, 0 },
@@ -1137,6 +1149,17 @@ ThingTemplate::ThingTemplate() :
 	m_shadowOffsetX = 0.0f;
 	m_shadowOffsetY = 0.0f;
 	m_shadowHasDynamicLength = false;
+
+	m_displayDecal = false;
+	m_decalHideWhenDisabled = false;
+	m_decalStyle = SHADOW_ALPHA_DECAL;
+	m_decalSizeX = 0.0f;
+	m_decalSizeY = 0.0f;
+	m_decalOffsetX = 0.0f;
+	m_decalOffsetY = 0.0f;
+	m_decalColor = GameMakeColor(255, 255, 255, 255);
+	m_decalOpacity = 1.0f;
+
 	m_occlusionDelay = TheGlobalData->m_defaultOcclusionDelay;
 
 	m_structureRubbleHeight = 0;
@@ -1204,6 +1227,8 @@ void ThingTemplate::validateAudio()
 	AUDIO_TEST(SoundMoveStartDamaged)
 	AUDIO_TEST(SoundMoveLoop)
 	AUDIO_TEST(SoundMoveLoopDamaged)
+	AUDIO_TEST(SoundReverseMoveLoop)
+	AUDIO_TEST(SoundReverseMoveLoopDamaged)
 	AUDIO_TEST(SoundAmbient)
 	AUDIO_TEST(SoundAmbientDamaged)
 	AUDIO_TEST(SoundAmbientReallyDamaged)
@@ -1258,6 +1283,24 @@ void ThingTemplate::validate()
 				m_shadowTextureName = "shadows";
 				break;
 		}
+	}
+
+	// there is no sensible stand-in for an aura texture, so drop the decal rather than let
+	// addDecal try to load ".tga"
+	if (m_displayDecal && m_decalTextureName.isEmpty())
+	{
+		DEBUG_CRASH(("%s sets DisplayDecal but no DecalTexture", getName().str()));
+		m_displayDecal = false;
+	}
+
+	// the projection and volume styles need a shadow-casting setup the display decal does not have
+	if (m_displayDecal
+			&& m_decalStyle != SHADOW_DECAL
+			&& m_decalStyle != SHADOW_ALPHA_DECAL
+			&& m_decalStyle != SHADOW_ADDITIVE_DECAL)
+	{
+		DEBUG_CRASH(("%s has an invalid DecalStyle", getName().str()));
+		m_decalStyle = SHADOW_ALPHA_DECAL;
 	}
 
 	validateAudio();
@@ -1590,6 +1633,19 @@ UnsignedInt ThingTemplate::getMaxSimultaneousOfType() const
 
 
 
+
+//-------------------------------------------------------------------------------------------------
+/** The template a reskin chain starts from, or this when not a reskin. */
+//-------------------------------------------------------------------------------------------------
+const ThingTemplate* ThingTemplate::getReskinRoot() const
+{
+	const ThingTemplate* tt = this;
+	while( tt->m_reskinnedFrom )
+	{
+		tt = tt->m_reskinnedFrom;
+	}
+	return tt;
+}
 
 //-------------------------------------------------------------------------------------------------
 Bool ThingTemplate::isEquivalentTo(const ThingTemplate* tt) const

@@ -594,7 +594,7 @@ void LocomotorStore::reset()
 		Overridable *locoTemp = it->second->deleteOverrides();
 		if (!locoTemp)
 		{
-			m_locomotorTemplates.erase(it);
+			it = m_locomotorTemplates.erase(it);
 		}
 		else
 		{
@@ -744,6 +744,12 @@ Locomotor::Locomotor(const LocomotorTemplate* tmpl)
 	m_donutTimer = TheGameLogic->getFrame()+DONUT_TIME_DELAY_SECONDS*LOGICFRAMES_PER_SECOND;
 
 	m_speedMultiplier = 1.0;
+	m_liftMultiplier = 1.0;
+
+	m_loadSpeedFactor = 1.0f;
+	m_loadTurnRateFactor = 1.0f;
+	m_loadAccelFactor = 1.0f;
+	m_loadLiftFactor = 1.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -767,6 +773,10 @@ Locomotor::Locomotor(const Locomotor& that)
 	m_preferredHeightDamping = that.m_preferredHeightDamping;
 	m_angleOffset = that.m_angleOffset;
 	m_offsetIncrement = that.m_offsetIncrement;
+	m_loadSpeedFactor = that.m_loadSpeedFactor;
+	m_loadTurnRateFactor = that.m_loadTurnRateFactor;
+	m_loadAccelFactor = that.m_loadAccelFactor;
+	m_loadLiftFactor = that.m_loadLiftFactor;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -788,6 +798,10 @@ Locomotor& Locomotor::operator=(const Locomotor& that)
 #endif
 		m_preferredHeight = that.m_preferredHeight;
 		m_preferredHeightDamping = that.m_preferredHeightDamping;
+		m_loadSpeedFactor = that.m_loadSpeedFactor;
+		m_loadTurnRateFactor = that.m_loadTurnRateFactor;
+		m_loadAccelFactor = that.m_loadAccelFactor;
+		m_loadLiftFactor = that.m_loadLiftFactor;
 	}
 	return *this;
 }
@@ -813,7 +827,7 @@ void Locomotor::crc( Xfer *xfer )
 void Locomotor::xfer( Xfer *xfer )
 {
 	// version
-	const XferVersion currentVersion = 2;
+	const XferVersion currentVersion = 3;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -839,6 +853,11 @@ void Locomotor::xfer( Xfer *xfer )
 	xfer->xferReal(&m_offsetIncrement);
 
 	xfer->xferReal(&m_speedMultiplier);
+
+	if (version >= 3)
+	{
+		xfer->xferReal(&m_liftMultiplier);
+	}
 
 }  // end xfer
 
@@ -868,6 +887,7 @@ Real Locomotor::getMaxSpeedForCondition(BodyDamageType condition) const
 		speed = m_template->m_maxSpeedDamaged;
 
 	speed *= m_speedMultiplier;
+	speed *= m_loadSpeedFactor;
 
 	if (speed > m_maxSpeed)
 		speed = m_maxSpeed;
@@ -886,6 +906,7 @@ Real Locomotor::getMaxTurnRate(BodyDamageType condition) const
 		turn = m_template->m_maxTurnRateDamaged;
 
 	turn *= m_speedMultiplier;
+	turn *= m_loadTurnRateFactor;
 
 	if (turn > m_maxTurnRate)
 		turn = m_maxTurnRate;
@@ -908,6 +929,7 @@ Real Locomotor::getMaxAcceleration(BodyDamageType condition) const
 		accel = m_template->m_accelerationDamaged;
 
 	accel *= m_speedMultiplier;
+	accel *= m_loadAccelFactor;
 
 	if (accel > m_maxAccel)
 		accel = m_maxAccel;
@@ -938,7 +960,8 @@ Real Locomotor::getMaxLift(BodyDamageType condition) const
 	else
 		lift = m_template->m_liftDamaged;
 
-	lift *= m_speedMultiplier;
+	lift *= m_liftMultiplier;
+	lift *= m_loadLiftFactor;
 
 	if (lift > m_maxLift)
 		lift = m_maxLift;
@@ -1258,7 +1281,7 @@ void Locomotor::locoUpdate_moveTowardsPosition(Object* obj, const Coord3D& goalP
 // enough that backing up beats spinning around; keep reversing until the goal is no longer behind us.
 // Maintains the MOVING_BACKWARDS flag (also read by collision code via isMovingBackwards()).
 //-------------------------------------------------------------------------------------------------
-Bool Locomotor::shouldMoveBackwards(Object* obj, PhysicsBehavior *physics, Real relAngle, Real onPathDistToGoal)
+Bool Locomotor::shouldMoveBackwards(Object* obj, Real relAngle, Real onPathDistToGoal, Real forwardSpeed)
 {
 	if (!m_template->m_canMoveBackward)
 	{
@@ -1267,12 +1290,7 @@ Bool Locomotor::shouldMoveBackwards(Object* obj, PhysicsBehavior *physics, Real 
 	}
 
 	// A REVERSE_MOVE order forces reversing for the whole path, bypassing the distance heuristic.
-	// (Still gated on CanMoveBackwards by the check above.) Unless ReverseMoveIgnoreAngleThreshold
-	// is set, we still require the goal to be behind us (same angle gate as automatic reversing),
-	// so a reverse order only engages when the current heading allows it.
-	if (obj->getAIUpdateInterface() && obj->getAIUpdateInterface()->isForcedMoveBackwards()
-			&& (TheGlobalData->m_reverseMoveIgnoreAngleThreshold
-					|| fabs(relAngle) > m_template->m_backwardsMoveAngleThreshold))
+	if (isForcedReverse(obj, relAngle))
 	{
 		setFlag(MOVING_BACKWARDS, true);
 		return true;
@@ -1281,7 +1299,7 @@ Bool Locomotor::shouldMoveBackwards(Object* obj, PhysicsBehavior *physics, Real 
 	const Real angleThreshold = m_template->m_backwardsMoveAngleThreshold;
 	const Real reverseDist = m_template->m_backwardsMoveDistanceFactorThreshold * obj->getGeometryInfo().getMajorRadius();
 
-	if (physics->getForwardSpeed2D() == 0.0f)
+	if (forwardSpeed == 0.0f)
 	{
 		setFlag(MOVING_BACKWARDS, false);
 		if (fabs(relAngle) > angleThreshold && onPathDistToGoal <= reverseDist)
@@ -1298,6 +1316,18 @@ Bool Locomotor::shouldMoveBackwards(Object* obj, PhysicsBehavior *physics, Real 
 			return true;
 	}
 	return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+// Unless ReverseMoveIgnoreAngleThreshold is set, the goal must be behind us (same angle gate as
+// automatic reversing), so a reverse order only engages when the current heading allows it.
+//-------------------------------------------------------------------------------------------------
+Bool Locomotor::isForcedReverse(Object* obj, Real relAngle) const
+{
+	return m_template->m_canMoveBackward
+		&& obj->getAIUpdateInterface() && obj->getAIUpdateInterface()->isForcedMoveBackwards()
+		&& (TheGlobalData->m_reverseMoveIgnoreAngleThreshold
+				|| fabs(relAngle) > m_template->m_backwardsMoveAngleThreshold);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1323,7 +1353,8 @@ void Locomotor::moveTowardsPositionTreads(Object* obj, PhysicsBehavior *physics,
 	// Decide whether to reverse toward a goal that is behind us.
 	Real desiredAngle = atan2(goalPos.y - obj->getPosition()->y, goalPos.x - obj->getPosition()->x);
 	Real relAngle = stdAngleDiff(desiredAngle, obj->getOrientation());
-	Bool moveBackwards = shouldMoveBackwards(obj, physics, relAngle, onPathDistToGoal);
+	Real actualSpeed = physics->getForwardSpeed2D();
+	Bool moveBackwards = shouldMoveBackwards(obj, relAngle, onPathDistToGoal, actualSpeed);
 	if (moveBackwards)
 		desiredSpeed *= m_template->m_backwardsMoveSpeedFactor;
 
@@ -1361,7 +1392,6 @@ void Locomotor::moveTowardsPositionTreads(Object* obj, PhysicsBehavior *physics,
 //	if (speed < m_minTurnSpeed)
 //		speed = m_minTurnSpeed;
 
-	Real actualSpeed = physics->getForwardSpeed2D();
 	if (moveBackwards)
 		actualSpeed = -actualSpeed;	// treat as speed in our direction of travel (reverse)
 	Real slowDownTime = actualSpeed / getBraking();
@@ -1478,13 +1508,8 @@ void Locomotor::moveTowardsPositionWheels(Object* obj, PhysicsBehavior *physics,
 	const Real backwardsAngleThreshold = m_template->m_backwardsMoveAngleThreshold;
 	const Real backwardsDist = m_template->m_backwardsMoveDistanceFactorThreshold * obj->getGeometryInfo().getMajorRadius();
 
-	// A REVERSE_MOVE order forces reversing along the whole path (no three-point turn). Unless
-	// ReverseMoveIgnoreAngleThreshold is set, we still require the goal to be behind us (same angle
-	// gate as automatic reversing), so a reverse order only engages when the heading allows it.
-	const Bool forceBackwards = m_template->m_canMoveBackward
-		&& obj->getAIUpdateInterface() && obj->getAIUpdateInterface()->isForcedMoveBackwards()
-		&& (TheGlobalData->m_reverseMoveIgnoreAngleThreshold
-				|| fabs(relAngle) > backwardsAngleThreshold);
+	// A REVERSE_MOVE order forces reversing along the whole path (no three-point turn).
+	const Bool forceBackwards = isForcedReverse(obj, relAngle);
 	if (forceBackwards) {
 		setFlag(MOVING_BACKWARDS, true);
 		setFlag(DOING_THREE_POINT_TURN, false);
@@ -2614,7 +2639,7 @@ void Locomotor::moveTowardsPositionOther(Object* obj, PhysicsBehavior *physics, 
 	// Decide whether to reverse toward a goal that is behind us (opt-in via CanMoveBackwards).
 	Real desiredAngle = atan2(goalPos.y - pos->y, goalPos.x - pos->x);
 	Real relAngle = stdAngleDiff(desiredAngle, obj->getOrientation());
-	Bool moveBackwards = shouldMoveBackwards(obj, physics, relAngle, onPathDistToGoal);
+	Bool moveBackwards = shouldMoveBackwards(obj, relAngle, onPathDistToGoal, actualSpeed);
 	if (moveBackwards)
 	{
 		actualSpeed = -actualSpeed;	// treat as speed in our direction of travel (reverse)

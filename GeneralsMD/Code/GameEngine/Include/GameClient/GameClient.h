@@ -138,6 +138,11 @@ public:
 	virtual void assignSelectedDrawablesToGroup( Int group );						///< assign all selected drawables to the specified group
 	//---------------------------------------------------------------------------------------
 	virtual UnsignedInt getFrame() { return m_frame; }						///< Returns the current simulation frame number
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// The legacy frame ticks at 30 Hz on the wall clock so client effects keep their retail cadence.
+	UnsignedInt getFrameLegacy() const { return m_frameLegacy; }
+	Bool HasLegacyFrameAdvanced() const { return m_frameLegacy != m_frameLegacyLast; }
+#endif
 
 	//---------------------------------------------------------------------------
 	virtual void setTeamColor( Int red, Int green, Int blue ) = 0;  ///< @todo superhack for demo, remove!!!
@@ -169,6 +174,12 @@ protected:
 
 	// @todo Should there be a separate GameClient frame counter?
 	UnsignedInt m_frame;																				///< Simulation frame number from server
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	UnsignedInt m_frameLegacy;
+	UnsignedInt m_frameLegacyLast;
+	Int64 m_legacyFrameEndLastMs;
+	Int64 m_legacyFrameMsAccrued;
+#endif
 
 	Drawable *m_drawableList;																		///< All of the drawables in the world
 //	DrawablePtrHash m_drawableHash;															///< Used for DrawableID lookups

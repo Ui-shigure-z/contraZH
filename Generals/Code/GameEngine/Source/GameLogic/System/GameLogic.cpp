@@ -1315,7 +1315,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			d.setInt(TheKey_multiplayerStartIndex, slot->getStartPos());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->isLocalPlayer());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->getIP() == game->getLocalIP());
-			d.setBool(TheKey_multiplayerIsLocal, slot->isHuman() && (slot->getName().compare(TheGameInfo->getSlot(TheGameInfo->getLocalSlotNum())->getName().str()) == 0));
+			const Bool isLocalPlayer = slot->isHuman() && i == TheGameInfo->getLocalSlotNum();
+			d.setBool(TheKey_multiplayerIsLocal, isLocalPlayer);
 
 /*
 			if (slot->getIP() == game->getLocalIP())
@@ -1336,9 +1337,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				}
 			}
 
-			AsciiString slotNameAscii;
-			slotNameAscii.translate(slot->getName());
-			if (slot->isHuman() && TheGameInfo->getSlotNum(slotNameAscii) == TheGameInfo->getLocalSlotNum()) {
+			if (isLocalPlayer)
+			{
 				localSlot = i;
 			}
 			TheSidesList->addSide(&d);
@@ -2409,11 +2409,6 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 		return;
 	}
 
-	if (!obj->isMassSelectable() && !createNewSelection) {
-		DEBUG_LOG(("GameLogic::selectObject() - Object attempted to be added to selection, but isn't mass-selectable."));
-		return;
-	}
-
 	while (playerMask) {
 		Player *player = ThePlayerList->getEachPlayerFromMask(playerMask);
 		if (!player) {
@@ -2422,6 +2417,32 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 
 		CRCGEN_LOG(( "Creating AIGroup in GameLogic::selectObject()" ));
 		AIGroupPtr group = TheAI->createGroup();
+
+		// a structure may only join a selection made of its own kind
+		if (!createNewSelection && !obj->isMassSelectable())
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			player->getCurrentSelectionAsAIGroup(group);
+#else
+			player->getCurrentSelectionAsAIGroup(group.Peek());
+#endif
+			const VecObjectID &ids = group->getAllIDs();
+			const Object *first = ids.empty() ? nullptr : findObjectByID(ids.front());
+			const Bool sameKind = first && first->getTemplate() == obj->getTemplate();
+#if RETAIL_COMPATIBLE_AIGROUP
+			TheAI->destroyGroup(group);
+#else
+			group->removeAll();
+#endif
+			if (!sameKind)
+			{
+				return;
+			}
+#if RETAIL_COMPATIBLE_AIGROUP
+			group = TheAI->createGroup();
+#endif
+		}
+
 		group->add(obj);
 
 		// add all selected agents to the AI group

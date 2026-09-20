@@ -198,6 +198,7 @@ TurretAIData::TurretAIData()
 	}
 	m_firePitch = 0.0f;
 	m_minPitch = 0.0f;
+	m_maxPitch = PI/2;
 	m_groundUnitPitch = 0;
 	m_turretWeaponSlots = 0;
 #ifdef INTER_TURRET_DELAY
@@ -267,6 +268,7 @@ void TurretAIData::buildFieldParse(MultiIniFieldParse& p)
 		{ "NaturalTurretPitch",			INI::parseAngleReal,									nullptr, offsetof( TurretAIData, m_naturalTurretPitch ) },
 		{ "FirePitch",							INI::parseAngleReal,									nullptr, offsetof( TurretAIData, m_firePitch ) },
 		{ "MinPhysicalPitch",				INI::parseAngleReal,									nullptr, offsetof( TurretAIData, m_minPitch ) },
+		{ "MaxPhysicalPitch",				INI::parseAngleReal,									nullptr, offsetof( TurretAIData, m_maxPitch ) },
 		{ "GroundUnitPitch",				INI::parseAngleReal,									nullptr, offsetof( TurretAIData, m_groundUnitPitch ) },
 		{ "TurretFireAngleSweep",		TurretAIData::parseTurretSweep,				nullptr, 0 },
 		{ "TurretSweepSpeedModifier",TurretAIData::parseTurretSweepSpeed,	nullptr, 0 },
@@ -507,6 +509,9 @@ Bool TurretAI::friend_turnTowardsAngle(Real desiredAngle, Real rateModifier, Rea
 	Real origAngle = getTurretAngle();
 	Real actualAngle = origAngle;
 	Real turnRate = getTurnRate() * rateModifier;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	turnRate *= 2.f;
+#endif
 	// Real angleDiff = normalizeAngle(desiredAngle - actualAngle);
 	Real angleDiff = stdAngleDiffMod(desiredAngle, actualAngle);
 
@@ -707,6 +712,32 @@ Bool TurretAI::isWeaponSlotOnTurret(WeaponSlotType wslot) const
 }
 
 //----------------------------------------------------------------------------------------------------------
+Bool TurretAI::controlsGroundWeapon() const
+{
+	return findOwnedGroundSlot(getOwner(), getOwner()->getAI()->getLastCommandSource()) != WEAPONSLOT_COUNT;
+}
+
+//----------------------------------------------------------------------------------------------------------
+Weapon* TurretAI::getAimWeapon(WeaponSlotType* wslot) const
+{
+	Weapon* cur = m_owner->getCurrentWeapon(wslot);
+	const AIUpdateInterface* ai = getOwner()->getAI();
+	if (cur == nullptr || isWeaponSlotOnTurret(*wslot) || m_target != TARGET_POSITION || !ai->forceFiresAllWeapons())
+	{
+		return cur;
+	}
+
+	// attacking the ground with a weapon on another turret, so aim with our own ground weapon
+	WeaponSlotType ownSlot = findOwnedGroundSlot(getOwner(), ai->getLastCommandSource());
+	if (ownSlot == WEAPONSLOT_COUNT)
+	{
+		return cur;
+	}
+	*wslot = ownSlot;
+	return m_owner->getWeaponInWeaponSlot(ownSlot);
+}
+
+//----------------------------------------------------------------------------------------------------------
 TurretTargetType TurretAI::friend_getTurretTarget( Object*& obj, Coord3D& pos, Bool clearDeadTargets ) const
 {
 	obj = nullptr;
@@ -802,7 +833,8 @@ void TurretAI::setTurretTargetPosition( const Coord3D* pos )
 {
 	if (!pos ||	!isOwnersCurWeaponOnTurret())
 	{
-		if( !getOwner()->getAI()->areTurretsLinked() )
+		const AIUpdateInterface* ai = getOwner()->getAI();
+		if( !ai->areTurretsLinked() && !( ai->forceFiresAllWeapons() && controlsGroundWeapon() ) )
 		{
 			pos = nullptr;
 		}
@@ -875,6 +907,13 @@ void TurretAI::friend_notifyStateMachineChanged()
 DECLARE_PERF_TIMER(TurretAI)
 UpdateSleepTime TurretAI::updateTurretAI()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	if (!TheGameLogic->HasLegacyFrameAdvanced())
+	{
+		return UPDATE_SLEEP_NONE;
+	}
+#endif
+
 	USE_PERF_TIMER(TurretAI)
 
 #if defined(RTS_DEBUG)
@@ -1275,7 +1314,7 @@ StateReturnType TurretAIAimTurretState::update()
 	}
 
 	WeaponSlotType slot;
-	Weapon *curWeapon = obj->getCurrentWeapon( &slot );
+	Weapon *curWeapon = turret->getAimWeapon( &slot );
 	if (!curWeapon)
 	{
 		DEBUG_CRASH(("TurretAIAimTurretState::update - curWeapon is null."));
@@ -1381,6 +1420,10 @@ StateReturnType TurretAIAimTurretState::update()
 						desiredPitch = turret->getMinPitch();
 					}
 				}
+			}
+			if( desiredPitch > turret->getMaxPitch() )
+			{
+				desiredPitch = turret->getMaxPitch();
 			}
 
 		}
@@ -1606,7 +1649,11 @@ StateReturnType TurretAIIdleScanState::update()
   if( getMachineOwner()->testStatus( OBJECT_STATUS_UNDER_CONSTRUCTION))
     return STATE_CONTINUE;//ML so that under-construction base-defenses do not idle-scan while under construction
 
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	Bool angleAligned = getTurretAI()->friend_turnTowardsAngle(getTurretAI()->getNaturalTurretAngle() + m_desiredAngle, 0.5f, 0.5f);
+#else
 	Bool angleAligned = getTurretAI()->friend_turnTowardsAngle(getTurretAI()->getNaturalTurretAngle() + m_desiredAngle, 0.5f, 0.0f);
+#endif
 	Bool pitchAligned = getTurretAI()->friend_turnTowardsPitch(getTurretAI()->getNaturalTurretPitch(), 0.5f);
 
 	if( angleAligned && pitchAligned )

@@ -85,12 +85,11 @@ public:
 	/// Lighting methods
 	void addDynamicLight(W3DDynamicLight * obj);
 	void removeDynamicLight(W3DDynamicLight * obj);
-	RefRenderObjListIterator *createLightsIterator();
-	void destroyLightsIterator(RefRenderObjListIterator * it);
 	RefRenderObjListClass *getDynamicLights() {return &m_dynamicLightList;};
 	W3DDynamicLight *getADynamicLight();
 	void setGlobalLight(LightClass *pLight,Int lightIndex=0);
 	LightEnvironmentClass &getDefaultLightEnv() {return m_defaultLightEnv;}
+	RefRenderObjListClass* getLightList() { return &LightList; }
 
 	virtual void init() override {}
 	virtual void update() override {}
@@ -106,6 +105,8 @@ protected:
 	void flagOccludedObjects(CameraClass * camera);
 	void flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo);
 	void updatePlayerColorPasses();
+	MaterialPassClass *getJammingOverlayPass(void);	///< builds the jamming pass on demand; null when disabled
+	MaterialPassClass *getFrozenOverlayPass(void);	///< builds the frozen pass on demand; null when disabled
 
 protected:
 	RefRenderObjListClass	m_dynamicLightList;
@@ -122,6 +123,10 @@ protected:
 	W3DMaskMaterialPassClass *m_maskMaterialPass;			///< Custom render pass applied to entire scene used to mask out pixels.
 	MaterialPassClass *m_heatVisionMaterialPass;			///< Custom render passed applied on top of objects with heatvision effect.
 	MaterialPassClass *m_heatVisionOnlyPass;					///< Custom render pass applied in place of regular pass on objects with heat vision effect.
+	MaterialPassClass *m_jammingOverlayPass;					///< Scrolling texture pass applied on top of objects taking jamming damage.
+	Bool m_jammingOverlayPassChecked;								///< the pass is built on first use, so only attempt it once
+	MaterialPassClass *m_frozenOverlayPass;						///< Texture pass applied on top of objects taking frozen damage.
+	Bool m_frozenOverlayPassChecked;
 	MaterialPassClass *m_frenzyMaterialPass;					///< Custom render pass applied in place of regular pass on objects with FRENZY effect.
 	///Custom rendering passes for each possible player color on the map
 	MaterialPassClass *m_occludedMaterialPass[MAX_PLAYER_COUNT];

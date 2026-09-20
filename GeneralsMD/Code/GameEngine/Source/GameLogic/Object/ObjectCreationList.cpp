@@ -175,7 +175,8 @@ public:
 	AttackNugget() :
     m_numberOfShots(1),
 		m_weaponSlot(PRIMARY_WEAPON),
-		m_deliveryDecalRadius(0)
+		m_deliveryDecalRadius(0),
+		m_fireRegardlessOfOrders(FALSE)
 	{
 	}
 
@@ -196,13 +197,22 @@ public:
 		// Should I const cast?  Should I eat them?  No!  I'd rather hurt them stomp them crush them hurt them
 		// stomp them while I dance!  Down.  Those insects make me dance!  Down.  I'll hurt them while I dance.
 
+		Bool queuedShots = FALSE;
 		Object *primaryObject = const_cast<Object *>(primaryObj);
 		AIUpdateInterface *ai = primaryObject->getAIUpdateInterface();
 		if( ai )
 		{
-			// lock merely fires till the weapon is empty or the attack is "done"
-			primaryObject->setWeaponLock( m_weaponSlot, LOCKED_TEMPORARILY );
-			ai->aiAttackPosition( secondary, m_numberOfShots, CMD_FROM_AI );
+			if( m_fireRegardlessOfOrders && m_numberOfShots > 0 )
+			{
+				ai->friend_queueShots( m_weaponSlot, m_numberOfShots, secondary );
+				queuedShots = TRUE;
+			}
+			else
+			{
+				// lock merely fires till the weapon is empty or the attack is "done"
+				primaryObject->setWeaponLock( m_weaponSlot, LOCKED_TEMPORARILY );
+				ai->aiAttackPosition( secondary, m_numberOfShots, CMD_FROM_AI );
+			}
 		}
 
 		static NameKeyType key_RadiusDecalUpdate = NAMEKEY("RadiusDecalUpdate");
@@ -210,7 +220,8 @@ public:
 		if (rd)
 		{
 			rd->createRadiusDecal(m_deliveryDecalTemplate, m_deliveryDecalRadius, *secondary);
-			rd->killWhenNoLongerAttacking(true);
+			// queued shots kill the decal themselves once the last one is away
+			rd->killWhenNoLongerAttacking(!queuedShots);
 		}
 		return nullptr;
   }
@@ -223,6 +234,7 @@ public:
 			{ "WeaponSlot",			INI::parseLookupList,	TheWeaponSlotTypeNamesLookupList, offsetof( AttackNugget, m_weaponSlot ) },
 			{ "DeliveryDecal",				RadiusDecalTemplate::parseRadiusDecalTemplate,	nullptr, offsetof( AttackNugget, m_deliveryDecalTemplate ) },
 			{ "DeliveryDecalRadius",	INI::parseReal, nullptr, offsetof(AttackNugget, m_deliveryDecalRadius) },
+			{ "FireRegardlessOfOrders",	INI::parseBool, nullptr, offsetof(AttackNugget, m_fireRegardlessOfOrders) },
 			{ nullptr, nullptr, nullptr, 0 }
 		};
 
@@ -236,6 +248,7 @@ private:
 	Real								m_deliveryDecalRadius;
 	Int									m_numberOfShots;
 	WeaponSlotType			m_weaponSlot;
+	Bool								m_fireRegardlessOfOrders;
 };
 EMPTY_DTOR(AttackNugget)
 
@@ -612,6 +625,9 @@ static void calcRandomForce(Real minMag, Real maxMag, Real minPitch, Real maxPit
 	Real angle = GameLogicRandomValueReal(0, 2*PI);
 	Real pitch = GameLogicRandomValueReal(minPitch, maxPitch);
 	Real mag = GameLogicRandomValueReal(minMag, maxMag);
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	mag /= 2.f;
+#endif
 
 	Matrix3D mtx(1);
 	mtx.Scale(mag);
@@ -1233,6 +1249,11 @@ protected:
 				Real yaw = GameLogicRandomValueReal( -yawRate, yawRate );
 				Real roll = GameLogicRandomValueReal( -rollRate, rollRate );
 				Real pitch = GameLogicRandomValueReal( -pitchRate, pitchRate );
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+				yaw /= 2.f;
+				roll /= 2.f;
+				pitch /= 2.f;
+#endif
 				DUMPREAL(yaw);
 				DUMPREAL(roll);
 				DUMPREAL(pitch);
@@ -1242,6 +1263,10 @@ protected:
 				{
 					Real horizForce = 4.0f * m_dispositionIntensity;		// 2
 					Real vertForce = 3.0f * m_dispositionIntensity;		// 3
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+					horizForce /= 2.f;
+					vertForce /= 2.f;
+#endif
 					force.x = GameLogicRandomValueReal( -horizForce, horizForce );
 					force.y = GameLogicRandomValueReal( -horizForce, horizForce );
 					force.z = GameLogicRandomValueReal( vertForce * 0.33f, vertForce );
@@ -1253,6 +1278,10 @@ protected:
 				{
 					Real horizForce = 2.0f * m_dispositionIntensity;
 					Real vertForce = 4.0f * m_dispositionIntensity;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+					horizForce /= 2.f;
+					vertForce /= 2.f;
+#endif
 
 					force.x = GameLogicRandomValueReal( -horizForce, horizForce );
 					force.y = GameLogicRandomValueReal( -horizForce, horizForce );

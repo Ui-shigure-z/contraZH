@@ -294,7 +294,7 @@ public:
 	Bool canAffordBuild( const ThingTemplate *whatToBuild ) const;
 
   // Check MaxSimultaneousOfType
-  Bool canBuildMoreOfType( const ThingTemplate *whatToBuild ) const;
+  Bool canBuildMoreOfType( const ThingTemplate *whatToBuild, UnsignedInt buildCount = 1) const;
 
 	/// Difficulty level for this player.
 	GameDifficulty getPlayerDifficulty() const;
@@ -704,8 +704,14 @@ public:
 	// fills an AIGroup object that is the currently selected group.
 	void getCurrentSelectionAsAIGroup(AIGroup *group);
 
+	// fills an AIGroup object that is the currently focused group.
+	void getCurrentFocusAsAIGroup(AIGroup* group);
+
 	// sets the currently selected group to be the given AIGroup
 	void setCurrentlySelectedAIGroup(AIGroup *group);
+
+	// sets the currently focused group to be the given AIGroup
+	void setCurrentlyFocusedAIGroup(AIGroup* group);
 
 	// adds the given AIGroup to the current selection of this player.
 	void addAIGroupToCurrentSelection(AIGroup *group);
@@ -907,6 +913,7 @@ private:
 
 	Squad									*m_squads[NUM_HOTKEY_SQUADS];	///< The hotkeyed squads
 	Squad									*m_currentSelection;		///< This player's currently selected group
+	Squad									*m_currentFocus;	///< Sub group of selected group, most command bar actions work with these units.
 
 	Bool									m_isPlayerDead;
 	Bool									m_logicalRetaliationModeEnabled;

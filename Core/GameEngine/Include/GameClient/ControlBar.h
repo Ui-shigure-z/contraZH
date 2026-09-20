@@ -35,6 +35,7 @@
 #include "Common/Overridable.h"
 #include "Common/Science.h"
 #include "GameClient/Color.h"
+#include "GameClient/GameWindow.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 class Drawable;
@@ -249,6 +250,7 @@ enum GUICommandType CPP_11(: Int)
 
 	GUI_COMMAND_HOLD_FIRE,								///< TheSuperHackers @feature toggle the Hold Fire stance
 	GUI_COMMAND_TOGGLE_DEPLOY,						///< toggle a DeployStyleAIUpdate object between deployed and packed
+	GUI_COMMAND_TOGGLE_FIRE_WEAPON,				///< fire a weapon, or stop firing it if it is already firing
 
 	// add more commands here, don't forget to update the string command list below too ...
 
@@ -307,6 +309,7 @@ static const char *const TheGuiCommandNames[] =
 	"AUTO_FILL",
 	"HOLD_FIRE",
 	"TOGGLE_DEPLOY",
+	"TOGGLE_FIRE_WEAPON",
 
 	nullptr
 };
@@ -481,6 +484,11 @@ enum {
 enum { MAX_STRUCTURE_INVENTORY_BUTTONS = 10 }; // there are this many physical buttons in "inventory" windows for structures
 enum { MAX_BUILD_QUEUE_BUTTONS = 9 };// physical button count for the build queue
 enum { MAX_SPECIAL_POWER_SHORTCUTS = 32};
+enum { MAX_SMART_SELECTION_BUTTONS = 16 };	///< TheSuperHackers @feature per type cameos above the command bar
+enum { MAX_COMMAND_GROUP_BUTTONS = 10 };		///< TheSuperHackers @feature one cameo per hotkey squad, under the smart selection row
+enum { CAMEO_SCALE_PERCENT = 60 };								///< cameo size as a share of a command button
+enum { CAMEO_ROW_GAP = 2 };									///< pixels between cameos in a row, and between the rows
+enum { MAX_CAMEO_COUNT_BADGE = 999 };				///< a count past this gets no badge, it would not fit
 class CommandSet : public Overridable
 {
 
@@ -714,6 +722,12 @@ enum ControlBarStages CPP_11(: Int)
 class ControlBar : public SubsystemInterface
 {
 
+// ShigureUi 07/09/2026 borrowed from InGameUI.h
+protected:
+
+	typedef std::vector<Object*> ObjectVector;
+	typedef std::vector<Object*>::iterator ObjectVectorIt;
+
 public:
 
 	ControlBar();
@@ -748,6 +762,23 @@ public:
 
 	/// is the drawable the currently selected drawable for the context sensitive UI?
 	Bool isDrivingContextUI( Drawable *draw ) const { return draw == m_currentSelectedDrawable; }
+
+	// TheSuperHackers @feature Smart selection: cameos above the command bar, one per type with
+	// a count in a mixed selection, one per object when all are the same type. Left click and Tab
+	// pick which cameo's command set the bar shows, its type's or its one object's, while the
+	// whole group stays selected; right click drops the cameo's units from the selection and
+	// double click, or Ctrl+Shift click, keeps only them.
+	void processSmartSelectionClick( GameWindow *button, Bool rightClick );
+	void smartSelectionCycle( Int direction );
+	const ThingTemplate *getSmartSelectionFocusTemplate() const;
+	ObjectID getSmartSelectionFocusObject() const;
+	Drawable *getSmartSelectionFocusDrawable() const;
+	Bool isSmartSelectionFocused( const Object *obj ) const;
+	Bool isIndexSmartSelectionFocused( Int groupIndex ) const;
+	/// ShigureUi 15/9/2026 sent a message once smart selection focus changed, so following commands can choose to act on the focused object or type alone, or not
+	void updateFocusGroup();
+	/// a cameo in the command group row selects its hotkey squad
+	void processCommandGroupClick( GameWindow *button );
 
 	//-----------------------------------------------------------------------------------------------
 	// the remaining methods are used to construct the command buttons and command sets for
@@ -910,6 +941,8 @@ protected:
 	void populateCommand( Object *obj );
 	void populateMultiSelect();
 	void populateBuildQueue( Object *producer );
+	// ShigureUi 13/09/2026 We need a function for multiselect structure
+	void populateMultiSelectBuildQueue(ObjectVector *producerList);
 	void populateStructureInventory( Object *building );
 	void populateBeacon( Object *beacon );
 	void populateUnderConstruction( Object *objectUnderConstruction );
@@ -931,6 +964,26 @@ protected:
 
 	void populateSpecialPowerShortcut( Player *player);
 	void updateSpecialPowerShortcut();
+
+	// the following methods are for the smart selection row and the command group row under it
+	GameWindow *createCameoRow( GameWinSystemFunc systemFunc, Int slotCount, Bool rightClick, GameWindow **buttons );
+	static const Image *getCameoImage( const ThingTemplate *thingTemplate );
+	Int getCameoRowWidth( Int cameoCount ) const;
+	void initSmartSelectionBar( const ICoord2D &commandButtonSize );
+	void destroySmartSelectionBar();
+	void resetSmartSelection();
+	void populateSmartSelection();
+	void updateSmartSelection();
+	void refreshSmartSelectionButtons();
+	void smartSelectionFocus( Int groupIndex );
+	void smartSelectionRemove( Int groupIndex, Bool keepGroup );
+
+	void initCommandGroupBar();
+	void destroyCommandGroupBar();
+	void resetCommandGroupBar();
+	void updateCommandGroupBar();
+	void refreshCommandGroupButtons();
+	Bool isCommandGroupRowShown() const;
 
 	static const Image* calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate );
 	static const Image* calculateVeterancyOverlayForObject( const Object *obj );
@@ -967,11 +1020,27 @@ protected:
 	Drawable *m_currentSelectedDrawable;					///< currently selected drawable for the context sensitive interface
 	ControlBarContext m_currContext;							///< our current displayed context
 
-	DrawableID m_rallyPointDrawableID;						///< rally point drawable for visual rally point
+	std::vector<DrawableID> m_rallyPointDrawableIDs;						///< rally point drawable for visual rally point
 
 	Real m_displayedConstructPercent;							///< construct percent last displayed to user
 	UnsignedInt m_displayedOCLTimerSeconds;				///< OCL Timer seconds remaining last displayed to user
 	UnsignedInt m_displayedQueueCount;						///< queue count last displayed to user
+
+	// A summed count hides a gain at one producer that a loss at another cancels, so the
+	// multi select queue tracks each producer's head and count instead.
+	struct QueueSignature
+	{
+		Object *producer;
+		ProductionID head;										///< first entry, PRODUCTIONID_INVALID when the queue is empty
+		UnsignedInt count;
+
+		Bool operator!=( const QueueSignature &other ) const
+		{
+			return producer != other.producer || head != other.head || count != other.count;
+		}
+	};
+	std::vector<QueueSignature> m_displayedQueueSignature;	///< multi select queue state last displayed to user
+
 	UnsignedInt m_lastRecordedInventoryCount;			///< last known UI state of an inventory count
 
 	GameWindow *m_rightHUDWindow;									///< window of the right HUD display
@@ -993,6 +1062,34 @@ protected:
 
 	WindowLayout *m_specialPowerLayout;
 	GameWindow *m_specialPowerShortcutParent;
+
+	struct SmartSelectionGroup
+	{
+		const ThingTemplate *thingTemplate;	///< always a reskin root, so reskins share a group
+		Int count;
+		ObjectID objectID;	///< the one member when count is 1, else INVALID_ID
+	};
+	std::vector<SmartSelectionGroup> m_smartSelectionGroups;	///< one per type in a mixed selection, one per object otherwise
+	GameWindow *m_smartSelectionParent;												///< top level container for the row, created in code
+	GameWindow *m_smartSelectionMoneyWindow;									///< the money display the row must not run into
+	GameWindow *m_smartSelectionButtons[ MAX_SMART_SELECTION_BUTTONS ];
+	ICoord2D m_smartSelectionButtonSize;
+	Int m_smartSelectionActive;																///< cameo whose command set the bar shows, or -1 for the common set
+	std::vector<ObjectID> m_sentFocusGroup;										///< focus group last sent to the logic side, to skip an unchanged resend
+	Int m_smartSelectionLastClickSlot;												///< cameo of the last left click, for double click detection
+	UnsignedInt m_smartSelectionLastClickTime;
+
+	struct CommandGroupEntry
+	{
+		Int group;														///< hotkey squad index
+		const ThingTemplate *thingTemplate;		///< the most common type among the members, for the cameo image
+		Int count;
+		Bool operator==( const CommandGroupEntry &other ) const { return group == other.group && thingTemplate == other.thingTemplate && count == other.count; }
+	};
+	std::vector<CommandGroupEntry> m_commandGroupEntries;			///< one per squad with live members
+	UnsignedInt m_commandGroupFrame;													///< logic frame the entries were built on; they cannot change within one
+	GameWindow *m_commandGroupParent;													///< top level container for the row, created in code
+	GameWindow *m_commandGroupButtons[ MAX_COMMAND_GROUP_BUTTONS ];
 
 	GameWindow *m_commandWindows[ MAX_COMMANDS_PER_SET ];			///< command window controls for easy access
 	const CommandButton *m_commonCommands[ MAX_COMMANDS_PER_SET ];	///< shared commands we will use for multi-selection
@@ -1020,6 +1117,9 @@ protected:
 	{
 		GameWindow *control;											///< window that the GUI control is tied to
 		ProductionType type;											///< type of queue data
+		// ShigureUi 13/09/2026 need to storage it for tracing back when there is multiselect production
+		Object *producer;                         ///< the producer of the production
+
 		union
 		{
 			ProductionID productionID;										///< production id for unit productions

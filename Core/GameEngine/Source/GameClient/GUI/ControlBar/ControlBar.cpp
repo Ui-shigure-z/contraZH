@@ -992,6 +992,23 @@ ControlBar::ControlBar()
 
 	m_specialPowerShortcutParent = nullptr;
 	m_specialPowerLayout = nullptr;
+	m_smartSelectionParent = nullptr;
+	m_smartSelectionMoneyWindow = nullptr;
+	for( i = 0; i < MAX_SMART_SELECTION_BUTTONS; i++ )
+	{
+		m_smartSelectionButtons[i] = nullptr;
+	}
+	m_smartSelectionButtonSize.x = 0;
+	m_smartSelectionButtonSize.y = 0;
+	m_smartSelectionActive = -1;
+	m_smartSelectionLastClickSlot = -1;
+	m_smartSelectionLastClickTime = 0;
+	m_commandGroupFrame = 0;
+	m_commandGroupParent = nullptr;
+	for( i = 0; i < MAX_COMMAND_GROUP_BUTTONS; i++ )
+	{
+		m_commandGroupButtons[i] = nullptr;
+	}
 	m_scienceLayout = nullptr;
 	m_rightHUDWindow = nullptr;
 	m_rightHUDCameoWindow = nullptr;
@@ -1001,10 +1018,11 @@ ControlBar::ControlBar()
 	m_communicatorButton = nullptr;
 	m_currentSelectedDrawable = nullptr;
 	m_currContext = CB_CONTEXT_NONE;
-	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+	m_rallyPointDrawableIDs.clear();
 	m_displayedConstructPercent = -1.0f;
 	m_displayedOCLTimerSeconds = 0;
 	m_displayedQueueCount = 0;
+	m_displayedQueueSignature.clear();
 	resetBuildQueueData();
 	resetContainData();
 	m_lastRecordedInventoryCount = 0;
@@ -1101,6 +1119,8 @@ ControlBar::~ControlBar()
 		deleteInstance(m_specialPowerLayout);
 		m_specialPowerLayout = nullptr;
 	}
+
+	destroySmartSelectionBar();
 
 	m_radarAttackGlowWindow = nullptr;
 
@@ -1207,6 +1227,11 @@ void ControlBar::init()
 
 		}
 
+		if( m_commandWindows[ 0 ] )
+		{
+			initSmartSelectionBar( commandSize );
+		}
+
 
 		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_1; i++ )
 		{
@@ -1311,6 +1336,7 @@ void ControlBar::init()
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
+		m_smartSelectionMoneyWindow = win;
 		win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:GeneralsExp"));
 		if(win)
 		{
@@ -1373,8 +1399,11 @@ void ControlBar::init()
 void ControlBar::reset()
 {
 	hideSpecialPowerShortcut();
-	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
-	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+	resetSmartSelection();
+	// the logic side focus goes with the old game, so the next one starts from no cache
+	m_sentFocusGroup.clear();
+	// do not destroy the rally drawables, they get destroyed with everything else during a reset
+	m_rallyPointDrawableIDs.clear();
 	if(m_radarAttackGlowWindow)
 		m_radarAttackGlowWindow->winEnable(TRUE);
 	m_radarAttackGlowOn = FALSE;
@@ -1589,11 +1618,16 @@ void ControlBar::update()
 	//
 	if( m_UIDirty )
 	{
+		// first, so the context below can show the type the row has focused
+		populateSmartSelection();
 		evaluateContextUI();
 		populateSpecialPowerShortcut(ThePlayerList->getLocalPlayer());
 		// if we have a build tooltip layout, update it with the new data.
 		repopulateBuildTooltipLayout();
 	}
+
+	// before the per context early outs below, the row lives outside every context
+	updateSmartSelection();
 
 	// enable/disable the beacon button depending on if the max has been reached
 	if (ThePlayerList && ThePlayerList->getLocalPlayer() && ThePlayerList->getLocalPlayer()->getPlayerTemplate())
@@ -1915,6 +1949,12 @@ void ControlBar::evaluateContextUI()
 		// but is represented in the UI as a single unit,
 		// so we must isolate and evaluate only the Nexus
 		drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID() ) ;
+
+		// a cameo focused on one object drives the bar as if that object alone were selected
+		if( drawToEvaluateFor == nullptr )
+		{
+			drawToEvaluateFor = getSmartSelectionFocusDrawable();
+		}
 		multiSelect = ( drawToEvaluateFor == nullptr );
 
 	}
@@ -1994,7 +2034,8 @@ void ControlBar::evaluateContextUI()
 				switchToContext( CB_CONTEXT_COMMAND, drawToEvaluateFor );
 
 			}
-			else if (obj->getControllingPlayer()->getPlayerTemplate()->getBeaconTemplate().compare(obj->getTemplate()->getName()) == 0)
+			else if (obj->getControllingPlayer()->getPlayerTemplate()
+				&& obj->getControllingPlayer()->getPlayerTemplate()->getBeaconTemplate().compare(obj->getTemplate()->getName()) == 0)
 			{
 				switchToContext( CB_CONTEXT_BEACON, drawToEvaluateFor );
 			}
@@ -2906,35 +2947,49 @@ void ControlBar::setPortraitByObject( Object *obj )
 void ControlBar::showRallyPoint(const Coord3D* loc)
 {
 	// if loc is null, destroy any rally point drawable we have shown
+
+	std::vector<DrawableID>::iterator it;
+
 	if (loc == nullptr)
 	{
-		// destroy rally point drawable if present
-		if (m_rallyPointDrawableID != INVALID_DRAWABLE_ID)
-			TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(m_rallyPointDrawableID));
+		// destroy any rally point drawable if present
+		if (m_rallyPointDrawableIDs.size() > 0)
+			for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
+				TheGameClient->destroyDrawable(TheGameClient->findDrawableByID(*it));
 
-		m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
+		m_rallyPointDrawableIDs.clear();
 		return;
 	}
 
 	Drawable* marker = nullptr;
 
-	// create a rally point drawable if necessary
-	if (m_rallyPointDrawableID == INVALID_DRAWABLE_ID)
+	for (it = m_rallyPointDrawableIDs.begin(); it != m_rallyPointDrawableIDs.end(); it++)
 	{
-		const ThingTemplate* ttn = TheThingFactory->findTemplate("RallyPointMarker");
-		marker = TheThingFactory->newDrawable(ttn);
-		DEBUG_ASSERTCRASH(marker, ("showRallyPoint: Unable to create rally point drawable"));
-		if (marker)
+		// nothing prunes the list when a marker dies, so a stale id reads back as null
+		marker = TheGameClient->findDrawableByID(*it);
+		if (marker == nullptr)
 		{
-			marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
-			m_rallyPointDrawableID = marker->getID();
+			continue;
 		}
-	}
-	else
-		marker = TheGameClient->findDrawableByID(m_rallyPointDrawableID);
 
-	// sanity
-	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: No rally point marker found"));
+		//ShigureUi 15/9/2026 same loc so we dont't need a new one
+		const Coord3D* otherLoc = marker->getPosition();
+		if (abs(otherLoc->x - loc->x) < 0.1 && abs(otherLoc->y - loc->y) < 0.1)
+			return;
+	}
+
+	// create a rally point drawable if necessary
+	const ThingTemplate* ttn = TheThingFactory->findTemplate("RallyPointMarker");
+	if (!ttn)
+	{
+		return;
+	}
+
+	marker = TheThingFactory->newDrawable(ttn);
+	DEBUG_ASSERTCRASH(marker, ("showRallyPoint: Unable to create rally point drawable"));
+
+	marker->setDrawableStatus(DRAWABLE_STATUS_NO_SAVE);
+	m_rallyPointDrawableIDs.push_back(marker->getID());
 
 	// Adapt position to water height if under water
 	Real waterZ{ 0 };
@@ -2979,6 +3034,8 @@ void ControlBar::setControlBarSchemeByPlayer(Player *p)
 	if( !p->isPlayerActive() )
 	{
 		m_isObserverCommandBar = TRUE;
+		// the observer update returns before the smart selection hooks, so clear the row here
+		resetSmartSelection();
 		switchToContext( CB_CONTEXT_OBSERVER_LIST, nullptr );
 		DEBUG_LOG(("We're loading the Observer Command Bar"));
 
@@ -3024,6 +3081,7 @@ void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 	if(pt == ThePlayerTemplateStore->findPlayerTemplate(TheNameKeyGenerator->nameToKey("FactionObserver")))
 	{
 		m_isObserverCommandBar = TRUE;
+		resetSmartSelection();
 		switchToContext( CB_CONTEXT_OBSERVER_LIST, nullptr );
 		DEBUG_LOG(("We're loading the Observer Command Bar"));
 

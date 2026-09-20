@@ -75,6 +75,7 @@ public:
 	Real m_warehouseScanDistance;
  	AudioEventRTS m_suppliesDepletedVoice;						///< Sound played when I take the last box.
 	Int m_upgradedSupplyBoost;
+	DozerRestrictions m_restrictions;
 
 	WorkerAIUpdateModuleData()
 	{
@@ -103,6 +104,11 @@ public:
 			{ "SupplyWarehouseScanDistance", INI::parseReal, nullptr, offsetof( WorkerAIUpdateModuleData, m_warehouseScanDistance ) },
  			{ "SuppliesDepletedVoice", INI::parseAudioEventRTS, nullptr, offsetof( WorkerAIUpdateModuleData, m_suppliesDepletedVoice) },
  			{ "UpgradedSupplyBoost", INI::parseInt, nullptr, offsetof( WorkerAIUpdateModuleData, m_upgradedSupplyBoost) },
+
+			{ "AllowedBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_allowedBuildObjects ) },
+			{ "ForbiddenBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_forbiddenBuildObjects ) },
+			{ "CanRepair", INI::parseBool, nullptr, offsetof( WorkerAIUpdateModuleData, m_restrictions.m_canRepair ) },
+
 			{ 0, 0, 0, 0 }
 		};
     p.add(dataFieldParse);
@@ -135,10 +141,14 @@ public:
 
 	// Dozer side
 	virtual void onDelete() override;
+	virtual void onDisabledEdge(Bool nowDisabled) override;
 
 	virtual Real getRepairHealthPerSecond() const override;	///< get health to repair per second
 	virtual Real getBoredTime() const override;							///< how long till we're bored
 	virtual Real getBoredRange() const override;							///< when we're bored, we look this far away to do things
+
+	virtual Bool canBuildTemplate( const ThingTemplate *what ) const override;
+	virtual Bool canRepairObjects() const override;
 
 	virtual Object *construct( const ThingTemplate *what,
 														 const Coord3D *pos, Real angle,
@@ -157,9 +167,8 @@ public:
 
 	// task actions
 	virtual void newTask( DozerTask task, Object* target ) override;	///< set a desire to do the requested task
-	virtual void cancelTask( DozerTask task ) override;						///< cancel this task from the queue, if it's the current task the dozer will stop working on it
+	virtual void cancelTask( DozerTask task, Bool rememberTask = false ) override;	///< cancel this task from the queue, if it's the current task the dozer will stop working on it. Can remember the cancelled task for resumption.
 	virtual void cancelAllTasks() override;												///< cancel all tasks from the queue, if it's the current task the dozer will stop working on it
-	virtual void resumePreviousTask() override;									///< resume the previous task if there was one
 
 	// internal methods to manage behavior from within the dozer state machine
 	virtual void internalTaskComplete( DozerTask task ) override;					///< set a dozer task as successfully completed
@@ -269,6 +278,10 @@ protected:
 	virtual void privateResumeConstruction( Object *obj, CommandSourceType cmdSource ) override;  ///< resume construction on obj
 	virtual void privateDock( Object *obj, CommandSourceType cmdSource ) override;
 	virtual void privateIdle(CommandSourceType cmdSource) override;						///< Enter idle state.
+
+	virtual void setPreviousTask(DozerTask task);				///< set the previous task
+	virtual void resumePreviousTask();									///< resume the previous task if there was one
+	virtual void clearPreviousTask();									///< clear the previous task
 
 private:
 

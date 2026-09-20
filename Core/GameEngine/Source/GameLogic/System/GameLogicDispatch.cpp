@@ -30,10 +30,12 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/ActionManager.h"
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GlobalData.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/ThingFactory.h"
@@ -226,8 +228,7 @@ static Player *getMessagePlayer(GameMessage *msg)
 	return ThePlayerList->getNthPlayer( msg->getPlayerIndex() );
 }
 
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
+
 static Object * getSingleObjectFromSelection(const AIGroup *currentlySelectedGroup)
 {
 	if( currentlySelectedGroup && !currentlySelectedGroup->isEmpty() )
@@ -296,6 +297,13 @@ void GameLogic::clearGameData( Bool showScoreScreen )
 		FixupScoreScreenMovieWindow();
 
 		destroyQuitMenu();
+	}
+
+	// The shared multiplayer camera limit ends with the game; the menus go back to the personal one
+	if (m_gameMode == GAME_LAN || m_gameMode == GAME_INTERNET)
+	{
+		OptionPreferences prefs;
+		TheWritableGlobalData->m_maxCameraHeight = prefs.getMaxCameraHeight();
 	}
 
 	TheGameEngine->reset();
@@ -382,6 +390,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 	}
 
 	AIGroupPtr currentlySelectedGroup = nullptr;
+	GameMessage::Type msgType = msg->getType();
 
 	if (isInGame())
 	{
@@ -391,11 +400,22 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			{
 				currentlySelectedGroup = TheAI->createGroup(); // can't do this outside a game - it'll cause sync errors galore.
 				CRCGEN_LOG(( "Creating AIGroup %d in GameLogic::logicMessageDispatcher()", currentlySelectedGroup?currentlySelectedGroup->getID():0 ));
+
 #if RETAIL_COMPATIBLE_AIGROUP
-				msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup);
+				AIGroup *selectedGroup = currentlySelectedGroup;
 #else
-				msgPlayer->getCurrentSelectionAsAIGroup(currentlySelectedGroup.Peek());
+				AIGroup *selectedGroup = currentlySelectedGroup.Peek();
 #endif
+				// ShigureUi 11/09/2026 a plain order acts on the whole selection; everything else
+				// prefers the smart selection focus and falls back to the selection
+				if( !GameMessage::isPlainOrder( msgType ) )
+				{
+					msgPlayer->getCurrentFocusAsAIGroup( selectedGroup );
+				}
+				if( selectedGroup->getCount() == 0 )
+				{
+					msgPlayer->getCurrentSelectionAsAIGroup( selectedGroup );
+				}
 
 				// We can't issue commands to groups that contain units that don't belong to the issuing player, so pretend like
 				// there's nothing selected. Also, if currentlySelectedGroup is empty, go ahead and delete it, so that we can skip
@@ -441,7 +461,6 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 #endif // DEBUG_LOGGING
 
 	// process the message
-	GameMessage::Type msgType = msg->getType();
 	switch( msgType )
 	{
 		case GameMessage::MSG_NEW_GAME:
@@ -822,6 +841,21 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			break;
 		}
 
+		// Fire weapon toggle: start the selected group firing, or stop it if it already is.
+		case GameMessage::MSG_TOGGLE_FIRE_WEAPON:
+		{
+			WeaponSlotType weaponSlot = (WeaponSlotType)msg->getArgument( 0 )->integer;
+			Int maxShotsToFire = msg->getArgument( 1 )->integer;
+
+			// use the selected group
+			if( currentlySelectedGroup )
+			{
+				currentlySelectedGroup->groupToggleFireWeapon( weaponSlot, maxShotsToFire, CMD_FROM_PLAYER );
+			}
+
+			break;
+		}
+
 		// Deploy button: flip the selected group between deployed and packed.
 		case GameMessage::MSG_TOGGLE_DEPLOY:
 		{
@@ -865,6 +899,11 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_DESTROY_SELECTED_GROUP:
 		{
 			onDestroySelectedGroup(msg);
+			break;
+		}
+		case GameMessage::MSG_UPDATE_FOCUSED_GROUP:
+		{
+			onUpdateFocusedGroup(msg);
 			break;
 		}
 		case GameMessage::MSG_SELECTED_GROUP_COMMAND:
@@ -1903,12 +1942,42 @@ bool GameLogic::onDoForceAttackGround(MAYBE_UNUSED GameMessage *msg, AIGroupPtr 
 
 bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
+	Player *msgPlayer = getMessagePlayer(msg);
+	Object* producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(0)->objectID);
 	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 1 )->integer) );
 	if (!upgradeT)	// sanity
 		return false;
 
-	if (currentlySelectedGroup)
-		currentlySelectedGroup->queueUpgrade( upgradeT );
+	// the producer may have died since the click, and the player must actually control it
+	if (producer == nullptr || producer->getControllingPlayer() != msgPlayer)
+		return false;
+
+	// ShigureUi 13/9/2026 check added, maybe invalid might be sent
+	if (!TheUpgradeCenter->canAffordUpgrade(producer->getControllingPlayer(), upgradeT, FALSE))
+	{
+		return false;
+	}
+
+	if (upgradeT->getUpgradeType() == UPGRADE_TYPE_OBJECT)
+	{
+		if (producer->hasUpgrade(upgradeT) || !producer->affectedByUpgrade(upgradeT))
+			return false;
+	}
+
+	// Ever think to check if this thing can actually build the upgrade to "stop cheaters"?
+	if (!producer->canProduceUpgrade(upgradeT))
+		return false;// They have faked their button; go out of sync. (Cheater will execute it, non cheater will not execute it.)
+
+	// producer must have a production update
+	ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+	if (pu == nullptr)
+		return false;
+
+	if (pu->canQueueUpgrade(upgradeT) == CANMAKE_QUEUE_FULL)
+		return false;//So we don't charge them for something that we can't build... happy happy
+
+	// queue the upgrade "research"
+	pu->queueUpgrade(upgradeT);
 
 	return true;
 }
@@ -1916,49 +1985,76 @@ bool GameLogic::onQueueUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curren
 bool GameLogic::onCancelUpgrade(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
-
+/*
 #if RETAIL_COMPATIBLE_AIGROUP
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
-	const UpgradeTemplate *upgradeT = TheUpgradeCenter->findUpgradeByKey( (NameKeyType)(msg->getArgument( 0 )->integer) );
+*/
+	Bool cancelAll = (Bool)msg->getArgument(0)->boolean;
+
+	const UpgradeTemplate* upgradeT = TheUpgradeCenter->findUpgradeByKey((NameKeyType)(msg->getArgument(1)->integer));
 
 	// sanity
-	if( producer == nullptr || upgradeT == nullptr )
+	if (upgradeT == nullptr)
 		return false;
 
-	// the player must actually control the producer object
-	if( producer->getControllingPlayer() != msgPlayer )
-		return false;
+	if (cancelAll)
+	{
+		if (currentlySelectedGroup)
+		{
+			currentlySelectedGroup->cancelUpgradeOfType(upgradeT);
+		}
+	}
+	else
+	{
+		Object *producer = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(2)->objectID);
+		if (producer == nullptr)
+			return false;
 
-	// producer must have a production update
-	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
-	if( pu == nullptr )
-		return false;
+		// the player must actually control the producer object
+		if (producer->getControllingPlayer() != msgPlayer)
+			return false;
 
-	// cancel the upgrade
-	pu->cancelUpgrade( upgradeT );
+		// producer must have a production update
+		ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+		if (pu == nullptr)
+			return false;
+
+		// cancel the upgrade
+		pu->cancelUpgrade(upgradeT);
+
+	}
 
 	return true;
 }
 
 bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
+	// ShigureUi 09/09/2026 we're not gonna use this producer
 #if RETAIL_COMPATIBLE_AIGROUP
-	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
+	//Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
-	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
+	//Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
 	const ThingTemplate *whatToCreate;
+	ObjectID objID;
 	ProductionID productionID;
 
 	// get data from the message
 	whatToCreate = TheThingFactory->findByTemplateID( msg->getArgument( 0 )->integer );
-	productionID = (ProductionID)msg->getArgument( 1 )->integer;
+	objID = (ObjectID)msg->getArgument(1)->integer;
+	productionID = (ProductionID)msg->getArgument( 2 )->integer;
+
+	Object* producer = TheGameLogic->findObjectByID(objID);
 
 	// sanity
 	if ( producer == nullptr || whatToCreate == nullptr )
+		return false;
+
+	// the player must actually control the producer object
+	if (producer->getControllingPlayer() != getMessagePlayer(msg))
 		return false;
 
 	// get the production interface for the producer
@@ -1979,29 +2075,47 @@ bool GameLogic::onQueueUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 bool GameLogic::onCancelUnitCreate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
-
+/*
 #if RETAIL_COMPATIBLE_AIGROUP
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup);
 #else
 	Object *producer = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
 #endif
-	ProductionID productionID = (ProductionID)msg->getArgument( 0 )->integer;
+*/
 
-	// sanity
-	if( producer == nullptr )
-		return false;
+	Bool isCancelAll = (Bool)msg->getArgument(0)->boolean;
+	UnsignedShort templateID = 0;
+	
 
-	// sanity, the player must control the producer
-	if( producer->getControllingPlayer() != msgPlayer )
-		return false;
+	if (isCancelAll)
+	{
+		templateID = (Int)msg->getArgument(1)->integer;
+		if (currentlySelectedGroup)
+		{
+			currentlySelectedGroup->cancelProductionOfType(TheThingFactory->findByTemplateID(templateID));
+		}
+	}
+	else
+	{
+		ProductionID productionID = (ProductionID)msg->getArgument(1)->integer;
+		Object* producer = findObjectByID((ObjectID)msg->getArgument(2)->objectID);
 
-	// get the unit production interface
-	ProductionUpdateInterface *pu = producer->getProductionUpdateInterface();
-	if( pu == nullptr )
-		return false;
+		// sanity
+		if (producer == nullptr)
+			return false;
 
-	// cancel the production
-	pu->cancelUnitCreate( productionID );
+		// sanity, the player must control the producer
+		if (producer->getControllingPlayer() != msgPlayer)
+			return false;
+
+		// get the unit production interface
+		ProductionUpdateInterface* pu = producer->getProductionUpdateInterface();
+		if (pu == nullptr)
+			return false;
+
+		// cancel the production
+		pu->cancelUnitCreate(productionID);
+	}
 
 	return true;
 }
@@ -2120,12 +2234,17 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 	Coord3D loc;
 	Real angle;
 
-	// get player, what to place, and location
+	// TheSuperHackers @feature The first of the group builds and any dozer behind it is sent to
+	// help, so a smart selection focus can lead the rest of the selected dozers to one site.
 #if RETAIL_COMPATIBLE_AIGROUP
-	Object *constructorObject = getSingleObjectFromSelection(currentlySelectedGroup);
+	const AIGroup *group = currentlySelectedGroup;
 #else
-	Object *constructorObject = getSingleObjectFromSelection(currentlySelectedGroup.Peek());
+	const AIGroup *group = currentlySelectedGroup.Peek();
 #endif
+	if( group == nullptr || group->isEmpty() )
+		return false;
+	const VecObjectID &groupIDs = group->getAllIDs();
+	Object *constructorObject = findObjectByID( groupIDs.front() );
 	place = TheThingFactory->findByTemplateID( msg->getArgument( 0 )->integer );
 	loc = msg->getArgument( 1 )->location;
 	angle = msg->getArgument( 2 )->real;
@@ -2135,8 +2254,17 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 
 	if( msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT )
 	{
-		TheBuildAssistant->buildObjectNow( constructorObject, place, &loc, angle,
+		Object *building = TheBuildAssistant->buildObjectNow( constructorObject, place, &loc, angle,
 																				constructorObject->getControllingPlayer() );
+		for( size_t i = 1; building && i < groupIDs.size(); i++ )
+		{
+			Object *helper = findObjectByID( groupIDs[ i ] );
+			if( helper && helper->getAIUpdateInterface() &&
+					TheActionManager->canResumeConstructionOf( helper, building, CMD_FROM_PLAYER ) )
+			{
+				helper->getAIUpdateInterface()->aiResumeConstruction( building, CMD_FROM_PLAYER );
+			}
+		}
 	}
 	else
 	{
@@ -2279,6 +2407,35 @@ bool GameLogic::onCreateSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 	return true;
 }
 
+bool GameLogic::onUpdateFocusedGroup(MAYBE_UNUSED GameMessage* msg)
+{
+	Player* msgPlayer = getMessagePlayer(msg);
+	AIGroupPtr group = TheAI->createGroup();
+
+	for (Int i = 0; i < msg->getArgumentCount(); ++i) {
+		Object* obj = findObjectByID(msg->getArgument(i)->objectID);
+		if (!obj) {
+			continue;
+		}
+
+		group->add(obj);
+	}
+
+#if RETAIL_COMPATIBLE_AIGROUP
+	msgPlayer->setCurrentlyFocusedAIGroup(group);
+#else
+	msgPlayer->setCurrentlyFocusedAIGroup(group.Peek());
+#endif
+
+#if RETAIL_COMPATIBLE_AIGROUP
+	TheAI->destroyGroup(group);
+#else
+	group->removeAll();
+#endif
+
+	return true;
+}
+
 bool GameLogic::onRemoveFromSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
@@ -2299,6 +2456,8 @@ bool GameLogic::onRemoveFromSelectedGroup(MAYBE_UNUSED GameMessage *msg)
 bool GameLogic::onDestroySelectedGroup(MAYBE_UNUSED GameMessage *msg)
 {
 	Player *msgPlayer = getMessagePlayer(msg);
+
+	msgPlayer->setCurrentlyFocusedAIGroup(nullptr);
 	msgPlayer->setCurrentlySelectedAIGroup(nullptr);
 
 	return true;

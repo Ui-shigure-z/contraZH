@@ -137,6 +137,8 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "VIEW_TEAM8",																GameMessage::MSG_META_VIEW_TEAM8 },
 	{ "VIEW_TEAM9",																GameMessage::MSG_META_VIEW_TEAM9 },
 	{ "SELECT_MATCHING_UNITS",										GameMessage::MSG_META_SELECT_MATCHING_UNITS },
+	{ "SMART_SELECTION_NEXT_TYPE",								GameMessage::MSG_META_SMART_SELECTION_NEXT_TYPE },
+	{ "SMART_SELECTION_PREV_TYPE",								GameMessage::MSG_META_SMART_SELECTION_PREV_TYPE },
 	{ "SELECT_NEXT_UNIT",													GameMessage::MSG_META_SELECT_NEXT_UNIT },
 	{ "SELECT_PREV_UNIT",													GameMessage::MSG_META_SELECT_PREV_UNIT },
 	{ "SELECT_NEXT_WORKER",												GameMessage::MSG_META_SELECT_NEXT_WORKER },
@@ -167,6 +169,7 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "TOGGLE_CONTROL_BAR",												GameMessage::MSG_META_TOGGLE_CONTROL_BAR },
 	{ "TOGGLE_PLAYER_OBSERVER",										GameMessage::MSG_META_TOGGLE_PLAYER_OBSERVER },
 	{ "CYCLE_HEALTH_BAR_MODE",										GameMessage::MSG_META_CYCLE_HEALTH_BAR_MODE },
+	{ "TOGGLE_REVERSEMOVE",												GameMessage::MSG_META_TOGGLE_REVERSEMOVE },
 	{ "BEGIN_PATH_BUILD",													GameMessage::MSG_META_BEGIN_PATH_BUILD },
 	{ "END_PATH_BUILD",														GameMessage::MSG_META_END_PATH_BUILD },
 	{ "BEGIN_FORCEATTACK",												GameMessage::MSG_META_BEGIN_FORCEATTACK },
@@ -226,6 +229,9 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "CHEAT_SHOW_COMMAND_SET",									  GameMessage::MSG_CHEAT_SHOW_COMMAND_SET },
 	{ "CHEAT_SHOW_WEAPON_SET",									  GameMessage::MSG_CHEAT_SHOW_WEAPON_SET },
 	{ "CHEAT_SHOW_ARMOR_SET",									  GameMessage::MSG_CHEAT_SHOW_ARMOR_SET },
+	{ "CHEAT_CYCLE_CAMERA_MODE",							  GameMessage::MSG_CHEAT_CYCLE_CAMERA_MODE },
+	{ "CHEAT_CYCLE_SKYBOX",									  GameMessage::MSG_CHEAT_CYCLE_SKYBOX },
+	{ "CHEAT_CYCLE_TERRAIN_MODE",							  GameMessage::MSG_CHEAT_CYCLE_TERRAIN_MODE },
 	{ "CHEAT_ADD_CASH",									          GameMessage::MSG_CHEAT_ADD_CASH },
 	{ "CHEAT_GIVE_ALL_SCIENCES",					        GameMessage::MSG_CHEAT_GIVE_ALL_SCIENCES },
   { "CHEAT_GIVE_SCIENCEPURCHASEPOINTS",        	GameMessage::MSG_CHEAT_GIVE_SCIENCEPURCHASEPOINTS },
@@ -1017,6 +1023,45 @@ void MetaMap::generateMetaMap()
 			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
 		}
 	}
+	{
+		// Cycle the camera cheat: default -> free camera -> chase the selected object -> default.
+		// Plain Delete is unbound in the engine defaults, in Contra's CommandMap.ini and in the
+		// demo map, and a focused text entry field consumes it in WindowXlat before it gets here.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_CYCLE_CAMERA_MODE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_DEL;
+			map->m_transition = DOWN;
+			map->m_modState = NONE;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Cycle the skybox through the preset texture sets shipped with the game. Ctrl+Home,
+		// because the shipped CommandMap.ini already binds Ctrl+D (DEMO_DEBUG_SELECTION) and
+		// the meta translator fires every record matching a keystroke.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_CYCLE_SKYBOX);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_HOME;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Cycle the terrain: normal, hidden over black, hidden over green for chroma keying.
+		// Ctrl+End, because the shipped CommandMap.ini already binds Ctrl+X
+		// (DEMO_TOGGLE_HURT_ME_MODE) and the meta translator fires every matching record.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_CYCLE_TERRAIN_MODE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_END;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
 #endif
 	{
 		// TheSuperHackers @feature Cycle the health bar display mode. Ctrl+` is unbound in
@@ -1031,6 +1076,38 @@ void MetaMap::generateMetaMap()
 			map->m_modState = CTRL;
 			// in game and while observing, but not in the menus, where health bars mean nothing
 			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// TheSuperHackers @feature Tab and Shift+Tab walk the smart selection row. Tab is unbound
+		// in retail and in Contra's CommandMap.ini, so the default only fills an empty slot.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_META_SMART_SELECTION_NEXT_TYPE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_TAB;
+			map->m_transition = DOWN;
+			map->m_modState = NONE;
+			map->m_usableIn = COMMANDUSABLE_GAME;
+		}
+		map = TheMetaMap->getMetaMapRec(GameMessage::MSG_META_SMART_SELECTION_PREV_TYPE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_TAB;
+			map->m_transition = DOWN;
+			map->m_modState = SHIFT;
+			map->m_usableIn = COMMANDUSABLE_GAME;
+		}
+	}
+	{
+		// Caps Lock arms a reverse move for the next terrain click. No cameo or stock binding
+		// wants the key, so nothing can shadow it.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_META_TOGGLE_REVERSEMOVE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_CAPS;
+			map->m_transition = DOWN;
+			map->m_modState = NONE;
+			map->m_usableIn = COMMANDUSABLE_GAME;
 		}
 	}
 	{

@@ -31,6 +31,7 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/DamageFX.h"
+#include "Common/GlobalData.h"
 #include "Common/MiscAudio.h"
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Damage.h"
@@ -52,9 +53,21 @@ public:
 	Real m_maxHealth;
 	Real m_initialHealth;
 
-	Real m_subdualDamageCap;								///< Subdual damage will never accumulate past this
-	UnsignedInt m_subdualDamageHealRate;		///< Every this often, we drop subdual damage...
-	Real m_subdualDamageHealAmount;					///< by this much.
+	// unset fields fall back to the GameData SubdualDamageDefaults blocks
+	SubdualValue m_subdualDamageCap;				///< Subdual damage will never accumulate past this
+	SubdualValue m_subdualDamageHealRate;		///< Every this often, we drop subdual damage...
+	SubdualValue m_subdualDamageHealAmount;	///< by this much.
+
+	SubdualValue m_jammingDamageCap;
+	SubdualValue m_jammingDamageHealRate;
+	SubdualValue m_jammingDamageHealAmount;
+
+	SubdualValue m_frozenDamageCap;
+	SubdualValue m_frozenDamageHealRate;
+	SubdualValue m_frozenDamageHealAmount;
+
+	SubdualValue m_chronoDamageHealRate;
+	SubdualValue m_chronoDamageHealAmount;
 
 	ActiveBodyModuleData();
 
@@ -91,6 +104,16 @@ public:
 	virtual Real getChronoDamageHealAmount() const;
 	virtual Bool hasAnyChronoDamage() const;
 	virtual Real getCurrentChronoDamageAmount() const { return m_currentChronoDamage; }
+
+	virtual UnsignedInt getJammingDamageHealRate() const override;
+	virtual Real getJammingDamageHealAmount() const override;
+	virtual Bool hasAnyJammingDamage() const override;
+	virtual Real getCurrentJammingDamageAmount() const override { return m_currentJammingDamage; }
+
+	virtual UnsignedInt getFrozenDamageHealRate() const override;
+	virtual Real getFrozenDamageHealAmount() const override;
+	virtual Bool hasAnyFrozenDamage() const override;
+	virtual Real getCurrentFrozenDamageAmount() const override { return m_currentFrozenDamage; }
 
 	virtual const DamageInfo *getLastDamageInfo() const { return &m_lastDamageInfo; }	///< return info on last damage dealt to this object
 	virtual UnsignedInt getLastDamageTimestamp() const { return m_lastDamageTimestamp; }	///< return frame of last damage dealt
@@ -133,8 +156,17 @@ public:
 
 	// Chrono
 	virtual Bool isSubduedChrono() const;
-	virtual void onSubdualChronoChange(Bool isNowSubdued); ///< Override this if you want a totally different effect than DISABLED_SUBDUED
+	virtual void onSubdualChronoChange(Bool isNowSubdued);
 
+	// Jamming
+	virtual Bool isJammed() const override;
+	virtual Bool canBeJammed() const;
+	virtual void onJammingChange(Bool isNowJammed);
+
+	// Frozen
+	virtual Bool isFrozen() const override;
+	virtual Bool canBeFrozen() const;
+	virtual void onFrozenChange(Bool isNowFrozen);
 
 	virtual void overrideDamageFX(DamageFX* damageFX);
 
@@ -159,8 +191,12 @@ protected:
 	Bool shouldRetaliate(Object *obj);
 	Bool shouldRetaliateAgainstAggressor(Object *obj, Object *damager);
 
-	virtual void internalAddSubdualDamage( Real delta );								///< change health
-	virtual void internalAddChronoDamage( Real delta );								///< change health
+	void resolveSubdualDefaults();
+
+	virtual void internalAddSubdualDamage( Real delta );
+	virtual void internalAddChronoDamage( Real delta );
+	virtual void internalAddJammingDamage( Real delta );
+	virtual void internalAddFrozenDamage( Real delta );
 
 	virtual void applyChronoParticleSystems(void);
 
@@ -174,6 +210,23 @@ private:
   Real									m_initialHealth;				///< starting health for this object
 	Real									m_currentSubdualDamage;	///< Starts at zero and goes up.  Inherited modules will do something when "subdued".
 	Real									m_currentChronoDamage;	///< Same as Subdual, but for CHRONO_GUN
+	Real									m_currentJammingDamage;
+	Bool									m_isJammed;								///< tracked rather than derived, so a max health change cannot strand the jam
+	Bool									m_jammingSetUnselectable;	///< jam set UNSELECTABLE, so unjam may clear it
+	Real									m_currentFrozenDamage;
+
+	// resolved from the module data or GameData at creation; evaluated against the live max health
+	SubdualValue					m_subdualDamageCap;
+	SubdualValue					m_subdualDamageHealRate;
+	SubdualValue					m_subdualDamageHealAmount;
+	SubdualValue					m_jammingDamageCap;
+	SubdualValue					m_jammingDamageHealRate;
+	SubdualValue					m_jammingDamageHealAmount;
+	SubdualValue					m_frozenDamageCap;
+	SubdualValue					m_frozenDamageHealRate;
+	SubdualValue					m_frozenDamageHealAmount;
+	SubdualValue					m_chronoDamageHealRate;
+	SubdualValue					m_chronoDamageHealAmount;
 
 	BodyDamageType				m_curDamageState;				///< last known damage state
 	

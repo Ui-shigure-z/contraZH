@@ -88,6 +88,21 @@
 	const DistanceCalculationType ATTACK_RANGE_CALC_TYPE = FROM_BOUNDINGSPHERE_3D;
 #endif
 
+// Slack granted to a unit that has already closed on its target, so a victim drifting while we aim
+// does not send us back to chasing. Both the AI's decision to stay engaged and the shot itself use
+// it, or the unit commits to a shot the weapon then refuses.
+const Real CONTINUE_ATTACK_RANGE_MARGIN = PATHFIND_CELL_SIZE_F;
+
+// The radius attack range measures to, in whichever dimensionality the constant above selected.
+static inline Real getAttackRangeBoundingRadius(const Object* obj)
+{
+#ifdef ATTACK_RANGE_IS_2D
+	return obj->getGeometryInfo().getBoundingCircleRadius();
+#else
+	return obj->getGeometryInfo().getBoundingSphereRadius();
+#endif
+}
+
 
 // damage is ALWAYS 3d
 const DistanceCalculationType DAMAGE_RANGE_CALC_TYPE = FROM_BOUNDINGSPHERE_3D;
@@ -217,6 +232,7 @@ const FieldParse WeaponTemplate::TheWeaponTemplateFieldParseTable[] =
 	{ "ContinuousFireCoast",			INI::parseDurationUnsignedInt,					nullptr,							offsetof(WeaponTemplate, m_continuousFireCoastFrames) },
  	{ "AutoReloadWhenIdle",				INI::parseDurationUnsignedInt,					nullptr,							offsetof(WeaponTemplate, m_autoReloadWhenIdleFrames) },
 	{ "ClipReloadTime",						INI::parseDurationUnsignedInt,					nullptr,							offsetof(WeaponTemplate, m_clipReloadTime) },
+	{ "ClipReloadDelay",					INI::parseDurationUnsignedInt,					nullptr,							offsetof(WeaponTemplate, m_clipReloadDelay) },
 	{ "DelayBetweenShots",				WeaponTemplate::parseShotDelay,					nullptr,							0 },
 	{ "ShotsPerBarrel",						INI::parseInt,													nullptr,							offsetof(WeaponTemplate, m_shotsPerBarrel) },
 	{ "DamageDealtAtSelfPosition",INI::parseBool,													nullptr,							offsetof(WeaponTemplate, m_damageDealtAtSelfPosition) },
@@ -332,6 +348,7 @@ WeaponTemplate::WeaponTemplate() : m_nextTemplate(nullptr)
 	m_continuousFireCoastFrames			= 0;
  	m_autoReloadWhenIdleFrames			= 0;
 	m_clipReloadTime								= 0;
+	m_clipReloadDelay								= 0;
 	m_minDelayBetweenShots					= 0;
 	m_maxDelayBetweenShots					= 0;
 	m_fireSoundLoopTime							= 0;
@@ -650,6 +667,24 @@ Int WeaponTemplate::getClipReloadTime(const WeaponBonus& bonus) const
 }
 
 //-------------------------------------------------------------------------------------------------
+Int WeaponTemplate::getGradualRoundFrames(const WeaponBonus& bonus) const
+{
+	// Floor at a frame, or a big rate-of-fire bonus would divide the round away and refill the
+	// whole clip at once.
+	return max(1, getClipReloadTime(bonus) / m_clipSize);
+}
+
+//-------------------------------------------------------------------------------------------------
+Int WeaponTemplate::getClipReloadDelayFrames(const WeaponBonus& bonus) const
+{
+	// The quiet spell owed after the last shot. The longest shot delay is the floor, so the wait
+	// between two shots of a burst can never finish a round. Deliberately not getDelayBetweenShots,
+	// which rolls the logic random number generator and must only be drawn once per shot.
+	Int delay = max(m_clipReloadDelay, m_maxDelayBetweenShots);
+	return REAL_TO_INT_FLOOR(delay / bonus.getField(WeaponBonus::RATE_OF_FIRE));
+}
+
+//-------------------------------------------------------------------------------------------------
 Int WeaponTemplate::getPreAttackDelay( const WeaponBonus& bonus ) const
 {
 	return m_preAttackDelay * bonus.getField( WeaponBonus::PRE_ATTACK );
@@ -943,6 +978,9 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 
 	ObjectID sourceID = sourceObj->getID();
 	const Coord3D* sourcePos = sourceObj->getPosition();
+	// The range gates below must agree with the predicates the AI used to approve this shot,
+	// or a centered add-on aims at a target it then silently refuses to fire on.
+	const Object* rangeSrc = Weapon::getWeaponRangeSource( sourceObj );
 
 	Real distSqr;
 	ObjectID victimID;
@@ -967,7 +1005,7 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 			// for a sneaky offset, we always target a position rather than an object
 			victimObj = nullptr;
 			victimID = INVALID_ID;
-			distSqr = ThePartitionManager->getDistanceSquared(sourceObj, victimPos, ATTACK_RANGE_CALC_TYPE);
+			distSqr = ThePartitionManager->getDistanceSquared(rangeSrc, victimPos, ATTACK_RANGE_CALC_TYPE);
 		}
 		else
 		{
@@ -975,9 +1013,9 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 			{
 				// Bridges are kind of oddball - they have 2 target points at either end.
 				TheTerrainLogic->getBridgeAttackPoints(victimObj, &info);
-				distSqr = ThePartitionManager->getDistanceSquared( sourceObj, &info.attackPoint1, ATTACK_RANGE_CALC_TYPE );
+				distSqr = ThePartitionManager->getDistanceSquared( rangeSrc, &info.attackPoint1, ATTACK_RANGE_CALC_TYPE );
 				victimPos = &info.attackPoint1;
- 				Real distSqr2 = ThePartitionManager->getDistanceSquared( sourceObj, &info.attackPoint2, ATTACK_RANGE_CALC_TYPE );
+ 				Real distSqr2 = ThePartitionManager->getDistanceSquared( rangeSrc, &info.attackPoint2, ATTACK_RANGE_CALC_TYPE );
 				if (distSqr > distSqr2)
 				{
 					// Try the other one.
@@ -987,14 +1025,14 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 			}
 			else
 			{
-				distSqr = ThePartitionManager->getDistanceSquared(sourceObj, victimObj, ATTACK_RANGE_CALC_TYPE);
+				distSqr = ThePartitionManager->getDistanceSquared(rangeSrc, victimObj, ATTACK_RANGE_CALC_TYPE);
 			}
 		}
 	}
 	else
 	{
 		victimID = INVALID_ID;
-		distSqr = ThePartitionManager->getDistanceSquared(sourceObj, victimPos, ATTACK_RANGE_CALC_TYPE);
+		distSqr = ThePartitionManager->getDistanceSquared(rangeSrc, victimPos, ATTACK_RANGE_CALC_TYPE);
 	}
 
 //	DEBUG_LOG(("WeaponTemplate::fireWeaponTemplate: firing weapon %s (source=%s, victim=%s)",
@@ -1003,7 +1041,14 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 	//Only perform this check if the weapon isn't a leech range weapon (which can have unlimited range!)
 	if( !ignoreRanges && !isLeechRangeWeapon() )
 	{
-		Real attackRangeSqr = sqr(getAttackRange(bonus));
+		// Match the slack the AI used to stay engaged, so a shot it committed to against a moving
+		// victim still lands instead of being dropped here.
+		Real attackRange = getAttackRange(bonus);
+		if (victimObj != nullptr && !isProjectileDetonation)
+		{
+			attackRange += CONTINUE_ATTACK_RANGE_MARGIN;
+		}
+		Real attackRangeSqr = sqr(attackRange);
 		if (distSqr > attackRangeSqr)
 		{
 			//DEBUG_ASSERTCRASH(distSqr < 5*5 || distSqr < attackRangeSqr*1.2f, ("*** victim is out of range (%f vs %f) of this weapon -- why did we attempt to fire?",sqrtf(distSqr),sqrtf(attackRangeSqr)));
@@ -1629,6 +1674,15 @@ Real WeaponTemplate::computeRangeScaleFactor(const Object* source, const Coord3D
 	}
 
 	Real range = getAttackRange(bonus);
+	// A centered add-on is allowed to fire out to the carrier's hull plus its range, so the
+	// falloff has to span that same band or it saturates before the target is truly at max range.
+	// Only the denominator moves: the shot still flies from the barrel, so fromPos stays put.
+	// Adds nothing when no substitution happened, leaving every other weapon as it was.
+	const Object* rangeSrc = Weapon::getWeaponRangeSource( source );
+	if (rangeSrc != source)
+	{
+		range += getAttackRangeBoundingRadius( rangeSrc );
+	}
 	if (!haveFromPos || range <= 0.0f)
 		return 1.0f;
 
@@ -1670,6 +1724,37 @@ VeterancyLevel WeaponTemplate::getEffectiveFXVeterancy(const Object* sourceObj) 
 }
 
 //-------------------------------------------------------------------------------------------------
+static const Object* getEffectiveShooter(const Object* source)
+{
+	// a projectile is never contained, so it is the launcher's chain that matters
+	if( source->isKindOf( KINDOF_PROJECTILE ) )
+	{
+		return TheGameLogic->findObjectByID( source->getProducerID() );
+	}
+
+	return source;
+}
+
+//-------------------------------------------------------------------------------------------------
+static Bool isSourceContainedBy(const Object* shooter, const Object* container)
+{
+	if( shooter == nullptr )
+	{
+		return FALSE;
+	}
+
+	for( const Object* obj = shooter->getContainedBy(); obj != nullptr; obj = obj->getContainedBy() )
+	{
+		if( obj == container )
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
 void WeaponTemplate::dealDamageInternal(ObjectID sourceID, ObjectID victimID, const Coord3D *pos, const WeaponBonus& bonus, Bool isProjectileDetonation) const
 {
 	if (sourceID == 0)	// must have a source
@@ -1705,6 +1790,9 @@ void WeaponTemplate::dealDamageInternal(ObjectID sourceID, ObjectID victimID, co
 		Real primaryDamage = getPrimaryDamage(bonus);
 		Real secondaryDamage = getSecondaryDamage(bonus);
 		Int affects = getAffectsMask();
+
+		// resolved once: the shooter cannot change while we work through the victims
+		const Object* shooter = source ? getEffectiveShooter( source ) : nullptr;
 
 		// Apply random damage variance (from Min:/Max: definition). Roll once per shot so that every
 		// victim caught in the blast takes the same rolled damage. Must use the synchronized game-logic
@@ -1789,6 +1877,12 @@ void WeaponTemplate::dealDamageInternal(ObjectID sourceID, ObjectID victimID, co
 							if( source == curVictim || source->getProducerID() == curVictim->getID() )
 							{
 								//DEBUG_LOG(("skipping damage done to SELF..."));
+								continue;
+							}
+
+							// the SELF gate above is also what lets a suicide weapon still destroy the ride carrying it
+							if( TheGlobalData->m_noOccupantFriendlyFire && isSourceContainedBy( shooter, curVictim ) )
+							{
 								continue;
 							}
 						}
@@ -2317,6 +2411,8 @@ Weapon::Weapon(const WeaponTemplate* tmpl, WeaponSlotType wslot)
 	m_nextPreAttackFXFrame = 0;
 	m_continuousLaserID = INVALID_ID;
 	m_bonusRefObjID = INVALID_ID;
+	m_gradualRoundStart = 0;
+	m_gradualRoundFrames = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2341,6 +2437,8 @@ Weapon::Weapon(const Weapon& that)
 	this->m_nextPreAttackFXFrame = 0;
 	this->m_continuousLaserID = INVALID_ID;
 	this->m_bonusRefObjID = INVALID_ID;
+	this->m_gradualRoundStart = 0;
+	this->m_gradualRoundFrames = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2366,6 +2464,8 @@ Weapon& Weapon::operator=(const Weapon& that)
 		this->m_projectileStreamID = INVALID_ID;
 		this->m_nextPreAttackFXFrame = 0;
 		this->m_continuousLaserID = INVALID_ID;
+		this->m_gradualRoundStart = 0;
+		this->m_gradualRoundFrames = 0;
 	}
 	return *this;
 }
@@ -2455,10 +2555,14 @@ void Weapon::setClipPercentFull(Real percent, Bool allowReduction)
 	if (m_template->getClipSize() == 0)
 		return;
 
+	settleGradualAmmo(TheGameLogic->getFrame());
+
 	Int ammo = REAL_TO_INT_FLOOR(m_template->getClipSize() * percent);
 	if (ammo > m_ammoInClip || (allowReduction && ammo < m_ammoInClip))
 	{
 		m_ammoInClip = ammo;
+		// The caller drives this fill itself, so the round timer restarts with the next shot.
+		stopGradualRound();
 		m_status = m_ammoInClip ? OUT_OF_AMMO : READY_TO_FIRE;
 		//CRCDEBUG_LOG(("Weapon::setClipPercentFull() just set m_status to %d (ammo in clip is %d)", m_status, m_ammoInClip));
 		m_whenLastReloadStarted = TheGameLogic->getFrame();
@@ -2499,8 +2603,35 @@ void Weapon::rebuildScatterTargets(Bool recenter/* = false*/)
 }
 
 //-------------------------------------------------------------------------------------------------
+// Hand the window we just opened to the other slots when they share a reload clock.
+//-------------------------------------------------------------------------------------------------
+void Weapon::propagateSharedReloadWindow(const Object* sourceObj)
+{
+	if (!sourceObj->isReloadTimeShared())
+	{
+		return;
+	}
+
+	for (Int wt = 0; wt<WEAPONSLOT_COUNT; wt++)
+	{
+		Weapon *weapon = sourceObj->getWeaponInWeaponSlot((WeaponSlotType)wt);
+		if (weapon)
+		{
+			weapon->setPossibleNextShotFrame(m_whenWeCanFireAgain);
+			weapon->setLastReloadStartedFrame(m_whenLastReloadStarted);
+			weapon->setStatus(RELOADING_CLIP);
+
+			if (m_template->isResetFireBonesOnReload())
+				weapon->setCurBarrel(0);
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 void Weapon::reloadWithBonus(const Object *sourceObj, const WeaponBonus& bonus, Bool loadInstantly)
 {
+	settleGradualAmmo(TheGameLogic->getFrame());
+
 	if (m_template->getClipSize() > 0
 			&& m_ammoInClip == m_template->getClipSize()
 			&& !sourceObj->isReloadTimeShared())
@@ -2509,6 +2640,9 @@ void Weapon::reloadWithBonus(const Object *sourceObj, const WeaponBonus& bonus, 
 	m_ammoInClip = m_template->getClipSize();
 	if (m_ammoInClip <= 0)
 		m_ammoInClip = 0x7fffffff;	// 0 == unlimited (or effectively so)
+
+	// A whole clip arrives at once here, so there is no round left to load.
+	stopGradualRound();
 
 	m_status = RELOADING_CLIP;
 	Real reloadTime = loadInstantly ? 0 : m_template->getClipReloadTime(bonus);
@@ -2524,23 +2658,7 @@ void Weapon::reloadWithBonus(const Object *sourceObj, const WeaponBonus& bonus, 
 			// go through other weapons in weapon set
 			// set their m_whenWeCanFireAgain to this guy's delay
 			// set their m_status to this guy's status
-	if (sourceObj->isReloadTimeShared())
-	{
-		for (Int wt = 0; wt<WEAPONSLOT_COUNT; wt++)
-		{
-			Weapon *weapon = sourceObj->getWeaponInWeaponSlot((WeaponSlotType)wt);
-			if (weapon)
-			{
-				weapon->setPossibleNextShotFrame(m_whenWeCanFireAgain);
-				weapon->setLastReloadStartedFrame(m_whenLastReloadStarted);  // This might actually be right to use here
-				//CRCDEBUG_LOG(("Just set m_whenWeCanFireAgain to %d in Weapon::reloadWithBonus 2", m_whenWeCanFireAgain));
-				weapon->setStatus(RELOADING_CLIP);
-
-				if (m_template->isResetFireBonesOnReload())
-					weapon->setCurBarrel(0);
-			}
-		}
-	}
+	propagateSharedReloadWindow(sourceObj);
 
 	rebuildScatterTargets();
 }
@@ -2604,6 +2722,103 @@ static void rescaleReloadProgress( UnsignedInt now, Int newTotal, UnsignedInt& s
 }
 
 //-------------------------------------------------------------------------------------------------
+// The round start sits a ClipReloadDelay in the future, so a start we have not reached yet is
+// the normal state right after a shot rather than an edge case.
+//-------------------------------------------------------------------------------------------------
+UnsignedInt Weapon::gradualRoundsElapsed(UnsignedInt now) const
+{
+	if (!isGradualRoundLoading() || now < m_gradualRoundStart)
+	{
+		return 0;
+	}
+	return (now - m_gradualRoundStart) / m_gradualRoundFrames;
+}
+
+//-------------------------------------------------------------------------------------------------
+UnsignedInt Weapon::getAmmoInClipGradual() const
+{
+	UnsignedInt loaded = m_ammoInClip + gradualRoundsElapsed(TheGameLogic->getFrame());
+	return min(loaded, (UnsignedInt)m_template->getClipSize());
+}
+
+//-------------------------------------------------------------------------------------------------
+// Fold the rounds that have finished loading into the stored count. Only whole rounds move, so
+// the part of the current one already served survives a rescale.
+//-------------------------------------------------------------------------------------------------
+void Weapon::settleGradualAmmo(UnsignedInt now)
+{
+	UnsignedInt rounds = gradualRoundsElapsed(now);
+	if (rounds == 0)
+	{
+		return;
+	}
+
+	m_ammoInClip = min(m_ammoInClip + rounds, (UnsignedInt)m_template->getClipSize());
+	m_gradualRoundStart += rounds * m_gradualRoundFrames;
+	if (m_ammoInClip >= (UnsignedInt)m_template->getClipSize())
+	{
+		stopGradualRound();
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Weapon::restartGradualRound(UnsignedInt now, const WeaponBonus& bonus)
+{
+	// Rounds only start after the weapon has been quiet for ClipReloadDelay, so a weapon still
+	// working through a target gains nothing between its shots.
+	m_gradualRoundStart = now + m_template->getClipReloadDelayFrames(bonus);
+	m_gradualRoundFrames = m_template->getGradualRoundFrames(bonus);
+}
+
+//-------------------------------------------------------------------------------------------------
+// An empty GRADUAL clip waits for one round rather than a whole clip. The wait window matches
+// the round timer, so the reload animation and the command button clock describe the real wait.
+//-------------------------------------------------------------------------------------------------
+void Weapon::beginGradualRoundWait(const Object* sourceObj, const WeaponBonus& bonus, UnsignedInt now)
+{
+	restartGradualRound(now, bonus);
+
+	m_status = RELOADING_CLIP;
+	m_whenLastReloadStarted = now;
+	m_whenWeCanFireAgain = m_gradualRoundStart + m_gradualRoundFrames;
+
+	propagateSharedReloadWindow(sourceObj);
+
+	rebuildScatterTargets();
+}
+
+//-------------------------------------------------------------------------------------------------
+// The clip a shot just drew from. TRUE when that shot emptied it and the wait has begun.
+//-------------------------------------------------------------------------------------------------
+Bool Weapon::onGradualShotFired(const Object* sourceObj, const WeaponBonus& bonus, UnsignedInt now)
+{
+	settleGradualAmmo(now);
+	--m_ammoInClip;
+	if (m_ammoInClip <= 0)
+	{
+		beginGradualRoundWait(sourceObj, bonus, now);
+		return TRUE;
+	}
+
+	restartGradualRound(now, bonus);
+	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+void Weapon::rescaleGradualRound(UnsignedInt now, const WeaponBonus& bonus)
+{
+	settleGradualAmmo(now);
+	if (!isGradualRoundLoading())
+	{
+		return;
+	}
+
+	UnsignedInt roundEnd = m_gradualRoundStart + m_gradualRoundFrames;
+	rescaleReloadProgress( now, m_template->getGradualRoundFrames(bonus), m_gradualRoundStart, roundEnd );
+	m_gradualRoundFrames = roundEnd - m_gradualRoundStart;
+}
+
+//-------------------------------------------------------------------------------------------------
 void Weapon::onWeaponBonusChange(const Object *source)
 {
 	// We are concerned with our reload times being off if our ROF just changed.
@@ -2617,7 +2832,15 @@ void Weapon::onWeaponBonusChange(const Object *source)
 
 	if( curStatus == RELOADING_CLIP )
 	{
-		newDelay = m_template->getClipReloadTime(bonus);
+		// A GRADUAL weapon in this state is waiting out a single round, not a clip.
+		if (m_template->isGradualReload() && m_gradualRoundFrames > 0)
+		{
+			newDelay = m_template->getGradualRoundFrames(bonus);
+		}
+		else
+		{
+			newDelay = m_template->getClipReloadTime(bonus);
+		}
 		needUpdate = TRUE;
 	}
 	else if( curStatus == BETWEEN_FIRING_SHOTS )
@@ -2645,23 +2868,32 @@ void Weapon::onWeaponBonusChange(const Object *source)
 			}
 		}
 	}
+
+	if (isGradualRoundLoading())
+	{
+		rescaleGradualRound(TheGameLogic->getFrame(), bonus);
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
 Bool Weapon::computeApproachTarget(const Object *source, const Object *target, const Coord3D *pos, Real angleOffset, Coord3D& approachTargetPos) const
 {
+	// The stopping distance has to be measured the same way the range check will be, or the
+	// carrier parks where its add-on turns out not to reach and creeps forward again.
+	const Object *rangeSrc = getWeaponRangeSource( source );
+
 	// compute unit direction vector from us to our victim
 	const Coord3D *targetPos;
 	Coord3D dir;
 	if (target)
 	{
 		targetPos = target->getPosition();
-		ThePartitionManager->getVectorTo( target, source, ATTACK_RANGE_CALC_TYPE, dir );
+		ThePartitionManager->getVectorTo( target, rangeSrc, ATTACK_RANGE_CALC_TYPE, dir );
 	}
 	else if (pos)
 	{
 		targetPos = pos;
-		ThePartitionManager->getVectorTo( source, pos, ATTACK_RANGE_CALC_TYPE, dir );
+		ThePartitionManager->getVectorTo( rangeSrc, pos, ATTACK_RANGE_CALC_TYPE, dir );
 		// Flip the vector to get from source to pos.
 		dir.x = -dir.x;
 		dir.y = -dir.y;
@@ -2681,7 +2913,7 @@ Bool Weapon::computeApproachTarget(const Object *source, const Object *target, c
 		// We aret too close, so move away from the target.
 		DEBUG_ASSERTCRASH((minAttackRange<0.9f*getAttackRange(source)), ("Min attack range is too near attack range."));
 		// Recompute dir, cause if the bounding spheres touch, it will be 0.
-		Coord3D srcPos = *source->getPosition();
+		Coord3D srcPos = *rangeSrc->getPosition();
 		dir.x = srcPos.x-targetPos->x;
 		dir.y = srcPos.y-targetPos->y;
 #ifdef ATTACK_RANGE_IS_2D
@@ -2715,15 +2947,9 @@ Bool Weapon::computeApproachTarget(const Object *source, const Object *target, c
 
 		// select a spot along the line between us, halfway between the min & max range.
 		Real attackRange = (getAttackRange(source) + minAttackRange)/2.0f;
-#ifdef ATTACK_RANGE_IS_2D
 		if (target)
-			attackRange += target->getGeometryInfo().getBoundingCircleRadius();
-		attackRange += source->getGeometryInfo().getBoundingCircleRadius();
-#else
-		if (target)
-			attackRange += target->getGeometryInfo().getBoundingSphereRadius();
-		attackRange += source->getGeometryInfo().getBoundingSphereRadius();
-#endif
+			attackRange += getAttackRangeBoundingRadius( target );
+		attackRange += getAttackRangeBoundingRadius( rangeSrc );
 		approachTargetPos.x = attackRange * dir.x + targetPos->x;
 		approachTargetPos.y = attackRange * dir.y + targetPos->y;
 		approachTargetPos.z = attackRange * dir.z + targetPos->z;
@@ -2763,6 +2989,13 @@ Bool Weapon::computeApproachTarget(const Object *source, const Object *target, c
 		// select a spot along the line between us, in range of our weapon
 		const Real ATTACK_RANGE_APPROACH_FUDGE = 0.9f;
 		Real attackRange = getAttackRange(source) * ATTACK_RANGE_APPROACH_FUDGE;
+
+		// Range is measured between bounding surfaces, so the stopping point has to allow for both
+		// radii. Without this a large attacker parks short of its own target and creeps forward.
+		if (target)
+			attackRange += getAttackRangeBoundingRadius( target );
+		attackRange += getAttackRangeBoundingRadius( rangeSrc );
+
 		approachTargetPos.x = attackRange * dir.x + targetPos->x;
 		approachTargetPos.y = attackRange * dir.y + targetPos->y;
 		approachTargetPos.z = attackRange * dir.z + targetPos->z;
@@ -2783,7 +3016,8 @@ Bool Weapon::computeApproachTarget(const Object *source, const Object *target, c
 //-------------------------------------------------------------------------------------------------
 Bool Weapon::isSourceObjectWithGoalPositionWithinAttackRange( const Object *source, const Coord3D *goalPos, const Object *target, const Coord3D *targetPos ) const
 {
-
+	// No range source substitution here, nor in isGoalPosWithinAttackRange: goalPos already says
+	// where to measure from, and both callers are garrison and pathfinding queries about a mover.
 	Real distSqr;
 	if( target )
 		distSqr = ThePartitionManager->getGoalDistanceSquared( source, goalPos, target, ATTACK_RANGE_CALC_TYPE );
@@ -2808,7 +3042,7 @@ Bool Weapon::isSourceObjectWithGoalPositionWithinAttackRange( const Object *sour
 //-------------------------------------------------------------------------------------------------
 Bool Weapon::isWithinAttackRange(const Object *source, const Coord3D* pos) const
 {
-	Real distSqr = ThePartitionManager->getDistanceSquared( source, pos, ATTACK_RANGE_CALC_TYPE );
+	Real distSqr = ThePartitionManager->getDistanceSquared( getWeaponRangeSource( source ), pos, ATTACK_RANGE_CALC_TYPE );
 	Real attackRangeSqr = sqr(getAttackRange(source));
 	Real minAttackRangeSqr = sqr(m_template->getMinimumAttackRange());
 #ifdef RATIONALIZE_ATTACK_RANGE
@@ -2823,25 +3057,26 @@ Bool Weapon::isWithinAttackRange(const Object *source, const Coord3D* pos) const
 }
 
 //-------------------------------------------------------------------------------------------------
-Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) const
+Bool Weapon::isWithinAttackRangeInternal(const Object *source, const Object *target, Real attackRange) const
 {
 	Real distSqr;
-	Real attackRangeSqr = sqr(getAttackRange(source));
+	Real attackRangeSqr = sqr(attackRange);
 
+	const Object *rangeSrc = getWeaponRangeSource( source );
 	if( !target->isKindOf(KINDOF_BRIDGE) )
 	{
-		distSqr = ThePartitionManager->getDistanceSquared( source, target, ATTACK_RANGE_CALC_TYPE );
+		distSqr = ThePartitionManager->getDistanceSquared( rangeSrc, target, ATTACK_RANGE_CALC_TYPE );
 	}
 	else
 	{
 		// Special case - bridges have two attackable points at either end.
 		TBridgeAttackInfo info;
 		TheTerrainLogic->getBridgeAttackPoints(target, &info);
-		distSqr = ThePartitionManager->getDistanceSquared( source, &info.attackPoint1, ATTACK_RANGE_CALC_TYPE );
+		distSqr = ThePartitionManager->getDistanceSquared( rangeSrc, &info.attackPoint1, ATTACK_RANGE_CALC_TYPE );
 		if (distSqr>attackRangeSqr)
 		{
 			// Try the other one.
-			distSqr = ThePartitionManager->getDistanceSquared( source, &info.attackPoint2, ATTACK_RANGE_CALC_TYPE );
+			distSqr = ThePartitionManager->getDistanceSquared( rangeSrc, &info.attackPoint2, ATTACK_RANGE_CALC_TYPE );
 		}
 	}
 
@@ -2882,13 +3117,26 @@ Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) con
 }
 
 //-------------------------------------------------------------------------------------------------
+Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) const
+{
+	return isWithinAttackRangeInternal( source, target, getAttackRange( source ) );
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool Weapon::isWithinContinueAttackRange(const Object *source, const Object *target) const
+{
+	// The minimum range stays where it is; only the outer edge moves.
+	return isWithinAttackRangeInternal( source, target, getAttackRange( source ) + CONTINUE_ATTACK_RANGE_MARGIN );
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool Weapon::isTooClose(const Object *source, const Object *target) const
 {
 	Real minAttackRange = m_template->getMinimumAttackRange();
 	if (minAttackRange == 0.0f)
 		return false;
 
-	Real distSqr = ThePartitionManager->getDistanceSquared( source, target, ATTACK_RANGE_CALC_TYPE );
+	Real distSqr = ThePartitionManager->getDistanceSquared( getWeaponRangeSource( source ), target, ATTACK_RANGE_CALC_TYPE );
 	if (distSqr < sqr(minAttackRange))
 	{
 		return true;
@@ -2903,7 +3151,7 @@ Bool Weapon::isTooClose( const Object *source, const Coord3D *pos ) const
 	if (minAttackRange == 0.0f)
 		return false;
 
-	Real distSqr = ThePartitionManager->getDistanceSquared( source, pos, ATTACK_RANGE_CALC_TYPE );
+	Real distSqr = ThePartitionManager->getDistanceSquared( getWeaponRangeSource( source ), pos, ATTACK_RANGE_CALC_TYPE );
 	if (distSqr < sqr(minAttackRange))
 	{
 		return true;
@@ -3007,6 +3255,28 @@ Real Weapon::getPercentReadyToFire() const
 }
 
 //-------------------------------------------------------------------------------------------------
+// An add-on turret is placed at a bone on its carrier, and with PassengersInTurret that bone
+// sweeps with the carrier's turret, so measuring from the add-on makes its reach grow and shrink
+// as the turret turns. Substituting the carrier brings both the origin and the bounding circle
+// with it, so the add-on reaches exactly as far as a weapon mounted on the carrier would.
+const Object *Weapon::getWeaponRangeSource( const Object *source )
+{
+	const Object *container = source ? source->getContainedBy() : nullptr;
+	if( container == nullptr )
+	{
+		return source;
+	}
+
+	const ContainModuleInterface *contain = container->getContain();
+	if( contain == nullptr || !contain->measuresWeaponRangeFromContainerCenter() )
+	{
+		return source;
+	}
+
+	return container;
+}
+
+//-------------------------------------------------------------------------------------------------
 Real Weapon::getAttackRange(const Object *source) const
 {
 	WeaponBonus bonus;
@@ -3029,13 +3299,8 @@ Real Weapon::getAttackDistance(const Object *source, const Object *victimObj, co
 
 	if (victimObj != nullptr)
 	{
-	#ifdef ATTACK_RANGE_IS_2D
-		range += source->getGeometryInfo().getBoundingCircleRadius();
-		range += victimObj->getGeometryInfo().getBoundingCircleRadius();
-	#else
-		range += source->getGeometryInfo().getBoundingSphereRadius();
-		range += victimObj->getGeometryInfo().getBoundingSphereRadius();
-	#endif
+		range += getAttackRangeBoundingRadius( getWeaponRangeSource( source ) );
+		range += getAttackRangeBoundingRadius( victimObj );
 	}
 
 	return range;
@@ -3201,6 +3466,11 @@ Bool Weapon::privateFireWeapon(
 	if (!m_template)
 		return false;
 
+	// Hoisted above the damage type switch so the mine clearing path shares it. computeBonus only
+	// fills its out parameter, so computing it here costs nothing else.
+	WeaponBonus bonus;
+	computeBonus(sourceObj, extraBonusFlags, bonus);
+
 	// If we are a networked weapon, tell everyone nearby they might want to get in on this shot
 	if( m_template->getRequestAssistRange()  &&  victimObj )
 		processRequestAssistance( sourceObj, victimObj );
@@ -3268,6 +3538,10 @@ Bool Weapon::privateFireWeapon(
 			}
 
 			--m_maxShotCount;
+			if (m_template->isGradualReload())
+			{
+				return onGradualShotFired(sourceObj, bonus, TheGameLogic->getFrame());
+			}
 			--m_ammoInClip;	// so we can use the delay between shots on the mine clearing weapon
 			if (m_ammoInClip <= 0 && m_template->getAutoReloadsClip())
 			{
@@ -3288,20 +3562,18 @@ Bool Weapon::privateFireWeapon(
 		}
 	}
 
-	WeaponBonus bonus;
-	computeBonus(sourceObj, extraBonusFlags, bonus);
-
 	// debug_printWeaponBonus(&bonus, m_template->getName());
 
 	DEBUG_ASSERTCRASH(getStatus() != OUT_OF_AMMO, ("Hmm, firing weapon that is OUT_OF_AMMO"));
 	DEBUG_ASSERTCRASH(getStatus() == READY_TO_FIRE, ("Hmm, Weapon is firing more often than should be possible"));
-	DEBUG_ASSERTCRASH(m_ammoInClip > 0, ("Hmm, firing an empty weapon"));
+	DEBUG_ASSERTCRASH(getAmmoInClipNow() > 0, ("Hmm, firing an empty weapon"));
 
 	if (getStatus() != READY_TO_FIRE)
 		return false;
 
 	UnsignedInt now = TheGameLogic->getFrame();
 	Bool reloaded = false;
+	settleGradualAmmo(now);
 	if (m_ammoInClip > 0)
 	{
 		// TheSuperHackers @logic-client-separation helmutbuhler 11/04/2025
@@ -3364,6 +3636,16 @@ Bool Weapon::privateFireWeapon(
 				Real maxRange = m_template->getUnmodifiedAttackRange();
 				Real range = sqrt(ThePartitionManager->getDistanceSquared(sourceObj, victimPos, FROM_CENTER_2D));
 				Real rangeRatio = (range - minRange) / (maxRange - minRange);
+				// This distance is raw center to center, so a centered add-on firing from the far side
+				// of its carrier can overshoot the table's band. Interpolate, never extrapolate.
+				if (rangeRatio < 0.0f)
+				{
+					rangeRatio = 0.0f;
+				}
+				if (rangeRatio > 1.0f)
+				{
+					rangeRatio = 1.0f;
+				}
 				scatterTargetScalar = (rangeRatio * (scatterTargetScalar - minScale)) + minScale;
 				// DEBUG_LOG((">>> Weapon: Range = %f, RangeRatio = %f, TargetScalar = %f\n", range, rangeRatio, scatterTargetScalar));
 			}
@@ -3429,7 +3711,12 @@ Bool Weapon::privateFireWeapon(
 
 		if (m_ammoInClip <= 0)
 		{
-			if (m_template->getAutoReloadsClip())
+			if (m_template->isGradualReload())
+			{
+				beginGradualRoundWait(sourceObj, bonus, now);
+				reloaded = true;
+			}
+			else if (m_template->getAutoReloadsClip())
 			{
 				reloadAmmo(sourceObj);
 				reloaded = true;
@@ -3478,6 +3765,11 @@ Bool Weapon::privateFireWeapon(
 				}
 			}
 
+			// Every shot pushes the next round back, so a clip only refills once the firing stops.
+			if (m_template->isGradualReload())
+			{
+				restartGradualRound(now, bonus);
+			}
 		}
 	}
 
@@ -3609,7 +3901,7 @@ WeaponStatus Weapon::getStatus() const
 	}
 	if( now >= m_whenWeCanFireAgain )
 	{
-		if (m_ammoInClip > 0)
+		if (getAmmoInClipNow() > 0)
 			m_status = READY_TO_FIRE;
 		else
 			m_status = OUT_OF_AMMO;
@@ -3690,7 +3982,7 @@ Int Weapon::getPreAttackDelay( const Object *source, const Object *victim ) cons
 	WeaponPrefireType type = m_template->getPrefireType();
 	if( type == PREFIRE_PER_CLIP )
 	{
-		if( m_template->getClipSize() > 0  &&  m_ammoInClip < m_template->getClipSize() )
+		if( m_template->getClipSize() > 0  &&  getAmmoInClipNow() < (UnsignedInt)m_template->getClipSize() )
 			return 0;// I only delay once a clip, and this is not the first shot
 	}
 	else if( type == PREFIRE_PER_ATTACK )
@@ -4027,6 +4319,20 @@ void Weapon::transferReloadStateFrom(const Weapon& weapon, Real clipPercentage/*
 	m_whenPreAttackFinished = weapon.getPreAttackFinishedFrame();
 	m_status = weapon.getStatus();
 
+	if (m_template->isGradualReload() && weapon.isGradualRoundLoading())
+	{
+		// A GRADUAL wait is one round, so the clip really is this empty rather than secretly full.
+		UnsignedInt now = TheGameLogic->getFrame();
+		m_ammoInClip = REAL_TO_INT_FLOOR(m_template->getClipSize() * clipPercentage);
+		m_gradualRoundFrames = weapon.m_gradualRoundFrames;
+		m_gradualRoundStart = weapon.m_gradualRoundStart;
+		settleGradualAmmo(now);
+	}
+	else
+	{
+		stopGradualRound();
+	}
+
 
 	DEBUG_LOG(("Weapon::transferReloadStateFrom (now = %d): m_whenWeCanFireAgain = %d, m_whenLastReloadStarted = %d, m_status = %d", TheGameLogic->getFrame(), m_whenWeCanFireAgain, m_whenLastReloadStarted, m_status));
 }
@@ -4035,6 +4341,8 @@ void Weapon::transferReloadStateFrom(const Weapon& weapon, Real clipPercentage/*
 //-------------------------------------------------------------------------------------------------
 void Weapon::sharedClipIncrementShot()
 {
+	UnsignedInt now = TheGameLogic->getFrame();
+	settleGradualAmmo(now);
 	--m_ammoInClip;
 	--m_maxShotCount;
 	--m_numShotsForCurBarrel;
@@ -4042,6 +4350,13 @@ void Weapon::sharedClipIncrementShot()
 	{
 		++m_curBarrel;
 		m_numShotsForCurBarrel = m_template->getShotsPerBarrel();
+	}
+
+	// There is no firing object here to scale the round, so a shared clip cannot pace one properly.
+	if (m_template->isGradualReload())
+	{
+		WeaponBonus noBonus;
+		restartGradualRound(now, noBonus);
 	}
 }
 
@@ -4144,6 +4459,22 @@ void Weapon::crc( Xfer *xfer )
 		logString.concat(tmp);
 	}
 #endif // DEBUG_CRC
+
+	// Only the weapons that reload this way carry a round timer, so every other weapon keeps the
+	// stream it had and old replays still match. Safe to gate on the template because reload type
+	// and clip size are immutable INI data, identical on every peer.
+	if (m_template->isGradualReload())
+	{
+		xfer->xferUnsignedInt( &m_gradualRoundStart );
+		xfer->xferUnsignedInt( &m_gradualRoundFrames );
+#ifdef DEBUG_CRC
+		if (doLogging)
+		{
+			tmp.format("m_gradualRoundStart %d m_gradualRoundFrames %d ", m_gradualRoundStart, m_gradualRoundFrames);
+			logString.concat(tmp);
+		}
+#endif // DEBUG_CRC
+	}
 
 	// projectile stream object
 	xfer->xferObjectID( &m_projectileStreamID );
@@ -4283,12 +4614,14 @@ void Weapon::crc( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 /** Xfer
 	* Version Info:
-	* 1: Initial version */
+	* 1: Initial version
+	* 2-3: Undocumented in the original source
+	* 4: Gradual reload round timer */
 // ------------------------------------------------------------------------------------------------
 void Weapon::xfer( Xfer *xfer )
 {
 	// version
-	const XferVersion currentVersion = 3;
+	const XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -4395,6 +4728,12 @@ void Weapon::xfer( Xfer *xfer )
 	// continuous laser object
 	xfer->xferObjectID(&m_continuousLaserID);
 
+	// gradual reload round timer
+	if (version >= 4)
+	{
+		xfer->xferUnsignedInt( &m_gradualRoundStart );
+		xfer->xferUnsignedInt( &m_gradualRoundFrames );
+	}
 
 }  // end xfer
 
