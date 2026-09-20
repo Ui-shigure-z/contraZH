@@ -771,6 +771,27 @@ the same across units that share a CommandSet.
 A unit with `CanRepair = No` shows no repair cursor over a damaged building, ignores a repair order,
 and does not go looking for something to repair when it gets bored.
 
+### Giving a dozer to an armed unit
+
+A stock dozer carries no weapon except a mine clearing one. When it has been idle for `BoredTime` it
+looks for something to repair, and failing that it sets its mine clearing weapon set and attacks the
+nearest enemy or neutral object within `BoredRange`. That search does not check that the target is a
+mine - it checks that the target is attackable, which on a stock dozer only mines are.
+
+Put `DozerAIUpdate` or `WorkerAIUpdate` on a unit that keeps a real weapon and the same search starts
+returning ordinary neutral objects, so the unit opens fire on scenery whenever it goes idle. Two ways
+around it:
+
+* `BoredRange = 0` - the search runs with a zero radius and finds nothing, so the unit never picks a
+bored target. This also switches off the bored auto-repair scan, which shares the same range. Direct
+repair orders still work.
+* Give the unit a weapon set under `WEAPONSET_MINE_CLEARING_DETAIL` that cannot hit ordinary ground
+targets. The bored search then fails the attackability test for everything but mines, the same way it
+does on a stock dozer, and bored auto-repair keeps working.
+
+`BoredTime = 0` does not help - the check is `idle time > BoredTime`, so zero makes the unit run the
+search on every idle frame rather than never.
+
 ## PoisonedBehavior
 
 Added Beta and Gamma poison tiers, so the poison-over-time effect can be strengthened once the attacker owns an upgrade. The retail parameters keep working unchanged.
