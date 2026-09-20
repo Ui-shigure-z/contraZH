@@ -64,6 +64,7 @@
 #include "GameLogic/Module/PhysicsUpdate.h"
 #include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/StealthUpdate.h"
+#include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
 #include "GameLogic/ScriptEngine.h"
@@ -3591,6 +3592,7 @@ void Drawable::drawIconUI()
 
 		drawProgress( healthBarRegion );
 		drawProductionBar( healthBarRegion );
+		drawSupplyBar( healthBarRegion );
 	}
 }
 
@@ -4025,6 +4027,73 @@ void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
 			(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
 			color);
 	}
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawSupplyBar( const IRegion2D *healthBarRegion )
+{
+	if (!healthBarRegion)
+	{
+		return;
+	}
+
+	const Object* obj = getObject();
+
+	const Bool alwaysVisible = TheGlobalData->m_healthBarDisplayMode == HealthBarDisplayMode_Always;
+
+	if (!(
+				TheGlobalData->m_showObjectHealth &&
+				(alwaysVisible || isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
+			))
+	{
+		return;
+	}
+
+	const AIUpdateInterface *ai = obj->getAI();
+	if (!ai)
+	{
+		return;
+	}
+
+	const SupplyTruckAIInterface *supply = ai->getSupplyTruckAIInterface();
+	if (!supply)
+	{
+		return;
+	}
+
+	Int boxes = supply->getNumberBoxes();
+	Int maxBoxes = supply->getMaxBoxes();
+
+	// Empty gatherers show nothing, and a type without MaxBoxes would divide by zero.
+	if (boxes <= 0 || maxBoxes <= 0)
+	{
+		return;
+	}
+
+	Real progress = (Real)boxes / (Real)maxBoxes;
+	if (progress > 1.0f)
+	{
+		progress = 1.0f;
+	}
+
+	Color color = GameMakeColor(0x01, 0xA6, 0xFF, 255);
+	Color outlineColor = GameMakeColor(0, 0, 0, 255);
+
+	Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
+	Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f;
+	Real healthBoxOutlineSize = 1.0f;
+
+	// Shares the slot below the health bar with the production bar, which no gatherer has.
+	Real yOffset = 5;
+
+	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
+		healthBoxOutlineSize, outlineColor);
+
+	TheDisplay->drawFillRect(healthBarRegion->lo.x + 1, healthBarRegion->lo.y + yOffset + 1,
+		(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
+		color);
 }
 
 // ------------------------------------------------------------------------------------------------

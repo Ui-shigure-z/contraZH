@@ -291,6 +291,10 @@ Note: a blue bar under the health bar shows the progress of the unit or upgrade 
 building's production queue. It appears while the building is selected or moused over, or all the
 time when `HealthBarDisplayMode = Always`. Own buildings only.
 
+Note: the same blue bar on a supply truck, worker or Chinook shows how full it is, from the
+supplies it carries against the most it can hold. It appears whenever the gatherer is carrying
+something, under the same selection and ownership rules as the production bar.
+
 Note: `NewRadar` cannot hide roads the way the RA3 minimap does. Roads are painted into the terrain
 textures themselves rather than drawn as their own radar layer, so by the time the radar samples a
 road cell it is indistinguishable from the ground around it. Bridges do still draw in their own
