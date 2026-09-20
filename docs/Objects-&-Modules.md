@@ -731,6 +731,46 @@ An aircraft has to pass both to land, so naming it in `AllowedObjects` does not 
 already parked, so changing them does not affect aircraft that are on the airfield.
 * Aircraft with `KINDOF_PRODUCED_AT_HELIPAD` skip these filters, as they already skip the KindOf ones.
 
+## DozerAIUpdate / WorkerAIUpdate
+
+Both modules build and repair structures, and both take the same restriction keys. A module without
+them behaves exactly as before.
+
+### Restricting what may be built
+
+* `ForbiddenBuildObjects = <object list>` - (These may never be built. Checked first, so it beats
+everything else, including `AllowedBuildObjects`.)
+* `AllowedBuildObjects = <object list>` - (If set, ONLY these may be built. Leave it out to allow
+everything the unit's CommandSet offers.)
+
+Example - a worker that may only put up the two cheapest structures:
+```
+Behavior = WorkerAIUpdate ModuleTag_worker
+  RepairHealthPercentPerSecond = 2%
+  BoredTime = 5000
+  BoredRange = 150
+  AllowedBuildObjects = GLAPowerPlant GLABarracks
+End
+```
+
+Both keys take several names on one line, and a second line of the same key adds to the first rather
+than replacing it. Matching is on the object name and ignores case.
+
+Notes:
+* The list gates starting a building, resuming one somebody else began, and a GLA hole rebuild. An AI
+player is held to it too, unlike the normal build validation which AI players skip.
+* A forbidden structure's command button greys out rather than disappearing, so button positions stay
+the same across units that share a CommandSet.
+* This is checked in addition to the unit's CommandSet, not instead of it. Naming something in
+`AllowedBuildObjects` does not let a unit build what its CommandSet never offered.
+
+### Removing the repair ability
+
+* `CanRepair = Yes` - (Default. `No` takes the repair ability away entirely.)
+
+A unit with `CanRepair = No` shows no repair cursor over a damaged building, ignores a repair order,
+and does not go looking for something to repair when it gets bored.
+
 ## PoisonedBehavior
 
 Added Beta and Gamma poison tiers, so the poison-over-time effect can be strengthened once the attacker owns an upgrade. The retail parameters keep working unchanged.

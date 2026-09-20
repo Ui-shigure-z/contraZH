@@ -34,6 +34,7 @@
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 class AudioEventRTS;
+class ThingTemplate;
 
 //-------------------------------------------------------------------------------------------------
 /** The Dozer primary state machine */
@@ -117,6 +118,9 @@ public:
 	virtual Real getBoredTime() const = 0;							///< how long till we're bored
 	virtual Real getBoredRange() const = 0;							///< when we're bored, we look this far away to do things
 
+	virtual Bool canBuildTemplate( const ThingTemplate *what ) const = 0;	///< may we build or resume this
+	virtual Bool canRepairObjects() const = 0;					///< do we have the repair ability at all
+
 	// methods to override for the dozer behaviors
 	virtual Object *construct( const ThingTemplate *what,
 														 const Coord3D *pos, Real angle,
@@ -165,6 +169,25 @@ public:
 };
 
 // ------------------------------------------------------------------------------------------------
+/** What a dozer-like unit is allowed to work on. Shared by the Dozer and the Worker, which carry
+	* the same fields but have no common module data to put them in. */
+// ------------------------------------------------------------------------------------------------
+class DozerRestrictions
+{
+
+public:
+
+	DozerRestrictions();
+
+	Bool isTemplateAllowedToBuild( const ThingTemplate *tmpl ) const;
+
+	std::vector<AsciiString> m_allowedBuildObjects;		///< if not empty, only these may be built
+	std::vector<AsciiString> m_forbiddenBuildObjects;	///< these may never be built, whatever the allow list says
+	Bool m_canRepair;																	///< no removes the repair ability entirely
+
+};
+
+// ------------------------------------------------------------------------------------------------
 /** NOTE: If you edit module data you must do it in both the Dozer *AND* the Worker */
 // ------------------------------------------------------------------------------------------------
 class DozerAIUpdateModuleData : public AIUpdateModuleData
@@ -181,6 +204,7 @@ public:
 	Real m_repairHealthPercentPerSecond;	///< how many health points per second the dozer repairs at
 	Real m_boredTime;											///< after this many frames, a dozer will try to find something to do on its own
 	Real m_boredRange;										///< range the dozers try to auto repair when they're bored
+	DozerRestrictions m_restrictions;
 
 	static void buildFieldParse( MultiIniFieldParse &p );
 
@@ -220,6 +244,9 @@ public:
 	virtual Real getRepairHealthPerSecond() const override;	///< get health to repair per second
 	virtual Real getBoredTime() const override;							///< how long till we're bored
 	virtual Real getBoredRange() const override;							///< when we're bored, we look this far away to do things
+
+	virtual Bool canBuildTemplate( const ThingTemplate *what ) const override;
+	virtual Bool canRepairObjects() const override;
 
 	// methods to override for the dozer behaviors
 	virtual Object* construct( const ThingTemplate *what,
