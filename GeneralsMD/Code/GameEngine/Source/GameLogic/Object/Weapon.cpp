@@ -88,6 +88,11 @@
 	const DistanceCalculationType ATTACK_RANGE_CALC_TYPE = FROM_BOUNDINGSPHERE_3D;
 #endif
 
+// Slack granted to a unit that has already closed on its target, so a victim drifting while we aim
+// does not send us back to chasing. Both the AI's decision to stay engaged and the shot itself use
+// it, or the unit commits to a shot the weapon then refuses.
+const Real CONTINUE_ATTACK_RANGE_MARGIN = PATHFIND_CELL_SIZE_F;
+
 // The radius attack range measures to, in whichever dimensionality the constant above selected.
 static inline Real getAttackRangeBoundingRadius(const Object* obj)
 {
@@ -1036,7 +1041,14 @@ UnsignedInt WeaponTemplate::fireWeaponTemplate
 	//Only perform this check if the weapon isn't a leech range weapon (which can have unlimited range!)
 	if( !ignoreRanges && !isLeechRangeWeapon() )
 	{
-		Real attackRangeSqr = sqr(getAttackRange(bonus));
+		// Match the slack the AI used to stay engaged, so a shot it committed to against a moving
+		// victim still lands instead of being dropped here.
+		Real attackRange = getAttackRange(bonus);
+		if (victimObj != nullptr && !isProjectileDetonation)
+		{
+			attackRange += CONTINUE_ATTACK_RANGE_MARGIN;
+		}
+		Real attackRangeSqr = sqr(attackRange);
 		if (distSqr > attackRangeSqr)
 		{
 			//DEBUG_ASSERTCRASH(distSqr < 5*5 || distSqr < attackRangeSqr*1.2f, ("*** victim is out of range (%f vs %f) of this weapon -- why did we attempt to fire?",sqrtf(distSqr),sqrtf(attackRangeSqr)));
@@ -3113,9 +3125,7 @@ Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) con
 //-------------------------------------------------------------------------------------------------
 Bool Weapon::isWithinContinueAttackRange(const Object *source, const Object *target) const
 {
-	// One pathfind cell of slack, so a target that drifts while we aim does not send us back to
-	// chasing before we get a shot off. The minimum range stays where it is; only the outer edge moves.
-	const Real CONTINUE_ATTACK_RANGE_MARGIN = PATHFIND_CELL_SIZE_F;
+	// The minimum range stays where it is; only the outer edge moves.
 	return isWithinAttackRangeInternal( source, target, getAttackRange( source ) + CONTINUE_ATTACK_RANGE_MARGIN );
 }
 
