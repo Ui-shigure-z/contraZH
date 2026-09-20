@@ -1170,7 +1170,8 @@ Bool outOfWeaponRangeObject( State *thisState, void* userData )
 			//	victim->getID(), victim->getTemplate()->getName().str()));
 			return true;
 		}
-		if (!weapon->hasLeechRange() && !weapon->isWithinAttackRange(obj, victim))
+		// We are already engaging, so allow the target some drift before we go back to chasing it.
+		if (!weapon->hasLeechRange() && !weapon->isWithinContinueAttackRange(obj, victim))
 		{
 			//CRCDEBUG_LOG(("outOfWeaponRangeObject() - object %d (%s) is out of range for attacking %d (%s)",
 			//	obj->getID(), obj->getTemplate()->getName().str(),

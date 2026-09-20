@@ -3038,10 +3038,10 @@ Bool Weapon::isWithinAttackRange(const Object *source, const Coord3D* pos) const
 }
 
 //-------------------------------------------------------------------------------------------------
-Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) const
+Bool Weapon::isWithinAttackRangeInternal(const Object *source, const Object *target, Real attackRange) const
 {
 	Real distSqr;
-	Real attackRangeSqr = sqr(getAttackRange(source));
+	Real attackRangeSqr = sqr(attackRange);
 
 	const Object *rangeSrc = getWeaponRangeSource( source );
 	if( !target->isKindOf(KINDOF_BRIDGE) )
@@ -3095,6 +3095,21 @@ Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) con
 		return true;
 	}
 	return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool Weapon::isWithinAttackRange(const Object *source, const Object *target) const
+{
+	return isWithinAttackRangeInternal( source, target, getAttackRange( source ) );
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool Weapon::isWithinContinueAttackRange(const Object *source, const Object *target) const
+{
+	// One pathfind cell of slack, so a target that drifts while we aim does not send us back to
+	// chasing before we get a shot off. The minimum range stays where it is; only the outer edge moves.
+	const Real CONTINUE_ATTACK_RANGE_MARGIN = PATHFIND_CELL_SIZE_F;
+	return isWithinAttackRangeInternal( source, target, getAttackRange( source ) + CONTINUE_ATTACK_RANGE_MARGIN );
 }
 
 //-------------------------------------------------------------------------------------------------
