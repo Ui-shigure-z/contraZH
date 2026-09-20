@@ -715,7 +715,6 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{"ChronoDamageOpacityEnd", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaEnd) },
 
 	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
-	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
 	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
 	
 	// {"ChronoDamageTintStatusType", TintStatusFlags::parseSingleBitFromINI, NULL, offsetof(GlobalData, m_chronoTintStatusType) },
@@ -776,7 +775,6 @@ GlobalData::GlobalData()
   m_bloomDebug = FALSE;
   m_laserRef = FALSE;
   m_laserGlowColor = 0;
-  m_laserGlowRadius = 0.0f;
   m_laserGlowIntensity = 0.7f;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD

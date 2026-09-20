@@ -392,10 +392,10 @@ static Color pickGlowColor( Color moduleColor, Color globalColor )
 static const Real MIN_GROUND_LIGHT_RADIUS = 15.0f;
 
 // widens every light past its sharp radius, which stretches the falloff over more vertices
-static const Real GROUND_LIGHT_BLUR = 1.5f;
+static const Real GROUND_LIGHT_BLUR = 1.25f;
 
-// one terrain cell of extra falloff is the most the blur may add
-static const Real MAX_GROUND_LIGHT_BLUR = 10.0f;
+// the most extra falloff the blur may add
+static const Real MAX_GROUND_LIGHT_BLUR = 6.0f;
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -526,7 +526,8 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 	Real beamLength = sqrt( dx * dx + dy * dy );
 
 	// terrain lighting is per vertex on a 10 unit grid, so a radius under 1.5 cells lights scattered vertices
-	Real spacing = MAX( pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, 2.0f * data->m_outerBeamWidth ), MIN_GROUND_LIGHT_RADIUS );
+	Real wanted = data->m_groundGlowRadius > 0.0f ? data->m_groundGlowRadius : data->m_outerBeamWidth;
+	Real spacing = MAX( wanted, MIN_GROUND_LIGHT_RADIUS );
 
 	// centers one spacing apart so the linear falloffs sum to a level strip; the unscaled spacing keeps the count steady while the beam widens
 	Int count = (Int)ceil( beamLength / spacing );

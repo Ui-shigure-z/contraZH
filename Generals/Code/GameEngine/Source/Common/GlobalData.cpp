@@ -547,7 +547,6 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 #endif
 
 	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
-	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
 	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
 
 	{ nullptr,					nullptr,						nullptr,						0 }
@@ -582,7 +581,6 @@ GlobalData::GlobalData()
   m_laserRef = FALSE;
   m_alliedDecalMode = AlliedDecalMode_Default;
   m_laserGlowColor = 0;
-  m_laserGlowRadius = 0.0f;
   m_laserGlowIntensity = 0.7f;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;

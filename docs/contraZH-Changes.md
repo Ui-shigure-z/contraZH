@@ -495,22 +495,22 @@ target moves. Roads are not lit, since road dynamic lighting is disabled in the 
 * `LaserRef = No` - (Yes turns the glow on. Also the `Lasers light the ground` checkbox in Game
 Options, where it applies on Accept without a restart.)
 
-`GameData.ini` tunes it for every laser, and a `W3DLaserDraw` module can override each key for
-its own laser with `GroundGlowColor`, `GroundGlowRadius` and `GroundGlowIntensity`. A module value
+`GameData.ini` tunes the color and intensity for every laser, and a `W3DLaserDraw` module can
+override each for its own laser with `GroundGlowColor` and `GroundGlowIntensity`. A module value
 above zero (or not black) wins, then the `GameData.ini` value, else the default named below.
 
 * `LaserGroundGlowColor = R:0 G:0 B:0` - (Light color. Black derives it from the beam: every
 beam layer's color weighed by its width, times the average color of the laser texture, so a
 textured laser with white ini colors still glows in its texture's hue. The color is normalized
 to full brightness either way.)
-* `LaserGroundGlowRadius = 0` - (Reach of each light in world units. 0 uses twice the laser's
-`OuterBeamWidth`. Floored at 15.)
 * `LaserGroundGlowIntensity = 70%` - (How strongly the color is added to the ground.)
 
-The terrain is lit per vertex on a 10 unit grid, so the radius is floored at 15 to keep the lit
-vertices a strip rather than dots. The lights sit one radius apart with at most twelve per beam;
-a beam longer than that widens its lights until they meet and dims them by as much. Each light
-also reaches up to 10 units past its radius for a softer edge.
+Each light reaches as far as the laser's `OuterBeamWidth`, or `GroundGlowRadius` on the
+`W3DLaserDraw` module when that is set. The terrain is lit per vertex on a 10 unit grid, so that
+reach is floored at 15 to keep the lit vertices a strip rather than dots. The lights sit one
+radius apart with at most twelve per beam; a beam longer than that widens its lights until they
+meet and dims them by as much. Each light also reaches up to 6 units past its radius for a
+softer edge.
 
 * The Game Options checkbox needs a `CheckLaserRef` window in `OptionsMenu.wnd`; without it the
 key still works from the file.
