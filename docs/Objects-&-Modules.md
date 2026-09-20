@@ -1928,9 +1928,13 @@ Neither type reduces health. Set these on a weapon's `DamageType` field.
 
 ## Jam Effect
 
-When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status and
-its passengers are ordered to idle. The status clears once the jamming damage heals below the
-threshold.
+When jamming damage reaches the unit's max health, the unit gains `UNSELECTABLE` object status, drops
+out of the player's selection, and its passengers are ordered to idle. The status clears once the
+jamming damage heals below the threshold.
+
+`UNSELECTABLE` on its own only blocks a new selection click. Dropping the unit from the current
+selection is something jamming asks for specifically, so other sources of the status - a slaved drone,
+a docked unit, a sold building - leave the selection alone.
 
 Jamming is independent of the `DISABLED_*` states: it neither waits for them nor ends them, and a
 disabled unit stays disabled through a jam. On unjam it only clears `UNSELECTABLE` if the jam was
