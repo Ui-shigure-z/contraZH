@@ -2772,7 +2772,14 @@ StateReturnType AIAttackApproachTargetState::updateInternal()
 		{
 			return STATE_SUCCESS;
 		}
-		if (m_stopIfInRange && weapon && weapon->isWithinAttackRange(source, victim))
+		// A firing position computed for a moving victim is stale by the time we reach it, so take
+		// the shot as soon as one opens rather than walking out the rest of the path.
+		Bool stopNow = m_stopIfInRange;
+		if (!stopNow && victim->getPhysics() && victim->getPhysics()->getForwardSpeed2D() > 0.0f)
+		{
+			stopNow = true;
+		}
+		if (stopNow && weapon && weapon->isWithinAttackRange(source, victim))
 		{
 			Bool viewBlocked = false;
 			if (victim && ai->isDoingGroundMovement() && !victim->isSignificantlyAboveTerrain())
