@@ -985,6 +985,7 @@ protected:
 	void refreshCommandGroupButtons();
 	Bool isCommandGroupRowShown() const;
 
+	static const Image* calculateVeterancyOverlayForLevel( VeterancyLevel level );
 	static const Image* calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate );
 	static const Image* calculateVeterancyOverlayForObject( const Object *obj );
 

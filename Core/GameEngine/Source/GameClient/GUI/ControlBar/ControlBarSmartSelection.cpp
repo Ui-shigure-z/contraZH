@@ -224,6 +224,11 @@ void ControlBar::resetSmartSelection()
 	m_smartSelectionGroups.clear();
 	m_smartSelectionActive = -1;
 	updateFocusGroup();
+	// the row hides without a refresh pass, so the rank overlays are cleared here
+	for( Int i = 0; i < MAX_SMART_SELECTION_BUTTONS; i++ )
+	{
+		GadgetButtonDrawOverlayImage( m_smartSelectionButtons[ i ], nullptr );
+	}
 	if( m_smartSelectionParent && !m_smartSelectionParent->winIsHidden() )
 	{
 		m_smartSelectionParent->winHide( TRUE );
@@ -464,10 +469,46 @@ void ControlBar::updateSmartSelection()
 	m_smartSelectionParent->winSetPosition( commandPos.x, rowY );
 	m_smartSelectionParent->winHide( FALSE );
 
+	// a cameo for a type wears the best rank among its members, so one pass over the selection
+	// feeds every cameo, and a rank gained under an unchanged selection still lands
+	VeterancyLevel bestLevel[ MAX_SMART_SELECTION_BUTTONS ];
+	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
+	{
+		bestLevel[ g ] = LEVEL_INVALID;
+	}
+	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
+	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
+	{
+		Object *obj = getSmartSelectionObject( *it );
+		if( obj == nullptr )
+		{
+			continue;
+		}
+		const VeterancyLevel level = obj->getVeterancyLevel();
+		for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
+		{
+			const SmartSelectionGroup &group = m_smartSelectionGroups[ g ];
+			const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate()->getReskinRoot() == group.thingTemplate;
+			if( inGroup && ( bestLevel[ g ] == LEVEL_INVALID || level > bestLevel[ g ] ) )
+			{
+				bestLevel[ g ] = level;
+			}
+		}
+	}
+
 	// the bars are one shot on the button, so a lone member's health and clip go on every frame
 	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
 	{
-		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID || m_smartSelectionButtons[ g ] == nullptr )
+		GameWindow *button = m_smartSelectionButtons[ g ];
+		if( button == nullptr )
+		{
+			continue;
+		}
+
+		// the overlay stays on the button until replaced, so an unranked cameo clears it
+		GadgetButtonDrawOverlayImage( button, calculateVeterancyOverlayForLevel( bestLevel[ g ] ) );
+
+		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID )
 		{
 			continue;
 		}
@@ -479,12 +520,12 @@ void ControlBar::updateSmartSelection()
 		const BodyModuleInterface *body = obj->getBodyModule();
 		if( body->getMaxHealth() > 0.0f )
 		{
-			GadgetButtonDrawHealthBar( m_smartSelectionButtons[ g ], body->getHealth() / body->getMaxHealth() );
+			GadgetButtonDrawHealthBar( button, body->getHealth() / body->getMaxHealth() );
 		}
 		Int clipSize, ammoInClip;
 		if( obj->getAmmoPipShowingInfo( clipSize, ammoInClip ) )
 		{
-			GadgetButtonDrawAmmoBar( m_smartSelectionButtons[ g ], ammoInClip, clipSize );
+			GadgetButtonDrawAmmoBar( button, ammoInClip, clipSize );
 		}
 	}
 }
@@ -505,6 +546,7 @@ void ControlBar::refreshSmartSelectionButtons()
 		}
 		if( (size_t)i >= groupCount )
 		{
+			GadgetButtonDrawOverlayImage( button, nullptr );
 			button->winHide( TRUE );
 			continue;
 		}
