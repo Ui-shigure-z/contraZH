@@ -166,6 +166,22 @@ part of the vehicle that would have driven off. Contained objects are now skippe
 and only their carrier is judged, so an enemy or otherwise stuck carrier still blocks as before.
 This changes build legality, so it affects replays.
 
+## Units chasing a moving target now shoot it
+
+Ordering a fast unit onto a slower moving one used to produce a twitch instead of an attack. The
+unit drove up, and on the frame it tried to aim, the target had drifted a fraction past the edge of
+its range, so it gave up and drove up again. Against anything that kept moving it never got a shot
+off and simply died under return fire - Cyber Shredders, terrorist bikers and Demolishers were the
+usual victims. Players worked around it by issuing a move order and then attacking again.
+
+A unit that has already closed on its target now tolerates a small amount of drift, about one
+pathfinding cell, before it decides the target has escaped and goes back to chasing. Deciding
+whether to *start* an attack still uses the exact weapon range, so nothing gains reach. When a unit
+does fall behind, it also stops as soon as a shot opens up rather than walking out a firing position
+that its target has already left. Both apply to units without turrets, which suffered worst because
+they have to stop and turn the hull to fire at all. This changes when units fire, so it affects
+replays.
+
 # Game Setup
 
 ## Random army per faction
