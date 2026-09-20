@@ -174,13 +174,22 @@ its range, so it gave up and drove up again. Against anything that kept moving i
 off and simply died under return fire - Cyber Shredders, terrorist bikers and Demolishers were the
 usual victims. Players worked around it by issuing a move order and then attacking again.
 
-A unit that has already closed on its target now tolerates a small amount of drift, about one
-pathfinding cell, before it decides the target has escaped and goes back to chasing. Deciding
-whether to *start* an attack still uses the exact weapon range, so nothing gains reach. When a unit
-does fall behind, it also stops as soon as a shot opens up rather than walking out a firing position
-that its target has already left. Both apply to units without turrets, which suffered worst because
-they have to stop and turn the hull to fire at all. This changes when units fire, so it affects
-replays.
+Underneath it the attacker was driving to the wrong place. Weapon range is measured between the
+edges of two units, but the spot a unit walked to while closing was measured from its target's
+centre and ignored how wide either of them was. The gap between those two numbers is roughly the
+attacker's own radius, so a unit arrived at a position it had itself judged to be in range, was told
+it was not, and set off again. The bigger the attacker and the smaller its target the worse it got,
+which is why a tank chasing infantry was the clearest case. Both now measure the same way.
+
+On top of that, a unit that has already closed tolerates a small amount of drift, about one
+pathfinding cell, before deciding the target has escaped. Deciding whether to *start* an attack
+still uses the exact weapon range, so nothing gains reach, and the shot itself allows the same
+slack - otherwise a unit committed to a shot that was then silently discarded, leaving it locked on
+a target it never damaged. When a unit does fall behind it also stops as soon as a shot opens up,
+rather than walking out a firing position its target has already left.
+
+Units without turrets gain the most, since they have to stop and turn the hull to fire at all. This
+changes when units fire, so it affects replays.
 
 # Game Setup
 
