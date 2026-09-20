@@ -2977,6 +2977,13 @@ Bool Weapon::computeApproachTarget(const Object *source, const Object *target, c
 		// select a spot along the line between us, in range of our weapon
 		const Real ATTACK_RANGE_APPROACH_FUDGE = 0.9f;
 		Real attackRange = getAttackRange(source) * ATTACK_RANGE_APPROACH_FUDGE;
+
+		// Range is measured between bounding surfaces, so the stopping point has to allow for both
+		// radii. Without this a large attacker parks short of its own target and creeps forward.
+		if (target)
+			attackRange += getAttackRangeBoundingRadius( target );
+		attackRange += getAttackRangeBoundingRadius( rangeSrc );
+
 		approachTargetPos.x = attackRange * dir.x + targetPos->x;
 		approachTargetPos.y = attackRange * dir.y + targetPos->y;
 		approachTargetPos.z = attackRange * dir.z + targetPos->z;
