@@ -326,7 +326,11 @@ Particle::Particle( ParticleSystem *system, const ParticleInfo *info )
 
 	m_lifetime = info->m_lifetime;
 	m_lifetimeLeft = info->m_lifetime;
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_createTimestamp = TheGameClient->getFrameLegacy();
+#else
 	m_createTimestamp = TheGameClient->getFrame();
+#endif
 	m_personality = 0;
 
 	m_size = info->m_size;
@@ -675,7 +679,11 @@ ParticlePriorityType Particle::getPriority()
 // ------------------------------------------------------------------------------------------------
 UnsignedInt Particle::getElapsedFrames() const
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	return TheGameClient->getFrameLegacy() - m_createTimestamp;
+#else
 	return TheGameClient->getFrame() - m_createTimestamp;
+#endif
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1276,7 +1284,11 @@ ParticleSystem::ParticleSystem( const ParticleSystemTemplate *sysTemplate,
 
 	m_delayLeft = (UnsignedInt)sysTemplate->m_initialDelay.getValue();
 
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_startTimestamp = TheGameClient->getFrameLegacy();
+#else
 	m_startTimestamp = TheGameClient->getFrame();
+#endif
 	m_systemLifetimeLeft = sysTemplate->m_systemLifetime;
 	if (sysTemplate->m_systemLifetime)
 		m_isForever = false;
@@ -1541,10 +1553,12 @@ void ParticleSystem::attachToDrawable( const Drawable *draw )
 		m_attachedToDrawableID = draw->getID();
 		m_attachedToObjectID = INVALID_ID;
 
-		// A one-frame system emits here, because its drawable can be created and destroyed
-		// within a single logic frame, leaving the regular update no chance to run.
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+		// Info: One-frame attached systems can otherwise lose their only burst when the drawable is created and destroyed
+		// between legacy particle updates at 60Hz.
 		if (m_systemLifetimeLeft == 1 && m_delayLeft == 0 && getParticleCount() == 0)
 			update(0);
+#endif
 	}
 	else
 	{
@@ -2071,7 +2085,11 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 		// system actually "starts" once initial delay is over
 		/// @todo reset start time when system is stopped/started
 		if (m_delayLeft == 0)
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+			m_startTimestamp = TheGameClient->getFrameLegacy();
+#else
 			m_startTimestamp = TheGameClient->getFrame();
+#endif
 
 		return true;
 	}
@@ -3219,6 +3237,15 @@ void ParticleSystemManager::reset()
 //DECLARE_PERF_TIMER(ParticleSystemManager)
 void ParticleSystemManager::update()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// Particle lifetimes and key frames are authored in retail frames, so the simulation
+	// steps on the legacy frame rather than the faster logic frame.
+	if (!TheGameClient->HasLegacyFrameAdvanced())
+	{
+		return;
+	}
+#endif
+
 	//USE_PERF_TIMER(ParticleSystemManager)
 
 	// TheSuperHackers @tweak Complete the render update of the previous logic frame before the logic update
