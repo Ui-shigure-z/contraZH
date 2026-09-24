@@ -29,8 +29,11 @@
 
 #define DEFINE_SHADOW_NAMES
 
+#include "Common/GlobalData.h"
+#include "Common/OptionPreferences.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "Common/PlayerTemplate.h"
 #include "Common/Xfer.h"
 #include "GameClient/RadiusDecal.h"
 #include "GameClient/Shadow.h"
@@ -50,6 +53,18 @@ RadiusDecalTemplate::RadiusDecalTemplate() :
 }
 
 // ------------------------------------------------------------------------------------------------
+// Allied decals ignore the template color so the owner stays identifiable
+static Color alliedDecalColor(const Player *owner, Int mode)
+{
+	const PlayerTemplate *pt = owner->getPlayerTemplate();
+	if (mode == AlliedDecalMode_ArmyColor && pt)
+	{
+		return pt->getPreferredColor()->getAsInt() | 0xff000000;
+	}
+	return owner->getPlayerColor();
+}
+
+// ------------------------------------------------------------------------------------------------
 void RadiusDecalTemplate::createRadiusDecal(const Coord3D& pos, Real radius, const Player* owningPlayer, RadiusDecal& result) const
 {
 	result.clear();
@@ -66,8 +81,13 @@ void RadiusDecalTemplate::createRadiusDecal(const Coord3D& pos, Real radius, con
 	// it is now considered nonEmpty, regardless of the state of m_decal, etc
 	result.m_empty = false;
 
-	if (!m_onlyVisibleToOwningPlayer ||
-			owningPlayer->getPlayerIndex() == ThePlayerList->getLocalPlayer()->getPlayerIndex())
+	const Player *localPlayer = ThePlayerList->getLocalPlayer();
+	const Bool own = owningPlayer->getPlayerIndex() == localPlayer->getPlayerIndex();
+	const Int alliedMode = TheGlobalData->m_alliedDecalMode;
+	const Bool allied = !own && alliedMode != AlliedDecalMode_Hidden &&
+			localPlayer->getRelationship(owningPlayer->getDefaultTeam()) == ALLIES;
+
+	if (!m_onlyVisibleToOwningPlayer || own || allied)
 	{
 		Shadow::ShadowTypeInfo decalInfo;
 		decalInfo.allowUpdates = FALSE;										// shadow texture will never update
@@ -81,7 +101,12 @@ void RadiusDecalTemplate::createRadiusDecal(const Coord3D& pos, Real radius, con
 		if (result.m_decal)
 		{
 			result.m_decal->setAngle(0.0f);
-			result.m_decal->setColor(m_color == 0 ? owningPlayer->getPlayerColor() : m_color);
+			Color color = m_color == 0 ? owningPlayer->getPlayerColor() : m_color;
+			if (allied)
+			{
+				color = alliedDecalColor(owningPlayer, alliedMode);
+			}
+			result.m_decal->setColor(color);
 			result.m_decal->setPosition(pos.x, pos.y, pos.z);
 			result.m_template = this;
 		}

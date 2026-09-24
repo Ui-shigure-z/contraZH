@@ -62,6 +62,7 @@
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/StealthUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
@@ -113,6 +114,8 @@ static const char *const TheDrawableIconNames[] =
 	"Subliminal",  //with the gold border! replace?
 	"CarBomb",
 	"Status",
+	"Jammed",
+	"Frozen",
 	nullptr
 };
 static_assert(ARRAY_SIZE(TheDrawableIconNames) == MAX_ICONS + 1, "Incorrect array size");
@@ -386,6 +389,8 @@ const Int MAX_ENABLED_MODULES								= 16;
 	s_animationTemplates[ICON_ENTHUSIASTIC_SUBLIMINAL]			= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_ENTHUSIASTIC_SUBLIMINAL]);
 	s_animationTemplates[ICON_CARBOMB]			= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_CARBOMB]);
 	s_animationTemplates[ICON_STATUS]				= nullptr; //Set per object by name, so there is no single template.
+	s_animationTemplates[ICON_JAMMED]				= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_JAMMED]);
+	s_animationTemplates[ICON_FROZEN]				= TheAnim2DCollection->findTemplate(TheDrawableIconNames[ICON_FROZEN]);
 
 	s_staticImagesInited = true;
 
@@ -537,6 +542,8 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_hidden = false;
 	m_hiddenByStealth = false;
 	m_secondMaterialPassOpacity = 0.0f;
+	m_jammingOverlayIntensity = 0.0f;
+	m_frozenOverlayIntensity = 0.0f;
 	m_drawableFullyObscuredByShroud = false;
 
   m_receivesDynamicLights = TRUE; // a good default... overridden by one of my draw modules if at all
@@ -758,6 +765,7 @@ Bool Drawable::getShouldAnimate( Bool considerPower ) const
 				|| obj->isDisabledByType( DISABLED_PARALYZED )
 				|| obj->isDisabledByType( DISABLED_EMP )
 				|| obj->isDisabledByType( DISABLED_SUBDUED )
+				|| obj->isDisabledByType( DISABLED_FROZEN )
 				// srj sez: unmanned things also should not animate. (eg, gattling tanks,
 				// which have a slight barrel animation even when at rest). if this causes
 				// a problem, we will need to fix gattling tanks in another way.
@@ -3571,6 +3579,8 @@ void Drawable::drawIconUI()
 		drawDemoralized( healthBarRegion );
 #endif
 		drawDisabled( healthBarRegion );
+		drawJammed( healthBarRegion );
+		drawFrozen( healthBarRegion );
 		drawStatusIcon( healthBarRegion );
 
 		drawAmmo( healthBarRegion );
@@ -3580,6 +3590,7 @@ void Drawable::drawIconUI()
 		drawVeterancy( healthBarRegion );
 
 		drawProgress( healthBarRegion );
+		drawProductionBar( healthBarRegion );
 	}
 }
 
@@ -3881,6 +3892,139 @@ void Drawable::drawProgress( const IRegion2D *healthBarRegion )
 			color);
 	}
 
+}
+
+// ------------------------------------------------------------------------------------------------
+// Vertical screen span drawAmmo uses for this object. Returns FALSE when it has no ammo pips.
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::getAmmoPipsScreenSpan( const IRegion2D *healthBarRegion, Int &top, Int &bottom ) const
+{
+	const Object *obj = getObject();
+
+	Int numTotal;
+	Int numFull;
+	if (!obj->getAmmoPipShowingInfo(numTotal, numFull))
+	{
+		return FALSE;
+	}
+
+	AmmoPipsStyle pipsStyle = obj->getTemplate()->getAmmoPipsStyle();
+	if (pipsStyle == AMMO_PIPS_BAR)
+	{
+		top = healthBarRegion->lo.y + 5;
+		bottom = top + REAL_TO_INT(max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f);
+		return TRUE;
+	}
+
+	const Image *pip = (pipsStyle == AMMO_PIPS_THIN) ? s_emptyAmmoThin : s_emptyAmmo;
+	if (!pip)
+	{
+		return FALSE;
+	}
+
+	Real scale = 1.0f;
+#ifdef SCALE_ICONS_WITH_ZOOM_ML
+	if (pipsStyle != AMMO_PIPS_THIN)
+	{
+		scale = TheGlobalData->m_ammoPipScaleFactor / CLAMP_ICON_ZOOM_FACTOR(TheTacticalView->getZoom());
+	}
+#endif
+
+	ICoord2D screenCenter;
+	Coord3D pos = *obj->getPosition();
+	pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
+	pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
+	pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+	if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
+	{
+		return FALSE;
+	}
+
+	Real bounding = obj->getGeometryInfo().getBoundingSphereRadius() * scale;
+	top = screenCenter.y + REAL_TO_INT(TheGlobalData->m_ammoPipScreenOffset.y * bounding) + 1;
+	bottom = top + REAL_TO_INT(pip->getImageHeight() * scale);
+	return TRUE;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
+{
+	if (!healthBarRegion)
+	{
+		return;
+	}
+
+	const Object* obj = getObject();
+
+	const Bool alwaysVisible = TheGlobalData->m_healthBarDisplayMode == HealthBarDisplayMode_Always;
+
+	if (!(
+				TheGlobalData->m_showObjectHealth &&
+				(alwaysVisible || isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
+			))
+	{
+		return;
+	}
+
+	if (obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION))
+	{
+		return;
+	}
+
+	ProductionUpdateInterface *pui = const_cast<Object*>(obj)->getProductionUpdateInterface();
+	if (!pui)
+	{
+		return;
+	}
+
+	// The queue head is a unit or an upgrade.
+	const ProductionEntry *production = pui->firstProduction();
+	if (!production)
+	{
+		return;
+	}
+
+	Real progress = production->getPercentComplete() / 100.0f;
+	if (progress < 0.0f)
+	{
+		progress = 0.0f;
+	}
+	if (progress > 1.0f)
+	{
+		progress = 1.0f;
+	}
+
+	Color color = GameMakeColor(0x01, 0xA6, 0xFF, 255);
+	Color outlineColor = GameMakeColor(0, 0, 0, 255);
+
+	Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
+	Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f;
+	Real healthBoxOutlineSize = 1.0f;
+
+	// Sits below the health bar. drawProgress owns the slot above.
+	Real yOffset = 5;
+
+	Int ammoTop, ammoBottom;
+	if (getAmmoPipsScreenSpan(healthBarRegion, ammoTop, ammoBottom))
+	{
+		Real barTop = healthBarRegion->lo.y + yOffset;
+		if (barTop <= ammoBottom && barTop + healthBoxHeight >= ammoTop)
+		{
+			yOffset = ammoBottom + 1 - healthBarRegion->lo.y;
+		}
+	}
+
+	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
+		healthBoxOutlineSize, outlineColor);
+
+	if (progress > 0)
+	{
+		TheDisplay->drawFillRect(healthBarRegion->lo.x + 1, healthBarRegion->lo.y + yOffset + 1,
+			(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
+			color);
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -4655,6 +4799,68 @@ void Drawable::drawDisabled(const IRegion2D* healthBarRegion)
 
 }
 
+// ------------------------------------------------------------------------------------------------
+/** Jammed icon, beside the disabled one when both show. Inert until Animation2D.ini defines "Jammed". */
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawJammed(const IRegion2D* healthBarRegion)
+{
+	const Object *obj = getObject();
+	const BodyModuleInterface *body = obj ? obj->getBodyModule() : nullptr;
+
+	if( body && body->isJammed() && s_animationTemplates[ ICON_JAMMED ] )
+	{
+		if( getIconInfo()->m_icon[ ICON_JAMMED ] == nullptr )
+		{
+			getIconInfo()->m_icon[ ICON_JAMMED ] = newInstance(Anim2D)
+			( s_animationTemplates[ ICON_JAMMED ], TheAnim2DCollection );
+		}
+
+		Int xOffset = 0;
+		if( getIconInfo()->m_icon[ ICON_DISABLED ] )
+		{
+			xOffset = getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		}
+		drawIconAboveBar( ICON_JAMMED, healthBarRegion, xOffset );
+	}
+	else
+	{
+		killIcon(ICON_JAMMED);
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Frozen icon, after the disabled and jammed ones. Inert until Animation2D.ini defines "Frozen". */
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawFrozen(const IRegion2D* healthBarRegion)
+{
+	const Object *obj = getObject();
+	const BodyModuleInterface *body = obj ? obj->getBodyModule() : nullptr;
+
+	if( body && body->isFrozen() && s_animationTemplates[ ICON_FROZEN ] )
+	{
+		if( getIconInfo()->m_icon[ ICON_FROZEN ] == nullptr )
+		{
+			getIconInfo()->m_icon[ ICON_FROZEN ] = newInstance(Anim2D)
+			( s_animationTemplates[ ICON_FROZEN ], TheAnim2DCollection );
+		}
+
+		Int xOffset = 0;
+		if( getIconInfo()->m_icon[ ICON_DISABLED ] )
+		{
+			xOffset += getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		}
+		if( getIconInfo()->m_icon[ ICON_JAMMED ] )
+		{
+			xOffset += getIconInfo()->m_icon[ ICON_JAMMED ]->getCurrentFrameWidth();
+		}
+		drawIconAboveBar( ICON_FROZEN, healthBarRegion, xOffset );
+	}
+	else
+	{
+		killIcon(ICON_FROZEN);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Draw a live icon slot at the left of the health bar, sitting on top of it */
 //-------------------------------------------------------------------------------------------------
@@ -4692,11 +4898,19 @@ void Drawable::drawStatusIcon(const IRegion2D* healthBarRegion)
 		return;
 	}
 
-	// sit beside the disabled icon when both are showing
+	// sit beside the disabled, jammed and frozen icons when they are showing
 	Int xOffset = 0;
 	if( getIconInfo()->m_icon[ ICON_DISABLED ] )
 	{
-		xOffset = getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+		xOffset += getIconInfo()->m_icon[ ICON_DISABLED ]->getCurrentFrameWidth();
+	}
+	if( getIconInfo()->m_icon[ ICON_JAMMED ] )
+	{
+		xOffset += getIconInfo()->m_icon[ ICON_JAMMED ]->getCurrentFrameWidth();
+	}
+	if( getIconInfo()->m_icon[ ICON_FROZEN ] )
+	{
+		xOffset += getIconInfo()->m_icon[ ICON_FROZEN ]->getCurrentFrameWidth();
 	}
 	drawIconAboveBar( ICON_STATUS, healthBarRegion, xOffset );
 }
@@ -6072,6 +6286,8 @@ void Drawable::xferDrawableModules( Xfer *xfer )
 	* 6: Added m_ambientSoundEnabledFromScript flag (Added in Zero Hour)
 	* 7: Save the customize ambient sound info (Added in Zero Hour)
 	* 8: TheSuperHackers @bugfix Removed m_prevTintStatus because loading its value is unnecessary and undesirable
+	* 9: jamming overlay intensity
+	* 10: frozen overlay intensity
 	*/
 // ------------------------------------------------------------------------------------------------
 void Drawable::xfer( Xfer *xfer )
@@ -6083,7 +6299,7 @@ void Drawable::xfer( Xfer *xfer )
 #elif RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 7;
 #else
-	const XferVersion currentVersion = 8;
+	const XferVersion currentVersion = 10;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -6578,6 +6794,16 @@ void Drawable::xfer( Xfer *xfer )
       }
     }
   }
+
+	if( version >= 9 )
+	{
+		xfer->xferReal( &m_jammingOverlayIntensity );
+	}
+
+	if( version >= 10 )
+	{
+		xfer->xferReal( &m_frozenOverlayIntensity );
+	}
 }
 
 // ------------------------------------------------------------------------------------------------

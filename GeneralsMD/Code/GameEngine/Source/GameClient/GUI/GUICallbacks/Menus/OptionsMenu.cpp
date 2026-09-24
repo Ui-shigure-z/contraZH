@@ -115,6 +115,9 @@ static GameWindow *		checkMaxCameraHeight		= nullptr;
 static NameKeyType		textEntryMaxCameraHeightID	= NAMEKEY_INVALID;
 static GameWindow *		textEntryMaxCameraHeight		= nullptr;
 
+static NameKeyType		checkBorderlessWindowID	= NAMEKEY_INVALID;
+static GameWindow *		checkBorderlessWindow		= nullptr;
+
 static NameKeyType    checkLanguageFilterID = NAMEKEY_INVALID;
 static GameWindow *   checkLanguageFilter   = nullptr;
 
@@ -180,6 +183,7 @@ static GameWindow *   buttonMainBack              = nullptr;
 static GameWindow *   buttonMainDefaults          = nullptr;
 
 static GameWindow *   comboBoxHealthBars          = nullptr;
+static GameWindow *   comboBoxAlliedDecals        = nullptr;
 static GameWindow *   comboBoxBuildTimers         = nullptr;
 static GameWindow *   comboBoxCastMode            = nullptr;
 static GameWindow *   comboBoxTextureFilter       = nullptr;
@@ -209,6 +213,11 @@ static GameWindow *   textEntryKeyboardOverlayBackdropRed     = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropGreen   = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropBlue    = nullptr;
 static GameWindow *   textEntryKeyboardOverlayBackdropOpacity = nullptr;
+static NameKeyType    checkBloomID                = NAMEKEY_INVALID;
+static GameWindow *   checkBloom                  = nullptr;
+static GameWindow *   textEntryBloomStrength      = nullptr;
+static GameWindow *   checkBloomDebug             = nullptr;
+static GameWindow *   checkLaserRef               = nullptr;
 
 // Options.ini spellings, indexed by the matching enum and combo box position
 static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
@@ -216,6 +225,8 @@ static const char *const BuildTimerModeNames[] = { "None", "Seconds", "Auto" };
 static const char *const CastModeNames[] = { "Normal", "QuickCast", "QuickCastWithIndicator" };
 static const Int AnisotropyLevels[] = { 2, 4, 8, 16 };
 static_assert( ARRAY_SIZE(HealthBarModeNames) == HealthBarDisplayMode_Count, "HealthBarModeNames out of date" );
+static const char *const AlliedDecalModeNames[] = { "Hidden", "House", "Army" };
+static_assert( ARRAY_SIZE(AlliedDecalModeNames) == AlliedDecalMode_Count, "AlliedDecalModeNames out of date" );
 static_assert( ARRAY_SIZE(BuildTimerModeNames) == BuildTimerDisplayMode_Count, "BuildTimerModeNames out of date" );
 static_assert( ARRAY_SIZE(CastModeNames) == CastMode_Count, "CastModeNames out of date" );
 
@@ -453,7 +464,16 @@ static const BoolOption BoolOptions[] =
 	{ &checkGridHotkeys, "GridHotkeys", &OptionPreferences::getGridHotkeysEnabled, &GlobalData::m_gridHotkeysEnabled, FALSE },
 	{ &checkKeyboardOverlay, "KeyboardOverlay", &OptionPreferences::getKeyboardOverlayEnabled, &GlobalData::m_keyboardOverlayEnabled, FALSE },
 	{ &checkKeyboardOverlayBackdrop, "KeyboardOverlayBackdrop", &OptionPreferences::getKeyboardOverlayBackdropEnabled, &GlobalData::m_keyboardOverlayBackdrop, TRUE },
+	{ &checkBloom, "Bloom", &OptionPreferences::getBloomEnabled, &GlobalData::m_useBloom, FALSE },
+	{ &checkBloomDebug, "BloomDebug", &OptionPreferences::getBloomDebugEnabled, &GlobalData::m_bloomDebug, FALSE },
+	{ &checkLaserRef, "LaserRef", &OptionPreferences::getLaserRefEnabled, &GlobalData::m_laserRef, FALSE },
 };
+
+// the strength is stored as 0..1 but edited as a percentage
+static Int bloomPercent( Real strength )
+{
+	return REAL_TO_INT( strength * 100.0f + 0.5f );
+}
 
 static Int anisotropyIndex( Int level )
 {
@@ -480,6 +500,10 @@ static void updateGameOptionsEnables()
 	enableWindow( textEntryKeyboardOverlayBackdropGreen, backdrop );
 	enableWindow( textEntryKeyboardOverlayBackdropBlue, backdrop );
 	enableWindow( textEntryKeyboardOverlayBackdropOpacity, backdrop );
+
+	const Bool bloom = getCheck( checkBloom, FALSE );
+	enableWindow( textEntryBloomStrength, bloom );
+	enableWindow( checkBloomDebug, bloom );
 }
 
 static void populateGameOptions()
@@ -490,6 +514,7 @@ static void populateGameOptions()
 	}
 
 	setComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() );
+	setComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() );
 	setComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() );
 	setComboPos( comboBoxCastMode, pref->getCastMode() );
 	setComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
@@ -507,6 +532,7 @@ static void populateGameOptions()
 
 	showColorEntries( pref->getKeyboardOverlayColor(), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 	showColorEntries( pref->getKeyboardOverlayBackdropColor(), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, bloomPercent( pref->getBloomStrength() ) );
 
 	updateGameOptionsEnables();
 }
@@ -519,6 +545,7 @@ static void setGameOptionsDefaults()
 	}
 
 	setComboPos( comboBoxHealthBars, HealthBarDisplayMode_Default );
+	setComboPos( comboBoxAlliedDecals, AlliedDecalMode_Default );
 	setComboPos( comboBoxBuildTimers, BuildTimerDisplayMode_Default );
 	setComboPos( comboBoxCastMode, CastMode_Default );
 	setComboPos( comboBoxTextureFilter, TextureFilterClass::TEXTURE_FILTER_BILINEAR );
@@ -536,6 +563,7 @@ static void setGameOptionsDefaults()
 
 	showColorEntries( GameMakeColor( 255, 255, 255, 255 ), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 	showColorEntries( GameMakeColor( 0, 0, 0, 128 ), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, 50 );
 
 	updateGameOptionsEnables();
 }
@@ -588,6 +616,7 @@ static void setDefaults()
 	GadgetCheckBoxSetChecked(checkAlternateMouse, FALSE);
 	GadgetCheckBoxSetChecked(checkRetaliation, TRUE );
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, FALSE );
+	setCheck( checkBorderlessWindow, FALSE );
 
 	//-------------------------------------------------------------------------------------------------
 //	// scroll speed val
@@ -993,6 +1022,10 @@ static void saveOptions()
 		(*pref)["HealthBarDisplayMode"] = HealthBarModeNames[idx];
 		TheWritableGlobalData->m_healthBarDisplayMode = idx;
 
+		idx = clamp( 0, getComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() ), (Int)AlliedDecalMode_Count - 1 );
+		(*pref)["AlliedDecalMode"] = AlliedDecalModeNames[idx];
+		TheWritableGlobalData->m_alliedDecalMode = idx;
+
 		idx = clamp( 0, getComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() ), (Int)BuildTimerDisplayMode_Count - 1 );
 		(*pref)["BuildTimerDisplayMode"] = BuildTimerModeNames[idx];
 		TheWritableGlobalData->m_buildTimerDisplayMode = idx;
@@ -1044,6 +1077,11 @@ static void saveOptions()
 			textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
 		TheWritableGlobalData->m_keyboardOverlayBackdropColor = saveColorEntries( "KeyboardOverlayBackdrop", GameMakeColor( 0, 0, 0, 128 ),
 			textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+
+		const Int percent = getEntryInt( textEntryBloomStrength, 0, 100, bloomPercent( pref->getBloomStrength() ) );
+		prefString.format( "%.2f", percent / 100.0f );
+		(*pref)["BloomStrength"] = prefString;
+		TheWritableGlobalData->m_bloomStrength = percent / 100.0f;
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -1273,13 +1311,19 @@ static void saveOptions()
 	if (comboBoxResolution && comboBoxResolution->winGetEnabled() && index < TheDisplay->getDisplayModeCount() && index >= 0)
 	{
 		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
-		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres)
+
+		const Bool borderless = getCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
+		const Bool windowed = TheGlobalData->m_windowed || borderless;
+
+		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres || windowed != TheDisplay->getWindowed())
 		{
-			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,TheDisplay->getWindowed()))
+			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,windowed))
 			{
 				dispChanged = TRUE;
 				TheWritableGlobalData->m_xResolution = xres;
 				TheWritableGlobalData->m_yResolution = yres;
+				TheWritableGlobalData->m_borderlessWindow = borderless;
+				(*pref)["BorderlessWindow"] = borderless ? "yes" : "no";
 
 				TheHeaderTemplateManager->onResolutionChanged();
 				TheMouse->onResolutionChanged();
@@ -1294,9 +1338,9 @@ static void saveOptions()
 				prefString.format("%d %d", xres, yres );
 				(*pref)["Resolution"] = prefString;
 
-				TheShell->recreateWindowLayouts();
-
+				// The control bar goes first so its full screen roots stay below the rebuilt shell, as at launch
 				TheInGameUI->recreateControlBar();
+				TheShell->recreateWindowLayouts();
 				TheInGameUI->refreshCustomUiResources();
 			}
 		}
@@ -1448,6 +1492,7 @@ static void initGameOptionsWindows()
 	buttonMainDefaults = findOptionsWindow( "OptionsMenu.wnd:ButtonDefaults" );
 
 	comboBoxHealthBars = findOptionsWindow( "OptionsMenu.wnd:ComboBoxHealthBars" );
+	comboBoxAlliedDecals = findOptionsWindow( "OptionsMenu.wnd:ComboBoxAlliedDecals" );
 	comboBoxBuildTimers = findOptionsWindow( "OptionsMenu.wnd:ComboBoxBuildTimers" );
 	comboBoxCastMode = findOptionsWindow( "OptionsMenu.wnd:ComboBoxCastMode" );
 	comboBoxTextureFilter = findOptionsWindow( "OptionsMenu.wnd:ComboBoxTextureFilter" );
@@ -1475,6 +1520,10 @@ static void initGameOptionsWindows()
 	textEntryKeyboardOverlayBackdropGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropGreen" );
 	textEntryKeyboardOverlayBackdropBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropBlue" );
 	textEntryKeyboardOverlayBackdropOpacity = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropOpacity" );
+	checkBloom = findOptionsWindow( "OptionsMenu.wnd:CheckBloom", checkBloomID );
+	textEntryBloomStrength = findOptionsWindow( "OptionsMenu.wnd:TextEntryBloomStrength" );
+	checkBloomDebug = findOptionsWindow( "OptionsMenu.wnd:CheckBloomDebug" );
+	checkLaserRef = findOptionsWindow( "OptionsMenu.wnd:CheckLaserRef" );
 
 	if (ButtonGameOptions)
 	{
@@ -1483,6 +1532,7 @@ static void initGameOptionsWindows()
 	setLabelText( "OptionsMenu.wnd:GameOptionsTitle", "GUI:GameOptions", L"Game Options" );
 	setLabelText( "OptionsMenu.wnd:DisplayGroupLabel", "GUI:GameOptionsDisplay", L"Display" );
 	setLabelText( "OptionsMenu.wnd:HealthBarsLabel", "GUI:HealthBars", L"Health bars" );
+	setLabelText( "OptionsMenu.wnd:AlliedDecalsLabel", "GUI:AlliedDecals", L"Allied power decals" );
 	setLabelText( "OptionsMenu.wnd:BuildTimersLabel", "GUI:BuildTimers", L"Build timers" );
 	setLabelText( "OptionsMenu.wnd:InputGroupLabel", "GUI:GameOptionsInput", L"Input" );
 	setLabelText( "OptionsMenu.wnd:CastModeLabel", "GUI:CastMode", L"Special powers" );
@@ -1499,6 +1549,8 @@ static void initGameOptionsWindows()
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayColorLabel", "GUI:KeyboardOverlayColor", L"Letter R G B" );
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropColorLabel", "GUI:KeyboardOverlayBackdropColor", L"Backdrop R G B" );
 	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropOpacityLabel", "GUI:KeyboardOverlayBackdropOpacity", L"Backdrop opacity" );
+	setLabelText( "OptionsMenu.wnd:BloomGroupLabel", "GUI:GameOptionsBloom", L"Bloom" );
+	setLabelText( "OptionsMenu.wnd:BloomStrengthLabel", "GUI:BloomStrength", L"Strength %" );
 
 	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
 	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
@@ -1513,8 +1565,13 @@ static void initGameOptionsWindows()
 	setCheckText( checkGridHotkeys, "GUI:GridHotkeys", L"Use grid hotkeys", "TOOLTIP:GridHotkeys", L"Command bar slots use the layout keys instead of the retail hotkeys" );
 	setCheckText( checkKeyboardOverlay, "GUI:KeyboardOverlay", L"Show hotkey letters on cameos", "TOOLTIP:KeyboardOverlay", L"Draws each cameo's hotkey letter on the cameo" );
 	setCheckText( checkKeyboardOverlayBackdrop, "GUI:KeyboardOverlayBackdrop", L"Backdrop behind letter", "TOOLTIP:KeyboardOverlayBackdrop", L"Draws a plate behind the letter so it stays readable" );
+	setCheckText( checkBloom, "GUI:Bloom", L"Glow around additive effects", "TOOLTIP:Bloom", L"Fire, lasers, muzzle flashes and additive model parts get a soft glow. Off while anti-aliasing is on." );
+	setCheckText( checkBloomDebug, "GUI:BloomDebug", L"Debug view", "TOOLTIP:BloomDebug", L"Shows only the glow buffer on black" );
+	setTooltip( textEntryBloomStrength, "TOOLTIP:BloomStrength", L"0 to 100. How bright the glow is." );
+	setCheckText( checkLaserRef, "GUI:LaserRef", L"Lasers light the ground", "TOOLTIP:LaserRef", L"Laser beams cast a colored light on the terrain along their length" );
 
 	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
+	setTooltip( comboBoxAlliedDecals, "TOOLTIP:AlliedDecals", L"Show where allies aim their general powers, in their player or faction color" );
 	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
 	setTooltip( comboBoxCastMode, "TOOLTIP:CastMode", L"How special power hotkeys fire" );
 	setTooltip( comboBoxTextureFilter, "TOOLTIP:TextureFilter", L"Texture filtering mode" );
@@ -1538,6 +1595,8 @@ static void initGameOptionsWindows()
 	static_assert( ARRAY_SIZE(textureFilterNames) == TextureFilterClass::TEXTURE_FILTER_COUNT, "textureFilterNames out of date" );
 	static_assert( ARRAY_SIZE(anisotropyNames) == ARRAY_SIZE(AnisotropyLevels), "anisotropyNames out of date" );
 	addComboEntries( comboBoxHealthBars, "GUI:HealthBars", healthBarNames, HealthBarDisplayMode_Count, 2 );
+	static const WideChar *const alliedDecalNames[] = { L"Hidden", L"House color", L"Army color" };
+	addComboEntries( comboBoxAlliedDecals, "GUI:AlliedDecals", alliedDecalNames, AlliedDecalMode_Count, 2 );
 	addComboEntries( comboBoxBuildTimers, "GUI:BuildTimers", buildTimerNames, BuildTimerDisplayMode_Count, 2 );
 	addComboEntries( comboBoxCastMode, "GUI:CastMode", castModeNames, CastMode_Count, 2 );
 	addComboEntries( comboBoxTextureFilter, "GUI:TextureFilter", textureFilterNames, TextureFilterClass::TEXTURE_FILTER_COUNT, 4 );
@@ -1604,6 +1663,9 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	{
 		textEntryMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:MaxCameraHeight", L"Max camera height, 210 to 1000" ) );
 	}
+	checkBorderlessWindow = findOptionsWindow( "OptionsMenu.wnd:CheckBorderlessWindow", checkBorderlessWindowID );
+	setCheckText( checkBorderlessWindow, "GUI:BorderlessWindow", L"Borderless", "TOOLTIP:BorderlessWindow", L"Runs the game in a frameless window at the selected resolution instead of exclusive fullscreen." );
+	enableWindow( checkBorderlessWindow, !TheGlobalData->m_windowed );
 	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxAntiAliasing" );
 	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxAntiAliasingID );
 	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxResolution" );
@@ -2009,6 +2071,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GadgetCheckBoxSetChecked(checkAlternateMouse, TheGlobalData->m_useAlternateMouse);
 	GadgetCheckBoxSetChecked(checkRetaliation, TheGlobalData->m_clientRetaliationModeEnabled);
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, TheGlobalData->m_doubleClickAttackMove );
+	setCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
 
 	// set scroll speed slider
 	// TheSuperHackers @tweak xezon 11/07/2025 No longer sets the slider position if the user setting
@@ -2064,6 +2127,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		if (comboBoxResolution)
 			comboBoxResolution->winEnable(FALSE);
+
+		enableWindow( checkBorderlessWindow, FALSE );
 
 		if (textEntryFirewallPortOverride)
 			textEntryFirewallPortOverride->winEnable(FALSE);
@@ -2319,7 +2384,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				cancelGameOptions();
 			}
-			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID )
+			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID )
 			{
 				updateGameOptionsEnables();
 			}

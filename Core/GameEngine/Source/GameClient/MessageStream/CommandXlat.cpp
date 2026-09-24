@@ -1104,6 +1104,10 @@ GameMessage::Type CommandTranslator::issueMoveToLocationCommand( const Coord3D *
 		{
 			msgType = GameMessage::MSG_DO_ATTACKMOVETO;
 		}
+		else if( TheInGameUI->isInReverseMoveToMode() )
+		{
+			msgType = GameMessage::MSG_DO_REVERSE_MOVETO;
+		}
 		else if( TheInGameUI->isInForceMoveToMode() )
 		{
 			msgType = GameMessage::MSG_DO_FORCEMOVETO;
@@ -2539,6 +2543,10 @@ GameMessage::Type CommandTranslator::handleDefaultMoveCommand( Drawable *draw, D
 			//Attack move
 			msgType = GameMessage::MSG_DO_ATTACKMOVETO_HINT;
 		}
+		else if( TheInGameUI->isInReverseMoveToMode() )
+		{
+			msgType = GameMessage::MSG_DO_REVERSE_MOVETO_HINT;
+		}
 		else
 		{
 			//Normal and forced move.
@@ -3722,6 +3730,10 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			TheInGameUI->toggleAttackMoveToMode();
 			break;
 
+		case GameMessage::MSG_META_TOGGLE_REVERSEMOVE:
+			TheInGameUI->toggleReverseMoveToMode();
+			break;
+
 		case GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_LEFT:
 			DEBUG_ASSERTCRASH(!TheInGameUI->isCameraRotatingLeft(), ("Setting rotate camera left, but it's already set!"));
 			TheInGameUI->setCameraRotateLeft( true );
@@ -4584,7 +4596,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					}
 
 					disp = DESTROY_MESSAGE;
-					TheInGameUI->clearAttackMoveToMode();
+					TheInGameUI->clearArmedMoveMode();
 				}
 			}
 
@@ -4665,7 +4677,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				}
 
 				disp = DESTROY_MESSAGE;
-				TheInGameUI->clearAttackMoveToMode();
+				TheInGameUI->clearArmedMoveMode();
 
 				//issueMoveToLocationCommand( &pos, draw, DO_COMMAND );
 			}

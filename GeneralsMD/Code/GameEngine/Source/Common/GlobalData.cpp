@@ -51,6 +51,7 @@
 #include "Common/INI.h"
 #include "Common/Registry.h"
 #include "Common/OptionPreferences.h"
+#include "Common/ThingTemplate.h"
 #include "Common/version.h"
 
 #include "GameLogic/AI.h"
@@ -85,6 +86,116 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 
 	INI::parseUnsignedInt(ini, instance, &tintEntry->attackFrames, NULL);
 	INI::parseUnsignedInt(ini, instance, &tintEntry->decayFrames, NULL);
+}
+
+//-------------------------------------------------------------------------------------------------
+// Accepts "1000", "MaxHealth", "MaxHealth * 2" or "MaxHealth / 16.25", with or without spaces
+/*static*/ void SubdualValue::parseFromINI( INI* ini, void* /*instance*/, void* store, const void* /*userData*/ )
+{
+	AsciiString text;
+	for (const char* token = ini->getNextTokenOrNull(); token; token = ini->getNextTokenOrNull())
+	{
+		text.concat(token);
+	}
+
+	static const char* MAX_HEALTH = "MaxHealth";
+	const size_t maxHealthLen = strlen(MAX_HEALTH);
+	const char* expr = text.str();
+
+	SubdualValue* value = (SubdualValue*)store;
+	value->m_flat = 0.0f;
+	value->m_maxHealthFactor = 0.0f;
+	value->m_isSet = TRUE;
+
+	if (strnicmp(expr, MAX_HEALTH, maxHealthLen) != 0)
+	{
+		value->m_flat = INI::scanReal(expr);
+		return;
+	}
+
+	const char* rest = expr + maxHealthLen;
+	if (*rest == '\0')
+	{
+		value->m_maxHealthFactor = 1.0f;
+	}
+	else if (*rest == '*')
+	{
+		value->m_maxHealthFactor = INI::scanReal(rest + 1);
+	}
+	else if (*rest == '/')
+	{
+		Real divisor = INI::scanReal(rest + 1);
+		if (divisor == 0.0f)
+		{
+			throw INI_INVALID_DATA;
+		}
+		value->m_maxHealthFactor = 1.0f / divisor;
+	}
+	else
+	{
+		throw INI_INVALID_DATA;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/*static*/ void SubdualValue::parseDurationFromINI( INI* ini, void* instance, void* store, const void* userData )
+{
+	UnsignedInt frames = 0;
+	INI::parseDurationUnsignedInt(ini, instance, &frames, userData);
+
+	SubdualValue* value = (SubdualValue*)store;
+	value->m_flat = (Real)frames;
+	value->m_maxHealthFactor = 0.0f;
+	value->m_isSet = TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/*static*/ void GlobalData::parseSubdualDamageDefaults(INI* ini, void* /*instance*/, void* store, const void* /*userData*/)
+{
+	static const FieldParse fieldParse[] =
+	{
+		{ "KindOf",									KindOfMaskType::parseFromINI,			nullptr,	offsetof( SubdualDamageDefaults, m_kindOf ) },
+		{ "ForbiddenKindOf",				KindOfMaskType::parseFromINI,			nullptr,	offsetof( SubdualDamageDefaults, m_forbiddenKindOf ) },
+		{ "SubdualDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageCap ) },
+		{ "SubdualDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealRate ) },
+		{ "SubdualDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_subdualDamageHealAmount ) },
+		{ "JammingDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageCap ) },
+		{ "JammingDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealRate ) },
+		{ "JammingDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_jammingDamageHealAmount ) },
+		{ "FrozenDamageCap",				SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageCap ) },
+		{ "FrozenDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageHealRate ) },
+		{ "FrozenDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_frozenDamageHealAmount ) },
+		{ "ChronoDamageHealRate",		SubdualValue::parseDurationFromINI,	nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealRate ) },
+		{ "ChronoDamageHealAmount",	SubdualValue::parseFromINI,				nullptr,	offsetof( SubdualDamageDefaults, m_chronoDamageHealAmount ) },
+		{ nullptr, nullptr, nullptr, 0 }
+	};
+
+	std::vector<SubdualDamageDefaults>* rules = (std::vector<SubdualDamageDefaults>*)store;
+	rules->push_back(SubdualDamageDefaults());
+	ini->initFromINI(&rules->back(), fieldParse);
+}
+
+//-------------------------------------------------------------------------------------------------
+const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, SubdualValue SubdualDamageDefaults::*field ) const
+{
+	for (std::vector<SubdualDamageDefaults>::const_reverse_iterator it = m_subdualDamageDefaults.rbegin(); it != m_subdualDamageDefaults.rend(); ++it)
+	{
+		const SubdualValue& value = (*it).*field;
+		if (!value.m_isSet)
+		{
+			continue;
+		}
+		if (it->m_kindOf.any() && !tmpl->isAnyKindOf(it->m_kindOf))
+		{
+			continue;
+		}
+		if (it->m_forbiddenKindOf.any() && tmpl->isAnyKindOf(it->m_forbiddenKindOf))
+		{
+			continue;
+		}
+		return &value;
+	}
+	return nullptr;
 }
 
 
@@ -582,12 +693,30 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 
 	{ "UseVanillaDiagonalMoveSpeed",	      INI::parseBool,		NULL,			offsetof(GlobalData, m_useOldMoveSpeed) },
 	{ "TintStatus",	 GlobalData::parseTintStatusType, NULL, offsetof(GlobalData, m_colorTintTypes) },
-	
+
+	{ "JammingOverlayTexture",	INI::parseAsciiString,	NULL,	offsetof(GlobalData, m_jammingOverlayTexture) },
+	{ "JammingOverlayScrollU",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScrollU) },
+	{ "JammingOverlayScrollV",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScrollV) },
+	{ "JammingOverlayScale",	INI::parseReal,			NULL,	offsetof(GlobalData, m_jammingOverlayScale) },
+	{ "JammingOverlayColor",	INI::parseRGBColor,		NULL,	offsetof(GlobalData, m_jammingOverlayColor) },
+	{ "JammingOverlayAdditive",	INI::parseBool,			NULL,	offsetof(GlobalData, m_jammingOverlayAdditive) },
+	{ "FrozenOverlayTexture",	INI::parseAsciiString,	NULL,	offsetof(GlobalData, m_frozenOverlayTexture) },
+	{ "FrozenOverlayScrollU",	INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScrollU) },
+	{ "FrozenOverlayScrollV",	INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScrollV) },
+	{ "FrozenOverlayScale",		INI::parseReal,			NULL,	offsetof(GlobalData, m_frozenOverlayScale) },
+	{ "FrozenOverlayColor",		INI::parseRGBColor,		NULL,	offsetof(GlobalData, m_frozenOverlayColor) },
+	{ "FrozenOverlayAdditive",	INI::parseBool,			NULL,	offsetof(GlobalData, m_frozenOverlayAdditive) },
+
 	{"ChronoDamageDisableThreshold", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageDisableThreshold)},
 	{"ChronoDamageHealRate", INI::parseDurationUnsignedInt, NULL, offsetof(GlobalData, m_chronoDamageHealRate)},
 	{"ChronoDamageHealAmountPercent", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDamageHealAmount) },
+	{ "SubdualDamageDefaults",	GlobalData::parseSubdualDamageDefaults,	nullptr,	offsetof( GlobalData, m_subdualDamageDefaults ) },
 	{"ChronoDamageOpacityStart", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaStart) },
 	{"ChronoDamageOpacityEnd", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaEnd) },
+
+	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
+	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
+	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
 	
 	// {"ChronoDamageTintStatusType", TintStatusFlags::parseSingleBitFromINI, NULL, offsetof(GlobalData, m_chronoTintStatusType) },
 	{"ChronoDamageParticleSystemLarge", INI::parseAsciiString, NULL, offsetof(GlobalData, m_chronoDisableParticleSystemLarge) },
@@ -642,6 +771,13 @@ GlobalData::GlobalData()
   m_batchParticles = FALSE;
   m_skipTranslucencySort = FALSE;
   m_backToFront = FALSE;
+  m_useBloom = FALSE;
+  m_bloomStrength = 0.5f;
+  m_bloomDebug = FALSE;
+  m_laserRef = FALSE;
+  m_laserGlowColor = 0;
+  m_laserGlowRadius = 0.0f;
+  m_laserGlowIntensity = 0.7f;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	m_shroudOn = TRUE;
@@ -722,6 +858,7 @@ GlobalData::GlobalData()
 	m_chipSetType = 0;
 	m_headless = FALSE;
 	m_windowed = 0;
+	m_borderlessWindow = FALSE;
 	m_xResolution = DEFAULT_DISPLAY_WIDTH;
 	m_yResolution = DEFAULT_DISPLAY_HEIGHT;
 	m_maxShellScreens = 0;
@@ -1152,6 +1289,7 @@ GlobalData::GlobalData()
 	m_clientRetaliationModeEnabled = TRUE; //On by default.
 	// TheSuperHackers @feature Health bars behave exactly as they always have unless Options.ini says otherwise.
 	m_healthBarDisplayMode = HealthBarDisplayMode_Default;
+	m_alliedDecalMode = AlliedDecalMode_Default;
 	m_buildTimerDisplayMode = BuildTimerDisplayMode_Default;
 	m_castMode = CastMode_Default;
 	m_selectionCircleEnabled = FALSE;
@@ -1176,6 +1314,25 @@ GlobalData::GlobalData()
 	m_doubleClickAttackMove = FALSE;
 
 	m_useOldMoveSpeed = FALSE;  //Fix is enabled by default
+
+	// Empty texture leaves the jamming overlay off until art supplies one.
+	m_jammingOverlayTexture.clear();
+	m_jammingOverlayScrollU = 0.5f;
+	m_jammingOverlayScrollV = 0.0f;
+	m_jammingOverlayScale = 1.0f;
+	m_jammingOverlayColor.red = 1.0f;
+	m_jammingOverlayColor.green = 1.0f;
+	m_jammingOverlayColor.blue = 1.0f;
+	m_jammingOverlayAdditive = TRUE;
+
+	m_frozenOverlayTexture.clear();
+	m_frozenOverlayScrollU = 0.0f;
+	m_frozenOverlayScrollV = 0.0f;
+	m_frozenOverlayScale = 1.0f;
+	m_frozenOverlayColor.red = 1.0f;
+	m_frozenOverlayColor.green = 1.0f;
+	m_frozenOverlayColor.blue = 1.0f;
+	m_frozenOverlayAdditive = FALSE;
 
 	// --------------------------------------------------------------------------
 	// INIT TINT STATUS TYPES:
@@ -1372,6 +1529,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useRightMouseScrollWithAlternateMouse = optionPref.getRightMouseScrollWithAlternateMouseEnabled();
 	TheWritableGlobalData->m_clientRetaliationModeEnabled = optionPref.getRetaliationModeEnabled();
 	TheWritableGlobalData->m_healthBarDisplayMode = optionPref.getHealthBarDisplayMode();
+	TheWritableGlobalData->m_alliedDecalMode = optionPref.getAlliedDecalMode();
 	TheWritableGlobalData->m_buildTimerDisplayMode = optionPref.getBuildTimerDisplayMode();
 	TheWritableGlobalData->m_castMode = optionPref.getCastMode();
 	TheWritableGlobalData->m_selectionCircleEnabled = optionPref.getSelectionCircleEnabled();
@@ -1419,6 +1577,11 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_antiAliasLevel = optionPref.getAntiAliasing();
 	TheWritableGlobalData->m_textureFilteringMode = optionPref.getTextureFilterMode();
 	TheWritableGlobalData->m_textureAnisotropyLevel = optionPref.getTextureAnisotropyLevel();
+	TheWritableGlobalData->m_useBloom = optionPref.getBloomEnabled();
+	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
+	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
+	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
+	TheWritableGlobalData->m_borderlessWindow = optionPref.getBorderlessWindowEnabled();
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.

@@ -107,6 +107,8 @@ class ObjectRepulsorHelper;
 class StatusDamageHelper;
 class SubdualDamageHelper;
 class ChronoDamageHelper;
+class JammingDamageHelper;
+class FrozenDamageHelper;
 class TempWeaponBonusHelper;
 class BuffEffectHelper;
 class ObjectWeaponStatusHelper;
@@ -235,8 +237,10 @@ public:
 	Real estimateDamage( DamageInfoInput& damageInfo ) const;
 	void kill( DamageType damageType = DAMAGE_UNRESISTABLE, DeathType deathType = DEATH_NORMAL );	///< kill the object with an optional type of damage and death.
 	void healCompletely();														///< Restore max health to this Object
-	void notifySubdualDamage( Real amount );///< At this level, we just pass this on to our helper and do a special tint
-	void notifyChronoDamage( Real amount );///< At this level, we just pass this on to our helper and do a special tint
+	void notifySubdualDamage( Real amount );
+	void notifyChronoDamage( Real amount );
+	void notifyJammingDamage( Real amount );
+	void notifyFrozenDamage( Real amount );
 	void doStatusDamage( ObjectStatusTypes status, Real duration );///< At this level, we just pass this on to our helper
 	void doTempWeaponBonus( WeaponBonusConditionType status, UnsignedInt duration, TintStatus tintStatus = TINT_STATUS_INVALID );///< At this level, we just pass this on to our helper
 	void applyBuff(const BuffTemplate* buffTemp, UnsignedInt duration, Object* sourceObj);
@@ -505,6 +509,7 @@ public:
 	Weapon* getWeaponInWeaponSlot(WeaponSlotType wslot) const { return m_weaponSet.getWeaponInWeaponSlot(wslot); }
 	UnsignedInt getWeaponInWeaponSlotCommandSourceMask( WeaponSlotType wSlot ) const { return m_weaponSet.getNthCommandSourceMask( wSlot ); }
 	Bool getWeaponInWeaponSlotSyncedToSlot(WeaponSlotType thisSlot, WeaponSlotType otherSlot) const;
+	Bool canWeaponSlotAttackGround(WeaponSlotType wslot, CommandSourceType cmdSource) const { return m_weaponSet.canSlotAttackGround(wslot, cmdSource); }
 
 	// see if this current weapon set's weapons has shared reload times
 	Bool isReloadTimeShared() const { return m_weaponSet.isSharedReloadTime(); }
@@ -515,6 +520,7 @@ public:
 	Bool isFiringWeaponSlot( WeaponSlotType wslot ) const;	///< is this object attacking with the weapon in this slot?
 	void stopFiringWeaponSlot( WeaponSlotType wslot );		///< end an attack being made with the weapon in this slot
 	void setFiringConditionForCurrentWeapon() const;
+	void setFiringConditionForWeaponSlot( WeaponSlotType wslot ) const;
 	void adjustModelConditionForWeaponStatus();	///< Check to see if I should change my model condition.
 	void fireCurrentWeapon(Object *target);
 	void fireCurrentWeapon(const Coord3D* pos);
@@ -783,7 +789,7 @@ private:
 
 	UnsignedInt		m_smcUntil;
 
-	enum { NUM_SLEEP_HELPERS = 10 };
+	enum { NUM_SLEEP_HELPERS = 12 };
 	ObjectRepulsorHelper*					m_repulsorHelper;
 	ObjectSMCHelper*							m_smcHelper;
 	ObjectWeaponStatusHelper*			m_wsHelper;
@@ -791,6 +797,8 @@ private:
 	StatusDamageHelper*						m_statusDamageHelper;
 	SubdualDamageHelper*					m_subdualDamageHelper;
 	ChronoDamageHelper*					m_chronoDamageHelper;
+	JammingDamageHelper*					m_jammingDamageHelper;
+	FrozenDamageHelper*						m_frozenDamageHelper;
 	TempWeaponBonusHelper*				m_tempWeaponBonusHelper;
 	BuffEffectHelper*				m_buffEffectHelper;
 	FiringTracker*								m_firingTracker;	///< Tracker is really a "helper" and is included NUM_SLEEP_HELPERS

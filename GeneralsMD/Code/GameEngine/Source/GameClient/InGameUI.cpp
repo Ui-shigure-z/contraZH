@@ -1323,7 +1323,7 @@ InGameUI::InGameUI()
 	m_waypointMode			= false;
 	m_forceAttackMode		= false;
 	m_forceMoveToMode		= false;
-	m_attackMoveToMode	= false;
+	m_armedMoveMode		= ARMED_MOVE_NONE;
 	m_preferSelection		= false;
 
 	m_curRcType = RADIUSCURSOR_NONE;
@@ -2531,7 +2531,7 @@ void InGameUI::reset()
 	setForceMoveMode(false);
 	setForceAttackMode(false);
 	setPreferSelectionMode(false);
-	clearAttackMoveToMode();
+	clearArmedMoveMode();
 
 	// TheSuperHackers @bugfix Disable all camera interactions to prevent them getting stuck after game end.
 	setScrolling(false);
@@ -3272,6 +3272,21 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 						else
 							setMouseCursor( Mouse::ATTACKMOVETO );
 						break;
+					case GameMessage::MSG_DO_REVERSE_MOVETO_HINT:
+						// a mod without a ReverseMove cursor block keeps the plain move cursor
+						if( drawSelectable && obj->isLocallyControlled() )
+						{
+							setMouseCursor( Mouse::SELECTING );
+						}
+						else if( TheMouse->isCursorDefined( Mouse::REVERSE_MOVE ) )
+						{
+							setMouseCursor( Mouse::REVERSE_MOVE );
+						}
+						else
+						{
+							setMouseCursor( Mouse::MOVETO );
+						}
+						break;
 					case GameMessage::MSG_ADD_WAYPOINT_HINT:
 						setMouseCursor( Mouse::WAYPOINT );
 						break;
@@ -3359,6 +3374,7 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 				{
 					case GameMessage::MSG_DO_MOVETO_HINT:
 					case GameMessage::MSG_DO_ATTACKMOVETO_HINT:
+					case GameMessage::MSG_DO_REVERSE_MOVETO_HINT:
 					case GameMessage::MSG_ADD_WAYPOINT:
 						setMouseCursor(Mouse::BUILD_PLACEMENT);
 						break;

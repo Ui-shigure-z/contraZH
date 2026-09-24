@@ -59,6 +59,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/FlatHeightMap.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "WW3D2/light.h"
 #include "WW3D2/rendobj.h"
@@ -201,6 +202,9 @@ W3DTerrainVisual::~W3DTerrainVisual()
 	delete TheSmudgeManager;
 	TheSmudgeManager=nullptr;
 
+	delete TheW3DBloom;
+	TheW3DBloom = nullptr;
+
 	REF_PTR_RELEASE( m_waterRenderObject );
 	TheWaterRenderObj=nullptr;
 	REF_PTR_RELEASE( m_terrainRenderObject );
@@ -242,6 +246,8 @@ void W3DTerrainVisual::init()
 		// create smudge rendering system.
 		TheSmudgeManager = NEW(W3DSmudgeManager);
 		TheSmudgeManager->init();
+
+		TheW3DBloom = NEW W3DBloom;
 
 #ifdef DO_UNIT_TIMINGS
 #pragma MESSAGE("********************* WARNING- Doing UNIT TIMINGS. ")
@@ -680,7 +686,7 @@ Bool W3DTerrainVisual::load( AsciiString filename )
 #ifdef DO_UNIT_TIMINGS
 #pragma MESSAGE("********************* WARNING- Doing UNIT TIMINGS. ")
 #else
-	if (m_waterRenderObject)
+	if (m_waterRenderObject && W3DDisplay::m_3DScene)
 	{
 		W3DDisplay::m_3DScene->Add_Render_Object( m_waterRenderObject);
 		m_waterRenderObject->enableWaterGrid(false);

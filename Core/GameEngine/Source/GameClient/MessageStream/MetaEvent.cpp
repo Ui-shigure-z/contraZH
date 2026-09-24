@@ -169,6 +169,7 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "TOGGLE_CONTROL_BAR",												GameMessage::MSG_META_TOGGLE_CONTROL_BAR },
 	{ "TOGGLE_PLAYER_OBSERVER",										GameMessage::MSG_META_TOGGLE_PLAYER_OBSERVER },
 	{ "CYCLE_HEALTH_BAR_MODE",										GameMessage::MSG_META_CYCLE_HEALTH_BAR_MODE },
+	{ "TOGGLE_REVERSEMOVE",												GameMessage::MSG_META_TOGGLE_REVERSEMOVE },
 	{ "BEGIN_PATH_BUILD",													GameMessage::MSG_META_BEGIN_PATH_BUILD },
 	{ "END_PATH_BUILD",														GameMessage::MSG_META_END_PATH_BUILD },
 	{ "BEGIN_FORCEATTACK",												GameMessage::MSG_META_BEGIN_FORCEATTACK },
@@ -1094,6 +1095,18 @@ void MetaMap::generateMetaMap()
 			map->m_key = MK_TAB;
 			map->m_transition = DOWN;
 			map->m_modState = SHIFT;
+			map->m_usableIn = COMMANDUSABLE_GAME;
+		}
+	}
+	{
+		// Caps Lock arms a reverse move for the next terrain click. No cameo or stock binding
+		// wants the key, so nothing can shadow it.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_META_TOGGLE_REVERSEMOVE);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_CAPS;
+			map->m_transition = DOWN;
+			map->m_modState = NONE;
 			map->m_usableIn = COMMANDUSABLE_GAME;
 		}
 	}

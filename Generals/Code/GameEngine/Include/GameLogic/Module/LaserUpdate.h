@@ -68,6 +68,7 @@ public:
 	void setDecayFrames( UnsignedInt decayFrames );
 	void xfer( Xfer *xfer );
 	Real getWidthScale() const { return m_currentWidthScalar; }
+	Bool isDecaying() const { return m_decaying; }
 
 private:
 	Bool m_widening;
@@ -99,6 +100,7 @@ public:
 	const LaserRadiusUpdate& getLaserRadiusUpdate() const { return m_laserRadius; }
 	void setDecayFrames( UnsignedInt decayFrames ) { m_laserRadius.setDecayFrames(decayFrames); }
 	Real getWidthScale() const { return m_laserRadius.getWidthScale(); }
+	Bool isEnding() const { return m_laserRadius.isDecaying(); }	///< the beam has started its way out
 
 	const Coord3D* getStartPos() const { return &m_startPos; }
 	const Coord3D* getEndPos() const { return &m_endPos; }

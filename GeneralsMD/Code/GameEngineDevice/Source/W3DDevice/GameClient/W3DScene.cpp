@@ -64,6 +64,10 @@
 #include "WW3D2/shader.h"
 #include "WW3D2/dx8caps.h"
 #include "WW3D2/colorspace.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/mapper.h"
+#include "WW3D2/texture.h"
+#include "WW3D2/vertmaterial.h"
 
 #include "WW3D2/shdlib.h"
 
@@ -133,6 +137,12 @@ RTS3DScene::RTS3DScene()
 	heatVisionShader.Set_Depth_Mask(ShaderClass::DEPTH_WRITE_DISABLE);
 	m_heatVisionOnlyPass->Set_Material(heatVisionMtl);
 	m_heatVisionOnlyPass->Set_Shader(heatVisionShader);
+
+	// Built lazily: the asset manager does not exist yet when the scene is constructed.
+	m_jammingOverlayPass = nullptr;
+	m_jammingOverlayPassChecked = FALSE;
+	m_frozenOverlayPass = nullptr;
+	m_frozenOverlayPassChecked = FALSE;
 
 
 //	VertexMaterialClass *frenzyMtl = NEW_REF(VertexMaterialClass,());
@@ -224,6 +234,9 @@ RTS3DScene::~RTS3DScene()
 	REF_PTR_RELEASE(m_heatVisionMaterialPass);
 
 	REF_PTR_RELEASE(m_heatVisionOnlyPass);
+
+	REF_PTR_RELEASE(m_jammingOverlayPass);
+	REF_PTR_RELEASE(m_frozenOverlayPass);
 
 	delete [] m_translucentObjectsBuffer;
 	delete [] m_nonOccludersOrOccludees;
@@ -578,6 +591,102 @@ void RTS3DScene::renderSpecificDrawables(RenderInfoClass &rinfo, Int numDrawable
 }
 
 //============================================================================
+// buildOverlayPass
+//=============================================================================
+/** Builds a scrolling textured pass for the subdual overlays. Returns null when the texture
+	* name is empty or the asset manager is not up yet. */
+//=============================================================================
+static MaterialPassClass *buildOverlayPass(const char *keyName, const AsciiString &textureName,
+	Real scrollU, Real scrollV, Real scale, const RGBColor &color, Bool additive)
+{
+	if (textureName.isEmpty() || WW3DAssetManager::Get_Instance() == nullptr)
+		return nullptr;
+
+	// Get_Texture hands back a lazy handle even for a name that does not resolve, so a bad name
+	// shows up as the magenta placeholder rather than a null here.
+	TextureClass *texture = WW3DAssetManager::Get_Instance()->Get_Texture(textureName.str());
+	if (texture == nullptr)
+		return nullptr;
+
+	DEBUG_ASSERTCRASH(textureName.find('.') != nullptr,
+		("%s '%s' has no file extension; texture names need one (e.g. .tga or .dds)",
+		keyName, textureName.str()));
+
+	MaterialPassClass *pass = NEW_REF(MaterialPassClass,());
+
+	// Lighting must stay on: with it off D3D ignores emissive, and the intensity carried by
+	// materialPassEmissiveOverride would have no effect.
+	VertexMaterialClass *mtl = NEW_REF(VertexMaterialClass,());
+	mtl->Set_Lighting(true);
+	mtl->Set_Ambient(0,0,0);
+	mtl->Set_Diffuse(0,0,0);
+	mtl->Set_Emissive(color.red, color.green, color.blue);
+	mtl->Set_UV_Source(0, 0);
+
+	// Self-driving scroll; the mapper advances itself off the render sync time.
+	LinearOffsetTextureMapperClass *mapper = NEW_REF(LinearOffsetTextureMapperClass,
+		(Vector2(scrollU, scrollV), Vector2(0.0f, 0.0f), false, Vector2(scale, scale), 0));
+	mtl->Set_Mapper(mapper, 0);
+	mapper->Release_Ref();
+
+	pass->Set_Material(mtl);
+	mtl->Release_Ref();
+
+	// Wrap so the scrolling offset tiles instead of smearing the border pixels.
+	texture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+	texture->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
+
+	pass->Set_Texture(texture);
+	texture->Release_Ref();
+
+	// Must be the textured presets; the "Solid" variants set TEXTURING_DISABLE.
+	ShaderClass shader = additive
+		? ShaderClass::_PresetAdditiveShader
+		: ShaderClass::_PresetAlphaShader;
+	shader.Set_Depth_Compare(ShaderClass::PASS_EQUAL);
+	pass->Set_Shader(shader);
+
+	return pass;
+}
+
+//============================================================================
+// RTS3DScene::getJammingOverlayPass
+//=============================================================================
+/** Builds the jamming overlay pass on first use. The asset manager is created after the
+	* scene, so the texture cannot be loaded in the constructor. Returns null when disabled. */
+//=============================================================================
+MaterialPassClass *RTS3DScene::getJammingOverlayPass(void)
+{
+	if (m_jammingOverlayPassChecked)
+		return m_jammingOverlayPass;
+
+	m_jammingOverlayPassChecked = TRUE;
+	m_jammingOverlayPass = buildOverlayPass("JammingOverlayTexture", TheGlobalData->m_jammingOverlayTexture,
+		TheGlobalData->m_jammingOverlayScrollU, TheGlobalData->m_jammingOverlayScrollV,
+		TheGlobalData->m_jammingOverlayScale, TheGlobalData->m_jammingOverlayColor,
+		TheGlobalData->m_jammingOverlayAdditive);
+
+	return m_jammingOverlayPass;
+}
+
+//============================================================================
+// RTS3DScene::getFrozenOverlayPass
+//=============================================================================
+MaterialPassClass *RTS3DScene::getFrozenOverlayPass(void)
+{
+	if (m_frozenOverlayPassChecked)
+		return m_frozenOverlayPass;
+
+	m_frozenOverlayPassChecked = TRUE;
+	m_frozenOverlayPass = buildOverlayPass("FrozenOverlayTexture", TheGlobalData->m_frozenOverlayTexture,
+		TheGlobalData->m_frozenOverlayScrollU, TheGlobalData->m_frozenOverlayScrollV,
+		TheGlobalData->m_frozenOverlayScale, TheGlobalData->m_frozenOverlayColor,
+		TheGlobalData->m_frozenOverlayAdditive);
+
+	return m_frozenOverlayPass;
+}
+
+//============================================================================
 // RTS3DScene::renderOneObject
 //=============================================================================
 /** Renders a single drawable entity. */
@@ -589,7 +698,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	Bool drawableHidden=FALSE;
 	Object* obj = nullptr;
 	ObjectShroudStatus ss=OBJECTSHROUD_INVALID;
-	Bool doExtraMaterialPop=FALSE;
+	Int extraMaterialPops=0;
 	Bool doExtraFlagsPop=FALSE;
 	LightClass **sceneLights=m_globalLight;
 
@@ -714,8 +823,34 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			}
 		}
 
+		// The subdual overlays stack and take the passes ahead of heat vision. materialPassEmissiveOverride
+		// is one float for the whole render call, so every pushed pass shares the strongest intensity.
+		const Real jammingIntensity = draw->getJammingOverlayIntensity();
+		const Real frozenIntensity = draw->getFrozenOverlayIntensity();
+		MaterialPassClass *jammingPass = (jammingIntensity > 0.0f) ? getJammingOverlayPass() : nullptr;
+		MaterialPassClass *frozenPass = (frozenIntensity > 0.0f) ? getFrozenOverlayPass() : nullptr;
+		if (jammingPass || frozenPass)
+		{
+			Real overlayIntensity = 0.0f;
+			if (jammingPass)
+			{
+				overlayIntensity = jammingIntensity;
+				rinfo.Push_Material_Pass(jammingPass);
+				extraMaterialPops++;
+			}
+			if (frozenPass)
+			{
+				overlayIntensity = max(overlayIntensity, frozenIntensity);
+				rinfo.Push_Material_Pass(frozenPass);
+				extraMaterialPops++;
+			}
+
+			// Alpha mode blends by alpha, so intensity has to reach that channel too.
+			rinfo.materialPassEmissiveOverride = overlayIntensity;
+			rinfo.materialPassAlphaOverride = overlayIntensity;
+		}
 		//Apply custom render pass for any drawables with heatvision enabled
-		if (draw->getSecondMaterialPassOpacity() != 0 )
+		else if (draw->getSecondMaterialPassOpacity() != 0 )
 		{
 			rinfo.materialPassEmissiveOverride = draw->getSecondMaterialPassOpacity();
 
@@ -739,7 +874,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 				rinfo.Push_Material_Pass(m_heatVisionMaterialPass);
 			}
 
-			doExtraMaterialPop = TRUE;
+			extraMaterialPops++;
 		}
 	}
 	else
@@ -787,7 +922,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		  for (dynaLightIt.First(); !dynaLightIt.Is_Done(); dynaLightIt.Next())
 		  {
 			  W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
-			  if (!pDyna->isEnabled()) {
+			  if (!pDyna->isEnabled() || pDyna->isTerrainOnly()) {
 				  continue;
 			  }
 			  SphereClass lSph = pDyna->Get_Bounding_Sphere();
@@ -837,7 +972,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	}
 
 	rinfo.light_environment = nullptr;
-	if (doExtraMaterialPop)	//check if there is an extra material on the stack from the added material effect.
+	while (extraMaterialPops-- > 0)	//pop the overlay or heat vision passes pushed above.
 		rinfo.Pop_Material_Pass();
 	if (doExtraFlagsPop)
 		rinfo.Pop_Override_Flags();	//flags used to disable base pass and only render custom heat vision pass.

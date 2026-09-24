@@ -203,6 +203,8 @@ UnsignedInt HeightMapRenderObjClass::doTheDynamicLight(VERTEX_FORMAT *vb, VERTEX
 				lightDirection -= lightLoc;
 				double range, midRange;
 				pLight->Get_Far_Attenuation_Range(midRange, range);
+				// the square bound rejects most lights before the sqrt
+				if (fabs(lightDirection.X) >= range || fabs(lightDirection.Y) >= range) continue;
 				Real dist = lightDirection.Length();
 				if (dist >= range) continue;
 				if (midRange < 0.1) continue;

@@ -152,6 +152,7 @@ protected:
 	virtual void loadPostProcess() override;
 private:
 	AIGuardMachine* getGuardMachine() { return (AIGuardMachine*)getMachine(); }
+	StateReturnType startAttackOnNemesis();
 
 	ExitConditions m_exitConditions;
 	AIAttackState *m_attackState;

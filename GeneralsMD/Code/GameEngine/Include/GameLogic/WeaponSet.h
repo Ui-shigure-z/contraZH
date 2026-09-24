@@ -294,6 +294,10 @@ public:
 
 	Weapon* getWeaponInWeaponSlot(WeaponSlotType wslot) const;
 
+	// a weapon this command source may pick that can hit the ground and does not fire only in sync with another slot
+	Bool canSlotAttackGround(WeaponSlotType wslot, CommandSourceType cmdSource) const;
+	Bool isSlotAllowedForCommandSource(WeaponSlotType wslot, CommandSourceType cmdSource) const;
+
 
 	static ModelConditionFlags getModelConditionForWeaponSlot(WeaponSlotType wslot, WeaponSetConditionType a);
 };

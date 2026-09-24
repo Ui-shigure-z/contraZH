@@ -86,6 +86,7 @@ void TransportAIUpdate::privateAttackObject( Object *victim, Int maxShotsToFire,
 						if (passenger->isDisabledByType(DISABLED_HACKED)
 							|| passenger->isDisabledByType(DISABLED_EMP)
 							|| passenger->isDisabledByType(DISABLED_SUBDUED)
+							|| passenger->isDisabledByType(DISABLED_FROZEN)
 							|| passenger->isDisabledByType(DISABLED_PARALYZED))
 							continue;
 					}
@@ -105,6 +106,7 @@ void TransportAIUpdate::privateAttackObject( Object *victim, Int maxShotsToFire,
 						&& !obj->isDisabledByType(DISABLED_HACKED)
 						&& !obj->isDisabledByType(DISABLED_EMP)
 						&& !obj->isDisabledByType(DISABLED_SUBDUED)
+						&& !obj->isDisabledByType(DISABLED_FROZEN)
 						&& !obj->isDisabledByType(DISABLED_PARALYZED))
 					{
 						AIUpdateInterface* riderAI = obj->getAIUpdateInterface();
@@ -152,6 +154,7 @@ void TransportAIUpdate::privateForceAttackObject( Object *victim, Int maxShotsTo
 						if (passenger->isDisabledByType(DISABLED_HACKED)
 							|| passenger->isDisabledByType(DISABLED_EMP)
 							|| passenger->isDisabledByType(DISABLED_SUBDUED)
+							|| passenger->isDisabledByType(DISABLED_FROZEN)
 							|| passenger->isDisabledByType(DISABLED_PARALYZED))
 							continue;
 					}
@@ -172,6 +175,7 @@ void TransportAIUpdate::privateForceAttackObject( Object *victim, Int maxShotsTo
 						&& !obj->isDisabledByType(DISABLED_HACKED)
 						&& !obj->isDisabledByType(DISABLED_EMP)
 						&& !obj->isDisabledByType(DISABLED_SUBDUED)
+						&& !obj->isDisabledByType(DISABLED_FROZEN)
 						&& !obj->isDisabledByType(DISABLED_PARALYZED))
 					{
 						AIUpdateInterface* riderAI = obj->getAIUpdateInterface();
@@ -220,6 +224,7 @@ void TransportAIUpdate::privateAttackPosition( const Coord3D *pos, Int maxShotsT
 						if (passenger->isDisabledByType(DISABLED_HACKED)
 							|| passenger->isDisabledByType(DISABLED_EMP)
 							|| passenger->isDisabledByType(DISABLED_SUBDUED)
+							|| passenger->isDisabledByType(DISABLED_FROZEN)
 							|| passenger->isDisabledByType(DISABLED_PARALYZED))
 							continue;
 					}
@@ -240,6 +245,7 @@ void TransportAIUpdate::privateAttackPosition( const Coord3D *pos, Int maxShotsT
 						&& !obj->isDisabledByType(DISABLED_HACKED)
 						&& !obj->isDisabledByType(DISABLED_EMP)
 						&& !obj->isDisabledByType(DISABLED_SUBDUED)
+						&& !obj->isDisabledByType(DISABLED_FROZEN)
 						&& !obj->isDisabledByType(DISABLED_PARALYZED))
 					{
 						AIUpdateInterface* riderAI = obj->getAIUpdateInterface();

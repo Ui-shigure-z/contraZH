@@ -1231,7 +1231,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 				return COMMAND_HIDDEN;
 
     //since the container can be subdued, , M Lorenzen 8/11
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1430,7 +1430,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			//
 
     //since the container can be subdued, the above is no longer true, M Lorenzen 8/11
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1443,7 +1443,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 			if( !obj->getContain() || obj->getContain()->getContainCount() <= 0 )
 				return COMMAND_RESTRICTED;
 
-      if ( obj->isDisabledByType( DISABLED_SUBDUED ) )
+      if ( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
         return COMMAND_RESTRICTED;
 
 			break;
@@ -1465,7 +1465,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 					return COMMAND_RESTRICTED;	// full
 			}
 
-			if( obj->isDisabledByType( DISABLED_SUBDUED ) )
+			if( obj->isDisabledByType( DISABLED_SUBDUED ) || obj->isDisabledByType( DISABLED_FROZEN ) )
 				return COMMAND_RESTRICTED;
 
 			break;

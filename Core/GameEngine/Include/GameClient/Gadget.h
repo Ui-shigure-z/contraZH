@@ -436,6 +436,8 @@ typedef struct _PushButtonData
 	// whoever sets it must re-set it every frame.
 	Int countdownSeconds;
 	Real healthRatio;				///< TheSuperHackers @feature Health bar along the bottom, negative for none. One shot like the countdown.
+	Int ammoInClip;					///< Clip bar above the health bar, shots left. One shot like the health bar.
+	Int ammoClipSize;				///< Shots per clip, drawn as dividers past one. Zero for no bar.
 	Char cornerLetter;			///< TheSuperHackers @feature One letter drawn top left like the hotkey overlay, 0 for none. Persistent.
 } PushButtonData;
 

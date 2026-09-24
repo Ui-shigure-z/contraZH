@@ -1087,7 +1087,7 @@ GameMessageDisposition SelectionTranslator::onMouseLeftClick(MAYBE_UNUSED const 
 		}
 	}
 
-	TheInGameUI->clearAttackMoveToMode();
+	TheInGameUI->clearArmedMoveMode();
 
 	return DESTROY_MESSAGE;
 }

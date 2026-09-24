@@ -977,6 +977,7 @@ void WorkerAIUpdate::onDisabledEdge(Bool nowDisabled)
 			Bool rememberTask = getObject()->isDisabledByType(DISABLED_EMP) ||
 				getObject()->isDisabledByType(DISABLED_HACKED) ||
 				getObject()->isDisabledByType(DISABLED_SUBDUED) ||
+				getObject()->isDisabledByType(DISABLED_FROZEN) ||
 				getObject()->isDisabledByType(DISABLED_UNDERPOWERED);
 
 			cancelTask(getCurrentTask(), rememberTask);
