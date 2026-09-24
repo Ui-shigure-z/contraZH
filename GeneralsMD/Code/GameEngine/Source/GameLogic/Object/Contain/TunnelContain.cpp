@@ -568,9 +568,7 @@ UpdateSleepTime TunnelContain::update()
 
 			if (tunnelSystem->isNextTunnelToPop(obj) && tunnelSystem->getContainCount() > 0)
 			{
-				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_EVACUATE);
-				msg->appendBooleanArgument(true);
-				msg->appendObjectIDArgument(getObject()->getID());
+				orderAllPassengersToExit(CMD_FROM_AI, false);
 			}
 		}
 #endif
