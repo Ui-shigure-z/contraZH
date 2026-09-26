@@ -68,6 +68,7 @@
 #include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
+#include "GameLogic/Module/LaserUpdate.h"
 #include "GameLogic/ScriptEngine.h"
 #include "GameLogic/Armor.h"
 #include "GameLogic/ArmorSet.h"
@@ -3022,6 +3023,42 @@ static const Int MAX_OVERLAY_PARTICLE_LINES = 4;
 // rather than pretending the list is complete when it does not.
 static const Int MAX_OVERLAY_SUBOBJECT_LINES = 16;
 
+// Most W3DLaserDraw module tags listed for one laser.
+static const Int MAX_OVERLAY_LASER_BLOCK_LINES = 4;
+
+// Laser label stacks placed this render frame, so beams that share a midpoint do not draw over each other.
+struct LaserOverlaySlot
+{
+	const ThingTemplate *tmpl;
+	IRegion2D rect;
+};
+static const Int MAX_LASER_OVERLAY_SLOTS = 64;
+static LaserOverlaySlot s_laserOverlaySlots[ MAX_LASER_OVERLAY_SLOTS ];
+static Int s_laserOverlaySlotCount = 0;
+static UnsignedInt s_laserOverlayFrame = 0;
+
+//-------------------------------------------------------------------------------------------------
+// The small font shared by every debug overlay string.
+//-------------------------------------------------------------------------------------------------
+static DisplayString *newOverlayString()
+{
+	DisplayString *str = TheDisplayStringManager->newDisplayString();
+	if( str == nullptr )
+	{
+		return nullptr;
+	}
+
+	// Same size as the numerical health text: this can be on over every object on screen at
+	// once, so it has to stay small enough to read as an annotation.
+	Int pointSize = 6;
+	if( TheGlobalLanguageData )
+	{
+		pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
+	}
+	str->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
+	return str;
+}
+
 //-------------------------------------------------------------------------------------------------
 // TheSuperHackers @feature Draw one line of the debug name overlay, horizontally centred on the
 // object and stacking upward: lineY is moved up by the line height so the next call sits above
@@ -3262,16 +3299,9 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 	static DisplayString *s_nameString = nullptr;
 	if( s_nameString == nullptr )
 	{
-		s_nameString = TheDisplayStringManager->newDisplayString();
+		s_nameString = newOverlayString();
 		if( s_nameString == nullptr )
 			return;
-
-		// Same size as the numerical health text: this can be on over every object on screen at
-		// once, so it has to stay small enough to read as an annotation.
-		Int pointSize = 6;
-		if( TheGlobalLanguageData )
-			pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-		s_nameString->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
 	}
 
 	const Color textColor = GameMakeColor( 255, 255, 255, 255 );
@@ -3571,6 +3601,169 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 		}
 	}
 }
+
+//-------------------------------------------------------------------------------------------------
+// Draw the laser's template name and its W3DLaserDraw module tags at the middle of the beam.
+// Toggled by the Ctrl+, and Ctrl+. cheats.
+//-------------------------------------------------------------------------------------------------
+Bool Drawable::drawDebugLaserOverlay()
+{
+	if( TheInGameUI == nullptr || TheDisplayStringManager == nullptr || TheTacticalView == nullptr )
+	{
+		return FALSE;
+	}
+
+	const Bool wantLaserName = TheInGameUI->isLaserNameOverlayOn();
+	const Bool wantBeamBlock = TheInGameUI->isLaserBeamBlockOverlayOn();
+	if( !wantLaserName && !wantBeamBlock )
+	{
+		return FALSE;
+	}
+
+	AsciiString blockNames[ MAX_OVERLAY_LASER_BLOCK_LINES ];
+	Int blockCount = 0;
+	Bool isLaser = FALSE;
+	for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm; ++dm )
+	{
+		if( (*dm)->getLaserDrawInterface() == nullptr )
+		{
+			continue;
+		}
+
+		isLaser = TRUE;
+		if( blockCount < MAX_OVERLAY_LASER_BLOCK_LINES )
+		{
+			blockNames[ blockCount++ ] = TheNameKeyGenerator->keyToName( (*dm)->getModuleTagNameKey() );
+		}
+	}
+
+	if( !isLaser )
+	{
+		return FALSE;
+	}
+
+	// The laser object sits on its firer, so the midpoint keeps the labels off the firer's own.
+	Coord3D world = *getPosition();
+	static NameKeyType key_LaserUpdate = NAMEKEY( "LaserUpdate" );
+	LaserUpdate *update = (LaserUpdate*)findClientUpdateModule( key_LaserUpdate );
+	if( update != nullptr )
+	{
+		const Coord3D *start = update->getStartPos();
+		const Coord3D *end = update->getEndPos();
+		world.x = ( start->x + end->x ) * 0.5f;
+		world.y = ( start->y + end->y ) * 0.5f;
+		world.z = ( start->z + end->z ) * 0.5f;
+	}
+
+	ICoord2D anchor;
+	if( !TheTacticalView->worldToScreen( &world, &anchor ) )
+	{
+		return TRUE;
+	}
+
+	static DisplayString *s_laserString = nullptr;
+	if( s_laserString == nullptr )
+	{
+		s_laserString = newOverlayString();
+		if( s_laserString == nullptr )
+		{
+			return TRUE;
+		}
+	}
+
+	const Color dropColor = GameMakeColor( 0, 0, 0, 255 );
+	const Color laserNameColor = GameMakeColor( 255, 130, 230, 255 );
+	const Color beamBlockColor = GameMakeColor( 190, 170, 255, 255 );
+
+	// Bottom line first, since the stack grows upward; the name tops its blocks as in the INI.
+	UnicodeString lines[ MAX_OVERLAY_LASER_BLOCK_LINES + 1 ];
+	Color colors[ MAX_OVERLAY_LASER_BLOCK_LINES + 1 ];
+	Int lineCount = 0;
+	if( wantBeamBlock )
+	{
+		for( Int i = blockCount - 1; i >= 0; --i )
+		{
+			lines[ lineCount ].format( L"%hs", blockNames[i].isEmpty() ? "<no tag>" : blockNames[i].str() );
+			colors[ lineCount++ ] = beamBlockColor;
+		}
+	}
+	if( wantLaserName )
+	{
+		const ThingTemplate *tmpl = getTemplate();
+		lines[ lineCount ].format( L"%hs", tmpl ? tmpl->getName().str() : "<no template>" );
+		colors[ lineCount++ ] = laserNameColor;
+	}
+
+	Int stackWidth = 0;
+	Int stackHeight = 0;
+	for( Int i = 0; i < lineCount; ++i )
+	{
+		Int width, height;
+		s_laserString->setText( lines[i] );
+		s_laserString->getSize( &width, &height );
+		stackWidth = MAX( stackWidth, width );
+		stackHeight += height;
+	}
+
+	const UnsignedInt renderFrame = WW3D::Get_Frame_Count();
+	if( renderFrame != s_laserOverlayFrame )
+	{
+		s_laserOverlayFrame = renderFrame;
+		s_laserOverlaySlotCount = 0;
+	}
+
+	IRegion2D rect;
+	rect.lo.x = anchor.x - ( stackWidth / 2 );
+	rect.hi.x = rect.lo.x + stackWidth;
+	rect.hi.y = anchor.y;
+	rect.lo.y = anchor.y - stackHeight;
+
+	// Each push clears one placed stack for good, so this settles within one pass per slot.
+	// The same laser landing on its own label adds nothing, so it is skipped.
+	for( Int pass = 0; pass <= s_laserOverlaySlotCount; ++pass )
+	{
+		Bool moved = FALSE;
+		for( Int i = 0; i < s_laserOverlaySlotCount; ++i )
+		{
+			const LaserOverlaySlot &slot = s_laserOverlaySlots[i];
+			if( rect.lo.x >= slot.rect.hi.x || rect.hi.x <= slot.rect.lo.x ||
+					rect.lo.y >= slot.rect.hi.y || rect.hi.y <= slot.rect.lo.y )
+			{
+				continue;
+			}
+
+			if( slot.tmpl == getTemplate() )
+			{
+				return TRUE;
+			}
+
+			const Int shift = rect.hi.y - slot.rect.lo.y;
+			rect.lo.y -= shift;
+			rect.hi.y -= shift;
+			moved = TRUE;
+		}
+
+		if( !moved )
+		{
+			break;
+		}
+	}
+
+	if( s_laserOverlaySlotCount < MAX_LASER_OVERLAY_SLOTS )
+	{
+		s_laserOverlaySlots[ s_laserOverlaySlotCount ].tmpl = getTemplate();
+		s_laserOverlaySlots[ s_laserOverlaySlotCount ].rect = rect;
+		++s_laserOverlaySlotCount;
+	}
+
+	Int lineY = rect.hi.y;
+	for( Int i = 0; i < lineCount; ++i )
+	{
+		drawOverlayLine( s_laserString, lines[i], anchor.x, lineY, colors[i], dropColor );
+	}
+
+	return TRUE;
+}
 #endif
 
 // ------------------------------------------------------------------------------------------------
@@ -3630,7 +3823,11 @@ void Drawable::drawIconUI()
 		// TheSuperHackers @feature Debug name overlays. Drawn here, before the dead and
 		// KINDOF_IGNORED_IN_GUI bails below, so the names cover every drawable on screen -- props,
 		// rocks and wreckage included -- rather than only the things that get a health bar.
-		drawDebugNameOverlay( healthBarRegion );
+		// A labelled laser skips the name overlay, which would stack its name on the firer's.
+		if( !drawDebugLaserOverlay() )
+		{
+			drawDebugNameOverlay( healthBarRegion );
+		}
 #endif
 
 		//Icons that can be drawn on dead things

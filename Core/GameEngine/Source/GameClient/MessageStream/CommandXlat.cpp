@@ -4207,6 +4207,32 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			break;
 		}
 
+		// Toggle the laser name overlay, drawn at the middle of each beam.
+		case GameMessage::MSG_CHEAT_SHOW_LASER_NAME:
+		{
+			TheInGameUI->toggleLaserNameOverlay();
+
+			TheInGameUI->messageNoFormat( TheInGameUI->isLaserNameOverlayOn()
+				? TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserNameOverlayOn", L"Laser Names are ON")
+				: TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserNameOverlayOff", L"Laser Names are OFF") );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Toggle the laser beam block overlay, stacked above the laser name.
+		case GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK:
+		{
+			TheInGameUI->toggleLaserBeamBlockOverlay();
+
+			TheInGameUI->messageNoFormat( TheInGameUI->isLaserBeamBlockOverlayOn()
+				? TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserBeamBlockOverlayOn", L"Laser Beam Blocks are ON")
+				: TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserBeamBlockOverlayOff", L"Laser Beam Blocks are OFF") );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
 		// Cycle the camera cheat: default -> free camera -> chase the selected object -> default.
 		// Purely a view change on this client, like the overlays above, so it carries no
 		// multiplayer guard. The selection is resolved here and handed to the view so the view
