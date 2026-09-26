@@ -40,6 +40,9 @@
 
 W3DShockwaveManager *TheW3DShockwaves = nullptr;
 
+// StrengthInPixels counts pixels on a screen this many lines tall, so it looks the same at any resolution.
+static const Real REFERENCE_SCREEN_LINES = 1080.0f;
+
 // Where a world position lands in the scene copy, and its clip-space w.
 static Vector3 Scene_UV(const Vector3 &world, const D3DMATRIX &viewProjection, const Vector4 &screenMap)
 {
@@ -82,7 +85,7 @@ void W3DShockwaveManager::ReleaseResources()
 	m_loaded = FALSE;
 }
 
-void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, Real strength, UnsignedInt durationMs)
+void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationMs)
 {
 	if (radius <= 0.0f || width <= 0.0f || durationMs == 0)
 	{
@@ -104,6 +107,7 @@ void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, 
 	shockwave.radius = radius;
 	shockwave.width = width;
 	shockwave.strength = strength;
+	shockwave.strengthInPixels = strengthInPixels;
 	shockwave.startMs = WW3D::Get_Sync_Time();
 	shockwave.durationMs = durationMs;
 }
@@ -263,8 +267,9 @@ void W3DShockwaveManager::render(RenderInfoClass &rinfo)
 		}
 		const Real uvPerUnit = sqrt((besideUV.X - centerUV.X) * (besideUV.X - centerUV.X) + (besideUV.Y - centerUV.Y) * (besideUV.Y - centerUV.Y));
 
+		const Real push = shockwave.strengthInPixels ? shockwave.strength / REFERENCE_SCREEN_LINES : shockwave.strength * uvPerUnit;
 		const Real fade = (1.0f - age) * (1.0f - age);
-		const Vector4 ring(age * shockwave.radius / halfSize, halfSize / shockwave.width, shockwave.strength * uvPerUnit * fade, 0.0f);
+		const Vector4 ring(age * shockwave.radius / halfSize, halfSize / shockwave.width, push * fade, 0.0f);
 		const Vector4 ringCenter(centerUV.X, centerUV.Y, 0.0f, 0.0f);
 		DX8Wrapper::Set_Pixel_Shader_Constant(0, &ring, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(1, &ringCenter, 1);

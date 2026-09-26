@@ -523,16 +523,20 @@ out. Needs the Direct3D 9 build, a shader model 2 card and `Heat Effects` on.
 
 * `Radius` - (How far the ring travels, in world units.)
 * `Width` - (How thick the ring is, in world units.)
-* `Strength` - (How far it bends the scene, in world units. Around 2 to 6 reads well.)
+* `Strength` - (How far it bends the scene, in world units. Around 2 to 6 reads well. In world units
+the bend shrinks on screen as the camera pulls back, and is lost when zoomed far out.)
+* `StrengthInPixels = No` - (Yes counts `Strength` in pixels on a 1080p screen instead, scaled to
+other resolutions, so the bend looks the same at every zoom. Around 6 to 12 reads well.)
 * `Duration` - (How long the ring takes to reach `Radius`, in milliseconds. It fades as it goes.)
 
 ```
 FXList FX_NukeExplosion
   Shockwave
-    Radius   = 300
-    Width    = 40
-    Strength = 4
-    Duration = 900
+    Radius           = 300
+    Width            = 40
+    Strength         = 8
+    StrengthInPixels = Yes
+    Duration         = 900
   End
 End
 ```

@@ -2358,11 +2358,11 @@ void W3DDisplay::createLightPulse( const Coord3D *pos, const RGBColor *color,
 	theDynamicLight->Set_Flag(LightClass::FAR_ATTENUATION,true);
 }
 
-void W3DDisplay::createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, UnsignedInt durationFrames )
+void W3DDisplay::createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationFrames )
 {
 	if (TheW3DShockwaves != nullptr && pos != nullptr)
 	{
-		TheW3DShockwaves->add(*pos, radius, width, strength, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL));
+		TheW3DShockwaves->add(*pos, radius, width, strength, strengthInPixels, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL));
 	}
 }
 

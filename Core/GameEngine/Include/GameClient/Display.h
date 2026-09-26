@@ -136,7 +136,7 @@ public:
 																 UnsignedInt increaseFrameTime, UnsignedInt decayFrameTime//, Bool donut = FALSE
 																 ) = 0;
 	/// an expanding ring that bends the scene, radius, width and strength in world units
-	virtual void createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, UnsignedInt durationFrames ) {}
+	virtual void createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationFrames ) {}
 
 	/// draw a line on the display in pixel coordinates with the specified color
 	virtual void drawLine( Int startX, Int startY, Int endX, Int endY,
