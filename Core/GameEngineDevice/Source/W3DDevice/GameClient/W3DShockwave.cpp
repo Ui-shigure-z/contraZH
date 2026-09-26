@@ -151,9 +151,12 @@ void W3DShockwaveManager::render(RenderInfoClass &rinfo)
 
 	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
 	rinfo.Camera.Apply();
-	D3DMATRIX view;
+
+	// Apply holds the view in the wrapper until the next state flush, so the device may still have another pass's.
+	Matrix4x4 cachedView;
+	DX8Wrapper::Get_Transform(D3DTS_VIEW, cachedView);
+	const D3DMATRIX view = To_D3DMATRIX(cachedView);
 	D3DMATRIX projection;
-	device->GetTransform(D3DTS_VIEW, &view);
 	device->GetTransform(D3DTS_PROJECTION, &projection);
 	const D3DMATRIX viewProjection = view * projection;
 
