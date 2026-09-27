@@ -333,9 +333,9 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 		roomLeft = min(1, roomLeft);
 		if (upgrade->getUpgradeType() == UPGRADE_TYPE_PLAYER)
 		{
-			// ShigureUi 28/09/2026 -1 means already built or is building not queue full 0 means queue full
+			// ShigureUi 28/09/2026 UINT_MAX means already built or is building not queue full 0 means queue full
 			if (player->hasUpgradeComplete(upgrade) || player->hasUpgradeInProduction(upgrade))
-				roomLeft = -1;
+				roomLeft = UINT_MAX;
 
 			// ShigureUi 20/09/2026 search for upgrade
 			for (it = pr.first; it != pr.second; it++)
@@ -343,7 +343,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 				const BuildQueueCacheNode& bqsn = (*it).second;
 				if (bqsn.m_type == PRODUCTION_UPGRADE && bqsn.m_upgradeToResearch == upgrade)
 				{
-					roomLeft = -1;
+					roomLeft = UINT_MAX;
 					break;
 				}
 			}
@@ -351,7 +351,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 		else
 		{
 			if (obj->hasUpgrade(upgrade) || !obj->affectedByUpgrade(upgrade) || pu->isUpgradeInQueue(upgrade))
-				roomLeft = -1;
+				roomLeft = UINT_MAX;
 
 			// ShigureUi 20/09/2026 search for upgrade
 			for (it = pr.first; it != pr.second; it++)
@@ -359,7 +359,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 				const BuildQueueCacheNode& bqsn = (*it).second;
 				if (bqsn.m_type == PRODUCTION_UPGRADE && bqsn.m_upgradeToResearch == upgrade)
 				{
-					roomLeft = -1;
+					roomLeft = UINT_MAX;
 					break;
 				}
 			}
@@ -958,16 +958,16 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 			}
 
-			ProductionUpdateInterface* pu;
-			const ProductionEntry* pe;
-			const ThingTemplate* typeToCancel = nullptr;
+			ProductionUpdateInterface *pu;
+			const ProductionEntry *pe;
+			const ThingTemplate *typeToCancel = nullptr;
 
-			Object* curFactory = nullptr;
+			Object *curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and save the type
 			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
-				Object* factory = (*it)->getObject();
+				Object *factory = (*it)->getObject();
 				if (!factory || !factory->isLocallyControlled())
 					break;
 				pu = factory->getProductionUpdateInterface();
@@ -991,7 +991,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if (cancelAll ? !typeToCancel : !curFactory)
 				break;
 
-			GameMessage* msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UNIT_CREATE);
+			GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UNIT_CREATE);
 			if (cancelAll)
 			{
 				msg->appendBooleanArgument(true);
@@ -1025,7 +1025,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			Real minFinishTime = 1e9, curFinishTime;
-			Object* bestFactory = nullptr, * curFactory;
+			Object *bestFactory = nullptr, * curFactory;
 			CanMakeType cmt = CANMAKE_NO_PREREQ, curCmt;
 			UnsignedInt roomLeft;
 
@@ -1044,7 +1044,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				roomLeft = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT);
 
 				curCmt = CANMAKE_NO_PREREQ;
-				if (roomLeft > 0)
+				if (roomLeft == 1)
 					curCmt = CANMAKE_OK;
 				else if (roomLeft == 0)
 					curCmt = CANMAKE_QUEUE_FULL;
@@ -1143,7 +1143,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				roomLeft = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT);
 
 				curCmt = CANMAKE_NO_PREREQ;
-				if (roomLeft > 0)
+				if (roomLeft == 1)
 					curCmt = CANMAKE_OK;
 				else if (roomLeft == 0)
 					curCmt = CANMAKE_QUEUE_FULL;
@@ -1185,7 +1185,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 			}
 
-			GameMessage* msg;
+			GameMessage *msg;
 
 			// ShigureUi 13/9/2026 Add new factory objectID argument for identify
 			for (i = 0; i < upgradeToQueue && bestFactories[i]; i++)
@@ -1236,15 +1236,15 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if (upgradeT == nullptr)
 				break;
 
-			ProductionUpdateInterface* pu;
-			const ProductionEntry* pe;
+			ProductionUpdateInterface *pu;
+			const ProductionEntry *pe;
 
-			Object* curFactory = nullptr;
+			Object *curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and get the type
 			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
-				Object* factory = (*it)->getObject();
+				Object *factory = (*it)->getObject();
 				if (!factory || !factory->isLocallyControlled())
 					break;
 				pu = factory->getProductionUpdateInterface();
@@ -1272,7 +1272,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				if (i > 0 && curFactory->isLocallyControlled())
 				{
-					GameMessage* moveMsg = TheMessageStream->appendMessage(GameMessage::MSG_MOVE_UPGRADE_EARLIER);
+					GameMessage *moveMsg = TheMessageStream->appendMessage(GameMessage::MSG_MOVE_UPGRADE_EARLIER);
 					moveMsg->appendIntegerArgument(upgradeT->getUpgradeNameKey());
 				}
 				break;
@@ -1283,7 +1283,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if (TheKeyboard && TheKeyboard->isShift())
 			{
 				// send the message
-				GameMessage* msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UPGRADE);
+				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UPGRADE);
 				msg->appendBooleanArgument(true);
 				msg->appendIntegerArgument(upgradeT->getUpgradeNameKey());
 
@@ -1292,7 +1292,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				// send the message
 				// ShigureUi 13/9/2026 the only one need an extra producer objectID argument
-				GameMessage* msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UPGRADE);
+				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_CANCEL_UPGRADE);
 				msg->appendBooleanArgument(false);
 				msg->appendIntegerArgument(upgradeT->getUpgradeNameKey());
 				msg->appendObjectIDArgument(curFactory->getID());
@@ -1317,7 +1317,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 		case GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE:
 		{
-			Player* localPlayer = ThePlayerList->getLocalPlayer();
+			Player *localPlayer = ThePlayerList->getLocalPlayer();
 			if( !localPlayer )
 			{
 				break;
