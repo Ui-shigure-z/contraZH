@@ -63,6 +63,10 @@ public:
 
 	static DWORD	Get_Device_Render_State(D3DRENDERSTATETYPE state);
 	static bool		Is_Lit(VertexMaterialClass * material);
+	static bool		Has_Point_Light(LightEnvironmentClass * environment);
+
+	// Clip planes are given in world space, which a vertex shader would reinterpret in clip space.
+	static bool		Are_Clip_Planes_Enabled();
 
 	// Whether a category's fixed-function setup is one the shaders reproduce.
 	static bool		Allows_Category(PassType pass, const ShaderClass & shader, VertexMaterialClass * material, unsigned fvf, bool second_stage_textured);
@@ -74,6 +78,9 @@ public:
 	static void		Get_Light_Constants(LightEnvironmentClass * environment, Vector4 * constants);
 	static void		Get_View_Constants(Vector4 * constants);
 	static void		Get_Stage_Constants(Vector4 * sources, Vector4 * columns);
+
+	// Uploads only the matrices and stages, since the lighting the base pass left behind reaches nothing a pass's pixel shader reads.
+	static void		Set_Material_Pass_Constants();
 
 	// Fills CONSTANT_DIFFUSE_ALPHA, and for the lit pass everything up to CONSTANT_COUNT except the view and lights.
 	static void		Get_Material_Constants(PassType pass, VertexMaterialClass * material, unsigned fvf, const Vector4 & fog, Vector4 * constants);

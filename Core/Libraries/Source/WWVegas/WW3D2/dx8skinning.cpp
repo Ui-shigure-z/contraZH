@@ -170,16 +170,9 @@ bool DX8SkinningClass::Allows_Mesh(MeshClass * mesh)
 			return false;
 		}
 		LightEnvironmentClass * environment = mesh->Get_Lighting_Environment();
-		if (environment == nullptr)
+		if (environment == nullptr || DX8VertexShadingClass::Has_Point_Light(environment))
 		{
 			return false;
-		}
-		for (int i=0;i<environment->Get_Light_Count();++i)
-		{
-			if (environment->isPointLight(i))
-			{
-				return false;
-			}
 		}
 	}
 	return true;
@@ -215,8 +208,7 @@ bool DX8SkinningClass::Begin_Sweep()
 	}
 	if (Pass == DX8VertexShadingClass::PASS_LIT)
 	{
-		// Clip planes are given in world space, which a vertex shader would reinterpret in clip space.
-		if (DX8VertexShadingClass::Get_Device_Render_State(D3DRS_CLIPPLANEENABLE) != 0)
+		if (DX8VertexShadingClass::Are_Clip_Planes_Enabled())
 		{
 			Stats.Rejections[REJECT_STATE]++;
 			return false;
@@ -286,18 +278,14 @@ void DX8SkinningClass::Begin_Material_Passes()
 // Runs before each skinned draw, once the device holds the state the draw uses.
 void DX8SkinningClass::Apply_Draw_Constants()
 {
-	Vector4 constants[DX8VertexShadingClass::CONSTANT_COUNT];
-	DX8VertexShadingClass::Get_View_Constants(constants);
-
-	// The lighting constants the base pass left behind light nothing a pass's pixel shader reads.
 	if (MaterialPassDraws)
 	{
-		DX8VertexShadingClass::Get_Stage_Constants(&constants[DX8VertexShadingClass::CONSTANT_STAGE_SOURCE], &constants[DX8VertexShadingClass::CONSTANT_STAGE_COLUMNS]);
-		DX8Wrapper::Set_Vertex_Shader_Constant(DX8VertexShadingClass::CONSTANT_VIEW_PROJECTION, &constants[DX8VertexShadingClass::CONSTANT_VIEW_PROJECTION], DX8VertexShadingClass::CONSTANT_VIEW + 3);
-		DX8Wrapper::Set_Vertex_Shader_Constant(DX8VertexShadingClass::CONSTANT_STAGE_SOURCE, &constants[DX8VertexShadingClass::CONSTANT_STAGE_SOURCE],
-			DX8VertexShadingClass::CONSTANT_COUNT - DX8VertexShadingClass::CONSTANT_STAGE_SOURCE);
+		DX8VertexShadingClass::Set_Material_Pass_Constants();
 		return;
 	}
+
+	Vector4 constants[DX8VertexShadingClass::CONSTANT_COUNT];
+	DX8VertexShadingClass::Get_View_Constants(constants);
 
 	// Begin_Sweep ruled out the fog modes the shader cannot match.
 	Vector4 fog(1.0f, 0.0f, 0.0f, 0.0f);

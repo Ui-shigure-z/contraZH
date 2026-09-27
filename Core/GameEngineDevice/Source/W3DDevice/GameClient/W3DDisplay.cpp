@@ -1885,6 +1885,9 @@ Int W3DDisplay::getLastFrameDrawCalls()
 Bool W3DDisplay::toggleFaceCulling()
 {
 	DX8Wrapper::Set_Face_Culling_Disabled(!DX8Wrapper::Is_Face_Culling_Disabled());
+
+	// Shaders only reapply state that differs from the last one, which could leave the old cull mode in place.
+	ShaderClass::Invalidate();
 	return !DX8Wrapper::Is_Face_Culling_Disabled();
 }
 

@@ -632,9 +632,7 @@ void W3DShadowMap::renderDepthPass(RenderInfoClass& rinfo)
 	DX8Wrapper::_Get_D3D_Device8()->GetRenderState(D3DRS_STENCILENABLE, &stencilEnable);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILENABLE, FALSE);
 
-	// Vertex processing stays fixed function, so the device applies each caster's
-	// world transform. The mesh renderer sets it per mesh after the pass installs,
-	// where a vertex shader could not see it.
+	// Fixed-function casters and the instancing and skinning shaders all read the sun from these.
 	DX8Wrapper::Set_Transform(D3DTS_VIEW, m_sunView);
 	DX8Wrapper::Set_Transform(D3DTS_PROJECTION, m_sunProjection);
 
