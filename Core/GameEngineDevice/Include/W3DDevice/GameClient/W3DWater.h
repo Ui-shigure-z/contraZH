@@ -126,8 +126,9 @@ public:
 	void replaceSkyboxTexture(const AsciiString& oldTexName, const AsciiString& newTextName);
 
 	void markHeightTextureDirty() { m_heightTextureDirty = TRUE; }	///< terrain heights changed under the shader water
-	/// The terrain heights as high and low bytes, brought up to date, or null. mapping takes world xy to its
-	/// texture coordinates as xy scale and zw offset, and decode weighs the two bytes into a height.
+	/// The terrain heights as high and low bytes in red and green, and the vertex normal's x and y in blue and
+	/// alpha, brought up to date, or null. mapping takes world xy to its texture coordinates as xy scale and
+	/// zw offset, and decode weighs the two bytes into a height.
 	TextureClass *getTerrainHeightTexture(Vector4 &mapping, Vector4 &decode);
 	/// The standing water mask brought up to date for the terrain under it, or null while the seabed's hex
 	/// tiling is off. mapping takes world xy to its texture coordinates, and hex holds the hex cells' spacing,
@@ -271,7 +272,7 @@ protected:
 	// Indexed by whether the shadow map packs its depth into colour.
 	DWORD m_shaderWaterPixelShader[2];
 	DWORD m_shaderRiverPixelShader[2];
-	TextureClass *m_heightTexture;		///< terrain heights as high and low bytes
+	TextureClass *m_heightTexture;		///< terrain heights as high and low bytes, then the normal's x and y
 	TextureClass *m_normalTexture;		///< tiling wave slopes
 	TextureClass *m_foamTexture;		///< tiling foam web
 	IDirect3DTexture8 *m_refractionTexture;	///< the scene behind the water

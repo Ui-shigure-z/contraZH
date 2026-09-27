@@ -128,13 +128,13 @@ public:
 		Real ambientScale;	///< ambient colour as a fraction of the diffuse
 		Bool terrainOnly;	///< lights the ground and nothing standing on it
 	};
-	/// Each ground draw takes up to nine lights, six under standing water, and each mesh up to eight, as their registers allow.
-	enum { MAX_PIXEL_LIGHTS = 9, SEABED_PIXEL_LIGHTS = 6, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
+	/// Each ground draw takes up to eight lights, four under standing water, and each mesh up to eight, as their registers allow.
+	enum { MAX_PIXEL_LIGHTS = 8, SEABED_PIXEL_LIGHTS = 4, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
 	/// Sets the lights that may be drawn per pixel this frame, most important first. Draws name theirs by index.
 	static void setPixelLights(const PixelLight *lights, Int count);
 	static Int getPixelLightCount();
 	static const PixelLight &getPixelLight(Int index);
-	/// Lights the draws that follow with the given lights, up to nine, under the terrain, road, flat terrain
+	/// Lights the draws that follow with the given lights, up to eight, under the terrain, road, flat terrain
 	/// or point light shader in use. Null indices take the first count, the ones nearest the middle of the view.
 	static void setDrawPixelLights(const Int *indices, Int count);
 	/// The registers the terrain's seabed hex tiling reads, as terrainshadow.hlsl lays them out.
@@ -159,6 +159,14 @@ public:
 	static void setTerrainBumps(Bool enabled, Real strength, Bool debug);
 	/// Whether the terrain shaders will read the normal atlas, so the terrain should build and hand it over.
 	static Bool wantsTerrainNormalAtlas();
+	/// Sets the sun's glint on the ground, once a frame. gloss sharpens it, and albedo is how far it
+	/// follows the ground's brightness, from 0 not at all to 1 fully. An intensity of 0 turns it off.
+	static void setTerrainGlint(Bool enabled, Real intensity, Real gloss, Real albedo);
+	/// Whether the terrain and road shaders will glint, so the terrain should hand over its normals.
+	static Bool wantsTerrainGlint();
+	/// Sets, once a frame, the texture holding the terrain's normals in blue and alpha, and the mapping
+	/// from world xy to its texcoords as xy scale and zw offset, or turns the glint off with null.
+	static void setTerrainGlintNormals(TextureClass *normals, const Vector4 &mapping);
 	/// Sets a terrain stage's filters from the player's anisotropy or the mod's settings, whose mip is linear with bilinearMipLinear.
 	static void setTerrainTextureFilter(Int stage, Bool bilinearMipLinear);
 	/// Whether the terrain shaders can blend by height, so the terrain should hand over its height atlas.

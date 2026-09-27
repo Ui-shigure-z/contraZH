@@ -1458,6 +1458,8 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 			TheGlobalData->m_unitBumpHeight, TheGlobalData->m_unitNormalMapStrength);
 		W3DShaderManager::setTerrainBumps(TheGlobalData->m_useNormalMaps, TheGlobalData->m_terrainNormalMapStrength,
 			TheGlobalData->m_normalMapDebug);
+		W3DShaderManager::setTerrainGlint(TheGlobalData->m_useSpecular, TheGlobalData->m_terrainGlintIntensity,
+			TheGlobalData->m_terrainGlintGloss, TheGlobalData->m_terrainGlintAlbedo);
 		// Glow masks ride the specular pass, so turning highlights off drops them rather than keeping the pass alive.
 		W3DShaderManager::setEmissive(!TheGlobalData->m_useSpecular ? 0.0f : TheGlobalData->m_timeOfDay == TIME_OF_DAY_NIGHT
 			? TheGlobalData->m_unitEmissiveNightIntensity : TheGlobalData->m_unitEmissiveIntensity);

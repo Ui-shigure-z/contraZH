@@ -502,6 +502,24 @@ void HeightMapRenderObjClass::prepareSeabed()
 }
 
 //=============================================================================
+// HeightMapRenderObjClass::prepareGlint
+//=============================================================================
+/** Hands the terrain and road shaders the normals the sun's glint reads, which
+the water's height texture carries beside the heights. */
+//=============================================================================
+void HeightMapRenderObjClass::prepareGlint()
+{
+	Vector4 mapping(0.0f, 0.0f, 0.0f, 0.0f);
+	Vector4 decode;
+	TextureClass *normals = nullptr;
+	if (TheWaterRenderObj != nullptr && W3DShaderManager::wantsTerrainGlint())
+	{
+		normals = TheWaterRenderObj->getTerrainHeightTexture(mapping, decode);
+	}
+	W3DShaderManager::setTerrainGlintNormals(normals, mapping);
+}
+
+//=============================================================================
 // HeightMapRenderObjClass::updateVB
 //=============================================================================
 /** Update a rectangular block of the given Vertex Buffer.
@@ -1581,6 +1599,7 @@ void HeightMapRenderObjClass::On_Frame_Update()
 #endif
 
 	prepareSeabed();
+	prepareGlint();
 	assignPixelLights(pDynamicLightsIterator);
 
 	Int numDynaLights=0;

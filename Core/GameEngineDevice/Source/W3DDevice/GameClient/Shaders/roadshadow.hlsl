@@ -18,6 +18,9 @@
 //
 // LIGHTS adds the point lights to the vertex lighting. They need the world position,
 // on the stage after the shadow map, and take ps_2_a for their length.
+//
+// GLINT adds the sun's glint as the terrain has it. The lit builds have it, and GLINT alone
+// gives the world position to roads without lights.
 
 #ifndef SHADOWED
 #define SHADOWED 1
@@ -25,6 +28,10 @@
 
 #ifndef LIGHTS
 #define LIGHTS 0
+#endif
+
+#ifndef GLINT
+#define GLINT LIGHTS
 #endif
 
 #define CONCAT_(a, b) a##b
@@ -65,7 +72,7 @@ sampler2D ShadowMap : register(s3);
 
 #endif
 
-#if LIGHTS
+#if LIGHTS || GLINT
 
 // Stage numbers, spelled out because register names need a literal digit.
 #if NOISE_COUNT + SHADOWED == 0
@@ -78,9 +85,19 @@ sampler2D ShadowMap : register(s3);
 #define POSITION_INDEX 4
 #endif
 
-// Nine fill c5 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_PIXEL_LIGHTS must match.
+#endif
+
+#if GLINT
+float4 ToSun    : register(c2);   // world space
+float4 SunColor : register(c3);   // the sun's diffuse colour in the vertex lighting
+#include "terrainglint.hlsli"
+#endif
+
+#if LIGHTS
+
+// Eight fill c5 to c22 before the glint's c23 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_PIXEL_LIGHTS must match.
 #define POINT_LIGHT_REGISTER c5
-#define POINT_LIGHT_COUNT 9
+#define POINT_LIGHT_COUNT 8
 #include "pointlights.hlsli"
 
 #endif
@@ -98,7 +115,7 @@ struct PsIn
 #if SHADOWED
     float4 ShadowPos : SHADOW_TEXCOORD;
 #endif
-#if LIGHTS
+#if LIGHTS || GLINT
     float3 WorldPos  : CONCAT(TEXCOORD, POSITION_INDEX);
 #endif
 };
@@ -107,6 +124,9 @@ float4 main(PsIn input) : COLOR
 {
     float4 color = tex2D(RoadTexture, input.RoadUV);
     float weight = HeightBlendWeight(input.Diffuse.a, 0.5f, tex2D(HeightAtlas, input.RoadUV).r);
+#if GLINT
+    float glintStrength = dot(color.rgb, GlintAlbedo.xyz) + GlintAlbedo.w;
+#endif
 
 #if LIGHTS
     // Roads lie on the terrain, so their facet's normal is turned up.
@@ -121,14 +141,27 @@ float4 main(PsIn input) : COLOR
     color.a *= weight;
 
 #if NOISE_COUNT >= 1
-    color *= tex2D(Noise1Texture, input.Noise1UV);
+    float4 cloud = tex2D(Noise1Texture, input.Noise1UV);
+    color *= cloud;
 #endif
 #if NOISE_COUNT >= 2
     color.rgb *= GroundNoise(Noise2Texture, input.Noise2UV);
 #endif
 
 #if SHADOWED
-    color.rgb *= ShadowFactor(input.ShadowPos);
+    float lit = ShadowLit(input.ShadowPos);
+    color.rgb *= lerp(ShadowColor.rgb, float3(1.0f, 1.0f, 1.0f), lit);
+#else
+    float lit = 1.0f;
+#endif
+
+#if GLINT
+    float glint = Glint(input.WorldPos, GlintNormal(input.WorldPos), glintStrength * lit);
+#if NOISE_COUNT >= 1
+    color.rgb += SunColor.rgb * cloud.rgb * glint;
+#else
+    color.rgb += SunColor.rgb * glint;
+#endif
 #endif
     return color;
 }

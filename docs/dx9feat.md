@@ -7,7 +7,7 @@ Options live in `Options.ini` and the advanced display options; tuning keys live
 
 Cheat builds reload `Data\INI\GameData.ini` about half a second after it is saved, so these tuning
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
-`UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, `UnitEmissiveIntensity`,
+`UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
 `AmbientOcclusionStrength`, the `GroundNoise` and `TerrainHeightBlend` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric` and `Laser` tuning keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
@@ -47,8 +47,9 @@ Vehicles and structures get a per-pixel sun highlight, following the map's sun, 
 texture areas, and hidden in shadow when shadow mapping is on. Infantry stay matte. Needs the
 Direct3D 9 build and a shader model 2 card.
 
-* `Specular = Yes` - (No turns highlights off. Also `Specular highlights` in the advanced display
-options, applied on Accept. Needs `CheckSpecular` in `OptionsMenu.wnd` for the menu control.)
+* `Specular = Yes` - (No turns highlights and the terrain glint off. Also `Specular highlights` in the
+advanced display options, applied on Accept. Needs `CheckSpecular` in `OptionsMenu.wnd` for the menu
+control.)
 
 Tuned in the mod's `GameData.ini`:
 
@@ -58,6 +59,28 @@ Around 4 to 128 is useful; past that the highlight shrinks to nothing.)
 
 `SpecularDebug = Yes` in `Options.ini` tints covered surfaces magenta and shows the highlight 8x
 brighter.
+
+## Terrain glint
+
+The ground glints where it mirrors the sun towards the camera, so it lights up when the view faces
+the sun. The glint takes the map's sun colour, so night maps glint faintly, and shadows and clouds
+hide it. Roads and the third texture where three meet glint with the terrain, and terrain normal
+maps break it up. Needs the Direct3D 9 build and shader model 2.0a.
+
+* Follows `Specular` above. No turns both off.
+
+Tuned in the mod's `GameData.ini`:
+
+* `TerrainGlintIntensity = 0.25` - (How bright the glint is. 0 turns it off.)
+* `TerrainGlintGloss = 12` - (How tight it is. Higher values give a smaller, sharper glint, and 1
+spreads it over all ground facing the sun.)
+* `TerrainGlintAlbedo = 0.5` - (How far the glint follows the ground's brightness. 0 glints dark and
+bright ground alike, and 1 leaves dark ground almost dull.)
+
+Notes:
+* Flat terrain mode and water reflections do not glint. Ground under standing water loses it below
+the waterline.
+* Launch with `CONTRA_TERRAINGLINT=0` to turn it off.
 
 ## Surface detail (normal mapping)
 
@@ -138,10 +161,10 @@ lights` in the advanced display options, greyed out while dynamic lights are off
 
 Notes:
 * Every draw picks its own lights, so a busy battle can light the whole screen per pixel:
-  * The terrain draws in patches of 32 by 32 cells, each taking nine lights.
+  * The terrain draws in patches of 32 by 32 cells, each taking eight lights, or four with standing water.
   * Each vehicle, structure or soldier takes the eight brightest where it stands.
-  * Each bridge takes nine.
-  * Roads take the nine lights nearest the middle of the view.
+  * Each bridge takes eight.
+  * Roads take the eight lights nearest the middle of the view.
 * The lights nearest the middle of the view go first, up to 64 at once. A light whose reach covers
 the middle counts as nearest.
 * A light that would overfill a terrain patch stays on the old lighting, which lights the terrain

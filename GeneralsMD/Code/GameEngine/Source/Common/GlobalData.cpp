@@ -256,6 +256,9 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
 	{ "UnitNormalMapStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitNormalMapStrength ) },
 	{ "TerrainNormalMapStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainNormalMapStrength ) },
+	{ "TerrainGlintIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintIntensity ) },
+	{ "TerrainGlintGloss",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintGloss ) },
+	{ "TerrainGlintAlbedo",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintAlbedo ) },
 	{ "UnitEmissiveIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveIntensity ) },
 	{ "UnitEmissiveNightIntensity",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveNightIntensity ) },
 	{ "SoftParticleDistance",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_softParticleDistance ) },
@@ -959,6 +962,9 @@ GlobalData::GlobalData()
 	m_unitBumpHeight = 0.15f;
 	m_unitNormalMapStrength = 1.0f;
 	m_terrainNormalMapStrength = 2.0f;
+	m_terrainGlintIntensity = 0.25f;
+	m_terrainGlintGloss = 12.0f;
+	m_terrainGlintAlbedo = 0.5f;
 	m_unitEmissiveIntensity = 0.5f;
 	m_unitEmissiveNightIntensity = 1.5f;
 	m_softParticleDistance = 12.0f;
@@ -1618,6 +1624,7 @@ void GlobalData::reset()
 static const char *const LiveGameDataKeys[] =
 {
 	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength",
+	"TerrainGlintIntensity", "TerrainGlintGloss", "TerrainGlintAlbedo",
 	"UnitEmissiveIntensity", "UnitEmissiveNightIntensity", "SoftParticleDistance",
 	"AmbientOcclusionRadius", "AmbientOcclusionStrength",
 	"GroundNoiseStrength", "GroundNoiseSize", "GroundNoiseTint", "GroundNoiseBrightness",

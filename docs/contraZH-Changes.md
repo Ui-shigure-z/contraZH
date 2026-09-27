@@ -327,8 +327,8 @@ square:
 A 512-texel texture takes the room of four 256-texel ones. A texture that does not fit draws wrong, and the
 render log names it, so a map with many large textures needs a smaller border.
 
-Shadow mapping, specular, normal and glow maps, per-pixel lights, soft particles, flame and laser
-shading and the other features that need the Direct3D 9 build are on [Direct3D 9 Features](dx9feat.md).
+Shadow mapping, specular, terrain glint, normal and glow maps, per-pixel lights, soft particles, flame
+and laser shading and the other features that need the Direct3D 9 build are on [Direct3D 9 Features](dx9feat.md).
 
 ### Bloom
 
