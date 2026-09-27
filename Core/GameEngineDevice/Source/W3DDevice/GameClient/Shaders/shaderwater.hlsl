@@ -273,9 +273,9 @@ float4 main(PsIn input) : COLOR
     // Distortion follows the ripples about their average, so a lean in the normal map or the swell cannot slide whole images aside.
     float2 ripple = slope - (waveMean.rg * 2.0f - 1.0f);
 #if SWELL
-    // The vertex shader flattens the swell towards the shore, so its shading and crest foam follow.
-    float shoal = saturate(depth / max(2.0f * SwellShape.y, 0.001f));
+    // Shading and crest foam shoal as the vertex shader does; adding the raw lift to the span undoes the lift already in depth.
     float swellHere = SwellHeight(world.xy);
+    float shoal = saturate(depth / max(2.0f * SwellShape.y + swellHere, 0.001f));
     float2 swellSlope = float2(swellHere - SwellHeight(world.xy + float2(SwellStep.x, 0.0f)),
         swellHere - SwellHeight(world.xy + float2(0.0f, SwellStep.x))) * (shoal / SwellStep.x);
     swellHere *= shoal;
