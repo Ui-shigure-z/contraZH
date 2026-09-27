@@ -330,11 +330,12 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 	}
 	else if (upgrade)
 	{
-		roomLeft = 1;
+		roomLeft = min(1, roomLeft);
 		if (upgrade->getUpgradeType() == UPGRADE_TYPE_PLAYER)
 		{
+			// ShigureUi 28/09/2026 -1 means already built or is building not queue full 0 means queue full
 			if (player->hasUpgradeComplete(upgrade) || player->hasUpgradeInProduction(upgrade))
-				roomLeft = 0;
+				roomLeft = -1;
 
 			// ShigureUi 20/09/2026 search for upgrade
 			for (it = pr.first; it != pr.second; it++)
@@ -342,7 +343,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 				const BuildQueueCacheNode& bqsn = (*it).second;
 				if (bqsn.m_type == PRODUCTION_UPGRADE && bqsn.m_upgradeToResearch == upgrade)
 				{
-					roomLeft = 0;
+					roomLeft = -1;
 					break;
 				}
 			}
@@ -350,7 +351,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 		else
 		{
 			if (obj->hasUpgrade(upgrade) || !obj->affectedByUpgrade(upgrade) || pu->isUpgradeInQueue(upgrade))
-				roomLeft = 0;
+				roomLeft = -1;
 
 			// ShigureUi 20/09/2026 search for upgrade
 			for (it = pr.first; it != pr.second; it++)
@@ -358,7 +359,7 @@ UnsignedInt ControlBar::calcBuildQueueRoomLeft(Object* obj, const ThingTemplate 
 				const BuildQueueCacheNode& bqsn = (*it).second;
 				if (bqsn.m_type == PRODUCTION_UPGRADE && bqsn.m_upgradeToResearch == upgrade)
 				{
-					roomLeft = 0;
+					roomLeft = -1;
 					break;
 				}
 			}
@@ -384,15 +385,19 @@ UnsignedInt ControlBar::calcBuildLimitLeft(Player *player, const ThingTemplate *
 	pr = std::make_pair(m_multiSelectQueueCache.begin(), m_multiSelectQueueCache.end());
 
 	UnsignedInt limitLeft = SHIFT_CLICK_BATCH_SIZE;
-	while (limitLeft && !player->canBuildMoreOfType(thing, limitLeft))
-		limitLeft--;
 
-	// ShigureUi 20/09/2026 build limit is global so scan all
-	for (it = pr.first; it != pr.second; it++)
+	if (thing->getMaxSimultaneousOfType())
 	{
-		const BuildQueueCacheNode& bqsn = (*it).second;
-		if (bqsn.m_type == PRODUCTION_UNIT && bqsn.m_objectToProduce == thing && limitLeft)
+		while (limitLeft && !player->canBuildMoreOfType(thing, limitLeft))
 			limitLeft--;
+
+		// ShigureUi 20/09/2026 build limit is global so scan all
+		for (it = pr.first; it != pr.second; it++)
+		{
+			const BuildQueueCacheNode& bqsn = (*it).second;
+			if (bqsn.m_type == PRODUCTION_UNIT && bqsn.m_objectToProduce == thing && limitLeft)
+				limitLeft--;
+		}
 	}
 
 	return limitLeft;
@@ -487,7 +492,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 	//
 	Object *obj = nullptr;
 	const DrawableList* selected = TheInGameUI->getAllSelectedDrawables();
-	DrawableList factorys;
+	DrawableList factories;
 	Drawable* draw;
 
 	// ShigureUi 13/9/2026 prepare producer list for unit build and upgrade
@@ -517,18 +522,19 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			if (draw && draw->getObject() &&
 				!draw->getObject()->getStatusBits().test(OBJECT_STATUS_SOLD) &&
-				!draw->getObject()->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+				!draw->getObject()->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION) &&
+				!draw->getObject()->isDisabled())
 			{
-				factorys.push_back(draw);
+				factories.push_back(draw);
 			}
 		}
 
 		//sanity
-		for (DrawableListCIt it = factorys.begin();
-			it != factorys.end(); ++it)
+		for (DrawableListCIt it = factories.begin();
+			it != factories.end(); ++it)
 			if (!(*it)->getObject()->getProductionUpdateInterface() || !(*it)->getObject()->isLocallyControlled())
 			{
-				factorys.clear();
+				factories.clear();
 				break;
 			}
 	}
@@ -767,7 +773,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		{
 			const ThingTemplate *whatToBuild = commandButton->getThingTemplate();
 
-			if( factorys.size() == 0)
+			if( factories.size() == 0)
 				break;
 
 			// sanity, we must have something to build
@@ -789,7 +795,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			std::vector<Int> roomToLeft;
 
 			// ShigureUi 13/9/2026 find best producer, compare them estimated finish time
-			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
+			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
 				curFactory = (*it)->getObject();
 				curFinishTime = calcEstimatedProductionFinishedTime(curFactory);
@@ -802,7 +808,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 				curCmt = TheBuildAssistant->canMakeUnit(curFactory, whatToBuild);
 
-				if (it == factorys.begin())
+				if (it == factories.begin())
 				{
 					cmt = curCmt;
 					// ShigureUi 13/9/2026 if these CANMAKE type then no hope, no need to check others 
@@ -852,7 +858,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			{
 				DEBUG_CRASH( ("Cannot create '%s' because the factory object '%s' returns false for canMakeUnit",
 																whatToBuild->getName().str(),
-																(*factorys.begin())->getObject()->getTemplate()->getName().str()) );
+																(*factories.begin())->getObject()->getTemplate()->getName().str()) );
 				break;
 			}
 
@@ -942,7 +948,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// behind the QueueReorder GameData option; with it off, Ctrl+click cancels
 			// like retail.
 			// ShigureUi 13/9/2026 only work when there's no multiselect
-			if( TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl() && factorys.size() == 1)
+			if( TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl() && factories.size() == 1)
 			{
 				if( i > 0 )
 				{
@@ -959,7 +965,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			Object* curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and save the type
-			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
+			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
 				Object* factory = (*it)->getObject();
 				if (!factory || !factory->isLocallyControlled())
@@ -1009,7 +1015,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			DEBUG_ASSERTCRASH(upgradeT, ("Undefined upgrade '%s' in player upgrade command", "UNKNOWN"));
 
 			// sanity
-			if (factorys.size() == 0 || upgradeT == nullptr)
+			if (factories.size() == 0 || upgradeT == nullptr)
 				break;
 
 			// make sure the player can really make this
@@ -1020,10 +1026,11 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			Real minFinishTime = 1e9, curFinishTime;
 			Object* bestFactory = nullptr, * curFactory;
-			CanMakeType cmt = CANMAKE_QUEUE_FULL, curCmt;
+			CanMakeType cmt = CANMAKE_NO_PREREQ, curCmt;
+			UnsignedInt roomLeft;
 
 			// ShigureUi 13/9/2026 Find best producer for the upgrade
-			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
+			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
 				curFactory = (*it)->getObject();
 				curFinishTime = calcEstimatedProductionFinishedTime(curFactory);
@@ -1034,7 +1041,13 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 					break;
 				}
 
-				curCmt = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT) > 0 ? CANMAKE_OK : CANMAKE_QUEUE_FULL;
+				roomLeft = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT);
+
+				curCmt = CANMAKE_NO_PREREQ;
+				if (roomLeft > 0)
+					curCmt = CANMAKE_OK;
+				else if (roomLeft == 0)
+					curCmt = CANMAKE_QUEUE_FULL;
 
 				// ShigureUi 13/9/2026 update if better
 				if (curCmt == CANMAKE_OK)
@@ -1046,6 +1059,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 						bestFactory = curFactory;
 					}
 				}
+				else if (curCmt == CANMAKE_QUEUE_FULL && cmt == CANMAKE_NO_PREREQ)
+					cmt = CANMAKE_QUEUE_FULL;
 
 				if (minFinishTime == 0.0)
 					break;
@@ -1083,7 +1098,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			DEBUG_ASSERTCRASH( upgradeT, ("Undefined upgrade '%s' in object upgrade command", "UNKNOWN") );
 
 			// sanity
-			if (factorys.size() == 0 || upgradeT == nullptr)
+			if (factories.size() == 0 || upgradeT == nullptr)
 				break;
 
 			//Make sure the player can really make this
@@ -1098,6 +1113,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			Object *bestFactories[SHIFT_CLICK_BATCH_SIZE], *curFactory;
 			Int i, j;
 			CanMakeType cmt = CANMAKE_QUEUE_FULL, curCmt;
+			UnsignedInt roomLeft;
 
 			for (i = 0; i < SHIFT_CLICK_BATCH_SIZE; i++)
 			{
@@ -1111,7 +1127,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				upgradeToQueue = SHIFT_CLICK_BATCH_SIZE;
 
 			// ShigureUi 13/9/2026 Find 5 best producer, or 1
-			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
+			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
 				curFactory = (*it)->getObject();
 				curFinishTime = 0.0;
@@ -1124,7 +1140,13 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 					break;
 				}
 	
-				curCmt = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT) > 0 ? CANMAKE_OK : CANMAKE_QUEUE_FULL;
+				roomLeft = calcBuildQueueRoomLeft(curFactory, nullptr, upgradeT);
+
+				curCmt = CANMAKE_NO_PREREQ;
+				if (roomLeft > 0)
+					curCmt = CANMAKE_OK;
+				else if (roomLeft == 0)
+					curCmt = CANMAKE_QUEUE_FULL;
 
 				// ShigureUi 13/9/2026 find best location to insert then update best 5
 				if (curCmt == CANMAKE_OK)
@@ -1143,6 +1165,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 							break;
 						}
 				}
+				else if (curCmt == CANMAKE_QUEUE_FULL && cmt == CANMAKE_NO_PREREQ)
+					cmt = CANMAKE_QUEUE_FULL;
 
 				for (i = 0; i < upgradeToQueue; i++)
 					if (minFinishTime[i] != 0.0)
@@ -1218,7 +1242,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			Object* curFactory = nullptr;
 
 			// ShigureUi 13/9/2026 Find the production and get the type
-			for (DrawableListCIt it = factorys.begin(); it != factorys.end(); it++)
+			for (DrawableListCIt it = factories.begin(); it != factories.end(); it++)
 			{
 				Object* factory = (*it)->getObject();
 				if (!factory || !factory->isLocallyControlled())
@@ -1244,7 +1268,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// here like the unit branch does - the logic side rejects the message anyway,
 			// so sending one for someone else's producer only wastes network traffic.
 			// ShigureUi 13/9/2026 only if there is only 1 producer
-			if (TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl() && factorys.size() == 1)
+			if (TheGlobalData->m_queueReorder && TheKeyboard && TheKeyboard->isCtrl() && factories.size() == 1)
 			{
 				if (i > 0 && curFactory->isLocallyControlled())
 				{

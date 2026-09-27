@@ -1025,6 +1025,7 @@ ControlBar::ControlBar()
 	resetBuildQueueData();
 	resetContainData();
 	m_lastRecordedInventoryCount = 0;
+	m_multiSelectQueueCache.clear();
 
 	m_videoManager = nullptr;
 	m_animateWindowManager = nullptr;
