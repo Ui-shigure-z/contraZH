@@ -1483,6 +1483,8 @@ void ControlBar::reset()
 
 	m_lastFlashedAtPointValue = -1;
 	m_genStarFlash = TRUE;
+
+	m_multiSelectQueueCache.clear();
 }
 
 //-------------------------------------------------------------------------------------------------
