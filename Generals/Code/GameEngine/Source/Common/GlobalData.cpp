@@ -552,6 +552,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 	{ "LaserGroundGlowFalloff",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowFalloff ) },
 	{ "LaserGroundGlowWrap",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowWrap ) },
 	{ "LaserGroundGlowDebug",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowDebug ) },
+	{ "LaserGroundGlowOverlap",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowOverlap ) },
 
 	{ nullptr,					nullptr,						nullptr,						0 }
 
@@ -637,6 +638,7 @@ GlobalData::GlobalData()
   m_laserGlowFalloff = 2.0f;
   m_laserGlowWrap = 0.5f;
   m_laserGlowDebug = FALSE;
+  m_laserGlowOverlap = TRUE;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_smartSelectionUseMouse = TRUE;

@@ -364,12 +364,20 @@ Higher gives a tight bright core, lower a broad wash.)
 only slopes facing it, 1 lights all ground evenly.)
 * `LaserGroundGlowDebug = No` - (Yes darkens the ground by as much as the glow would light it, so the
 light's reach and shape show as a shadow.)
+* `LaserGroundGlowOverlap = Yes` - (Yes lights the ground under overlapping beams in one pass, so the
+overlap brightens modestly. No lights each beam on its own, and overlaps compound.)
 
 Notes:
 * The light lights the ground's own colour, measured against the map's terrain lighting, so red
 ground turns redder and a dark night map lights up as much as a bright day.
 * The light reaches `GroundGlowRadius` on the module, else `LaserGroundGlowRadius`, else 1.25 times
 the laser's `OuterBeamWidth`, at least 15. It is counted from the beam in three dimensions.
+* Beams whose glows overlap light the ground together. Each colour channel takes the root of the sum
+of the beams' squared light, so two equal beams light 1.4 times as much as one, three light 1.7
+times, and crossing beams leave no crease. A lone beam lights as before.
+* Up to seven overlapping beams combine. Past that, the seven brightest light the spot and the rest
+go dark. Combining needs a shader model 2.0a card. Without one, or when the overlap covers too much
+ground for one draw, each beam lights on its own.
 * Lasers no longer take dynamic lights, so the per-pixel lights stay free for explosions and
 muzzle flashes.
 * Water covers the glow on ground beneath it. Units and buildings are not lit.

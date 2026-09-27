@@ -420,6 +420,9 @@ Notes:
 * Each light's reach is `GroundGlowRadius` on the module, else `LaserGroundGlowRadius`, else the
 laser's `OuterBeamWidth`, at least 15, plus a 6 unit soft edge. Long beams spread and dim their twelve lights.
 * The terrain takes up to 64 dynamic lights a frame, of all kinds.
+* In the Direct3D 9 build, beams whose glows overlap light the ground together, so a spot several
+lasers hit brightens modestly instead of compounding. `LaserGroundGlowOverlap = No` in
+`GameData.ini` lights each beam on its own. See [Laser ground glow](dx9feat.md#laser-ground-glow).
 
 # ParticleSystem.ini
 
