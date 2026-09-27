@@ -504,7 +504,13 @@ HRESULT Filter_Texture_Mipmaps(IDirect3DTexture8* texture)
 				BitmapHandlerClass::Read_B8G8R8A8(p10,row1+src_x0*bpp,format,nullptr,0);
 				BitmapHandlerClass::Read_B8G8R8A8(p11,row1+src_x1*bpp,format,nullptr,0);
 
-				const unsigned averaged=BitmapHandlerClass::Combine_A8R8G8B8(p00,p01,p10,p11);
+				// Rounded per channel; Combine_A8R8G8B8 drops each sample's low bits and never reaches 255
+				unsigned averaged=0;
+				for (unsigned shift=0; shift<32; shift+=8)
+				{
+					const unsigned sum=((p00>>shift)&255)+((p01>>shift)&255)+((p10>>shift)&255)+((p11>>shift)&255);
+					averaged|=((sum+2)/4)<<shift;
+				}
 				BitmapHandlerClass::Write_B8G8R8A8(dest_row+x*bpp,format,averaged);
 			}
 		}
