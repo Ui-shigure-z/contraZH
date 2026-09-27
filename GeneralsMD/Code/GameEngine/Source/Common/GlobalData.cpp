@@ -1633,9 +1633,10 @@ static void parseIgnoredField( INI* ini, void *instance, void *store, const void
 {
 	if (ini->getNextTokenOrNull() == nullptr)
 	{
-		static const FieldParse noFields[] = { { nullptr, nullptr, nullptr, 0 } };
+		// The catch-all entry takes every field inside, so none reads as unknown.
+		static const FieldParse anyField[] = { { nullptr, parseIgnoredField, nullptr, 0 } };
 		Int unused = 0;
-		ini->initFromINI( &unused, noFields );
+		ini->initFromINI( &unused, anyField );
 	}
 }
 

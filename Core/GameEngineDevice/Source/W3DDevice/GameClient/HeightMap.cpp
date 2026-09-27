@@ -343,9 +343,7 @@ Int HeightMapRenderObjClass::getTileRow(Int y)
 //=============================================================================
 // HeightMapRenderObjClass::assignPixelLights
 //=============================================================================
-/** Each VB tile draws in one call, so it takes up to MAX_PIXEL_LIGHTS lights of
-its own. The lights nearest the middle of the view go first, each only where every
-tile it reaches has room, and leave the vertex lighting. The rest stay in it. */
+/** A light leaves the vertex lighting only when every VB tile it reaches has a slot left. */
 //=============================================================================
 void HeightMapRenderObjClass::assignPixelLights(RefRenderObjListIterator &lights)
 {

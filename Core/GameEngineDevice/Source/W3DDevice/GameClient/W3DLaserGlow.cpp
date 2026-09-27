@@ -56,6 +56,9 @@ static const Real GLOW_LIFT = MAP_XY_FACTOR / 10.0f;
 // A footprint past this many heightmap samples is left dark.
 static const Int MAX_GLOW_SAMPLES = 16384;
 
+// The dynamic index buffer counts in 16 bits, so a footprint lighting more cells than this is left dark too.
+static const Int MAX_GLOW_CELLS = 0xffff / 6;
+
 // Scene light below this is treated as this, so the glow on black ground stays in bounds.
 static const Real MIN_SCENE_LIGHT = 0.15f;
 
@@ -227,7 +230,7 @@ void W3DLaserGlow::drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3
 			}
 		}
 	}
-	if (cells == 0)
+	if (cells == 0 || cells > MAX_GLOW_CELLS)
 	{
 		return;
 	}

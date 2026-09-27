@@ -2273,19 +2273,21 @@ Int RTS3DScene::pickObjectPixelLights(const SphereClass &sphere, Int *lights)
 	Real scores[W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS];
 	Int count = 0;
 
-	RefRenderObjListIterator it(&m_dynamicLightList);
-	for (it.First(); !it.Is_Done(); it.Next())
+	const Int candidates = W3DShaderManager::getPixelLightCount();
+	for (Int index = 0; index < candidates; index++)
 	{
-		W3DDynamicLight *light = (W3DDynamicLight *)it.Peek_Obj();
-		const Int index = light->getPixelIndex();
-		if (index < 0 || !light->isEnabled() || light->isTerrainOnly() || !Spheres_Intersect(sphere, light->Get_Bounding_Sphere()))
+		const W3DShaderManager::PixelLight &pixelLight = W3DShaderManager::getPixelLight(index);
+		if (pixelLight.terrainOnly)
 		{
 			continue;
 		}
 
 		// Brightness at the sphere's nearest point, with the shader's falloff.
-		const W3DShaderManager::PixelLight &pixelLight = W3DShaderManager::getPixelLight(index);
 		const Real distance = max((pixelLight.position - sphere.Center).Length() - sphere.Radius, 0.0f);
+		if (distance >= pixelLight.outerRadius)
+		{
+			continue;
+		}
 		const Real falloff = WWMath::Clamp((pixelLight.outerRadius - distance) / (pixelLight.outerRadius - pixelLight.innerRadius), 0.0f, 1.0f);
 		const Real brightness = max(pixelLight.diffuse.X, max(pixelLight.diffuse.Y, pixelLight.diffuse.Z)) * (1.0f + pixelLight.ambientScale);
 		const Real score = falloff * brightness;

@@ -248,7 +248,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 			hasAdditive = TRUE;
 		}
 
-		if (!hasFlame && sys->isUsingParticles() && !sys->shouldConformToTerrain() && systemEffects(*sys, DRAW_HAZE) != 0)
+		// matches the haze pass, which skips only systems drawn as terrain-conforming meshes
+		const Bool conformsToTerrain = !sys->shouldBillboard() && sys->getVolumeParticleDepth() == 0 && sys->shouldConformToTerrain();
+		if (!hasFlame && sys->isUsingParticles() && !conformsToTerrain && systemEffects(*sys, DRAW_HAZE) != 0)
 		{
 			hasFlame = TRUE;
 		}
@@ -324,7 +326,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 // in every pass but the haze, and a system that is both is a flame. A multiplied sprite has no light to shade.
 unsigned W3DParticleSystemManager::systemEffects(ParticleSystem &system, DrawPass pass)
 {
-	if (system.getShaderType() == ParticleSystemInfo::MULTIPLY || TheW3DSoftParticles == nullptr)
+	// Point groups never hand alpha-tested sprites to the hook, so the haze pass would draw them plain.
+	if (system.getShaderType() == ParticleSystemInfo::MULTIPLY || system.getShaderType() == ParticleSystemInfo::ALPHA_TEST ||
+		TheW3DSoftParticles == nullptr)
 	{
 		return 0;
 	}
