@@ -487,7 +487,6 @@ public:
 	static IDirect3DVolumeTexture8* _Peek_Lockable_Texture(IDirect3DVolumeTexture8* texture) { return (IDirect3DVolumeTexture8*)_Peek_Lockable_Texture((IDirect3DBaseTexture8*)texture); }
 	static void _Upload_Lockable_Texture(IDirect3DBaseTexture8* texture, bool whole_texture=true);
 
-	// True when the device is a D3D9Ex device
 	static bool Is_Ex() { return IsEx; }
 
 	// The scene's depth as a readable INTZ texture, and its surface, or null when the scene has none

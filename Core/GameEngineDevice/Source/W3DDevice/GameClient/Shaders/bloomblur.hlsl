@@ -1,8 +1,4 @@
-// One bloom pass, shrink or blur, as the weighted sum of five taps of the source.
-//
-// Summing here instead of blending one quad per tap keeps the running total in float, so
-// no tap is rounded to the target's 8 bits. Each tap is (u offset, v offset, weight, unused);
-// a pass with fewer taps gives the rest zero weight.
+// Summing in float keeps each tap off the target's 8 bits; a tap is (u offset, v offset, weight, unused)
 
 sampler2D Source : register(s0);
 float4 Taps[5] : register(c0);

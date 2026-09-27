@@ -279,6 +279,7 @@ Bool W3DBloom::begin(RenderInfoClass &rinfo, Bool anythingToDraw)
 			(Int)targetDesc.MultiSampleType, sampleQuality))
 		{
 			releaseDefaults();
+			m_disabled = true;
 			return false;
 		}
 	}
