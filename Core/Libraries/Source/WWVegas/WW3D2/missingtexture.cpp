@@ -106,7 +106,7 @@ void MissingTexture::_Init()
 			*buffer++=MISSING_TEXTURE_COLOR;
 		}
 		buffer=(unsigned*)locked_rect.pBits;
-		buffer+=locked_rect.Pitch/sizeof(unsigned)*y;
+		buffer+=locked_rect.Pitch/sizeof(unsigned)*(y+1);
 	}
 
 	DX8_ErrorCode(lockable->UnlockRect(0));

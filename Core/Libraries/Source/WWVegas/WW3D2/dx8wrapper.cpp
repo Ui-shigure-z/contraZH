@@ -3500,10 +3500,11 @@ IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(unsigned int width, unsigned
 	WWASSERT(format!=D3DFMT_P8);
 
 #if defined(BUILD_WITH_D3D9)
-	// SCRATCH would match CreateImageSurface most closely, but the device cannot
-	// touch a scratch surface, and callers such as the shroud both lock these and
-	// use them as a copy source. SYSTEMMEM allows both.
-	DX8CALL(CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SYSTEMMEM, &surface, nullptr));
+	// SYSTEMMEM lets the device copy from the surface; SCRATCH takes the formats it rejects, such as DXT and A8
+	if (FAILED(_Get_D3D_Device8()->CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SYSTEMMEM, &surface, nullptr)))
+	{
+		DX8CALL(CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SCRATCH, &surface, nullptr));
+	}
 #else
 	DX8CALL(CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface));
 #endif
@@ -3634,9 +3635,8 @@ HRESULT DX8Wrapper::_Copy_DX8_Rects(
 		const RECT& src_rect = pSourceRectsArray[i];
 		const POINT dest_point = pDestPointsArray ? pDestPointsArray[i] : origin;
 
-		// Reading a render target back to the CPU is its own call in D3D9, and it
-		// copies whole surfaces only. A sub-rect goes through a full-size copy first.
-		if ((src_desc.Usage & D3DUSAGE_RENDERTARGET) && dest_desc.Pool == D3DPOOL_SYSTEMMEM)
+		// GetRenderTargetData only copies whole surfaces into system memory, so anything else is staged through one
+		if ((src_desc.Usage & D3DUSAGE_RENDERTARGET) && dest_desc.Pool != D3DPOOL_DEFAULT)
 		{
 			// GetRenderTargetData cannot read a multisampled surface, so it is resolved first
 			IDirect3DSurface8* source = pSourceSurface;
@@ -3651,7 +3651,8 @@ HRESULT DX8Wrapper::_Copy_DX8_Rects(
 				}
 			}
 
-			const bool whole = src_rect.left == 0 && src_rect.top == 0 && dest_point.x == 0 && dest_point.y == 0 &&
+			const bool whole = dest_desc.Pool == D3DPOOL_SYSTEMMEM &&
+				src_rect.left == 0 && src_rect.top == 0 && dest_point.x == 0 && dest_point.y == 0 &&
 				(UINT)src_rect.right == src_desc.Width && (UINT)src_rect.bottom == src_desc.Height &&
 				dest_desc.Width == src_desc.Width && dest_desc.Height == src_desc.Height &&
 				dest_desc.Format == src_desc.Format;

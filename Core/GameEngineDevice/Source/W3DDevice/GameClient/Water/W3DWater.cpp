@@ -5336,7 +5336,10 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 		return;
 	}
 
-	if (m_riverWaterPixelShader) DX8Wrapper::Set_Pixel_Shader(0);
+	if (m_trapezoidWaterPixelShader)
+	{
+		DX8Wrapper::Set_Pixel_Shader(0);
+	}
 	//Restore alpha blend to default values since we may have changed them to feather edges.
 	if (!TheWaterTransparency->m_additiveBlend)
 	{	DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA );
