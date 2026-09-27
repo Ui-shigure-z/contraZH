@@ -2232,7 +2232,9 @@ void WorldHeightMap::setTextureLOD(Int lod)
 	if (m_terrainTex)
 		m_terrainTex->setLOD(lod);
 	if (m_terrainNormalTex)
+	{
 		m_terrainNormalTex->setLOD(lod);
+	}
 	if (m_terrainHeightTex)
 	{
 		m_terrainHeightTex->setLOD(lod);

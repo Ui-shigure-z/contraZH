@@ -1664,6 +1664,7 @@ static void End_Draw_Pixel_Lights()
 
 // The terrain normal maps, set once a frame by the scene.
 static Bool TerrainBumpEnabled = FALSE;
+static Bool TerrainBumpSupported = FALSE;
 static Real TerrainBumpStrength = 1.0f;
 static Bool TerrainBumpDebug = FALSE;
 static Int TerrainBumpCount = 0;
@@ -1787,14 +1788,15 @@ void ShadowDepthShader::applyOverride(const ShaderClass &shader)
 	Bool cutout = FALSE;
 	Bool inverted = (src == ShaderClass::SRCBLEND_ONE_MINUS_SRC_ALPHA);
 
-	if (shader.Uses_Alpha())
+	// Additive and multiplied passes are glows and effects, which cast nothing, even when they fade by alpha.
+	if (src == ShaderClass::SRCBLEND_ZERO || dst == ShaderClass::DSTBLEND_ONE ||
+		dst == ShaderClass::DSTBLEND_SRC_COLOR || dst == ShaderClass::DSTBLEND_ONE_MINUS_SRC_COLOR)
+	{
+		casts = FALSE;
+	}
+	else if (shader.Uses_Alpha())
 	{
 		cutout = TRUE;
-	}
-	else if (src != ShaderClass::SRCBLEND_ONE || dst != ShaderClass::DSTBLEND_ZERO)
-	{
-		// Additive and multiplied passes are glows and effects, which cast nothing.
-		casts = FALSE;
 	}
 
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, casts);
@@ -2797,6 +2799,11 @@ void W3DShaderManager::setTerrainBumps(Bool enabled, Real strength, Bool debug)
 	TerrainBumpDebug = debug;
 }
 
+Bool W3DShaderManager::wantsTerrainNormalAtlas()
+{
+	return TerrainBumpEnabled && TerrainBumpSupported;
+}
+
 Bool W3DShaderManager::supportsPixelShader2a()
 {
 #if defined(BUILD_WITH_D3D9)
@@ -3346,7 +3353,9 @@ Int TerrainShaderPixelShader::shutdown()
 	for (Int i=0; i<3; i++)
 	{
 		if (m_dwShadowPixelShader[i])
+		{
 			DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[i]);
+		}
 		m_dwShadowPixelShader[i]=0;
 	}
 
@@ -3361,6 +3370,7 @@ Int TerrainShaderPixelShader::shutdown()
 			m_dwBumpPixelShader[s][i]=0;
 		}
 	}
+	TerrainBumpSupported = FALSE;
 
 	for (Int b=0; b<2; b++)
 	{
@@ -3400,49 +3410,68 @@ Int TerrainShaderPixelShader::shutdown()
 	return TRUE;
 }
 
-void TerrainShaderPixelShader::initShadowReceiver()
+// Loads the shadow receiving variants of one legacy shader, indexed by noise texture count, or none of them.
+// A missing variant only turns the shadows off, since the legacy shader still draws.
+static void Load_Shadow_Receiver_Shaders(const char *const files[3][2], DWORD shaders[3])
 {
 	for (Int i=0; i<3; i++)
-		m_dwShadowPixelShader[i]=0;
-	m_shadowStage = -1;
+	{
+		shaders[i]=0;
+	}
 
 #if defined(BUILD_WITH_D3D9)
 	if (TheW3DShadowMap == nullptr || !TheW3DShadowMap->isAvailable())
+	{
 		return;
+	}
 
 	const Bool packed = TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	const char *files[3][2] =
+	for (Int i=0; i<3; i++)
+	{
+		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &shaders[i])))
+		{
+			for (Int j=0; j<i; j++)
+			{
+				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), shaders[j]);
+			}
+			for (Int j=0; j<3; j++)
+			{
+				shaders[j]=0;
+			}
+			return;
+		}
+	}
+#else
+	(void)files;
+#endif
+}
+
+void TerrainShaderPixelShader::initShadowReceiver()
+{
+	static const char *const files[3][2] =
 	{
 		{ "shaders\\terrainshadow.pso",       "shaders\\terrainshadowpacked.pso" },
 		{ "shaders\\terrainshadownoise.pso",  "shaders\\terrainshadownoisepacked.pso" },
 		{ "shaders\\terrainshadownoise2.pso", "shaders\\terrainshadownoise2packed.pso" }
 	};
-
-	for (Int i=0; i<3; i++)
-	{
-		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &m_dwShadowPixelShader[i])))
-		{
-			// Terrain still draws without shadows, so a missing variant only turns them off.
-			for (Int j=0; j<i; j++)
-				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[j]);
-			for (Int j=0; j<3; j++)
-				m_dwShadowPixelShader[j]=0;
-			return;
-		}
-	}
-#endif
+	Load_Shadow_Receiver_Shaders(files, m_dwShadowPixelShader);
+	m_shadowStage = -1;
 }
 
 Bool TerrainShaderPixelShader::setShadowReceiver(Int noiseCount)
 {
 	if (m_dwShadowPixelShader[noiseCount] == 0 || TheW3DShadowMap == nullptr)
+	{
 		return FALSE;
+	}
 
 	// The first stage after the base, blend and noise textures. Fixed-function vertex
 	// processing hands out texcoord sets in stage order, so this is the set the shader reads.
 	const Int stage = 2 + noiseCount;
 	if (!TheW3DShadowMap->bindReceiver(stage))
+	{
 		return FALSE;
+	}
 
 	m_shadowStage = stage;
 	DX8Wrapper::Set_Pixel_Shader(m_dwShadowPixelShader[noiseCount]);
@@ -3459,6 +3488,7 @@ void TerrainShaderPixelShader::initBump()
 		}
 	}
 	m_bumpStage = -1;
+	TerrainBumpSupported = FALSE;
 
 #if defined(BUILD_WITH_D3D9)
 	const DX8Caps *caps = DX8Wrapper::Get_Current_Caps();
@@ -3491,6 +3521,10 @@ void TerrainShaderPixelShader::initBump()
 		if (shadowMap && FAILED(W3DShaderManager::LoadAndCreateD3DShader(shadowedFiles[i][packed ? 1 : 0], nullptr, 0, false, &m_dwBumpPixelShader[1][i])))
 		{
 			m_dwBumpPixelShader[1][i]=0;
+		}
+		if (m_dwBumpPixelShader[0][i] != 0 || m_dwBumpPixelShader[1][i] != 0)
+		{
+			TerrainBumpSupported = TRUE;
 		}
 	}
 #endif
@@ -3949,7 +3983,9 @@ Int TerrainShaderPixelShader::set(Int pass)
 void TerrainShaderPixelShader::reset()
 {
 	if (TheW3DShadowMap != nullptr && m_shadowStage >= 0)
+	{
 		TheW3DShadowMap->unbindReceiver(m_shadowStage);
+	}
 	m_shadowStage = -1;
 
 	if (m_bumpStage >= 0)
@@ -4179,7 +4215,9 @@ Int RoadShaderPixelShader::shutdown()
 	for (Int i=0; i<3; i++)
 	{
 		if (m_dwShadowPixelShader[i])
+		{
 			DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[i]);
+		}
 		m_dwShadowPixelShader[i]=0;
 		if (m_dwPlainPixelShader[i])
 		{
@@ -4202,35 +4240,14 @@ Int RoadShaderPixelShader::shutdown()
 
 void RoadShaderPixelShader::initShadowReceiver()
 {
-	for (Int i=0; i<3; i++)
-		m_dwShadowPixelShader[i]=0;
-	m_shadowStage = -1;
-
-#if defined(BUILD_WITH_D3D9)
-	if (TheW3DShadowMap == nullptr || !TheW3DShadowMap->isAvailable())
-		return;
-
-	const Bool packed = TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	const char *files[3][2] =
+	static const char *const files[3][2] =
 	{
 		{ "shaders\\roadshadow.pso",       "shaders\\roadshadowpacked.pso" },
 		{ "shaders\\roadshadownoise.pso",  "shaders\\roadshadownoisepacked.pso" },
 		{ "shaders\\roadshadownoise2.pso", "shaders\\roadshadownoise2packed.pso" }
 	};
-
-	for (Int i=0; i<3; i++)
-	{
-		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &m_dwShadowPixelShader[i])))
-		{
-			// Roads still draw without shadows, so a missing variant only turns them off.
-			for (Int j=0; j<i; j++)
-				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[j]);
-			for (Int j=0; j<3; j++)
-				m_dwShadowPixelShader[j]=0;
-			return;
-		}
-	}
-#endif
+	Load_Shadow_Receiver_Shaders(files, m_dwShadowPixelShader);
+	m_shadowStage = -1;
 }
 
 void RoadShaderPixelShader::initPixelLights()
@@ -4381,9 +4398,13 @@ Bool RoadShaderPixelShader::setPixelPath()
 
 		D3DMATRIX textureTransform = curView;
 		if (isCloud)
+		{
 			terrainShader2Stage.updateNoise1(&textureTransform, &inv, false);
+		}
 		else
+		{
 			terrainShader2Stage.updateNoise2(&textureTransform, &inv, false);
+		}
 
 		// White stands in for missing clouds, and the ground noise for the light map.
 		TextureClass *texture = W3DShaderManager::getShaderTexture(isCloud ? 1 : 2);
@@ -4533,7 +4554,9 @@ Int RoadShaderPixelShader::set(Int pass)
 void RoadShaderPixelShader::reset()
 {
 	if (TheW3DShadowMap != nullptr && m_shadowStage >= 0)
+	{
 		TheW3DShadowMap->unbindReceiver(m_shadowStage);
+	}
 	m_shadowStage = -1;
 	m_lightStage = -1;
 	if (m_pixelPath)

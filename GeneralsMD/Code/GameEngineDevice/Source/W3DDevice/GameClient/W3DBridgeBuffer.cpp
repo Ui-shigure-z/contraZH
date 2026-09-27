@@ -63,6 +63,7 @@
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8wrapper.h"
@@ -1181,7 +1182,7 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 
 	// Bridges light fixed function, so they receive the sun's shadow as a second pass
 	// that multiplies it into the first, set up the same way as the shroud pass below.
-	if (!wireframe && W3DShaderManager::getShaderPasses(W3DShaderManager::ST_SHADOW_MULTIPLY) > 0)
+	if (!wireframe && m_numBridges > 0 && TheW3DShadowMap != nullptr && TheW3DShadowMap->getReceivePass() != nullptr)
 	{
 		DX8Wrapper::Invalidate_Cached_Render_States();
 		DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);

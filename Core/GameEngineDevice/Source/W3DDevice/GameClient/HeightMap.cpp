@@ -2232,9 +2232,9 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
  		W3DShaderManager::setTexture(1,m_stageZeroTexture);
  		W3DShaderManager::setTexture(2,m_stageTwoTexture);	//cloud
  		W3DShaderManager::setTexture(3,m_stageThreeTexture);//noise
- 		// The reflection pass mirrors the view, and its terrain stays flat.
+ 		// The reflection pass mirrors the view, and its terrain stays flat. The atlas is built only once a shader can read it.
  		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_NORMAL_TEXTURE,
- 			ShaderClass::Is_Backface_Culling_Inverted() ? nullptr : m_map->getTerrainNormalTexture());
+ 			(ShaderClass::Is_Backface_Culling_Inverted() || !W3DShaderManager::wantsTerrainNormalAtlas()) ? nullptr : m_map->getTerrainNormalTexture());
 		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
 		//Disable writes to destination alpha channel (if there is one)
 		if (DX8Wrapper::getBackBufferFormat() == WW3D_FORMAT_A8R8G8B8)
@@ -2457,7 +2457,6 @@ void HeightMapRenderObjClass::renderLightingModifierOverlay(void)
 	ShaderClass::Invalidate();
 }
 
-///Performs additional terrain rendering pass, blending in the black shroud texture.
 // The shadow map's depth pass overrides the rest of the state, so an opaque shader is
 // enough to mark the terrain as a solid caster.
 void HeightMapRenderObjClass::renderShadowMapCaster()
@@ -2469,6 +2468,7 @@ void HeightMapRenderObjClass::renderShadowMapCaster()
 	renderTerrainPass(nullptr);
 }
 
+///Performs additional terrain rendering pass, blending in the black shroud texture.
 void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 {
 	DX8Wrapper::Set_Transform(D3DTS_WORLD,Matrix3D(true));

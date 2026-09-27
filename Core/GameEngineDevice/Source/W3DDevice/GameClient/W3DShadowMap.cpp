@@ -32,6 +32,7 @@
 #include "WWMath/sphere.h"
 #include "WWMath/wwmath.h"
 #include "Common/Debug.h"
+#include "GameClient/Color.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/BaseHeightMap.h"
 
@@ -98,6 +99,7 @@ W3DShadowMap::W3DShadowMap()
 	  m_colorTarget(nullptr),
 	  m_depthTarget(nullptr),
 	  m_nullTarget(nullptr),
+	  m_packedDepth(nullptr),
 	  m_cullCamera(nullptr),
 	  m_fittedCenter(0.0f, 0.0f, 0.0f),
 	  m_lightDirection(0.0f, 0.0f, -1.0f),
@@ -135,6 +137,11 @@ void W3DShadowMap::ReleaseResources()
 	{
 		m_nullTarget->Release();
 		m_nullTarget = nullptr;
+	}
+	if (m_packedDepth != nullptr)
+	{
+		m_packedDepth->Release();
+		m_packedDepth = nullptr;
 	}
 	m_depthMode = DEPTH_MODE_NONE;
 	m_hasDepth = FALSE;
@@ -185,9 +192,14 @@ Bool W3DShadowMap::ReAcquireResources()
 			(m_resolution, m_resolution, WW3D_ZFORMAT_D24S8, MIP_LEVELS_1,
 			 TextureBaseClass::POOL_DEFAULT));
 
-		if (m_depthTarget != nullptr)
+		// The object exists even when the device ran out of memory for its texture.
+		if (m_depthTarget != nullptr && m_depthTarget->Peek_D3D_Base_Texture() != nullptr)
 		{
 			m_depthMode = DEPTH_MODE_HARDWARE;
+		}
+		else
+		{
+			REF_PTR_RELEASE(m_depthTarget);
 		}
 	}
 
@@ -218,6 +230,20 @@ Bool W3DShadowMap::ReAcquireResources()
 	if (m_depthMode == DEPTH_MODE_NONE)
 	{
 		// Fall back to encoding depth into the colour target.
+#if defined(BUILD_WITH_D3D9)
+		const D3DFORMAT depthFormats[2] = { D3DFMT_D24S8, D3DFMT_D16 };
+		for (Int i = 0; i < 2 && m_packedDepth == nullptr; ++i)
+		{
+			DX8Wrapper::_Get_D3D_Device8()->CreateDepthStencilSurface(m_resolution, m_resolution,
+				depthFormats[i], D3DMULTISAMPLE_NONE, 0, FALSE, &m_packedDepth, nullptr);
+		}
+#endif
+		if (m_packedDepth == nullptr)
+		{
+			ReleaseResources();
+			RENDER_LOG(("W3DShadowMap: no depth buffer for packed depth, falling back to legacy shadows"));
+			return FALSE;
+		}
 		m_depthMode = DEPTH_MODE_PACKED;
 	}
 
@@ -373,7 +399,10 @@ void W3DShadowMap::updateFrustum(const CameraClass& camera, const Vector3& light
 
 	// Quantise so a small zoom leaves the extent alone.
 	radius = WWMath::Ceil(radius / SHADOW_RADIUS_STEP) * SHADOW_RADIUS_STEP;
-	if (radius < SHADOW_RADIUS_MIN) radius = SHADOW_RADIUS_MIN;
+	if (radius < SHADOW_RADIUS_MIN)
+	{
+		radius = SHADOW_RADIUS_MIN;
+	}
 	if (radius > SHADOW_RADIUS_MAX)
 	{
 		radius = SHADOW_RADIUS_MAX;
@@ -443,9 +472,8 @@ Bool W3DShadowMap::isCasterShadowInView(const SphereClass& bounds) const
 
 void W3DShadowMap::setShadowColor(UnsignedInt argb)
 {
-	m_shadowColor.Set((Real)((argb >> 16) & 0xff) / 255.0f,
-		(Real)((argb >> 8) & 0xff) / 255.0f,
-		(Real)(argb & 0xff) / 255.0f);
+	Real alpha;
+	GameGetColorComponentsReal(argb, &m_shadowColor.X, &m_shadowColor.Y, &m_shadowColor.Z, &alpha);
 }
 
 Bool W3DShadowMap::bindReceiver(Int stage) const
@@ -583,6 +611,12 @@ void W3DShadowMap::renderDepthPass(RenderInfoClass& rinfo)
 		DX8Wrapper::Set_Render_Target(m_nullTarget, depthSurface);
 		depthSurface->Release();
 	}
+	else if (m_packedDepth != nullptr)
+	{
+		IDirect3DSurface8 *colorSurface = m_colorTarget->Get_D3D_Surface_Level();
+		DX8Wrapper::Set_Render_Target(colorSurface, m_packedDepth);
+		colorSurface->Release();
+	}
 	else
 	{
 		DX8Wrapper::Set_Render_Target_With_Z(m_colorTarget, m_depthTarget);
@@ -616,12 +650,13 @@ void W3DShadowMap::renderDepthPass(RenderInfoClass& rinfo)
 
 	memset(&m_casterStats, 0, sizeof(m_casterStats));
 
-	if (TheW3DVolumetricShadowManager != nullptr)
+	// Each list casts only while its option is on, as the legacy shadows check every frame.
+	if (TheW3DVolumetricShadowManager != nullptr && TheGlobalData->m_useShadowVolumes)
 	{
 		TheW3DVolumetricShadowManager->renderShadowMapCasters(sunInfo);
 	}
 
-	if (TheW3DProjectedShadowManager != nullptr)
+	if (TheW3DProjectedShadowManager != nullptr && TheGlobalData->m_useShadowDecals)
 	{
 		TheW3DProjectedShadowManager->renderShadowMapCasters(sunInfo);
 	}

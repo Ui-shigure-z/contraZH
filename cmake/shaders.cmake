@@ -37,7 +37,7 @@ endif()
 message(STATUS "Shader compiler: ${RTS_FXC_EXECUTABLE}")
 set(RTS_SHADERS_AVAILABLE TRUE CACHE INTERNAL "")
 
-# Shaders land beside the binary, where the engine finds loose files before archives.
+# Shaders land in the build root's shaders folder, which is copied into the game folder with the exe.
 set(RTS_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${RTS_SHADER_OUTPUT_DIR}")
 

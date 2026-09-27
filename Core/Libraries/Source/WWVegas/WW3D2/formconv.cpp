@@ -626,8 +626,7 @@ static void Decode_DXT_Block(const unsigned char* block, WW3DFormat format, unsi
 }
 
 // Reads a rect of any readable or DXT surface as A8R8G8B8 texels, width*height of them
-static HRESULT Read_Surface_A8R8G8B8(IDirect3DSurface8* surface, const D3DSURFACE_DESC& desc, WW3DFormat format,
-	const RECT& rect, unsigned* out)
+static HRESULT Read_Surface_A8R8G8B8(IDirect3DSurface8* surface, WW3DFormat format, const RECT& rect, unsigned* out)
 {
 	const unsigned width=rect.right-rect.left;
 	const unsigned height=rect.bottom-rect.top;
@@ -642,20 +641,31 @@ static HRESULT Read_Surface_A8R8G8B8(IDirect3DSurface8* surface, const D3DSURFAC
 
 	if (compressed)
 	{
+		// Each block is decoded once and scattered to the texels of it inside the rect
 		const unsigned block_bytes=(format==WW3D_FORMAT_DXT1) ? 8 : 16;
 		unsigned texels[16];
-		for (unsigned y=0; y<height; ++y)
+		for (unsigned by=rect.top/4; by*4<(unsigned)rect.bottom; ++by)
 		{
-			for (unsigned x=0; x<width; ++x)
+			for (unsigned bx=rect.left/4; bx*4<(unsigned)rect.right; ++bx)
 			{
-				const unsigned sx=rect.left+x;
-				const unsigned sy=rect.top+y;
-				if ((sx&3)==0 || x==0)
+				const unsigned char* block=(const unsigned char*)locked.pBits+by*locked.Pitch+bx*block_bytes;
+				Decode_DXT_Block(block, format, texels);
+				for (unsigned ty=0; ty<4; ++ty)
 				{
-					const unsigned char* block=(const unsigned char*)locked.pBits+(sy/4)*locked.Pitch+(sx/4)*block_bytes;
-					Decode_DXT_Block(block, format, texels);
+					const unsigned sy=by*4+ty;
+					if (sy<(unsigned)rect.top || sy>=(unsigned)rect.bottom)
+					{
+						continue;
+					}
+					for (unsigned tx=0; tx<4; ++tx)
+					{
+						const unsigned sx=bx*4+tx;
+						if (sx>=(unsigned)rect.left && sx<(unsigned)rect.right)
+						{
+							out[(sy-rect.top)*width+(sx-rect.left)]=texels[ty*4+tx];
+						}
+					}
 				}
-				out[y*width+x]=texels[(sy&3)*4+(sx&3)];
 			}
 		}
 	}
@@ -712,7 +722,7 @@ HRESULT Load_Surface_From_Surface(
 	if (!dest_compressed && (src_compressed || src_area_width!=dest_area_width || src_area_height!=dest_area_height))
 	{
 		unsigned* src_texels=new unsigned[src_area_width*src_area_height];
-		HRESULT hr=Read_Surface_A8R8G8B8(src_surface, src_desc, src_format, src_area, src_texels);
+		HRESULT hr=Read_Surface_A8R8G8B8(src_surface, src_format, src_area, src_texels);
 		if (FAILED(hr))
 		{
 			delete[] src_texels;

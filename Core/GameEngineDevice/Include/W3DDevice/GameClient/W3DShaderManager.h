@@ -157,6 +157,8 @@ public:
 	/// Sets whether the terrain shaders read the normal atlas in TERRAIN_NORMAL_TEXTURE, and how strongly.
 	/// debug shows only the bump's shading, on grey.
 	static void setTerrainBumps(Bool enabled, Real strength, Bool debug);
+	/// Whether the terrain shaders will read the normal atlas, so the terrain should build and hand it over.
+	static Bool wantsTerrainNormalAtlas();
 	/// Sets a terrain stage's filters from the player's anisotropy or the mod's settings, whose mip is linear with bilinearMipLinear.
 	static void setTerrainTextureFilter(Int stage, Bool bilinearMipLinear);
 	/// Whether the terrain shaders can blend by height, so the terrain should hand over its height atlas.

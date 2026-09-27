@@ -1378,7 +1378,9 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 		{
 			// The shadow map draws real shadows instead. Markers and glows keep drawing here.
 			if (shadowMapActive && shadow->m_replacedByShadowMap)
+			{
 				continue;
+			}
 
 			if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled)
 			{
