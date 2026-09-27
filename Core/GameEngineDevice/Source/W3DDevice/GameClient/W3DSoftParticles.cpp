@@ -156,10 +156,8 @@ void W3DSoftParticles::beginPass(RenderInfoClass &rinfo)
 {
 	rinfo.Camera.Apply();
 
-	// Apply holds the view in the wrapper until the next state flush, so the device may still have another pass's.
-	Matrix4x4 cachedView;
-	DX8Wrapper::Get_Transform(D3DTS_VIEW, cachedView);
-	m_view = To_D3DMATRIX(cachedView);
+	// Apply defers the view to the next state flush, so it is read from the camera, not the device.
+	m_view = To_D3DMATRIX(rinfo.Camera.Get_View_Matrix());
 	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
 	device->GetTransform(D3DTS_PROJECTION, &m_projection);
 
