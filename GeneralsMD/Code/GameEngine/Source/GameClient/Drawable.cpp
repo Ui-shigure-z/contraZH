@@ -419,6 +419,31 @@ struct HealthString
 static HealthString s_healthStrings[ HEALTH_STRING_COUNT ];
 static UnsignedInt s_healthStringClock = 0;
 
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+// The one string every debug overlay line is drawn with, made on first use by getOverlayString.
+static DisplayString *s_nameString = nullptr;
+#endif
+
+//-------------------------------------------------------------------------------------------------
+// Small on purpose: health text and the debug overlays can be on over every unit on screen at once.
+//-------------------------------------------------------------------------------------------------
+static DisplayString *newSmallDisplayString()
+{
+	DisplayString *str = TheDisplayStringManager->newDisplayString();
+	if( str == nullptr )
+	{
+		return nullptr;
+	}
+
+	Int pointSize = 6;
+	if( TheGlobalLanguageData )
+	{
+		pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
+	}
+	str->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
+	return str;
+}
+
 //-------------------------------------------------------------------------------------------------
 static DisplayString *getHealthString( const UnicodeString& text )
 {
@@ -443,20 +468,11 @@ static DisplayString *getHealthString( const UnicodeString& text )
 
 	if( slot->string == nullptr )
 	{
-		slot->string = TheDisplayStringManager->newDisplayString();
+		slot->string = newSmallDisplayString();
 		if( slot->string == nullptr )
 		{
 			return nullptr;
 		}
-
-		// Small on purpose: in Always mode this is drawn over every unit on screen at once, so it
-		// has to annotate the bar rather than compete with it.
-		Int pointSize = 6;
-		if( TheGlobalLanguageData )
-		{
-			pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-		}
-		slot->string->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
 	}
 
 	slot->string->setText( text );
@@ -481,6 +497,14 @@ static DisplayString *getHealthString( const UnicodeString& text )
 		s_healthStrings[ i ].lastUsed = 0;
 	}
 	s_healthStringClock = 0;
+
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	if( s_nameString != nullptr && TheDisplayStringManager != nullptr )
+	{
+		TheDisplayStringManager->freeDisplayString( s_nameString );
+	}
+	s_nameString = nullptr;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3038,25 +3062,15 @@ static Int s_laserOverlaySlotCount = 0;
 static UnsignedInt s_laserOverlayFrame = 0;
 
 //-------------------------------------------------------------------------------------------------
-// The small font shared by every debug overlay string.
+// The string shared by every debug overlay line; killStaticDisplayStrings returns it to the manager.
 //-------------------------------------------------------------------------------------------------
-static DisplayString *newOverlayString()
+static DisplayString *getOverlayString()
 {
-	DisplayString *str = TheDisplayStringManager->newDisplayString();
-	if( str == nullptr )
+	if( s_nameString == nullptr )
 	{
-		return nullptr;
+		s_nameString = newSmallDisplayString();
 	}
-
-	// Same size as the numerical health text: this can be on over every object on screen at
-	// once, so it has to stay small enough to read as an annotation.
-	Int pointSize = 6;
-	if( TheGlobalLanguageData )
-	{
-		pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-	}
-	str->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
-	return str;
+	return s_nameString;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3296,12 +3310,9 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 	// One shared string for every drawable. The text differs per object so it is rebuilt on each
 	// use rather than cached; it stays static only to avoid allocating a display string per frame
 	// per object, which with the overlay on would be thousands of allocations a second.
-	static DisplayString *s_nameString = nullptr;
-	if( s_nameString == nullptr )
+	if( getOverlayString() == nullptr )
 	{
-		s_nameString = newOverlayString();
-		if( s_nameString == nullptr )
-			return;
+		return;
 	}
 
 	const Color textColor = GameMakeColor( 255, 255, 255, 255 );
@@ -3604,7 +3615,6 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 
 //-------------------------------------------------------------------------------------------------
 // Draw the laser's template name and its W3DLaserDraw module tags at the middle of the beam.
-// Toggled by the Ctrl+, and Ctrl+. cheats.
 //-------------------------------------------------------------------------------------------------
 Bool Drawable::drawDebugLaserOverlay()
 {
@@ -3620,24 +3630,18 @@ Bool Drawable::drawDebugLaserOverlay()
 		return FALSE;
 	}
 
-	AsciiString blockNames[ MAX_OVERLAY_LASER_BLOCK_LINES ];
+	// keyToName scans the whole name table, so only the lines drawn look their tags up.
+	NameKeyType blockKeys[ MAX_OVERLAY_LASER_BLOCK_LINES ];
 	Int blockCount = 0;
-	Bool isLaser = FALSE;
-	for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm; ++dm )
+	for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm && blockCount < MAX_OVERLAY_LASER_BLOCK_LINES; ++dm )
 	{
-		if( (*dm)->getLaserDrawInterface() == nullptr )
+		if( (*dm)->getLaserDrawInterface() != nullptr )
 		{
-			continue;
-		}
-
-		isLaser = TRUE;
-		if( blockCount < MAX_OVERLAY_LASER_BLOCK_LINES )
-		{
-			blockNames[ blockCount++ ] = TheNameKeyGenerator->keyToName( (*dm)->getModuleTagNameKey() );
+			blockKeys[ blockCount++ ] = (*dm)->getModuleTagNameKey();
 		}
 	}
 
-	if( !isLaser )
+	if( blockCount == 0 )
 	{
 		return FALSE;
 	}
@@ -3661,19 +3665,15 @@ Bool Drawable::drawDebugLaserOverlay()
 		return TRUE;
 	}
 
-	static DisplayString *s_laserString = nullptr;
-	if( s_laserString == nullptr )
+	if( getOverlayString() == nullptr )
 	{
-		s_laserString = newOverlayString();
-		if( s_laserString == nullptr )
-		{
-			return TRUE;
-		}
+		return TRUE;
 	}
 
 	const Color dropColor = GameMakeColor( 0, 0, 0, 255 );
 	const Color laserNameColor = GameMakeColor( 255, 130, 230, 255 );
 	const Color beamBlockColor = GameMakeColor( 190, 170, 255, 255 );
+	const ThingTemplate *tmpl = getTemplate();
 
 	// Bottom line first, since the stack grows upward; the name tops its blocks as in the INI.
 	UnicodeString lines[ MAX_OVERLAY_LASER_BLOCK_LINES + 1 ];
@@ -3683,13 +3683,13 @@ Bool Drawable::drawDebugLaserOverlay()
 	{
 		for( Int i = blockCount - 1; i >= 0; --i )
 		{
-			lines[ lineCount ].format( L"%hs", blockNames[i].isEmpty() ? "<no tag>" : blockNames[i].str() );
+			const AsciiString blockName = TheNameKeyGenerator->keyToName( blockKeys[i] );
+			lines[ lineCount ].format( L"%hs", blockName.isEmpty() ? "<no tag>" : blockName.str() );
 			colors[ lineCount++ ] = beamBlockColor;
 		}
 	}
 	if( wantLaserName )
 	{
-		const ThingTemplate *tmpl = getTemplate();
 		lines[ lineCount ].format( L"%hs", tmpl ? tmpl->getName().str() : "<no template>" );
 		colors[ lineCount++ ] = laserNameColor;
 	}
@@ -3699,8 +3699,8 @@ Bool Drawable::drawDebugLaserOverlay()
 	for( Int i = 0; i < lineCount; ++i )
 	{
 		Int width, height;
-		s_laserString->setText( lines[i] );
-		s_laserString->getSize( &width, &height );
+		s_nameString->setText( lines[i] );
+		s_nameString->getSize( &width, &height );
 		stackWidth = MAX( stackWidth, width );
 		stackHeight += height;
 	}
@@ -3718,8 +3718,7 @@ Bool Drawable::drawDebugLaserOverlay()
 	rect.hi.y = anchor.y;
 	rect.lo.y = anchor.y - stackHeight;
 
-	// Each push clears one placed stack for good, so this settles within one pass per slot.
-	// The same laser landing on its own label adds nothing, so it is skipped.
+	// Each push clears one placed stack for good, so a pass per slot settles it; a repeat of the same laser is skipped.
 	for( Int pass = 0; pass <= s_laserOverlaySlotCount; ++pass )
 	{
 		Bool moved = FALSE;
@@ -3732,7 +3731,7 @@ Bool Drawable::drawDebugLaserOverlay()
 				continue;
 			}
 
-			if( slot.tmpl == getTemplate() )
+			if( slot.tmpl == tmpl )
 			{
 				return TRUE;
 			}
@@ -3751,7 +3750,7 @@ Bool Drawable::drawDebugLaserOverlay()
 
 	if( s_laserOverlaySlotCount < MAX_LASER_OVERLAY_SLOTS )
 	{
-		s_laserOverlaySlots[ s_laserOverlaySlotCount ].tmpl = getTemplate();
+		s_laserOverlaySlots[ s_laserOverlaySlotCount ].tmpl = tmpl;
 		s_laserOverlaySlots[ s_laserOverlaySlotCount ].rect = rect;
 		++s_laserOverlaySlotCount;
 	}
@@ -3759,7 +3758,7 @@ Bool Drawable::drawDebugLaserOverlay()
 	Int lineY = rect.hi.y;
 	for( Int i = 0; i < lineCount; ++i )
 	{
-		drawOverlayLine( s_laserString, lines[i], anchor.x, lineY, colors[i], dropColor );
+		drawOverlayLine( s_nameString, lines[i], anchor.x, lineY, colors[i], dropColor );
 	}
 
 	return TRUE;
@@ -3815,6 +3814,11 @@ void Drawable::drawIconUI()
 
 		Object *obj = getObject();
 
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+		// Before the bail below, since particle cannon beams are lasers with no object.
+		const Bool overlaidLaser = drawDebugLaserOverlay();
+#endif
+
 		// we only draw icons drawables with objects, so one bail here -------------------------
 		if ( ! obj )
 			return;
@@ -3823,8 +3827,8 @@ void Drawable::drawIconUI()
 		// TheSuperHackers @feature Debug name overlays. Drawn here, before the dead and
 		// KINDOF_IGNORED_IN_GUI bails below, so the names cover every drawable on screen -- props,
 		// rocks and wreckage included -- rather than only the things that get a health bar.
-		// A labelled laser skips the name overlay, which would stack its name on the firer's.
-		if( !drawDebugLaserOverlay() )
+		// With a laser overlay on, lasers skip the name overlay, which would stack their names on the firer's.
+		if( !overlaidLaser )
 		{
 			drawDebugNameOverlay( healthBarRegion );
 		}
@@ -6601,6 +6605,7 @@ ClientUpdateModule* Drawable::findClientUpdateModule( NameKeyType key )
 			{
 				return *clientModules;
 			}
+			++clientModules;
 		}
 	}
 	return nullptr;

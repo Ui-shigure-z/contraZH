@@ -4220,7 +4220,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			break;
 		}
 
-		// Toggle the laser beam block overlay, stacked above the laser name.
+		// Toggle the laser beam block overlay, stacked under the laser name.
 		case GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK:
 		{
 			TheInGameUI->toggleLaserBeamBlockOverlay();

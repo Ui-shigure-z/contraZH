@@ -1027,8 +1027,7 @@ void MetaMap::generateMetaMap()
 		}
 	}
 	{
-		// Show the template name of each laser beam. Ctrl+, is free in Contra's CommandMap.ini; RTS_DEBUG
-		// builds also bind it to DEMO_BEGIN_ADJUST_DEFAULTPITCH below, so there one press does both.
+		// Ctrl+, is free in Contra's CommandMap.ini; RTS_DEBUG builds give it to DEMO_BEGIN_ADJUST_DEFAULTPITCH below instead.
 		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_LASER_NAME);
 		if (map->m_key == MK_NONE)
 		{

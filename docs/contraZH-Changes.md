@@ -879,8 +879,8 @@ spawned them in amber)
 * `Ctrl + '` - (The `CommandSet` the object uses, in yellow)
 * `Ctrl + ;` - (The weapons the object is armed with, in red, under the command set)
 * `Ctrl + /` - (The `Armor` the object currently uses, in light blue, under the weapons)
-* `Ctrl + ,` - (Laser beams: the laser object's name, the weapon's `LaserName`, in pink at the
-middle of the beam)
+* `Ctrl + ,` - (Laser beams: the laser object's name, which for a weapon is its `LaserName`, in pink
+at the middle of the beam)
 * `Ctrl + .` - (Laser beams: the `W3DLaserDraw` module tags, in lavender, under the laser name)
 
 * Sub object names (hull, turret, wheels, ...) are for `ShowSubObject` / `HideSubObject`. Up to 16,
