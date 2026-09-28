@@ -575,13 +575,16 @@ UpdateSleepTime TunnelContain::update()
 		{
 			const TunnelContainModuleData* modData = getTunnelContainModuleData();
 			tunnelSystem->healObjects(modData->m_framesForFullHeal);
+		}
+#endif
 
+		if (tunnelSystem)
+		{
 			if (tunnelSystem->isNextTunnelToPop(obj, TheGameLogic->getFrame()) && tunnelSystem->getContainCount() > 0)
 			{
 				orderAllPassengersToExit(CMD_FROM_AI, false);
 			}
 		}
-#endif
 
 		// check for attacked.
 		BodyModuleInterface *body = obj->getBodyModule();

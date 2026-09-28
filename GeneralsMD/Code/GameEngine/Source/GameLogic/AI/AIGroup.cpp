@@ -3249,10 +3249,30 @@ void AIGroup::groupToggleTunnelAutoPop(CommandSourceType cmdSource)
 	std::list<Object*>::iterator i;
 	Object *obj;
 	TunnelTracker *tunnelSystem;
+	Bool hasAutoExit = false;
+
+	// first pass -- are they all holding fire already?
+	for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
+	{
+		obj = *i;
+
+		AIUpdateInterface* ai = obj->getAI();
+		if (ai == nullptr)
+			continue;
+
+		tunnelSystem = obj->getControllingPlayer()->getTunnelSystem();
+		if (tunnelSystem)
+		{
+			if (tunnelSystem->isAutoExitTunnel(obj))
+			{
+				hasAutoExit = true;
+				break;
+			}
+		}
+	}
 
 	for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
 	{
-
 		// get object
 		obj = *i;
 
@@ -3261,7 +3281,7 @@ void AIGroup::groupToggleTunnelAutoPop(CommandSourceType cmdSource)
 			tunnelSystem = obj->getControllingPlayer()->getTunnelSystem();
 			if (tunnelSystem)
 			{
-				tunnelSystem->setTunnelAutoPop(obj, !tunnelSystem->isAutoExitTunnel(obj));
+				tunnelSystem->setTunnelAutoPop(obj, hasAutoExit ? false : true);
 			}
 		}
 

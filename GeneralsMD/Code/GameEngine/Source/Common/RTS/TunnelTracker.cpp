@@ -153,8 +153,7 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 
 	inExitList = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnelID);
 
-	const Object *obj;
-	Drawable *draw;
+	Object *obj;
 
 	if (inExitList == m_autoExitIDs.end() && on)
 	{
@@ -165,17 +164,13 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 				obj = TheGameLogic->findObjectByID(*inTunnelList);
 				if (!obj || obj == tunnel)
 					continue;
-				draw = obj->getDrawable();
-				draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
-				draw->setModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+				obj->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT, MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
 			}
 
 			m_nextTunnelToPop = tunnelID;
 		}
 
-		draw = tunnel->getDrawable();
-		draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
-		draw->setModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+		tunnel->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE, MODELCONDITION_TUNNEL_AUTO_EXIT);
 		m_autoExitIDs.push_back(tunnelID);
 		m_tunnelAutoExitCount++;
 	}
@@ -188,9 +183,9 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 				obj = TheGameLogic->findObjectByID(*inTunnelList);
 				if (!obj)
 					continue;
-				draw = obj->getDrawable();
-				draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
-				draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+
+				obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+				obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
 			}
 
 			m_nextTunnelToPop = INVALID_ID;
@@ -200,9 +195,7 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 			obj = TheGameLogic->findObjectByID(tunnelID);
 			if (obj)
 			{
-				draw = obj->getDrawable();
-				draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
-				draw->setModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+				obj->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT, MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
 			}
 		}
 		m_autoExitIDs.erase(inExitList);
@@ -359,8 +352,7 @@ void TunnelTracker::onTunnelDestroyed( const Object *deadTunnel )
 
 		inExitList = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnelID);
 
-		const Object* obj;
-		Drawable* draw;
+		Object* obj;
 
 		if (inExitList != m_autoExitIDs.end())
 		{
@@ -372,10 +364,9 @@ void TunnelTracker::onTunnelDestroyed( const Object *deadTunnel )
 				{
 					obj = TheGameLogic->findObjectByID(*inTunnelList);
 					if (!obj)
-						break;
-					draw = obj->getDrawable();
-					draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
-					draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+						continue;
+					obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+					obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
 				}
 			}
 		}
