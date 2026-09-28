@@ -318,8 +318,7 @@ public:  // tile and texture info.
 	TextureClass *getTerrainNormalTexture();  //< generates if needed and returns the terrain normal maps, or null when there are none
 	TextureClass *getTerrainHeightTexture();  //< generates if needed and returns the heights the textures blend by, or null when the card lacks the format
 	TextureClass *getTerrainClassMap();  //< generates if needed and returns the atlas slot lookup the seabed shaders read, or null
-	/// Generates if needed and returns each texture's sun glint strength and gloss, or null. Textures without a
-	/// GlintGloss take defaultGloss, and the scales give what a full channel stands for.
+	/// Generates if needed and returns each texture's glint strength and gloss, defaultGloss without a GlintGloss, and what a full channel stands for, or null.
 	TextureClass *getTerrainGlintMap(Real defaultGloss, Real &strengthScale, Real &glossScale);
 	Int getTerrainTexHeight() const { return m_terrainTexHeight; }
 	Int getAtlasBorder() const { return m_atlasBorder; }

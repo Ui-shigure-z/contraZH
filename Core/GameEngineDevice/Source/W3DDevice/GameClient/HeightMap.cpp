@@ -504,9 +504,7 @@ void HeightMapRenderObjClass::prepareSeabed()
 //=============================================================================
 // HeightMapRenderObjClass::prepareGlint
 //=============================================================================
-/** Hands the terrain and road shaders the normals the sun's glint reads, which
-the water's height texture carries beside the heights, and the terrain shaders
-each texture's glint from Terrain.ini. */
+/** Hands the ground shaders the glint's normals from the water's height texture, and the terrain shaders each texture's glint. */
 //=============================================================================
 void HeightMapRenderObjClass::prepareGlint()
 {

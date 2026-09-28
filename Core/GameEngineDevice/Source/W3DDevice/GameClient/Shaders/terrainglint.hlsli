@@ -19,8 +19,7 @@ float3 GlintNormal(float3 world)
     return float3(xy, sqrt(saturate(1.0f - dot(xy, xy))));
 }
 
-// The share of the sun's colour to add. Surfaces turning from the sun lose it before their edge.
-// The gloss must be at least 1, since pow(0, 0) is NaN.
+// The share of the sun's colour to add, lost before the edge of surfaces turning from the sun. The gloss must be at least 1, since pow(0, 0) is NaN.
 float Glint(float3 world, float3 normal, float strength, float gloss)
 {
     float3 halfway = normalize(normalize(GlintEye.xyz - world) + ToSun.xyz);

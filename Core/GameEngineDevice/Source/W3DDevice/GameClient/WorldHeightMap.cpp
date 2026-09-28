@@ -1540,11 +1540,6 @@ Bool WorldHeightMap::refreshAtlasBorder()
 	REF_PTR_RELEASE(m_alphaTerrainTex);
 	REF_PTR_RELEASE(m_terrainNormalTex);
 	REF_PTR_RELEASE(m_terrainHeightTex);
-	// A new atlas can land at the old one's address, so the lookup cannot tell it is stale.
-	REF_PTR_RELEASE(m_terrainClassMap);
-	m_terrainClassMapAtlas = nullptr;
-	REF_PTR_RELEASE(m_terrainGlintMap);
-	m_terrainGlintMapAtlas = nullptr;
 	RENDER_LOG(("Terrain atlas border changed to %d, laying the atlases out again", getAtlasBorderSetting()));
 	return true;
 }
@@ -2256,6 +2251,11 @@ TextureClass *WorldHeightMap::getTerrainTexture()
 			pow2Height *=2;
 		}
 		REF_PTR_RELEASE(m_terrainTex);
+		// A new atlas can land at the old one's address, so the lookups built for the old one go with it.
+		REF_PTR_RELEASE(m_terrainClassMap);
+		m_terrainClassMapAtlas = nullptr;
+		REF_PTR_RELEASE(m_terrainGlintMap);
+		m_terrainGlintMapAtlas = nullptr;
 		m_terrainTex = MSGNEW("WorldHeightMap_getTerrainTexture") TerrainTextureClass(pow2Height);
 		m_terrainTexHeight = m_terrainTex->update(this);
 		char buf[64];
@@ -2378,7 +2378,7 @@ static UnsignedInt Glint_Byte(Real value, Real scale)
 TextureClass *WorldHeightMap::getTerrainGlintMap(Real defaultGloss, Real &strengthScale, Real &glossScale)
 {
 	getTerrainTexture();
-	if (m_terrainGlintMap == nullptr || m_terrainGlintMapAtlas != m_terrainTex || m_terrainGlintMapGloss != defaultGloss)
+	if (m_terrainGlintMapAtlas != m_terrainTex || m_terrainGlintMapGloss != defaultGloss)
 	{
 		REF_PTR_RELEASE(m_terrainGlintMap);
 		m_terrainGlintMapAtlas = m_terrainTex;
@@ -2453,6 +2453,10 @@ TextureClass *WorldHeightMap::getTerrainGlintMap(Real defaultGloss, Real &streng
 				surface->Unlock();
 			}
 			REF_PTR_RELEASE(surface);
+			if (bits == nullptr)
+			{
+				REF_PTR_RELEASE(m_terrainGlintMap);
+			}
 		}
 	}
 

@@ -1682,8 +1682,7 @@ static Real TerrainGlintGlossScale = 1.0f;
 static Bool TerrainGlintLoaded = FALSE;
 static Bool RoadGlintLoaded = FALSE;
 
-// Where terrainglint.hlsli reads the normals and its constants, where the terrain shaders read each texture's
-// glint, and where the terrain and road shaders read the sun.
+// Where terrainglint.hlsli reads the normals and its constants, the terrain shaders each texture's glint, and the ground shaders the sun.
 #define GLINT_NORMAL_SAMPLER 11
 #define GLINT_MATERIAL_SAMPLER 12
 #define GLINT_REGISTER 23
@@ -1746,7 +1745,7 @@ static void Bind_Glint_Map(DWORD sampler, TextureClass *map, D3DTEXTUREFILTERTYP
 }
 
 // Every ground shader with the world position reads the sun and the glint's constants, so they go up even when
-// off, with no strength and a gloss of at least 1, since pow(0, 0) is NaN. The terrain's materials scale both.
+// off, with no strength and a gloss of at least 1, as Glint needs. The terrain's materials scale both.
 static void Bind_Terrain_Glint(Int sunRegister, Bool on, Bool materials)
 {
 #if defined(BUILD_WITH_D3D9)

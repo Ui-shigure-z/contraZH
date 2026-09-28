@@ -313,7 +313,6 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 	WWASSERT(index_count);
 
 #if defined(BUILD_WITH_D3D9)
-	// D3D9Ex puts static buffers in the default pool, where a lock need not keep the bytes it is not given.
 	if (DX8Wrapper::Is_Ex() && !(usage&USAGE_DYNAMIC))
 	{
 		shadow = W3DNEWARRAY unsigned short[index_count];

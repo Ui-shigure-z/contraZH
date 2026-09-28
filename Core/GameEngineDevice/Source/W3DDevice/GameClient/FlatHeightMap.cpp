@@ -487,6 +487,9 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 
 	DX8Wrapper::Set_Light_Environment(rinfo.light_environment);
 
+	// Flat terrain does not glint, and the maps a 3D terrain frame left may belong to an unloaded map.
+	W3DShaderManager::setTerrainGlintMaps(nullptr, Vector4(0.0f, 0.0f, 0.0f, 0.0f), nullptr, 1.0f, 1.0f);
+
 	// Force shaders to update.
 	m_stageTwoTexture->restore();
 	DX8Wrapper::Set_Texture(0,nullptr);
