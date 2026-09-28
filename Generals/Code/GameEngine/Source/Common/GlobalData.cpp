@@ -619,6 +619,7 @@ GlobalData::GlobalData()
   m_laserDebug = FALSE;
   m_useAmbientOcclusion = TRUE;
   m_useHeightBlend = TRUE;
+  m_useHQSky = TRUE;
   m_ambientOcclusionDebug = FALSE;
   m_ambientOcclusionRadius = 12.0f;
   m_ambientOcclusionStrength = 1.0f;
@@ -629,6 +630,18 @@ GlobalData::GlobalData()
   m_terrainHeightBlendStrength = 2.0f;
   m_terrainHeightBlendSharpness = 4.0f;
   m_terrainAtlasBorder = 8;
+  m_skyCloudSize = 600.0f;
+  m_skyCloudCoverage = 0.45f;
+  m_skyCloudSoftness = 0.25f;
+  m_skyCloudShadowStrength = 0.35f;
+  m_skyCloudShadowTint.red = 235.0f / 255.0f;
+  m_skyCloudShadowTint.green = 242.0f / 255.0f;
+  m_skyCloudShadowTint.blue = 1.0f;
+  m_skyCloudWindSpeed = 11.0f;
+  m_skyCloudWindAngle = 56.0f;
+  m_skyCloudChurn = 0.3f;
+  m_skyCloudBillow = 0.5f;
+  m_skyCloudDetail = 0.4f;
   m_vsync = -1;
   m_lowLatency = FALSE;
   m_alliedDecalMode = AlliedDecalMode_Default;
@@ -1322,6 +1335,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
 	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
 	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
+	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();
 	TheWritableGlobalData->m_ambientOcclusionDebug = optionPref.getAmbientOcclusionDebugEnabled();
 	TheWritableGlobalData->m_vsync = optionPref.getVSyncMode();
 	TheWritableGlobalData->m_lowLatency = optionPref.getLowLatencyEnabled();

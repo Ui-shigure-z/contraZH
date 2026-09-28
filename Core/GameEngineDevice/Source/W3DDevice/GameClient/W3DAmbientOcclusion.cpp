@@ -26,9 +26,6 @@
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "Common/GlobalData.h"
 #include "WW3D2/dx8wrapper.h"
-#include "WW3D2/dx8vertexbuffer.h"
-#include "WW3D2/dx8indexbuffer.h"
-#include "WW3D2/dx8fvf.h"
 #include "WW3D2/formconv.h"
 #include "WW3D2/shader.h"
 #include "WW3D2/vertmaterial.h"
@@ -179,49 +176,6 @@ Bool W3DAmbientOcclusion::acquireTargets(UnsignedInt width, UnsignedInt height)
 #endif
 }
 
-// A clip-space quad over the viewport whose uv lands on the texel centres of scene-sized targets.
-void W3DAmbientOcclusion::drawQuad(const Vector4 &clipToTarget)
-{
-	static const Real cornerX[4] = { -1.0f, 1.0f, -1.0f, 1.0f };
-	static const Real cornerY[4] = { 1.0f, 1.0f, -1.0f, -1.0f };
-
-	DynamicVBAccessClass vbAccess(BUFFER_TYPE_DYNAMIC_DX8, dynamic_fvf_type, 4);
-	{
-		DynamicVBAccessClass::WriteLockClass lock(&vbAccess);
-		VertexFormatXYZNDUV2 *verts = lock.Get_Formatted_Vertex_Array();
-		for (Int i = 0; i < 4; i++)
-		{
-			verts[i].x = cornerX[i];
-			verts[i].y = cornerY[i];
-			verts[i].z = 0.0f;
-			verts[i].nx = 0.0f;
-			verts[i].ny = 0.0f;
-			verts[i].nz = 0.0f;
-			verts[i].diffuse = 0xffffffff;
-			verts[i].u1 = cornerX[i] * clipToTarget.X + clipToTarget.Z;
-			verts[i].v1 = cornerY[i] * clipToTarget.Y + clipToTarget.W;
-			verts[i].u2 = 0.0f;
-			verts[i].v2 = 0.0f;
-		}
-	}
-
-	DynamicIBAccessClass ibAccess(BUFFER_TYPE_DYNAMIC_DX8, 6);
-	{
-		DynamicIBAccessClass::WriteLockClass lock(&ibAccess);
-		UnsignedShort *indices = lock.Get_Index_Array();
-		indices[0] = 0;
-		indices[1] = 1;
-		indices[2] = 2;
-		indices[3] = 2;
-		indices[4] = 1;
-		indices[5] = 3;
-	}
-
-	DX8Wrapper::Set_Vertex_Buffer(vbAccess);
-	DX8Wrapper::Set_Index_Buffer(ibAccess, 0);
-	DX8Wrapper::Draw_Triangles(0, 2, 0, 4);
-}
-
 void W3DAmbientOcclusion::render(RenderInfoClass &rinfo)
 {
 #if defined(BUILD_WITH_D3D9)
@@ -339,7 +293,7 @@ void W3DAmbientOcclusion::render(RenderInfoClass &rinfo)
 		DX8Wrapper::Set_Pixel_Shader_Constant(5, &params, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(6, &targetSize, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(7, Spiral, SPIRAL_SAMPLES / 2);
-		drawQuad(fullMap);
+		W3DShaderManager::drawClipQuad(fullMap);
 
 		if (SUCCEEDED(DX8Wrapper::Set_DX8_Render_Target_Surfaces(m_targetSurface[TARGET_BLUR], nullptr)))
 		{
@@ -348,7 +302,7 @@ void W3DAmbientOcclusion::render(RenderInfoClass &rinfo)
 			DX8Wrapper::Set_Pixel_Shader_Constant(0, &linearize, 1);
 			DX8Wrapper::Set_Pixel_Shader_Constant(1, &across, 1);
 			device->SetTexture(1, m_target[TARGET_OCCLUSION]);
-			drawQuad(fullMap);
+			W3DShaderManager::drawClipQuad(fullMap);
 
 			// The last pass blurs down and lays the result over the camera's part of the scene.
 			if (SUCCEEDED(DX8Wrapper::Set_DX8_Render_Target_Surfaces(sceneTarget, nullptr)))
@@ -360,7 +314,7 @@ void W3DAmbientOcclusion::render(RenderInfoClass &rinfo)
 				const Vector4 down(0.0f, 1.0f / height, 1.0f / BLUR_DEPTH_TOLERANCE, 0.0f);
 				DX8Wrapper::Set_Pixel_Shader_Constant(1, &down, 1);
 				device->SetTexture(1, m_target[TARGET_BLUR]);
-				drawQuad(cameraMap);
+				W3DShaderManager::drawClipQuad(cameraMap);
 			}
 		}
 	}

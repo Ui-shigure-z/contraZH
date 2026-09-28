@@ -293,6 +293,16 @@ public:
 	Real m_terrainHeightBlendStrength;	///< GameData TerrainHeightBlendStrength: how far the taller texture pushes into the other's side of a blend
 	Real m_terrainHeightBlendSharpness;	///< GameData TerrainHeightBlendSharpness: how narrow the blend's edge is, 1 as wide as the legacy blend
 	Int m_terrainAtlasBorder;			///< GameData TerrainAtlasBorder: texels copied around each texture in the terrain atlas
+	Real m_skyCloudSize;				///< GameData SkyCloudSize and the keys below: the HQ sky's cloud shadows, see W3DSkyClouds
+	Real m_skyCloudCoverage;
+	Real m_skyCloudSoftness;
+	Real m_skyCloudShadowStrength;
+	RGBColor m_skyCloudShadowTint;
+	Real m_skyCloudWindSpeed;
+	Real m_skyCloudWindAngle;
+	Real m_skyCloudChurn;
+	Real m_skyCloudBillow;
+	Real m_skyCloudDetail;
 	Int  m_textureReductionFactor;	//how much to cut texture resolution: 2 is half, 3 is quarter, etc.
 	Bool m_enableBehindBuildingMarkers;
 	Real m_waterPositionX;
@@ -687,6 +697,7 @@ public:
   Bool m_usePixelLights;          ///< Options.ini PixelLights: those lights are drawn per pixel where the hardware allows
   Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
   Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
+  Bool m_useHQSky;                ///< Options.ini HQSky: cloud shadows drift softly and change shape where the hardware allows
   Int m_vsync;                    ///< Options.ini VSync: 1 on, 0 off, -1 on in fullscreen and off in a window
   Bool m_lowLatency;              ///< Options.ini LowLatency: at most one frame queued ahead of the GPU
   Bool m_smoothUnitMotion;        ///< Options.ini SmoothUnitMotion: models draw between logic frames above the logic rate

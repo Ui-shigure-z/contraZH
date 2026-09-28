@@ -298,6 +298,16 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "TerrainHeightBlendStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendStrength ) },
 	{ "TerrainHeightBlendSharpness",		INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendSharpness ) },
 	{ "TerrainAtlasBorder",					INI::parseInt,				nullptr,			offsetof( GlobalData, m_terrainAtlasBorder ) },
+	{ "SkyCloudSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSize ) },
+	{ "SkyCloudCoverage",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudCoverage ) },
+	{ "SkyCloudSoftness",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSoftness ) },
+	{ "SkyCloudShadowStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudShadowStrength ) },
+	{ "SkyCloudShadowTint",				INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_skyCloudShadowTint ) },
+	{ "SkyCloudWindSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindSpeed ) },
+	{ "SkyCloudWindAngle",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindAngle ) },
+	{ "SkyCloudChurn",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudChurn ) },
+	{ "SkyCloudBillow",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudBillow ) },
+	{ "SkyCloudDetail",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudDetail ) },
 	{ "TextureReductionFactor",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_textureReductionFactor ) },
 	{ "UseBehindBuildingMarker",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableBehindBuildingMarkers ) },
 	{ "WaterPositionX",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_waterPositionX ) },
@@ -839,6 +849,7 @@ GlobalData::GlobalData()
   m_usePixelLights = TRUE;
   m_useAmbientOcclusion = TRUE;
   m_useHeightBlend = TRUE;
+  m_useHQSky = TRUE;
   m_vsync = -1;
   m_lowLatency = FALSE;
   m_smoothUnitMotion = TRUE;
@@ -1004,6 +1015,18 @@ GlobalData::GlobalData()
 	m_terrainHeightBlendStrength = 2.0f;
 	m_terrainHeightBlendSharpness = 4.0f;
 	m_terrainAtlasBorder = 8;
+	m_skyCloudSize = 600.0f;
+	m_skyCloudCoverage = 0.45f;
+	m_skyCloudSoftness = 0.25f;
+	m_skyCloudShadowStrength = 0.35f;
+	m_skyCloudShadowTint.red = 235.0f / 255.0f;
+	m_skyCloudShadowTint.green = 242.0f / 255.0f;
+	m_skyCloudShadowTint.blue = 1.0f;
+	m_skyCloudWindSpeed = 11.0f;
+	m_skyCloudWindAngle = 56.0f;
+	m_skyCloudChurn = 0.3f;
+	m_skyCloudBillow = 0.5f;
+	m_skyCloudDetail = 0.4f;
 	m_textureReductionFactor = -1;
 	m_enableBehindBuildingMarkers = TRUE;
 	m_scriptDebug = FALSE;
@@ -1629,6 +1652,8 @@ static const char *const LiveGameDataKeys[] =
 	"AmbientOcclusionRadius", "AmbientOcclusionStrength",
 	"GroundNoiseStrength", "GroundNoiseSize", "GroundNoiseTint", "GroundNoiseBrightness",
 	"TerrainHeightBlendStrength", "TerrainHeightBlendSharpness", "TerrainAtlasBorder",
+	"SkyCloudSize", "SkyCloudCoverage", "SkyCloudSoftness", "SkyCloudShadowStrength", "SkyCloudShadowTint",
+	"SkyCloudWindSpeed", "SkyCloudWindAngle", "SkyCloudChurn", "SkyCloudBillow", "SkyCloudDetail",
 	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
@@ -1858,6 +1883,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_usePixelLights = optionPref.getPixelLightsEnabled();
 	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
 	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
+	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();
 	TheWritableGlobalData->m_vsync = optionPref.getVSyncMode();
 	TheWritableGlobalData->m_lowLatency = optionPref.getLowLatencyEnabled();
 	TheWritableGlobalData->m_smoothUnitMotion = optionPref.getSmoothUnitMotionEnabled();

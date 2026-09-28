@@ -168,6 +168,8 @@ public:
 	Bool getAmbientOcclusionEnabled() const;
 	// Options.ini: HeightBlend = Yes blends terrain textures by height where the hardware allows
 	Bool getHeightBlendEnabled() const;
+	// Options.ini: HQSky = Yes draws cloud shadows that drift softly and change shape where the hardware allows
+	Bool getHQSkyEnabled() const;
 	// Options.ini: VSync = Yes or No; without it, -1 keeps vsync on in fullscreen and off in a window
 	Int getVSyncMode() const;
 	// Options.ini: LowLatency = Yes keeps at most one frame queued ahead of the GPU

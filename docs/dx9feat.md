@@ -9,7 +9,7 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise` and `TerrainHeightBlend` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric` and `Laser` tuning keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric` and `Laser` tuning keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
@@ -509,6 +509,39 @@ average, so a bright texture does not simply cover a dark one.
 Notes:
 * The lower terrain detail settings keep the soft fade.
 * Roads draw as before.
+
+## HQ sky
+
+Cloud shadows drift softly over the ground, change shape as they go and never repeat, in place of
+one tiled cloud texture sliding across the map. Each frame a shader draws the clouds into a map over
+the ground the camera sees, and terrain, roads, bridges, units and buildings darken from it. Two
+cloud shapes at unrelated sizes and angles add up to each cloud, a slow warp bends them, and a
+finer layer frays their edges. Each layer drifts at its own speed, so clouds form and fade instead
+of sliding as one sheet. Needs the Direct3D 9 build and Cloud shadows on.
+
+* `HQSky = Yes` - (No brings back the tiled cloud texture. Also `HQ sky` in the advanced display
+options, greyed out while Cloud shadows is off. Needs `CheckHQSky` in `OptionsMenu.wnd` for the
+menu control.)
+
+Tuned in the mod's `GameData.ini`:
+
+* `SkyCloudSize = 600` - (World units across a typical cloud.)
+* `SkyCloudCoverage = 0.45` - (Share of the ground in shadow. 0 is a clear sky, 1 overcast.)
+* `SkyCloudSoftness = 0.25` - (How wide the fade at a cloud's edge is. Low gives crisp edges.)
+* `SkyCloudShadowStrength = 0.35` - (How dark a thick cloud's shadow is. 0 for none. The default matches
+the old clouds' darkest.)
+* `SkyCloudShadowTint = R:235 G:242 B:255` - (The shadow's hue. White gives neutral grey.)
+* `SkyCloudWindSpeed = 11` - (World units a second the clouds drift. 0 holds them still.)
+* `SkyCloudWindAngle = 56` - (Degrees the clouds drift towards, 0 along the map's x. The default
+matches the old clouds.)
+* `SkyCloudChurn = 0.3` - (How fast shapes change as they drift. 0 slides them as one sheet.)
+* `SkyCloudBillow = 0.5` - (How far shapes bulge and curl. High values twist them into streaks.)
+* `SkyCloudDetail = 0.4` - (Ragged detail at the edges. 0 gives smooth blobs.)
+
+Notes:
+* Night keeps the clouds off, as before.
+* Trees and the water's reflected sky keep their old look.
+* `CONTRA_SKYCLOUDS=0` keeps the tiled texture, to rule the HQ sky out of a rendering fault.
 
 ## Shader water
 

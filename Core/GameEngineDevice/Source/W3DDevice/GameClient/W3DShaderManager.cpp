@@ -65,6 +65,7 @@
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "W3DDevice/GameClient/W3DGroundNoise.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "GameClient/View.h"
 #include "GameClient/CommandXlat.h"
 #include "GameClient/Display.h"
@@ -77,6 +78,9 @@
 #include "WW3D2/ww3d.h"
 #include "WW3D2/formconv.h"
 #include "WW3D2/dx8renderer.h"
+#include "WW3D2/dx8vertexbuffer.h"
+#include "WW3D2/dx8indexbuffer.h"
+#include "WW3D2/dx8fvf.h"
 #include "WW3D2/dx8instancing.h"
 #include "WW3D2/dx8skinning.h"
 #include "WW3D2/dx8polygonrenderer.h"
@@ -3221,6 +3225,13 @@ void TerrainShader2Stage::updateCloud()
 
 void TerrainShader2Stage::updateNoise1(D3DMATRIX *destMatrix,D3DMATRIX *curViewInverse, Bool doUpdate)
 {
+	// The HQ sky's map covers the ground around the camera, and BaseHeightMapRenderObjClass::cloudMapTexture binds it on the same test.
+	if (TheW3DSkyClouds != nullptr && TheW3DSkyClouds->isActive())
+	{
+		TheW3DSkyClouds->getTextureMatrix(*destMatrix, *curViewInverse);
+		return;
+	}
+
 	#define STRETCH_FACTOR ((float)(1/(63.0*MAP_XY_FACTOR/2))) /* covers 63/2 tiles */
 
 	D3DMATRIX scale;
@@ -5543,6 +5554,48 @@ Vector4 W3DShaderManager::getClipToTargetMapping(Real width, Real height)
 	DX8Wrapper::_Get_D3D_Device8()->GetViewport(&viewport);
 	return Vector4(0.5f * viewport.Width / width, -0.5f * viewport.Height / height,
 		(viewport.X + 0.5f * viewport.Width + 0.5f) / width, (viewport.Y + 0.5f * viewport.Height + 0.5f) / height);
+}
+
+void W3DShaderManager::drawClipQuad(const Vector4 &clipToTarget)
+{
+	static const Real cornerX[4] = { -1.0f, 1.0f, -1.0f, 1.0f };
+	static const Real cornerY[4] = { 1.0f, 1.0f, -1.0f, -1.0f };
+
+	DynamicVBAccessClass vbAccess(BUFFER_TYPE_DYNAMIC_DX8, dynamic_fvf_type, 4);
+	{
+		DynamicVBAccessClass::WriteLockClass lock(&vbAccess);
+		VertexFormatXYZNDUV2 *verts = lock.Get_Formatted_Vertex_Array();
+		for (Int i = 0; i < 4; i++)
+		{
+			verts[i].x = cornerX[i];
+			verts[i].y = cornerY[i];
+			verts[i].z = 0.0f;
+			verts[i].nx = 0.0f;
+			verts[i].ny = 0.0f;
+			verts[i].nz = 0.0f;
+			verts[i].diffuse = 0xffffffff;
+			verts[i].u1 = cornerX[i] * clipToTarget.X + clipToTarget.Z;
+			verts[i].v1 = cornerY[i] * clipToTarget.Y + clipToTarget.W;
+			verts[i].u2 = 0.0f;
+			verts[i].v2 = 0.0f;
+		}
+	}
+
+	DynamicIBAccessClass ibAccess(BUFFER_TYPE_DYNAMIC_DX8, 6);
+	{
+		DynamicIBAccessClass::WriteLockClass lock(&ibAccess);
+		UnsignedShort *indices = lock.Get_Index_Array();
+		indices[0] = 0;
+		indices[1] = 1;
+		indices[2] = 2;
+		indices[3] = 2;
+		indices[4] = 1;
+		indices[5] = 3;
+	}
+
+	DX8Wrapper::Set_Vertex_Buffer(vbAccess);
+	DX8Wrapper::Set_Index_Buffer(ibAccess, 0);
+	DX8Wrapper::Draw_Triangles(0, 2, 0, 4);
 }
 
 enum GraphicsVenderID CPP_11(: Int)

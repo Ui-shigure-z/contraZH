@@ -304,6 +304,7 @@ protected:
 	void renderShoreLinesSorted(CameraClass *pCamera);	///<optimized version for game usage.
 
 	static Bool useCloud();
+	TextureClass *cloudMapTexture() const;	///< the HQ sky's map while it is current, else the legacy cloud texture
 };
 
 extern BaseHeightMapRenderObjClass *TheTerrainRenderObject;

@@ -472,6 +472,11 @@ Bool OptionPreferences::getHeightBlendEnabled(void) const
 	return getBool("HeightBlend", TRUE);
 }
 
+Bool OptionPreferences::getHQSkyEnabled(void) const
+{
+	return getBool("HQSky", TRUE);
+}
+
 Int OptionPreferences::getVSyncMode(void) const
 {
 	if (find("VSync") == end())

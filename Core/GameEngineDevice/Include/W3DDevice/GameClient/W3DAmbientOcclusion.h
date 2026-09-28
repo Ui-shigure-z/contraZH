@@ -24,7 +24,6 @@
 #include "WW3D2/dx8compat.h"
 
 class RenderInfoClass;
-class Vector4;
 
 // Darkens creases and contact points from the scene's readable depth, before water, decals and particles.
 class W3DAmbientOcclusion
@@ -43,7 +42,6 @@ private:
 	Bool loadShaders();
 	Bool acquireTargets(UnsignedInt width, UnsignedInt height);
 	void releaseTargets();
-	void drawQuad(const Vector4 &clipToTarget);
 
 	IDirect3DTexture8 *m_target[TARGET_COUNT];
 	IDirect3DSurface8 *m_targetSurface[TARGET_COUNT];

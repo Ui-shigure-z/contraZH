@@ -75,6 +75,8 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/W3DLaserGlow.h
     Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
     Include/W3DDevice/GameClient/W3DGroundNoise.h
+    Include/W3DDevice/GameClient/W3DNoiseTexture.h
+    Include/W3DDevice/GameClient/W3DSkyClouds.h
 #    Include/W3DDevice/GameClient/W3DStatusCircle.h
     Include/W3DDevice/GameClient/W3DTerrainBackground.h
     Include/W3DDevice/GameClient/W3DTerrainTracks.h
@@ -187,6 +189,8 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/W3DLaserGlow.cpp
     Source/W3DDevice/GameClient/W3DAmbientOcclusion.cpp
     Source/W3DDevice/GameClient/W3DGroundNoise.cpp
+    Source/W3DDevice/GameClient/W3DNoiseTexture.cpp
+    Source/W3DDevice/GameClient/W3DSkyClouds.cpp
 #    Source/W3DDevice/GameClient/W3DStatusCircle.cpp
     Source/W3DDevice/GameClient/W3DTerrainBackground.cpp
     Source/W3DDevice/GameClient/W3DTerrainTracks.cpp

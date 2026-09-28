@@ -79,6 +79,7 @@
 #include "W3DDevice/GameClient/W3DWaypointBuffer.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
@@ -2126,6 +2127,10 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		// TheSuperHackers @tweak Updates the cloud movement before applying it to the world.
 		// Is now decoupled from logic step. The water reflection pass renders the terrain again.
 		W3DShaderManager::updateCloud();
+		if (TheW3DSkyClouds)
+		{
+			TheW3DSkyClouds->update(rinfo, *this);
+		}
 	}
 
 	Matrix3D tm(Transform);
@@ -2250,7 +2255,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
  		//Specify all textures that this shader may need.
  		W3DShaderManager::setTexture(0,m_stageZeroTexture);
  		W3DShaderManager::setTexture(1,m_stageZeroTexture);
- 		W3DShaderManager::setTexture(2,m_stageTwoTexture);	//cloud
+ 		W3DShaderManager::setTexture(2,cloudMapTexture());	//cloud
  		W3DShaderManager::setTexture(3,m_stageThreeTexture);//noise
  		// The reflection pass mirrors the view, and its terrain stays flat. The atlas is built only once a shader can read it.
  		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_NORMAL_TEXTURE,
@@ -2328,7 +2333,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			if (Scene) {
 				RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 				RefRenderObjListIterator pDynamicLightsIterator(pMyScene->getDynamicLights());
-				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?m_stageTwoTexture:nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
+				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?cloudMapTexture():nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
 					m_disableTextures,xCoordMin-m_map->getBorderSizeInline(), xCoordMax-m_map->getBorderSizeInline(), yCoordMin-m_map->getBorderSizeInline(), yCoordMax-m_map->getBorderSizeInline(), &pDynamicLightsIterator);
 			}
 		}
@@ -2348,7 +2353,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		ShaderClass::Invalidate();
 		DX8Wrapper::Apply_Render_State_Changes();
 
-		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?m_stageTwoTexture:nullptr);
+		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?cloudMapTexture():nullptr);
 
 		if (TheTerrainTracksRenderObjClassSystem)
 			TheTerrainTracksRenderObjClassSystem->flush();
@@ -2369,7 +2374,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		DX8Wrapper::Apply_Render_State_Changes();
 	}
 	else
-			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, m_stageTwoTexture);
+			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, cloudMapTexture());
 
   if ( m_waypointBuffer )
 	  m_waypointBuffer->drawWaypoints(rinfo);
@@ -2720,7 +2725,7 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 		else
 		{
 			W3DShaderManager::setTexture(0,m_stageOneTexture);
-			W3DShaderManager::setTexture(1,m_stageTwoTexture);	//cloud
+			W3DShaderManager::setTexture(1,cloudMapTexture());	//cloud
 			W3DShaderManager::setTexture(2,m_stageThreeTexture);	//noise/lightmap
 			W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
 			W3DShaderManager::setRoadHeightBlend(TRUE);
