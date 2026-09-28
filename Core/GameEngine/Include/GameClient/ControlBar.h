@@ -1036,10 +1036,11 @@ protected:
 		Object *producer;
 		ProductionID head;										///< first entry, PRODUCTIONID_INVALID when the queue is empty
 		UnsignedInt count;
+		Bool isDisabled;
 
 		Bool operator!=( const QueueSignature &other ) const
 		{
-			return producer != other.producer || head != other.head || count != other.count;
+			return producer != other.producer || head != other.head || count != other.count || isDisabled != other.isDisabled;
 		}
 	};
 	std::vector<QueueSignature> m_displayedQueueSignature;	///< multi select queue state last displayed to user
