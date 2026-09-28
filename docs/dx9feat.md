@@ -14,6 +14,75 @@ value until a restart. The saved values win over a map's `map.ini` until the map
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
 
+## Shader implementation
+
+An effect picks up its shader in one of three places: the `ParticleSystem` block, the `W3DLaserDraw`
+module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
+them for one effect. Each shader's own section below lists its keys.
+
+| Effect | Shader | Set in | Turn on with | Own tuning |
+|---|---|---|---|---|
+| Fire sprites | [Flame](#flame-shading) | `ParticleSystem` | `FlameShader = Yes` | `Flame` and `Haze` keys |
+| Sparks and flares | [Electric](#electric-shading) | `ParticleSystem` | `ElectricShader = Yes` | None |
+| Laser trails | [Laser](#laser-shading) | `ParticleSystem` | `Type = STREAK` and `LaserShader = Yes` | None |
+| Laser beams | [Laser](#laser-shading) | `W3DLaserDraw` | On by default | `Laser` keys |
+| Tesla and lightning bolts | [Electric](#electric-shading) | `W3DLaserDraw` | `ElectricShader = Yes` | `Electric` keys |
+| Blast ring | [Shockwave](#shockwave-fxlistini) | `FXList` | A `Shockwave` block | The block's keys |
+| Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
+| Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
+
+"None" means the effect always uses the `GameData.ini` values.
+
+A `ParticleSystem` that leaves the shader key out is `Auto`:
+
+* `FlameShader` turns on when the system rides a projectile whose weapon has `DamageType = FLAME`.
+* `ElectricShader` turns on when the `ParticleName` texture is listed in `ElectricParticleTextures`.
+* `LaserShader` turns on when a streak's `ParticleName` texture is listed in `LaserParticleTextures`.
+
+The texture lists suit a texture many systems share. `Yes` suits a single system, and `No` opts one
+out of a list.
+
+### What a particle system can take
+
+| `Type` | `Shader` | Takes |
+|---|---|---|
+| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame or electric, and the soft fade |
+| `PARTICLE` | `ALPHA_TEST`, `MULTIPLY` | Nothing |
+| `STREAK` | Any but `MULTIPLY` | Laser |
+| `VOLUME_PARTICLE`, `SMUDGE`, `DRAWABLE` | Any | Nothing |
+
+* A system that is both flame and electric draws as flame.
+* A beam with `ElectricShader = Yes` draws as electric, whatever its `LaserShader`.
+* Only `FlameShader = Auto` follows a master system. Slave systems need their own `ElectricShader` or
+`LaserShader`.
+* Terrain-conforming particles stay plain.
+
+### Models and terrain
+
+Models and terrain have no shader switch. They pick up a shader when a matching texture sits beside
+theirs in `Art\Textures`, or from `Terrain.ini` for the glint.
+
+| Effect | Add | Section |
+|---|---|---|
+| Bumps on a unit or structure | `<texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Lit windows, lamps and exhausts | `<texture>_emi.dds` | [Glow masks](#glow-masks) |
+| Bumps on terrain | `<terrain texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Stones pushing through blends | `<terrain texture>_hgt.dds` | [Height blending](#height-blending) |
+| Shine on one terrain type | `GlintStrength` and `GlintGloss` in `Terrain.ini` | [Terrain glint](#terrain-glint) |
+
+### Troubleshooting
+
+* The Direct3D 8 build ignores every shader on this page.
+* `FlameShaders`, `ElectricShaders` and `LaserShaders` in `Options.ini` default to Yes. No turns that
+shader off everywhere.
+* Flame haze and shockwaves need `Heat Effects` on. Bloom needs `Bloom = Yes`.
+* The system's `Type` and `Shader` must allow the shader, as in the table above.
+* `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
+reloads in cheat builds.
+* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER` or `CONTRA_LASERSHADER` set to 0 turns that shader off.
+* `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
+laser shader.
+
 ## Shadow mapping
 
 Sun shadows from a shadow map replace stencil volumes on vehicles and buildings and blob decals
