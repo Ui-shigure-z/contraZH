@@ -26,7 +26,7 @@
 // Author: Michael S. Booth, December 2001
 // Desc:   Implementation of missile behavior
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Thing.h"
 #include "Common/ThingTemplate.h"
@@ -41,6 +41,7 @@
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
+#include "GameLogic/Module/ThermiteBehavior.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/TerrainLogic.h"
@@ -52,11 +53,23 @@
 
 const Real BIGNUM = 99999.0f;
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
+
+
+//-------------------------------------------------------------------------------------------------
+static void adjustVector(Coord3D* vec, const Matrix3D* mtx)
+{
+	if (mtx)
+	{
+		Vector3 vectmp;
+		vectmp.X = vec->x;
+		vectmp.Y = vec->y;
+		vectmp.Z = vec->z;
+		vectmp = mtx->Rotate_Vector(vectmp);
+		vec->x = vectmp.X;
+		vec->y = vectmp.Y;
+		vec->z = vectmp.Z;
+	}
+}
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -71,15 +84,19 @@ MissileAIUpdateModuleData::MissileAIUpdateModuleData()
 	m_initialVel = 0;
 	m_initialDist = 0.0f;
 	m_diveDistance = 0.0f;
-	m_ignitionFX = NULL;
+	m_ignitionFX = nullptr;
 	m_useWeaponSpeed = false;
 	m_detonateOnNoFuel = FALSE;
 	m_garrisonHitKillCount = 0;
-	m_garrisonHitKillFX = NULL;
-	m_lockDistance = 75.0f;	
+	m_garrisonHitKillFX = nullptr;
+	m_lockDistance = 75.0f;
 	m_distanceScatterWhenJammed = 75.0f;
     m_detonateCallsKill = FALSE;
     m_killSelfDelay   = 3; // just long enough for the contrail to catch up to me
+	// m_turnRateInitial = 0;
+	// m_turnRateAttacking = BIGNUM;
+	m_zDirFactor = 2.0f;
+	m_applyLauncherBonus = FALSE;
 }
 
 //-----------------------------------------------------------------------------
@@ -87,27 +104,36 @@ void MissileAIUpdateModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
   AIUpdateModuleData::buildFieldParse(p);
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "TryToFollowTarget",			INI::parseBool,		NULL, offsetof( MissileAIUpdateModuleData, m_tryToFollowTarget ) },
-		{ "FuelLifetime",						INI::parseDurationUnsignedInt,		NULL, offsetof( MissileAIUpdateModuleData, m_fuelLifetime ) },
-		{ "IgnitionDelay",					INI::parseDurationUnsignedInt,		NULL, offsetof( MissileAIUpdateModuleData, m_ignitionDelay ) },
-		{ "InitialVelocity",				INI::parseVelocityReal,		NULL, offsetof( MissileAIUpdateModuleData, m_initialVel) },
-		{ "DistanceToTravelBeforeTurning",	INI::parseReal,		NULL, offsetof( MissileAIUpdateModuleData, m_initialDist ) },
-		{ "DistanceToTargetBeforeDiving",		INI::parseReal,		NULL, offsetof( MissileAIUpdateModuleData, m_diveDistance ) },
-		{ "DistanceToTargetForLock",INI::parseReal,		NULL, offsetof( MissileAIUpdateModuleData, m_lockDistance ) },
-		{ "IgnitionFX",							INI::parseFXList,		NULL, offsetof( MissileAIUpdateModuleData, m_ignitionFX ) },
-		{ "UseWeaponSpeed",				  INI::parseBool,			NULL, offsetof( MissileAIUpdateModuleData, m_useWeaponSpeed ) },
-		{ "DetonateOnNoFuel",			  INI::parseBool,			NULL, offsetof( MissileAIUpdateModuleData, m_detonateOnNoFuel ) },
-		{ "DistanceScatterWhenJammed",INI::parseReal,		NULL, offsetof( MissileAIUpdateModuleData, m_distanceScatterWhenJammed ) },
+		{ "TryToFollowTarget",			INI::parseBool,		nullptr, offsetof( MissileAIUpdateModuleData, m_tryToFollowTarget ) },
+		{ "FuelLifetime",						INI::parseDurationUnsignedInt,		nullptr, offsetof( MissileAIUpdateModuleData, m_fuelLifetime ) },
+		{ "IgnitionDelay",					INI::parseDurationUnsignedInt,		nullptr, offsetof( MissileAIUpdateModuleData, m_ignitionDelay ) },
+		{ "InitialVelocity",				INI::parseVelocityReal,		nullptr, offsetof( MissileAIUpdateModuleData, m_initialVel) },
+		{ "DistanceToTravelBeforeTurning",	INI::parseReal,		nullptr, offsetof( MissileAIUpdateModuleData, m_initialDist ) },
+		{ "DistanceToTargetBeforeDiving",		INI::parseReal,		nullptr, offsetof( MissileAIUpdateModuleData, m_diveDistance ) },
+		{ "DistanceToTargetForLock",INI::parseReal,		nullptr, offsetof( MissileAIUpdateModuleData, m_lockDistance ) },
+		{ "IgnitionFX",							INI::parseFXList,		nullptr, offsetof( MissileAIUpdateModuleData, m_ignitionFX ) },
+		{ "UseWeaponSpeed",				  INI::parseBool,			nullptr, offsetof( MissileAIUpdateModuleData, m_useWeaponSpeed ) },
+		{ "DetonateOnNoFuel",			  INI::parseBool,			nullptr, offsetof( MissileAIUpdateModuleData, m_detonateOnNoFuel ) },
+		{ "DistanceScatterWhenJammed",INI::parseReal,		nullptr, offsetof( MissileAIUpdateModuleData, m_distanceScatterWhenJammed ) },
+		
+		{ "RandomPathOffset",INI::parseReal,		NULL, offsetof( MissileAIUpdateModuleData, m_randomPathOffset ) },
 
-		{ "GarrisonHitKillRequiredKindOf", KindOfMaskType::parseFromINI, NULL, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillKindof ) },
-		{ "GarrisonHitKillForbiddenKindOf", KindOfMaskType::parseFromINI, NULL, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillKindofNot ) },
-		{ "GarrisonHitKillCount", INI::parseUnsignedInt, NULL, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillCount ) },
-		{ "GarrisonHitKillFX", INI::parseFXList, NULL, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillFX ) },
-    { "DetonateCallsKill", INI::parseBool,   NULL, offsetof( MissileAIUpdateModuleData, m_detonateCallsKill ) },
-    { "KillSelfDelay",     INI::parseDurationUnsignedInt, NULL, offsetof( MissileAIUpdateModuleData, m_killSelfDelay ) },
-    { 0, 0, 0, 0 }
+		// Note (AW): these values don't really do much, MaxThrustAngle in locomotor handles the movement.
+		// { "InitialTurnRate", INI::parseAngularVelocityReal,		nullptr, offsetof(MissileAIUpdateModuleData, m_turnRateInitial) },
+		// { "AttackingTurnRate", INI::parseAngularVelocityReal,		nullptr, offsetof(MissileAIUpdateModuleData, m_turnRateAttacking) },
+
+		{ "GarrisonHitKillRequiredKindOf", KindOfMaskType::parseFromINI, nullptr, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillKindof ) },
+		{ "GarrisonHitKillForbiddenKindOf", KindOfMaskType::parseFromINI, nullptr, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillKindofNot ) },
+		{ "GarrisonHitKillCount", INI::parseUnsignedInt, nullptr, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillCount ) },
+		{ "GarrisonHitKillFX", INI::parseFXList, nullptr, offsetof( MissileAIUpdateModuleData, m_garrisonHitKillFX ) },
+		{ "DetonateCallsKill", INI::parseBool,   nullptr, offsetof( MissileAIUpdateModuleData, m_detonateCallsKill ) },
+		{ "KillSelfDelay",     INI::parseDurationUnsignedInt, nullptr, offsetof( MissileAIUpdateModuleData, m_killSelfDelay ) },
+		{ "ZCorrectionFactor", INI::parseReal,   nullptr, offsetof(MissileAIUpdateModuleData, m_zDirFactor) },
+		{ "ApplyLauncherBonus", INI::parseBool,  nullptr, offsetof(MissileAIUpdateModuleData, m_applyLauncherBonus) },
+		{ "IsTorpedo",         INI::parseBool,   nullptr, offsetof(MissileAIUpdateModuleData, m_isTorpedo) },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 
   p.add(dataFieldParse);
@@ -130,18 +156,21 @@ MissileAIUpdate::MissileAIUpdate( Thing *thing, const ModuleData* moduleData ) :
 	m_isArmed = false;
 	m_fuelExpirationDate = 0;
 	m_noTurnDistLeft = d->m_initialDist;
+	m_randomPathDistLeft = 0;
 	m_prevPos = *getObject()->getPosition();
 	m_maxAccel = BIGNUM;
-	m_detonationWeaponTmpl = NULL;
-	m_exhaustSysTmpl = NULL;
+	m_detonationWeaponTmpl = nullptr;
+	m_exhaustSysTmpl = nullptr;
 	m_isTrackingTarget = FALSE;
 	m_exhaustID = INVALID_PARTICLE_SYSTEM_ID;
 	m_extraBonusFlags = 0;
 	m_originalTargetPos.zero();
+	m_launchPos.zero();
+	m_launchVeterancy = LEVEL_REGULAR;
 	m_framesTillDecoyed = 0;
 	m_noDamage = FALSE;
 	m_isJammed = FALSE;
-} 
+}
 
 //-------------------------------------------------------------------------------------------------
 MissileAIUpdate::~MissileAIUpdate()
@@ -150,7 +179,7 @@ MissileAIUpdate::~MissileAIUpdate()
 }
 
 //-------------------------------------------------------------------------------------------------
-void MissileAIUpdate::onDelete( void )
+void MissileAIUpdate::onDelete()
 {
 	//
 	// there is no need to destroy the attached particle systems here because the particle
@@ -177,6 +206,7 @@ void MissileAIUpdate::switchToState(MissileStateType s)
 {
 	if (m_state != s)
 	{
+		// DEBUG_LOG((">>> MissileAI enter state %d. prev state = %d\n", s, m_state));
 		m_state = s;
 		m_stateTimestamp = TheGameLogic->getFrame();
 	}
@@ -186,11 +216,11 @@ void MissileAIUpdate::switchToState(MissileStateType s)
 // Prepares the missile for launch via proper weapon-system channels.
 //-------------------------------------------------------------------------------------------------
 void MissileAIUpdate::projectileLaunchAtObjectOrPosition(
-	const Object *victim, 
-	const Coord3D* victimPos, 
-	const Object *launcher, 
-	WeaponSlotType wslot, 
-	Int specificBarrelToUse, 
+	const Object *victim,
+	const Coord3D* victimPos,
+	const Object *launcher,
+	WeaponSlotType wslot,
+	Int specificBarrelToUse,
 	const WeaponTemplate* detWeap,
 	const ParticleSystemTemplate* exhaustSysOverride
 )
@@ -198,8 +228,14 @@ void MissileAIUpdate::projectileLaunchAtObjectOrPosition(
 	DEBUG_ASSERTCRASH(specificBarrelToUse>=0, ("specificBarrelToUse must now be explicit"));
 
 	m_launcherID = launcher ? launcher->getID() : INVALID_ID;
+	if (launcher)
+		m_launchPos = *launcher->getPosition();
 	m_detonationWeaponTmpl = detWeap;
 	m_extraBonusFlags = launcher ? launcher->getWeaponBonusCondition() : 0;
+
+	if (getMissileAIUpdateModuleData()->m_applyLauncherBonus && m_extraBonusFlags != 0) {
+		getObject()->setWeaponBonusConditionFlags(m_extraBonusFlags);
+	}
 
 	Weapon::positionProjectileForLaunch(getObject(), launcher, wslot, specificBarrelToUse);
 
@@ -208,6 +244,16 @@ void MissileAIUpdate::projectileLaunchAtObjectOrPosition(
 }
 
 #define APPROACH_HEIGHT 10.0f
+
+static Real getTorpedoTargetHeight(const Coord3D & pos, Locomotor* loco) {
+	Real waterZ{ 0 };
+	Real ret = pos.z;
+	bool underwater = TheTerrainLogic && TheTerrainLogic->isUnderwater(pos.x, pos.y, &waterZ);
+	if (underwater && loco) {
+		ret= waterZ + loco->getPreferredHeight();
+	}
+	return ret;
+}
 
 //-------------------------------------------------------------------------------------------------
 // The actual firing of the missile once setup.
@@ -234,21 +280,30 @@ void MissileAIUpdate::projectileFireAtObjectOrPosition( const Object *victim, co
 		}
 	}
 
-	Real deltaZ = victimPos->z - obj->getPosition()->z;
-	Real dx = victimPos->x - obj->getPosition()->x;
-	Real dy = victimPos->y - obj->getPosition()->y;
-	Real xyDist = sqrt(sqr(dx)+sqr(dy));
-	if (xyDist<1) xyDist = 1;
-	Real zFactor = 0;
-	if (deltaZ>0) {
-		zFactor = deltaZ/xyDist;
+	Vector3 dir;
+
+	if (d->m_zDirFactor > 0) {
+		Real deltaZ = victimPos->z - obj->getPosition()->z;
+		Real dx = victimPos->x - obj->getPosition()->x;
+		Real dy = victimPos->y - obj->getPosition()->y;
+		Real xyDist = sqrt(sqr(dx) + sqr(dy));
+		if (xyDist < 1) xyDist = 1;
+		Real zFactor = 0;
+		if (deltaZ > 0) {
+			zFactor = deltaZ / xyDist;
+		}
+		dir = getObject()->getTransformMatrix()->Get_X_Vector();
+		dir.Normalize();
+		dir.Z += d->m_zDirFactor * zFactor;
+		dir.Normalize();
+	}
+	else {
+		dir = getObject()->getTransformMatrix()->Get_X_Vector();
+		dir.Normalize();
 	}
 
-
-	Vector3 dir = getObject()->getTransformMatrix()->Get_X_Vector();
-	dir.Normalize();
-	dir.Z += 2*zFactor;
-	dir.Normalize();
+	//DEBUG_LOG((">>> MissileAI FIREPROJ - dir = (%f/%f/%f)\n", dir.X, dir.Y, dir.Z));
+	
 	PhysicsBehavior* physics = getObject()->getPhysics();
 	if (physics && initialVelToUse > 0)
 	{
@@ -260,6 +315,8 @@ void MissileAIUpdate::projectileFireAtObjectOrPosition( const Object *victim, co
 		force.z = forceMag * dir.Z;
 
 		physics->applyMotiveForce( &force );
+
+		//DEBUG_LOG((">>> MissileAI FIREPROJ - force = (%f/%f/%f)\n", force.x, force.y, force.z));
 	}
 
 	Vector3 objPos(obj->getPosition()->x, obj->getPosition()->y, obj->getPosition()->z);
@@ -274,11 +331,23 @@ void MissileAIUpdate::projectileFireAtObjectOrPosition( const Object *victim, co
 	// instead of Attacking the target.
 	if (victim && d->m_tryToFollowTarget)
 	{
-		getStateMachine()->setGoalPosition(victim->getPosition());
+		Coord3D targetPos = *victim->getPosition();
+		if (d->m_isTorpedo) {
+			Locomotor* loco = getCurLocomotor();
+			if (loco) {
+				targetPos.z = getTorpedoTargetHeight(targetPos, loco);
+			}
+		}
+		getStateMachine()->setGoalPosition(&targetPos);
 		// ick. const-cast is evil. fix. (srj)
- 		aiMoveToObject(const_cast<Object*>(victim), CMD_FROM_AI );
-		m_originalTargetPos = *victim->getPosition();
-		m_isTrackingTarget = TRUE;// Remember that I was originally shot at a moving object, so if the 
+		if (!d->m_isTorpedo) {
+			aiMoveToObject(const_cast<Object*>(victim), CMD_FROM_AI);
+		}
+		else {
+			aiMoveToPosition(&targetPos, CMD_FROM_AI);
+		}
+		m_originalTargetPos = targetPos;
+		m_isTrackingTarget = TRUE;// Remember that I was originally shot at a moving object, so if the
 		// target dies I can do something cool.
 		m_victimID = victim->getID();
 	}
@@ -294,7 +363,7 @@ void MissileAIUpdate::projectileFireAtObjectOrPosition( const Object *victim, co
 		m_victimID = INVALID_ID;
 	}
 
-  setCurrentVictim( victim );/// extending access to the victim via the parent class
+    setCurrentVictim( victim );/// extending access to the victim via the parent class
 	m_prevPos = *getObject()->getPosition();
 }
 
@@ -309,7 +378,7 @@ Bool MissileAIUpdate::projectileHandleCollision( Object *other )
 	if (projectileIsArmed() == false)
 		return true;
 
-	if (other==NULL) {
+	if (other==nullptr) {
 		// we hit the ground.  Check to see if we hit something unexpected.
 		Coord3D goal = *getGoalPosition();
 		Coord3D pos = *obj->getPosition();
@@ -326,14 +395,14 @@ Bool MissileAIUpdate::projectileHandleCollision( Object *other )
 		}
 	}
 
-	if (other != NULL)
+	if (other != nullptr)
 	{
  		Object *projectileLauncher = TheGameLogic->findObjectByID( projectileGetLauncherID() );
- 				
+
  		// if it's not the specific thing we were targeting, see if we should incidentally collide...
  		if (!m_detonationWeaponTmpl->shouldProjectileCollideWith(projectileLauncher, obj, other, m_victimID))
 		{
-			//DEBUG_LOG(("ignoring projectile collision with %s at frame %d\n",other->getTemplate()->getName().str(),TheGameLogic->getFrame()));
+			//DEBUG_LOG(("ignoring projectile collision with %s at frame %d",other->getTemplate()->getName().str(),TheGameLogic->getFrame()));
 			return true;
 		}
 
@@ -353,31 +422,31 @@ Bool MissileAIUpdate::projectileHandleCollision( Object *other )
 						Object* thingToKill = *it++;
 						if (!thingToKill->isEffectivelyDead() && thingToKill->isKindOfMulti(d->m_garrisonHitKillKindof, d->m_garrisonHitKillKindofNot))
 						{
-							//DEBUG_LOG(("Killed a garrisoned unit (%08lx %s) via Flash-Bang!\n",thingToKill,thingToKill->getTemplate()->getName().str()));
+							//DEBUG_LOG(("Killed a garrisoned unit (%08lx %s) via Flash-Bang!",thingToKill,thingToKill->getTemplate()->getName().str()));
 							if (projectileLauncher)
 								projectileLauncher->scoreTheKill( thingToKill );
 							thingToKill->kill();
 							++numKilled;
 						}
-					} // next contained item
-				} // if items
-				
+					}
+				}
+
 				if (numKilled > 0)
 				{
 					// note, fx is played at center of building, not at grenade's location
-					FXList::doFXObj(d->m_garrisonHitKillFX, other, NULL);
+					FXList::doFXObj(d->m_garrisonHitKillFX, other, nullptr);
 
 					// don't do the normal explosion; just destroy ourselves & return
 					TheGameLogic->destroyObject(obj);
-					
+
 					return true;
 				}
-			}	// if a garrisonable thing
+			}
 		}
 	}
 
 	// collided with something... blow'd up!
-	detonate();
+	detonate( other );
 
 	// mark ourself as "no collisions" (since we might still exist in slow death mode)
 	obj->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_NO_COLLISIONS ) );
@@ -385,15 +454,27 @@ Bool MissileAIUpdate::projectileHandleCollision( Object *other )
 }
 
 //-------------------------------------------------------------------------------------------------
-void MissileAIUpdate::detonate()
+void MissileAIUpdate::detonate( Object *victim )
 {
 	Object* obj = getObject();
 
+	if (m_state == DEAD)
+	{
+		return;
+	}
+
 	if (m_detonationWeaponTmpl)
 	{
-		
+
 		TheWeaponStore->handleProjectileDetonation(m_detonationWeaponTmpl, obj, obj->getPosition(), m_extraBonusFlags, !m_noDamage );
-	
+
+		if( ThermiteBehavior::tryIgnite( obj, victim ) )
+		{
+			// the thermite owns the object now, so skip the kill-self state
+			switchToState(DEAD);
+			return;
+		}
+
 		if( m_detonationWeaponTmpl->getDieOnDetonate() )
 		{
 			DamageInfo damageInfo;
@@ -438,18 +519,18 @@ void MissileAIUpdate::doKillSelfState()
 {
   const MissileAIUpdateModuleData *modData = getMissileAIUpdateModuleData();
 
-	if (m_stateTimestamp > TheGameLogic->getFrame() - modData->m_killSelfDelay ) 
+	if (m_stateTimestamp > TheGameLogic->getFrame() - modData->m_killSelfDelay )
   {
 		// Hold in this state [modData->m_killSelfDelay] frames to let the contrail catch up. jba.
 		return;
 	}
 	Object* obj = getObject();
-	if (m_detonationWeaponTmpl)	
+	if (m_detonationWeaponTmpl)
   {
     if ( modData->m_detonateCallsKill )
       obj->kill(); // kill it (vs destroying it) so that its Die modules are called
-    else  
-		  TheGameLogic->destroyObject( obj );	
+    else
+		  TheGameLogic->destroyObject( obj );
 	}
 	switchToState(DEAD);
 }
@@ -484,7 +565,7 @@ void MissileAIUpdate::doIgnitionState()
 	}
 
 	FXList::doFXObj(d->m_ignitionFX, getObject());
-	if (m_exhaustSysTmpl != NULL)
+	if (m_exhaustSysTmpl != nullptr)
 	{
 		m_exhaustID = TheParticleSystemManager->createAttachedParticleSystemID(m_exhaustSysTmpl, getObject());
 	}
@@ -498,8 +579,8 @@ void MissileAIUpdate::doIgnitionState()
 }
 
 //-------------------------------------------------------------------------------------------------
-void MissileAIUpdate::doAttackState(Bool turnOK)
-{	
+void MissileAIUpdate::doAttackState(Bool turnOK, Bool randomPath)
+{
 	Locomotor* curLoco = getCurLocomotor();
 
 	const MissileAIUpdateModuleData* d = getMissileAIUpdateModuleData();
@@ -522,16 +603,68 @@ void MissileAIUpdate::doAttackState(Bool turnOK)
 	{
 		if (curLoco)
 		{
-			curLoco->setMaxAcceleration(m_maxAccel);
-			curLoco->setMaxTurnRate(turnOK ? BIGNUM : 0);
+			if (randomPath) { //ATTACK_RANDOM_PATH state
+				if (m_randomPathDistLeft <= 0) {
+					// Weare leaving randomPath state. Re-establish target.
+
+					Object* victim = TheGameLogic->findObjectByID(m_victimID);
+
+					if (victim && d->m_tryToFollowTarget)
+					{
+						DEBUG_LOG((">>> MissileAI - EndRandomPath: victim is not null.\n"));
+
+						Coord3D targetPos = *victim->getPosition();
+						if (d->m_isTorpedo) {
+							Locomotor* curLoco = getCurLocomotor();
+							if (curLoco)
+							{
+								targetPos.z = getTorpedoTargetHeight(targetPos, curLoco);
+							}
+						}
+
+						getStateMachine()->setGoalPosition(&targetPos);
+						getStateMachine()->setGoalObject(victim);
+						if (!d->m_isTorpedo) {
+							aiMoveToObject(const_cast<Object*>(victim), CMD_FROM_AI);
+						}
+						else {
+							aiMoveToPosition(&targetPos, CMD_FROM_AI);
+						}
+						m_originalTargetPos = targetPos;
+						m_isTrackingTarget = TRUE;// Remember that I was originally shot at a moving object, so if the 
+						// target dies I can do something cool.
+						m_victimID = victim->getID();
+					}
+					else
+					{
+						DEBUG_LOG((">>> MissileAI - EndRandomPath: victim is  null.\n"));
+
+						// Otherwise, we are just a Coord shot.
+						Coord3D initialPos = m_originalTargetPos;
+						if (d->m_lockDistance > 0.0f) {
+							initialPos.z += APPROACH_HEIGHT;
+						}
+						aiMoveToPosition(&initialPos, CMD_FROM_AI);
+						m_victimID = INVALID_ID;
+					}
+					setCurrentVictim(victim);
+					switchToState(ATTACK);
+				}			
+			}
+			else {
+				curLoco->setMaxAcceleration(m_maxAccel);
+				curLoco->setMaxTurnRate(turnOK ? BIGNUM : 0);
+				// DEBUG_LOG((">>> MissileAI setMaxTurnRate = %f\n", turnOK ? d->m_turnRateAttacking : d->m_turnRateInitial));
+				// curLoco->setMaxTurnRate(turnOK ? d->m_turnRateAttacking : d->m_turnRateInitial);
+			}
 		}
 	}
 
-	if (d->m_lockDistance > 0)
+	if (!randomPath && d->m_lockDistance > 0)
 	{
 		Real lockDistanceSquared = d->m_lockDistance;
 		Real distanceToTargetSquared;
-		if (m_isTrackingTarget && (getGoalObject() != NULL)) {
+		if (m_isTrackingTarget && (getGoalObject() != nullptr)) {
 			distanceToTargetSquared = ThePartitionManager->getDistanceSquared( getObject(), getGoalObject(), FROM_CENTER_2D);
 		}	else {
 			distanceToTargetSquared = ThePartitionManager->getDistanceSquared( getObject(), getGoalPosition(), FROM_CENTER_2D );
@@ -547,42 +680,134 @@ void MissileAIUpdate::doAttackState(Bool turnOK)
 					// Ground pos.  Change to original goal.
 					aiMoveToPosition(&m_originalTargetPos, CMD_FROM_AI );
 				}
+				// DEBUG_LOG((">>> MissileAI enter KILL state. prev state = %d\n", m_state));
 				switchToState(KILL); 
 				return;
 			}
-		} 
+		}
 	}
 
-	if(curLoco && curLoco->getPreferredHeight() > 0)
+	if(curLoco && (curLoco->getPreferredHeight() > 0)) // || curLoco->getPreferredHeight() < 0) )
 	{
 		// Am I close enough to the target to ignore my preferred height setting?
-		Real distanceToTargetSquared = ThePartitionManager->getDistanceSquared( getObject(), getGoalPosition(), FROM_CENTER_2D );
+#if RETAIL_COMPATIBLE_CRC
+		Real distanceToTargetSquared = ThePartitionManager->getDistanceSquared(getObject(), getGoalPosition(), FROM_CENTER_2D);
+#else
+		// TheSuperHackers @bugfix Stubbjax 23/08/2026 Diving missiles now use their target's position to determine distance
+		// when applicable rather than the goal position. This allows them to properly determine when to dive on moving targets.
+		Real distanceToTargetSquared;
+		if (m_isTrackingTarget && (getGoalObject() != nullptr)) {
+			distanceToTargetSquared = ThePartitionManager->getDistanceSquared(getObject(), getGoalObject(), FROM_CENTER_2D);
+		}
+		else {
+			distanceToTargetSquared = ThePartitionManager->getDistanceSquared(getObject(), getGoalPosition(), FROM_CENTER_2D);
+		}
+#endif
+
 		Real diveDistanceSquared = d->m_diveDistance;
 		if (curLoco && curLoco->getPreferredHeight()) {
-				diveDistanceSquared *= diveDistanceSquared;
-			if( distanceToTargetSquared < diveDistanceSquared )
-				curLoco->setUsePreciseZPos( true );
+			diveDistanceSquared *= diveDistanceSquared;
+			if (distanceToTargetSquared < diveDistanceSquared) {
+				curLoco->setUsePreciseZPos(true);
+				//DEBUG_LOG((">>> MissileAI - AttackState - DIVE - distanceToTarget = %f\n", sqrt(distanceToTargetSquared)));
+			}
+
 		}
 
 	}
 
-	if (m_noTurnDistLeft <= 0.0f)
+	// Have we finished NOTURN?
+	if (m_noTurnDistLeft <= 0.0f && m_state == ATTACK_NOTURN)
 	{
-		switchToState(ATTACK);
+		if (d->m_randomPathOffset > 0.0) {
+			// -----------------------------------
+			// We first reach random path state
+			// -----------------------------------
+			// Pick a random position near the target as new goal, and forget tracking the target for now
+			Coord3D targetPos;
+			if (m_isTrackingTarget && getGoalObject())
+				targetPos = *getGoalObject()->getPosition();
+			else
+				targetPos = *getGoalPosition();
+
+			// get halfway position
+			targetPos.add(*getObject()->getPosition());
+			targetPos.scale(0.5);
+
+			// TODO: add flag or check for Z scattering
+
+			// TODO: get polar offset (orient to object?)
+			Vector3 objPos(getObject()->getPosition()->x, getObject()->getPosition()->y, getObject()->getPosition()->z);
+			Vector3 curDir(targetPos.x - objPos.X, targetPos.y - objPos.Y, targetPos.y - objPos.Y);
+			m_randomPathDistLeft = curDir.Length() * 0.5;
+
+			//DEBUG_LOG((">>> MissileAI - StartRandomPath: m_randomPathDistLeft = %f\n", m_randomPathDistLeft));
+
+			curDir.Normalize();	// buildTransformMatrix wants it this way
+			Matrix3D mtx;
+			mtx.buildTransformMatrix(objPos, curDir);
+
+			Real scatter = d->m_randomPathOffset;
+			Coord3D offset = {
+				GameLogicRandomValue(-scatter, scatter),
+				GameLogicRandomValue(-scatter, scatter),
+				GameLogicRandomValue(0, scatter * 0.5)
+			};
+			adjustVector(&offset, &mtx);
+
+			targetPos.add(offset);
+
+			if (!d->m_isTorpedo) {
+				// Make sure Z is above ground
+				PathfindLayerEnum layer = TheTerrainLogic->getHighestLayerForDestination(&targetPos);
+				Real minHeight = TheTerrainLogic->getLayerHeight(targetPos.x, targetPos.y, layer) + APPROACH_HEIGHT;
+				targetPos.z = __max(targetPos.z, minHeight);
+			}
+			else {
+				Locomotor* curLoco = getCurLocomotor();
+				if (curLoco)
+				{
+					targetPos.z = getTorpedoTargetHeight(targetPos, curLoco);
+				}
+			}
+
+			getStateMachine()->setGoalPosition(&targetPos);
+			getStateMachine()->setGoalObject(NULL);
+			aiMoveToPosition(&targetPos, CMD_FROM_AI);
+			m_isTrackingTarget = FALSE;
+
+			Locomotor* curLoco = getCurLocomotor();
+			if (curLoco)
+			{
+				curLoco->setMaxAcceleration(m_maxAccel);
+				// curLoco->setMaxTurnRate(d->m_turnRateAttacking);
+				curLoco->setMaxTurnRate(BIGNUM);
+			}
+
+			switchToState(ATTACK_RANDOM_PATH);
+			// -----------------------------------
+		}
+		else {
+			switchToState(ATTACK);
+		}
 	}
 
 	// If I was fired at a flyer and have lost target (most likely they died), then I need to do something better
 	// than cloverleaf around their last spot.
-	if( m_isTrackingTarget && (getGoalObject() == NULL) )
+	if( m_isTrackingTarget && (getGoalObject() == NULL) && !d->m_isTorpedo)
+		airborneTargetGone();
+
+	if (m_isTrackingTarget && (getGoalPosition() == NULL) && d->m_isTorpedo)
 		airborneTargetGone();
 }
 
 //-------------------------------------------------------------------------------------------------
-void MissileAIUpdate::doKillState(void)
-{		 
+void MissileAIUpdate::doKillState()
+{
+	const MissileAIUpdateModuleData* d = getMissileAIUpdateModuleData();
 	if (TheGameLogic->getFrame() >= m_fuelExpirationDate)
 	{
-		if( getMissileAIUpdateModuleData()->m_detonateOnNoFuel )
+		if( d->m_detonateOnNoFuel )
 		{
 			detonate();
 			return;
@@ -597,46 +822,72 @@ void MissileAIUpdate::doKillState(void)
 		"Cheat" and move directly towards the target.  This ensures that the missile will hit.
 		jba. */
 	Locomotor* curLoco = getCurLocomotor();
-	Object *obj = getObject();	
+	Object *obj = getObject();
 	// Objects that are braking don't follow the normal physics, so they end up at their destination exactly.
 	obj->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_BRAKING ) );
 
 	if (curLoco)
 	{
+		// const MissileAIUpdateModuleData* d = getMissileAIUpdateModuleData();
 		curLoco->setMaxAcceleration(m_maxAccel);
+		// curLoco->setMaxTurnRate(__min(d->m_turnRateAttacking * 2.0f, BIGNUM));
 		curLoco->setMaxTurnRate(BIGNUM);
 	}
 	if (isIdle()) {
 		// we finished the move
-		if (getGoalObject()!=NULL) {
+		if (getGoalObject()!=nullptr) {
 			Locomotor* curLoco = getCurLocomotor();
 			Real closeEnough = 1.0f;
 			if (curLoco)
 			{
 				closeEnough = curLoco->getMaxSpeedForCondition(BODY_PRISTINE);
 			}
-			Real distanceToTargetSq = ThePartitionManager->getDistanceSquared( getObject(), getGoalObject(), FROM_BOUNDINGSPHERE_3D);
-			//DEBUG_LOG(("Distance to target %f, closeEnough %f\n", sqrt(distanceToTargetSq), closeEnough));
-			if (distanceToTargetSq < closeEnough*closeEnough) {
+			Real distanceToTargetSq = ThePartitionManager->getDistanceSquared(getObject(), getGoalObject(), FROM_BOUNDINGSPHERE_3D);
+			// DEBUG_LOG((">>> MissileAI KILL (Idle) - Distance to target %f, closeEnough %f\n", sqrt(distanceToTargetSq), closeEnough));
+			if (distanceToTargetSq < closeEnough * closeEnough) {
 				Coord3D pos = *getGoalObject()->getPosition();
 				getObject()->setPosition(&pos);
 				detonate();
-			}	else{
-				aiMoveToObject(getGoalObject(), CMD_FROM_AI );
 			}
-		} else {
+			else {
+				aiMoveToObject(getGoalObject(), CMD_FROM_AI);
+			}
+		}
+		else if (d->m_isTorpedo && getGoalPosition() != nullptr)
+		{
+			Locomotor* curLoco = getCurLocomotor();
+			Real closeEnough = 1.0f;
+			if (curLoco)
+			{
+				closeEnough = curLoco->getMaxSpeedForCondition(BODY_PRISTINE);
+			}
+			Real distanceToTargetSq = ThePartitionManager->getDistanceSquared(getObject(), getGoalPosition(), FROM_BOUNDINGSPHERE_2D);
+			if (distanceToTargetSq < closeEnough * closeEnough) {
+				Coord3D pos = *getGoalPosition();
+				pos.z = getTorpedoTargetHeight(pos, curLoco);
+				getObject()->setPosition(&pos);
+				detonate();
+			}
+			else {
+				aiMoveToObject(getGoalObject(), CMD_FROM_AI);
+			}
+		}
+		else {
 			detonate();
 		}
 	}
 	// If I was fired at a flyer and have lost target (most likely they died), then I need to do something better
 	// than cloverleaf around their last spot.
-	if( m_isTrackingTarget && (getGoalObject() == NULL) )
+	if( m_isTrackingTarget && (getGoalObject() == NULL) && !d->m_isTorpedo)
+		airborneTargetGone();
+
+	if (m_isTrackingTarget && (getGoalPosition() == nullptr) && d->m_isTorpedo)
 		airborneTargetGone();
 }
 
 //-------------------------------------------------------------------------------------------------
 void MissileAIUpdate::doDeadState()
-{	
+{
 	Locomotor* curLoco = getCurLocomotor();
 	if (curLoco)
 	{
@@ -652,12 +903,17 @@ void MissileAIUpdate::doDeadState()
 UpdateSleepTime MissileAIUpdate::update()
 {
 	Coord3D newPos = *getObject()->getPosition();
-	if (m_noTurnDistLeft > 0.0f && m_state >= IGNITION)
+	if ((m_noTurnDistLeft > 0.0f || m_randomPathDistLeft > 0.0f) && m_state >= IGNITION)
 	{
 		Real distThisTurn = sqrtf(sqr(newPos.x-m_prevPos.x) + sqr(newPos.y-m_prevPos.y) + sqr(newPos.z-m_prevPos.z));
-		m_noTurnDistLeft -= distThisTurn;
+		if (m_noTurnDistLeft > 0.0f)
+			m_noTurnDistLeft -= distThisTurn;
+		if (m_randomPathDistLeft > 0.0f)
+			m_randomPathDistLeft -= distThisTurn;
 		m_prevPos = newPos;
 	}
+
+	const MissileAIUpdateModuleData* d = getMissileAIUpdateModuleData();
 
 	//If this missile has been marked to divert to countermeasures, check when
 	//that will occur, then do it when the timer expires.
@@ -673,23 +929,60 @@ UpdateSleepTime MissileAIUpdate::update()
 			if( targetID != INVALID_ID )
 			{
 				victim = TheGameLogic->findObjectByID( targetID );
-				getStateMachine()->setGoalPosition(victim->getPosition());
+				Coord3D targetPos = *victim->getPosition();
+				if (d->m_isTorpedo) {
+					Locomotor* curLoco = getCurLocomotor();
+					if (curLoco)
+					{
+						targetPos.z = getTorpedoTargetHeight(targetPos, curLoco);
+					}
+				}
+				getStateMachine()->setGoalPosition(&targetPos);
 				// ick. const-cast is evil. fix. (srj)
- 				aiMoveToObject(const_cast<Object*>(victim), CMD_FROM_AI );
-				m_originalTargetPos = *victim->getPosition();
-				m_isTrackingTarget = TRUE;// Remember that I was originally shot at a moving object, so if the 
+				if (!d->m_isTorpedo) {
+					aiMoveToObject(const_cast<Object*>(victim), CMD_FROM_AI);
+				}
+				else {
+					aiMoveToPosition(&targetPos, CMD_FROM_AI);
+				}
+				m_originalTargetPos = targetPos;
+				m_isTrackingTarget = TRUE;// Remember that I was originally shot at a moving object, so if the
 				// target dies I can do something cool.
 				m_victimID = victim->getID();
 			}
 		}
 	}
 
-	if (newPos.z < 0) 
-	{	 
+	if (newPos.z < 0)
+	{
 		// we ended up under the world.  go away.
 		TheGameLogic->destroyObject(getObject());
 		return UPDATE_SLEEP_FOREVER;
 	}
+
+	// If treated as torpedo, explode when not over water
+	if (d->m_isTorpedo && !getObject()->isOverWater()) {
+		detonate();
+	}
+
+	// If torpedo, update target location
+	if (d->m_isTorpedo && m_isTrackingTarget) {
+		Object * targetUnit = TheGameLogic->findObjectByID(m_victimID);
+		if (targetUnit != nullptr && !targetUnit->isEffectivelyDead()) {
+			Coord3D targetPos = *targetUnit->getPosition();
+			Locomotor* curLoco = getCurLocomotor();
+			if (curLoco)
+			{
+				targetPos.z = getTorpedoTargetHeight(targetPos, curLoco);
+			}
+			getStateMachine()->setGoalPosition(&targetPos);
+			getStateMachine()->setGoalObject(targetUnit);
+			aiMoveToPosition(&targetPos, CMD_FROM_AI);
+			m_originalTargetPos = targetPos;
+			m_isTrackingTarget = true;
+		}
+	}
+
 	switch( m_state )
 	{
 		case PRELAUNCH:
@@ -707,12 +1000,18 @@ UpdateSleepTime MissileAIUpdate::update()
 			{
 				break;
 			}
+			FALLTHROUGH;
+
 		case IGNITION:
 			doIgnitionState();
 			break;
 
 		case ATTACK_NOTURN:
 			doAttackState(false);
+			break;
+
+		case ATTACK_RANDOM_PATH:
+			doAttackState(true, true);
 			break;
 
 		case ATTACK:
@@ -772,7 +1071,7 @@ UpdateSleepTime MissileAIUpdate::update()
 
 //-------------------------------------------------------------------------------------------------
 Bool MissileAIUpdate::processCollision(PhysicsBehavior *physics, Object *other)
-/* Returns true if the physics collide should apply the force.  Normally not.  
+/* Returns true if the physics collide should apply the force.  Normally not.
 Also determines whether objects are blocked, and if so, if they are stuck.  jba.*/
 {
 	// Missiles dont' get blocked by other objects.
@@ -816,20 +1115,39 @@ void MissileAIUpdate::projectileNowJammed()
 	Real scatter = data->m_distanceScatterWhenJammed;
 	targetPosition.x += GameLogicRandomValue(-scatter, scatter);
 	targetPosition.y += GameLogicRandomValue(-scatter, scatter);
-	targetPosition.z = TheTerrainLogic->getLayerHeight(	targetPosition.x, 
-																											targetPosition.y, 
+	targetPosition.z = TheTerrainLogic->getLayerHeight(	targetPosition.x,
+																											targetPosition.y,
 																											TheTerrainLogic->getHighestLayerForDestination(&targetPosition) );
 
-	getStateMachine()->setGoalObject(NULL);
+	getStateMachine()->setGoalObject(nullptr);
 	// Projectiles are expressly forbidden from getting AIIdle.  Who am I to argue.
-	// I need to do something though, because I can no longer give a new move command 
+	// I need to do something though, because I can no longer give a new move command
 	// while moving because of the big state machine crash fix.
-	// 
+	//
 	aiMoveToPosition( &targetPosition, CMD_FROM_AI );
 
 	m_isTrackingTarget = FALSE;
 	m_originalTargetPos = targetPosition;
 	m_victimID = INVALID_ID;
+}
+
+// ------------------------------------------------------------------------------------------------
+const Coord3D* MissileAIUpdate::getTargetPosition()
+{
+	return getGoalPosition();
+}
+// ------------------------------------------------------------------------------------------------
+Object* MissileAIUpdate::getTargetObject()
+{
+	return getGoalObject();
+}
+
+bool MissileAIUpdate::projectileShouldCollideWithWater() const
+{
+	if (m_detonationWeaponTmpl != nullptr) {
+		return m_detonationWeaponTmpl->getProjectileCollideMask() & WeaponCollideMaskType::WEAPON_COLLIDE_WATER;
+	}
+	return false;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -839,7 +1157,7 @@ void MissileAIUpdate::crc( Xfer *xfer )
 {
 	// extend base class
 	AIUpdateInterface::crc(xfer);
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -849,10 +1167,10 @@ void MissileAIUpdate::crc( Xfer *xfer )
 void MissileAIUpdate::xfer( Xfer *xfer )
 {
   // version
-  const XferVersion currentVersion = 6;
+  const XferVersion currentVersion = 9;
   XferVersion version = currentVersion;
   xfer->xferVersion( &version, currentVersion );
- 
+
  // extend base class
 	AIUpdateInterface::xfer(xfer);
 
@@ -871,23 +1189,23 @@ void MissileAIUpdate::xfer( Xfer *xfer )
 	xfer->xferReal(&m_maxAccel);
 
 	AsciiString weaponName;
-	if (m_detonationWeaponTmpl) 
+	if (m_detonationWeaponTmpl)
 	{
 		weaponName = m_detonationWeaponTmpl->getName();
 	}
 	xfer->xferAsciiString(&weaponName);
-	if (weaponName.isNotEmpty() && m_detonationWeaponTmpl == NULL) 
+	if (weaponName.isNotEmpty() && m_detonationWeaponTmpl == nullptr)
 	{
 		m_detonationWeaponTmpl = TheWeaponStore->findWeaponTemplate(weaponName);
 	}
 
 	AsciiString exhaustName;
-	if (m_exhaustSysTmpl) 
+	if (m_exhaustSysTmpl)
 	{
 		exhaustName = m_exhaustSysTmpl->getName();
 	}
 	xfer->xferAsciiString(&exhaustName);
-	if (exhaustName.isNotEmpty() && m_exhaustSysTmpl == NULL) 
+	if (exhaustName.isNotEmpty() && m_exhaustSysTmpl == nullptr)
 	{
 		m_exhaustSysTmpl = TheParticleSystemManager->findTemplate(exhaustName);
 	}
@@ -901,7 +1219,8 @@ void MissileAIUpdate::xfer( Xfer *xfer )
 
 	if (version >= 4)
 	{
-		xfer->xferUnsignedInt(&m_extraBonusFlags);
+		m_extraBonusFlags.xfer(xfer);
+		//xfer->xferUnsignedInt(&m_extraBonusFlags);
 		xfer->xferUser( &m_exhaustID, sizeof( m_exhaustID ) );
 	}
 
@@ -914,13 +1233,27 @@ void MissileAIUpdate::xfer( Xfer *xfer )
 	if( version>= 6 )
 		xfer->xferBool( &m_isJammed );
 
+	if( version >= 7 )
+	{
+		xfer->xferReal( &m_randomPathDistLeft);
+	}
+
+	if( version >= 8 )
+	{
+		xfer->xferCoord3D( &m_launchPos );
+	}
+
+	if( version >= 9 )
+	{
+		xfer->xferUser( &m_launchVeterancy, sizeof( m_launchVeterancy ) );
+	}
 }  // end xfer
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void MissileAIUpdate::loadPostProcess( void )
+void MissileAIUpdate::loadPostProcess()
 {
  // extend base class
 	AIUpdateInterface::loadPostProcess();
-}  // end loadPostProcess
+}

@@ -24,12 +24,12 @@
 
 // FILE: WeaponBonusUpdate.h /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002-2003 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002-2003 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	July 2003
@@ -37,17 +37,14 @@
 //	Filename: 	WeaponBonusUpdate.cpp
 //
 //	author:		Graham Smallwood
-//	
-//	purpose:	Like healing in that it can affect just me or people around, 
+//
+//	purpose:	Like healing in that it can affect just me or people around,
 //						except this gives a Weapon Bonus instead of health
 //
 //-----------------------------------------------------------------------------
 ///////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-
-#ifndef __WEAPON_BONUS_UPDATE_H_
-#define __WEAPON_BONUS_UPDATE_H_
 
 //-----------------------------------------------------------------------------
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
@@ -57,10 +54,12 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 #include "GameLogic/Module/UpdateModule.h"
+
 //-----------------------------------------------------------------------------
 // FORWARD REFERENCES /////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 enum WeaponBonusConditionType CPP_11(: Int);
+enum TintStatus CPP_11(: Int);
 
 //-----------------------------------------------------------------------------
 // TYPE DEFINES ///////////////////////////////////////////////////////////////
@@ -73,10 +72,13 @@ public:
 
 	KindOfMaskType						m_requiredAffectKindOf;						///< Must be set on target
 	KindOfMaskType						m_forbiddenAffectKindOf;	///< Must be clear on target
+	Int									m_targetsMask;				///< ALLIES, ENEMIES or NEUTRALS
+	Bool								m_isAffectAirborne;					///< Affect Airborne targets
 	UnsignedInt								m_bonusDuration;					///< How long a hit lasts on target
 	UnsignedInt								m_bonusDelay;							///< How often to pulse
 	Real											m_bonusRange;							///< How far to affect
 	WeaponBonusConditionType	m_bonusConditionType;			///< Status to give
+	TintStatus m_tintStatus;         ///< tint color to apply
 
 	static void buildFieldParse(MultiIniFieldParse& p);
 };
@@ -108,5 +110,3 @@ protected:
 //-----------------------------------------------------------------------------
 // EXTERNALS //////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-
-#endif

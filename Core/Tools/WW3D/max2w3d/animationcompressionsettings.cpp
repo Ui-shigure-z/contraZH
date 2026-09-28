@@ -50,11 +50,10 @@
 ////////////////////////////////////////////////////////////////////////////////////////
 AnimationCompressionSettingsDialogClass::AnimationCompressionSettingsDialogClass (Interface *maxinterface, HWND parent_wnd) :
 	MaxInterface (maxinterface),
-	Options (NULL),
-	Wnd (NULL),
+	Options (nullptr),
+	Wnd (nullptr),
 	ParentWnd (parent_wnd)
 {
-	return ;
 }
 
 
@@ -63,9 +62,8 @@ AnimationCompressionSettingsDialogClass::AnimationCompressionSettingsDialogClass
 //	~AnimationCompressionSettingsDialogClass
 //
 ////////////////////////////////////////////////////////////////////////////////////////
-AnimationCompressionSettingsDialogClass::~AnimationCompressionSettingsDialogClass (void)
+AnimationCompressionSettingsDialogClass::~AnimationCompressionSettingsDialogClass ()
 {
-	return ;
 }
 
 
@@ -75,7 +73,7 @@ AnimationCompressionSettingsDialogClass::~AnimationCompressionSettingsDialogClas
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 int
-AnimationCompressionSettingsDialogClass::Do_Modal (void)
+AnimationCompressionSettingsDialogClass::Do_Modal ()
 {
 	int retval = ::DialogBoxParam (AppInstance, MAKEINTRESOURCE (IDD_ANIMATION_COMPRESSION),
 													ParentWnd, Real_Message_Proc, (LPARAM)this);
@@ -97,7 +95,7 @@ AnimationCompressionSettingsDialogClass::Real_Message_Proc
 	LPARAM	lparam
 )
 {
-	AnimationCompressionSettingsDialogClass *dialog_obj = NULL;
+	AnimationCompressionSettingsDialogClass *dialog_obj = nullptr;
 
 	//
 	//	Setup the framework we need so that the instance
@@ -115,7 +113,7 @@ AnimationCompressionSettingsDialogClass::Real_Message_Proc
 	//	Allow the instance to handle the call
 	//
 	BOOL retval = FALSE;
-	if (dialog_obj != NULL) {
+	if (dialog_obj != nullptr) {
 		retval = dialog_obj->Message_Proc (message, wparam, lparam);
 	}
 
@@ -158,11 +156,11 @@ AnimationCompressionSettingsDialogClass::Message_Proc
 			::GetWindowRect (Wnd, &rect);
 			int width	= parent_rect.right - parent_rect.left;
 			int height	= parent_rect.bottom - parent_rect.top;
-			::SetWindowPos (	Wnd, NULL,
+			::SetWindowPos (	Wnd, nullptr,
 									parent_rect.left + (width / 2) - ((rect.right - rect.left) / 2),
 									parent_rect.top + (height / 2) - ((rect.bottom - rect.top) / 2),
 									0, 0, SWP_NOZORDER | SWP_NOSIZE);
-			
+
 			//
 			//	Initialize the dialog controls
 			//
@@ -197,7 +195,7 @@ AnimationCompressionSettingsDialogClass::Message_Proc
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 void
-AnimationCompressionSettingsDialogClass::Initialize_Controls (void)
+AnimationCompressionSettingsDialogClass::Initialize_Controls ()
 {
 	SetCheckBox (Wnd, IDC_REDUCE_ANIMATION_CHECK, Options->ReduceAnimation);
 	char string[128] = { 0 };
@@ -217,7 +215,7 @@ AnimationCompressionSettingsDialogClass::Initialize_Controls (void)
 	HWND flavor_combo = ::GetDlgItem (Wnd, IDC_COMPRESS_ANIMATION_FLAVOR_COMBO);
 	ComboBox_AddString (flavor_combo, "TimeCoded");
 	ComboBox_AddString (flavor_combo, "Adaptive Delta");
-	
+
 	//
 	//	Bounds check the parameters
 	//
@@ -244,7 +242,6 @@ AnimationCompressionSettingsDialogClass::Initialize_Controls (void)
 
 	::sprintf (string, "%f", Options->CompressAnimationRotationError);
 	::SetDlgItemText (Wnd, IDC_MAX_ROT_ERROR_EDIT, string);
-	return ;
 }
 
 
@@ -254,7 +251,7 @@ AnimationCompressionSettingsDialogClass::Initialize_Controls (void)
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 void
-AnimationCompressionSettingsDialogClass::Save_Settings (void)
+AnimationCompressionSettingsDialogClass::Save_Settings ()
 {
 	//
 	//	Read the compression type setting
@@ -287,5 +284,4 @@ AnimationCompressionSettingsDialogClass::Save_Settings (void)
 	::GetDlgItemText (Wnd, IDC_MAX_ROT_ERROR_EDIT, string, sizeof (string));
 	float rot_error = ::atof (string);
 	Options->CompressAnimationRotationError = rot_error;
-	return ;
 }

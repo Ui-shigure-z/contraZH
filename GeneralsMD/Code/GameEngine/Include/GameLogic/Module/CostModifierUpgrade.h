@@ -24,12 +24,12 @@
 
 // FILE: CostModifierUpgrade.h /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	Aug 2002
@@ -37,16 +37,13 @@
 //	Filename: 	CostModifierUpgrade.h
 //
 //	author:		Chris Huybregts
-//	
-//	purpose:	
+//
+//	purpose:
 //
 //-----------------------------------------------------------------------------
 ///////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-
-#ifndef __COST_MODIFIER_UPGRADE_H_
-#define __COST_MODIFIER_UPGRADE_H_
 
 //-----------------------------------------------------------------------------
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
@@ -77,6 +74,20 @@ class Player;
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 
+enum BonusStackingType CPP_11(: Int)
+{
+	NO_STACKING = 0,  // Default behaviour: Values of different percentage stack
+	OTHER_TYPE = 1,  // Values from the different source object types stack.
+	SAME_TYPE = 2   // Values from the same type of source object stack.
+};
+static const char* TheBonusStackingTypeNames[] =
+{
+	"DIFFERENT_VALUE",
+	"OTHER_TYPE",
+	"SAME_TYPE",
+	NULL
+};
+
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 class CostModifierUpgradeModuleData : public UpgradeModuleData
@@ -84,12 +95,14 @@ class CostModifierUpgradeModuleData : public UpgradeModuleData
 
 public:
 
-	CostModifierUpgradeModuleData( void );
+	CostModifierUpgradeModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
 
 	Real m_percentage;
 	KindOfMaskType m_kindOf;
+	Bool m_isOneShot;
+	BonusStackingType m_stackingType;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -106,14 +119,12 @@ public:
 	CostModifierUpgrade( Thing *thing, const ModuleData* moduleData );
 	// virtual destructor prototype defined by MemoryPoolObject
 
-	virtual void onDelete( void );																///< we have some work to do when this module goes away
-	virtual void onCapture( Player *oldOwner, Player *newOwner ); 
+	virtual void onDelete() override;																///< we have some work to do when this module goes away
+	virtual void onCapture( Player *oldOwner, Player *newOwner ) override;
 
 protected:
 
-	virtual void upgradeImplementation( void ); ///< Here's the actual work of Upgrading
-	virtual Bool isSubObjectsUpgrade() { return false; }
+	virtual void upgradeImplementation() override; ///< Here's the actual work of Upgrading
+	virtual Bool isSubObjectsUpgrade() override { return false; }
 
 };
-
-#endif // __COST_MODIFIER_UPGRADE_H_

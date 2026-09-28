@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_GRAPHICVIEW_H__2BB39E41_5D3A_11D2_9FC6_00104B791122__INCLUDED_)
-#define AFX_GRAPHICVIEW_H__2BB39E41_5D3A_11D2_9FC6_00104B791122__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // GraphicView.h : header file
 //
 
@@ -44,7 +40,7 @@ class ParticleEmitterClass;
 /////////////////////////////////////////////////////////////////////////////
 // CGraphicView view
 
-#include "Camera.H"
+#include "WW3D2/camera.h"
 
 class CGraphicView : public CView
 {
@@ -62,18 +58,18 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CGraphicView)
 	public:
-	virtual void OnInitialUpdate();
+	virtual void OnInitialUpdate() override;
 	protected:
-	virtual void OnDraw(CDC* pDC);      // overridden to draw this view
-	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
+	virtual void OnDraw(CDC* pDC) override;      // overridden to draw this view
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
 	virtual ~CGraphicView();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 	// Generated message map functions
@@ -140,7 +136,7 @@ protected:
         //  Public Methods
         //
 
-        BOOL			InitializeGraphicView (void);
+        BOOL			InitializeGraphicView ();
 
         //
 		  //	Initial display methods
@@ -148,9 +144,9 @@ protected:
 		  void			Reset_Camera_To_Display_Sphere (SphereClass &sphere);
 		  void			Reset_Camera_To_Display_Object (RenderObjClass &physObject);
 		  void			Reset_Camera_To_Display_Emitter (ParticleEmitterClass &emitter);
-		  void			Load_Default_Dat (void);
+		  void			Load_Default_Dat ();
 
-        void			UpdateDisplay (void);
+        void			UpdateDisplay ();
         void			RepaintView (BOOL bUpdateAnimation = TRUE, DWORD ticks_to_use = 0);
         void			SetActiveUpdate (BOOL bActive)
 								{ m_bActive = bActive;
@@ -163,9 +159,9 @@ protected:
         //
         // Animation methods
         //
-        float					GetAnimationSpeed (void) const				{ return m_animationSpeed; }
+        float					GetAnimationSpeed () const				{ return m_animationSpeed; }
         void					SetAnimationSpeed (float animationSpeed)	{ m_animationSpeed = animationSpeed; }
-        ANIMATION_STATE		GetAnimationState (void) const				{ return m_animationState; }
+        ANIMATION_STATE		GetAnimationState () const				{ return m_animationState; }
         void					SetAnimationState (ANIMATION_STATE animationState);
 
         //
@@ -174,44 +170,44 @@ protected:
         void					SetAllowedCameraRotation (CAMERA_ROTATION cameraRotation);
         CAMERA_ROTATION		GetAllowedCameraRotation () const			{ return m_allowedCameraRotation; }
         void					SetCameraPos (CAMERA_POS cameraPos);
-        class CameraClass *GetCamera (void) const							{ return m_pCamera; }
+        class CameraClass *GetCamera () const							{ return m_pCamera.Peek(); }
 
-		  float					Get_Camera_Distance (void) const				{ return m_CameraDistance; }
+		  float					Get_Camera_Distance () const				{ return m_CameraDistance; }
 		  void					Set_Camera_Distance (float dist);
 
 		  void					Set_Camera_Bone_Pos_X (bool onoff)			{ m_CameraBonePosX = onoff; }
-		  BOOL					Is_Camera_Bone_Pos_X (void) const			{ return m_CameraBonePosX; }
+		  BOOL					Is_Camera_Bone_Pos_X () const			{ return m_CameraBonePosX; }
 
         //
         // Object rotation methods
         //
-        void					ResetObject (void);
+        void					ResetObject ();
         void					RotateObject (OBJECT_ROTATION rotation);
-        OBJECT_ROTATION		GetObjectRotation (void) const				{ return m_objectRotation; }
+        OBJECT_ROTATION		GetObjectRotation () const				{ return m_objectRotation; }
 
         //
         // Light rotation methods
         //
         void					Rotate_Light (OBJECT_ROTATION rotation)	{ m_LightRotation = rotation; }
-        OBJECT_ROTATION		Get_Light_Rotation (void) const				{ return m_LightRotation; }
+        OBJECT_ROTATION		Get_Light_Rotation () const				{ return m_LightRotation; }
 
 			//
 			//	Fullscreen mode
 			//
-			BOOL					Is_Fullscreen (void) const						{ return !(BOOL)m_iWindowed; }
+			BOOL					Is_Fullscreen () const						{ return !(BOOL)m_iWindowed; }
 			void					Set_Fullscreen (bool fullscreen)				{ m_iWindowed = fullscreen ? 0 : 1; InitializeGraphicView (); }
 
 			//
 			//	Misc
 			//
-			RenderObjClass *	Get_Light_Mesh (void) const					{ return m_pLightMesh; }
-			Vector3 &			Get_Object_Center (void)						{ return m_ObjectCenter; }
+			RenderObjClass *	Get_Light_Mesh () const					{ return m_pLightMesh.Peek(); }
+			Vector3 &			Get_Object_Center ()						{ return m_ObjectCenter; }
 
 			//
 			//	FOV methods
 			//
 			void					Set_FOV (double hfov, double vfov, bool force = false);
-			void					Reset_FOV (void);
+			void					Reset_FOV ();
 
     protected:
 
@@ -219,8 +215,8 @@ protected:
         //
         //  Protected methods
         //
-		  void					Rotate_Object (void);
-		  void					Rotate_Light (void);
+		  void					Rotate_Object ();
+		  void					Rotate_Light ();
 
     private:
 
@@ -231,11 +227,11 @@ protected:
         BOOL					m_bInitialized;
         BOOL					m_bActive;
         UINT					m_TimerID;
-        CameraClass	*		m_pCamera;
-		  RenderObjClass *	m_pLightMesh;
+        RefCountPtr<CameraClass>	m_pCamera;
+		  RefCountPtr<RenderObjClass>	m_pLightMesh;
 		  bool					m_bLightMeshInScene;
 		  Vector3				m_ObjectCenter;
-		  SphereClass			m_ViewedSphere;		  
+		  SphereClass			m_ViewedSphere;
 
         BOOL					m_bMouseDown;
         BOOL					m_bRMouseDown;
@@ -245,7 +241,7 @@ protected:
 		  float					m_CameraDistance;
 		  DWORD					m_ParticleCountUpdate;
 		  BOOL					m_CameraBonePosX;
-        
+
         // Animation data
         DWORD					m_dwLastFrameUpdate;
         float					m_animationSpeed;
@@ -259,5 +255,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_GRAPHICVIEW_H__2BB39E41_5D3A_11D2_9FC6_00104B791122__INCLUDED_)

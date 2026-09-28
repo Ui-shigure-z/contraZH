@@ -27,8 +27,6 @@
 // DO NOT DISTRIBUTE
 
 #pragma once
-#ifndef __EVA_H__
-#define __EVA_H__
 
 #include "Common/SubsystemInterface.h"
 #include "Common/AudioEventRTS.h"
@@ -40,10 +38,10 @@ class INI;
 // Keep in sync with TheEvaMessageNames AND Eva::s_shouldPlayFuncs
 enum EvaMessage CPP_11(: Int)
 {
+	EVA_None = -2, //< Explicitely turn off eva event for vanilla ZH Special Powers
   EVA_Invalid = -1,
-    
-	EVA_FIRST = 0,
-	EVA_LowPower = EVA_FIRST,
+
+	EVA_LowPower,
 	EVA_InsufficientFunds,
 	EVA_SuperweaponDetected_Own_ParticleCannon,
 	EVA_SuperweaponDetected_Own_Nuke,
@@ -97,10 +95,152 @@ enum EvaMessage CPP_11(: Int)
   EVA_SuperweaponLaunched_Ally_Sneak_Attack,
   EVA_SuperweaponLaunched_Enemy_Sneak_Attack,
 
+	//New constants by OFS
+	  Eva_SuperweaponDetected_Own_Ion_Cannon,
+	  Eva_SuperweaponDetected_Ally_Ion_Cannon,
+	  Eva_SuperweaponDetected_Enemy_Ion_Cannon,
+	  Eva_SuperweaponLaunched_Own_Ion_Cannon,
+	  Eva_SuperweaponLaunched_Ally_Ion_Cannon,
+	  Eva_SuperweaponLaunched_Enemy_Ion_Cannon,
+	  Eva_SuperweaponReady_Own_Ion_Cannon,
+	  Eva_SuperweaponReady_Ally_Ion_Cannon,
+	  Eva_SuperweaponReady_Enemy_Ion_Cannon,
+
+	  Eva_SuperweaponDetected_Own_Cluster_Missile,
+	  Eva_SuperweaponDetected_Ally_Cluster_Missile,
+	  Eva_SuperweaponDetected_Enemy_Cluster_Missile,
+	  Eva_SuperweaponLaunched_Own_Cluster_Missile,
+	  Eva_SuperweaponLaunched_Ally_Cluster_Missile,
+	  Eva_SuperweaponLaunched_Enemy_Cluster_Missile,
+	  Eva_SuperweaponReady_Own_Cluster_Missile,
+	  Eva_SuperweaponReady_Ally_Cluster_Missile,
+	  Eva_SuperweaponReady_Enemy_Cluster_Missile,
+
+	  Eva_SuperweaponDetected_Own_Sunstorm_Missile,
+	  Eva_SuperweaponDetected_Ally_Sunstorm_Missile,
+	  Eva_SuperweaponDetected_Enemy_Sunstorm_Missile,
+	  Eva_SuperweaponLaunched_Own_Sunstorm_Missile,
+	  Eva_SuperweaponLaunched_Ally_Sunstorm_Missile,
+	  Eva_SuperweaponLaunched_Enemy_Sunstorm_Missile,
+	  Eva_SuperweaponReady_Own_Sunstorm_Missile,
+	  Eva_SuperweaponReady_Ally_Sunstorm_Missile,
+	  Eva_SuperweaponReady_Enemy_Sunstorm_Missile,
+
+	  Eva_SuperweaponDetected_Own_Meteor_Strike,
+	  Eva_SuperweaponDetected_Ally_Meteor_Strike,
+	  Eva_SuperweaponDetected_Enemy_Meteor_Strike,
+	  Eva_SuperweaponLaunched_Own_Meteor_Strike,
+	  Eva_SuperweaponLaunched_Ally_Meteor_Strike,
+	  Eva_SuperweaponLaunched_Enemy_Meteor_Strike,
+	  Eva_SuperweaponReady_Own_Meteor_Strike,
+	  Eva_SuperweaponReady_Ally_Meteor_Strike,
+	  Eva_SuperweaponReady_Enemy_Meteor_Strike,
+
+	  Eva_SuperweaponDetected_Own_Punisher_Cannon,
+	  Eva_SuperweaponDetected_Ally_Punisher_Cannon,
+	  Eva_SuperweaponDetected_Enemy_Punisher_Cannon,
+	  Eva_SuperweaponLaunched_Own_Punisher_Cannon,
+	  Eva_SuperweaponLaunched_Ally_Punisher_Cannon,
+	  Eva_SuperweaponLaunched_Enemy_Punisher_Cannon,
+	  Eva_SuperweaponReady_Own_Punisher_Cannon,
+	  Eva_SuperweaponReady_Ally_Punisher_Cannon,
+	  Eva_SuperweaponReady_Enemy_Punisher_Cannon,
+
+	  Eva_SuperweaponDetected_Own_Chemical_Missile,
+	  Eva_SuperweaponDetected_Ally_Chemical_Missile,
+	  Eva_SuperweaponDetected_Enemy_Chemical_Missile,
+	  Eva_SuperweaponLaunched_Own_Chemical_Missile,
+	  Eva_SuperweaponLaunched_Ally_Chemical_Missile,
+	  Eva_SuperweaponLaunched_Enemy_Chemical_Missile,
+	  Eva_SuperweaponReady_Own_Chemical_Missile,
+	  Eva_SuperweaponReady_Ally_Chemical_Missile,
+	  Eva_SuperweaponReady_Enemy_Chemical_Missile,
+
+	  Eva_SuperweaponDetected_Own_Chronosphere,
+	  Eva_SuperweaponDetected_Ally_Chronosphere,
+	  Eva_SuperweaponDetected_Enemy_Chronosphere,
+	  Eva_SuperweaponLaunched_Own_Chronosphere,
+	  Eva_SuperweaponLaunched_Ally_Chronosphere,
+	  Eva_SuperweaponLaunched_Enemy_Chronosphere,
+	  Eva_SuperweaponReady_Own_Chronosphere,
+	  Eva_SuperweaponReady_Ally_Chronosphere,
+	  Eva_SuperweaponReady_Enemy_Chronosphere,
+
+	  Eva_SuperweaponDetected_Own_Nuclear_Storm,
+	  Eva_SuperweaponDetected_Ally_Nuclear_Storm,
+	  Eva_SuperweaponDetected_Enemy_Nuclear_Storm,
+	  Eva_SuperweaponLaunched_Own_Nuclear_Storm,
+	  Eva_SuperweaponLaunched_Ally_Nuclear_Storm,
+	  Eva_SuperweaponLaunched_Enemy_Nuclear_Storm,
+	  Eva_SuperweaponReady_Own_Nuclear_Storm,
+	  Eva_SuperweaponReady_Ally_Nuclear_Storm,
+	  Eva_SuperweaponReady_Enemy_Nuclear_Storm,
+
+	  Eva_SuperweaponDetected_Own_Weather_Control,
+	  Eva_SuperweaponDetected_Ally_Weather_Control,
+	  Eva_SuperweaponDetected_Enemy_Weather_Control,
+	  Eva_SuperweaponLaunched_Own_Weather_Control,
+	  Eva_SuperweaponLaunched_Ally_Weather_Control,
+	  Eva_SuperweaponLaunched_Enemy_Weather_Control,
+	  Eva_SuperweaponReady_Own_Weather_Control,
+	  Eva_SuperweaponReady_Ally_Weather_Control,
+	  Eva_SuperweaponReady_Enemy_Weather_Control,
+
+	  Eva_SuperweaponDetected_Own_Hatf_Missile,
+	  Eva_SuperweaponDetected_Ally_Hatf_Missile,
+	  Eva_SuperweaponDetected_Enemy_Hatf_Missile,
+	  Eva_SuperweaponLaunched_Own_Hatf_Missile,
+	  Eva_SuperweaponLaunched_Ally_Hatf_Missile,
+	  Eva_SuperweaponLaunched_Enemy_Hatf_Missile,
+	  Eva_SuperweaponReady_Own_Hatf_Missile,
+	  Eva_SuperweaponReady_Ally_Hatf_Missile,
+	  Eva_SuperweaponReady_Enemy_Hatf_Missile,
+
+	  Eva_SuperweaponDetected_Own_Command_Uplink,
+	  Eva_SuperweaponDetected_Ally_Command_Uplink,
+	  Eva_SuperweaponDetected_Enemy_Command_Uplink,
+	  Eva_SuperweaponLaunched_Own_Command_Uplink,
+	  Eva_SuperweaponLaunched_Ally_Command_Uplink,
+	  Eva_SuperweaponLaunched_Enemy_Command_Uplink,
+	  Eva_SuperweaponReady_Own_Command_Uplink,
+	  Eva_SuperweaponReady_Ally_Command_Uplink,
+	  Eva_SuperweaponReady_Enemy_Command_Uplink,
+
+	  Eva_SuperweaponDetected_Own_Atmospheric_Lens,
+	  Eva_SuperweaponDetected_Ally_Atmospheric_Lens,
+	  Eva_SuperweaponDetected_Enemy_Atmospheric_Lens,
+	  Eva_SuperweaponLaunched_Own_Atmospheric_Lens,
+	  Eva_SuperweaponLaunched_Ally_Atmospheric_Lens,
+	  Eva_SuperweaponLaunched_Enemy_Atmospheric_Lens,
+	  Eva_SuperweaponReady_Own_Atmospheric_Lens,
+	  Eva_SuperweaponReady_Ally_Atmospheric_Lens,
+	  Eva_SuperweaponReady_Enemy_Atmospheric_Lens,
+
+	  Eva_SuperweaponDetected_Own_ICBM,
+	  Eva_SuperweaponDetected_Ally_ICBM,
+	  Eva_SuperweaponDetected_Enemy_ICBM,
+	  Eva_SuperweaponLaunched_Own_ICBM,
+	  Eva_SuperweaponLaunched_Ally_ICBM,
+	  Eva_SuperweaponLaunched_Enemy_ICBM,
+	  Eva_SuperweaponReady_Own_ICBM,
+	  Eva_SuperweaponReady_Ally_ICBM,
+	  Eva_SuperweaponReady_Enemy_ICBM,
+
+	  Eva_SuperweaponDetected_Own_Tomahawk_Storm,
+	  Eva_SuperweaponDetected_Ally_Tomahawk_Storm,
+	  Eva_SuperweaponDetected_Enemy_Tomahawk_Storm,
+	  Eva_SuperweaponLaunched_Own_Tomahawk_Storm,
+	  Eva_SuperweaponLaunched_Ally_Tomahawk_Storm,
+	  Eva_SuperweaponLaunched_Enemy_Tomahawk_Storm,
+	  Eva_SuperweaponReady_Own_Tomahawk_Storm,
+	  Eva_SuperweaponReady_Ally_Tomahawk_Storm,
+	  Eva_SuperweaponReady_Enemy_Tomahawk_Storm,
+
 	EVA_COUNT,
+	EVA_FIRST = 0,
 };
 
-extern const char *TheEvaMessageNames[];
+extern const char *const TheEvaMessageNames[];
 
 //------------------------------------------------------------------------------------ EvaCheckInfo
 struct EvaSideSounds
@@ -109,13 +249,13 @@ struct EvaSideSounds
 	std::vector<AsciiString> m_soundNames;
 
 	static const FieldParse s_evaSideSounds[];		///< the parse table for INI definition
-	const FieldParse *getFieldParse( void ) const { return s_evaSideSounds; }
+	const FieldParse *getFieldParse() const { return s_evaSideSounds; }
 };
 
 //------------------------------------------------------------------------------------ EvaCheckInfo
 class EvaCheckInfo : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(EvaCheckInfo, "EvaCheckInfo")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(EvaCheckInfo, "EvaCheckInfo")
 
 public:
 	EvaMessage									m_message;
@@ -123,11 +263,11 @@ public:
 	UnsignedInt									m_framesToExpire;
 	UnsignedInt									m_priority;	// higher priority is more important, and will be played in preference to lower preference
 	std::vector<EvaSideSounds>	m_evaSideSounds;
-	
+
 	EvaCheckInfo();
 
 	static const FieldParse s_evaEventInfo[];		///< the parse table for INI definition
-	const FieldParse *getFieldParse( void ) const { return s_evaEventInfo; }
+	const FieldParse *getFieldParse() const { return s_evaEventInfo; }
 };
 EMPTY_DTOR(EvaCheckInfo)
 
@@ -140,7 +280,7 @@ struct EvaCheck
 	const EvaCheckInfo *m_evaInfo;
 	UnsignedInt m_triggeredOnFrame;
 	UnsignedInt m_timeForNextCheck;
-	Bool m_alreadyPlayed;	
+	Bool m_alreadyPlayed;
 
 		EvaCheck();
 };
@@ -161,7 +301,7 @@ class Eva : public SubsystemInterface
 		typedef std::vector<EvaCheck> EvaCheckVec;
 		typedef EvaCheckVec::iterator EvaCheckVecIt;
 
-		// This list contains things that either want to play, 
+		// This list contains things that either want to play,
 		// or have played and are waiting till they are allowed to check again to play.
 		EvaCheckVec m_checks;
 
@@ -170,22 +310,22 @@ class Eva : public SubsystemInterface
 
 		Player *m_localPlayer;
 
-		// Variables for condition checks go here. 
+		// Variables for condition checks go here.
 		Int m_previousBuildingCount;
 		Int m_previousUnitCount;
 		mutable EvaMessage m_messageBeingTested;	// Used by the generic hooks so they can figure out which flag to test.
 		Bool m_shouldPlay[EVA_COUNT];	// These aren't all used, but some of them are.
-		
+
 		Bool m_enabled;
 
 	public:
 		Eva();
-		virtual ~Eva();
+		virtual ~Eva() override;
 
 	public:		// From SubsystemInterface
-		virtual void init();
-		virtual void reset();
-		virtual void update();
+		virtual void init() override;
+		virtual void reset() override;
+		virtual void update() override;
 
 		static EvaMessage nameToMessage(const AsciiString& name);
 		static AsciiString messageToName(EvaMessage message);
@@ -215,5 +355,3 @@ class Eva : public SubsystemInterface
 };
 
 extern Eva *TheEva;
-
-#endif /* __EVA_H__ */

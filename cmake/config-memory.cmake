@@ -1,6 +1,11 @@
 # Game Memory features
 option(RTS_GAMEMEMORY_ENABLE "Enables the memory pool and dynamic memory allocator." ON)
 
+# Disable Game Memory if ASAN is enabled - Game Memory overrides new/delete and interferes with ASAN
+if(RTS_BUILD_OPTION_ASAN)
+    set(RTS_GAMEMEMORY_ENABLE OFF)
+endif()
+
 # Memory pool features
 option(RTS_MEMORYPOOL_OVERRIDE_MALLOC "Enables the Dynamic Memory Allocator for malloc calls." OFF)
 option(RTS_MEMORYPOOL_MPSB_DLINK "Adds a backlink to MemoryPoolSingleBlock. Makes it faster to free raw DMA blocks, but increases memory consumption." ON)
@@ -14,6 +19,9 @@ option(RTS_MEMORYPOOL_DEBUG_STACKTRACE "Enables stack trace collection for alloc
 option(RTS_MEMORYPOOL_DEBUG_INTENSE_VERIFY "Enables intensive verifications after nearly every memory operation. OFF by default, since it slows down things a lot, but is worth turning on for really obscure memory corruption issues." OFF)
 option(RTS_MEMORYPOOL_DEBUG_CHECK_BLOCK_OWNERSHIP "Enables debug to verify that a block actually belongs to the pool it is called with. This is great for debugging, but can be realllly slow, so is OFF by default." OFF)
 option(RTS_MEMORYPOOL_DEBUG_INTENSE_DMA_BOOKKEEPING "Prints statistics for memory usage of Memory Pools." OFF)
+
+# Memory dump options
+option(RTS_CRASHDUMP_ENABLE "Enables writing crash dumps on unhandled exceptions or release crash failures." ON)
 
 # Game Memory features
 add_feature_info(GameMemoryEnable RTS_GAMEMEMORY_ENABLE "Build with the original game memory implementation")
@@ -32,6 +40,8 @@ add_feature_info(MemoryPoolDebugIntenseVerify RTS_MEMORYPOOL_DEBUG_INTENSE_VERIF
 add_feature_info(MemoryPoolDebugCheckBlockOwnership RTS_MEMORYPOOL_DEBUG_CHECK_BLOCK_OWNERSHIP "Build with Memory Pool block ownership checks")
 add_feature_info(MemoryPoolDebugIntenseDmaBookkeeping RTS_MEMORYPOOL_DEBUG_INTENSE_DMA_BOOKKEEPING "Build with Memory Pool intense DMA bookkeeping")
 
+# Memory dump features
+add_feature_info(CrashDumpEnable RTS_CRASHDUMP_ENABLE "Build with Crash Dumps")
 
 # Game Memory features
 if(NOT RTS_GAMEMEMORY_ENABLE)
@@ -80,5 +90,12 @@ else()
     
     if(RTS_MEMORYPOOL_DEBUG_INTENSE_DMA_BOOKKEEPING)
         target_compile_definitions(core_config INTERFACE INTENSE_DMA_BOOKKEEPING=1)
+    endif()
+endif()
+
+if(RTS_CRASHDUMP_ENABLE)
+    target_compile_definitions(core_config INTERFACE RTS_ENABLE_CRASHDUMP=1)
+    if (IS_VS6_BUILD AND NOT RTS_BUILD_OPTION_VC6_FULL_DEBUG)
+        message(STATUS "Crash Dumps will be significantly less useful in VC6 builds without full debug info enabled")
     endif()
 endif()

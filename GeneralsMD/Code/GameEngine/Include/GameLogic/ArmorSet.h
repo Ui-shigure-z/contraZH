@@ -26,12 +26,8 @@
 
 #pragma once
 
-#ifndef _ArmorSet_H_
-#define _ArmorSet_H_
-
 #include "Lib/BaseType.h"
 #include "Common/GameType.h"
-#include "Common/SparseMatchFinder.h"
 #include "Common/SparseMatchFinder.h"
 
 //-------------------------------------------------------------------------------------------------
@@ -45,6 +41,7 @@ class INI;
 // has all condition flags set to zero.
 enum ArmorSetType CPP_11(: Int)
 {
+	ARMORSET_NONE = -1,
 	// The access and use of this enum has the bit shifting built in, so this is a 0,1,2,3,4,5 enum
 	ARMORSET_VETERAN		= 0,
 	ARMORSET_ELITE			= 1,
@@ -53,13 +50,38 @@ enum ArmorSetType CPP_11(: Int)
 	ARMORSET_WEAK_VERSUS_BASEDEFENSES = 4,
 	ARMORSET_SECOND_LIFE = 5,	///< Body Module has marked us as on our second life
 	ARMORSET_CRATE_UPGRADE_ONE, ///< Just like weaponset type from salvage.
-	ARMORSET_CRATE_UPGRADE_TWO, 
+	ARMORSET_CRATE_UPGRADE_TWO,
+	ARMORSET_PLAYER_UPGRADE2,
+	ARMORSET_PLAYER_UPGRADE3,
+	ARMORSET_PLAYER_UPGRADE4,
 
-	ARMORSET_COUNT			///< keep last, please
+	// Veterancy ranks beyond HEROIC. Appended (not inserted) to preserve existing save values.
+	ARMORSET_FOUR,
+	ARMORSET_FIVE,
+
+	// Rider slots (appended to preserve existing save values). See RiderChangeContain (MAX_RIDERS).
+	ARMORSET_RIDER1,
+	ARMORSET_RIDER2,
+	ARMORSET_RIDER3,
+	ARMORSET_RIDER4,
+	ARMORSET_RIDER5,
+	ARMORSET_RIDER6,
+	ARMORSET_RIDER7,
+	ARMORSET_RIDER8,
+	ARMORSET_RIDER9,
+	ARMORSET_RIDER10,
+	ARMORSET_RIDER11,
+	ARMORSET_RIDER12,
+	ARMORSET_RIDER13,
+	ARMORSET_RIDER14,
+	ARMORSET_RIDER15,
+	ARMORSET_RIDER16,
+
+	ARMORSET_COUNT
 };
 
 //-------------------------------------------------------------------------------------------------
-typedef BitFlags<ARMORSET_COUNT> ArmorSetFlags;
+typedef BitFlags<ARMORSET_COUNT, struct ArmorSetFlagsTag> ArmorSetFlags;
 
 //-------------------------------------------------------------------------------------------------
 class ArmorTemplateSet
@@ -70,25 +92,25 @@ private:
 	const DamageFX* m_fx;
 
 public:
-	inline ArmorTemplateSet()
+	ArmorTemplateSet()
 	{
 		clear();
 	}
 
-	inline void clear()
+	void clear()
 	{
 		m_types.clear();
-		m_template = NULL;
-		m_fx = NULL;
+		m_template = nullptr;
+		m_fx = nullptr;
 	}
 
-	inline const ArmorTemplate* getArmorTemplate() const { return m_template; } 
-	inline const DamageFX* getDamageFX() const { return m_fx; } 
+	const ArmorTemplate* getArmorTemplate() const { return m_template; }
+	const DamageFX* getDamageFX() const { return m_fx; }
 
-	inline Int getConditionsYesCount() const { return 1; }
-	inline const ArmorSetFlags& getNthConditionsYes(Int i) const { return m_types; }
-#if defined(_DEBUG) || defined(_INTERNAL)
-	inline AsciiString getDescription() const { return AsciiString("ArmorTemplateSet"); }
+	Int getConditionsYesCount() const { return 1; }
+	const ArmorSetFlags& getNthConditionsYes(Int i) const { return m_types; }
+#if defined(RTS_DEBUG)
+	inline AsciiString getDescription() const { return "ArmorTemplateSet"; }
 #endif
 
 	void parseArmorTemplateSet( INI* ini );
@@ -96,8 +118,3 @@ public:
 
 //-------------------------------------------------------------------------------------------------
 typedef std::vector<ArmorTemplateSet> ArmorTemplateSetVector;
-
-//-------------------------------------------------------------------------------------------------
-typedef SparseMatchFinder<ArmorTemplateSet, ArmorSetFlags> ArmorTemplateSetFinder;
-
-#endif	// _ArmorSet_H_

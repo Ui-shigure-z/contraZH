@@ -24,7 +24,7 @@
 #include "TeamIdentity.h"
 #include "EditParameter.h"
 #include "PickUnitDialog.h"
-#include "Common/WellKnownKeys.h"	  
+#include "Common/WellKnownKeys.h"
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
 #include "Common/ThingSort.h"
@@ -88,7 +88,7 @@ END_MESSAGE_MAP()
 /////////////////////////////////////////////////////////////////////////////
 // TeamIdentity message handlers
 
-BOOL TeamIdentity::OnInitDialog() 
+BOOL TeamIdentity::OnInitDialog()
 {
 	CPropertyPage::OnInitDialog();
 	
@@ -177,7 +177,7 @@ BOOL TeamIdentity::OnInitDialog()
 	CWnd *pWnd = GetDlgItem(IDC_DESCRIPTION);
 	AsciiString description = m_teamDict->getAsciiString(TheKey_teamDescription, &exists);
 	pWnd->SetWindowText(description.str());
-	
+
 	pWnd = GetDlgItem(IDC_TEAM_NAME);
 	description = m_teamDict->getAsciiString(TheKey_teamName, &exists);
 	pWnd->SetWindowText(description.str());
@@ -422,11 +422,11 @@ void TeamIdentity::loadUnitsInfo(int idcMinUnit, NameKeyType keyMinUnit,
 }
 
 
-BOOL TeamIdentity::OnCommand(WPARAM wParam, LPARAM lParam) 
+BOOL TeamIdentity::OnCommand(WPARAM wParam, LPARAM lParam)
 {
 
-	Int wNotifyCode = HIWORD(wParam); // notification code 
-	Int wID = LOWORD(wParam);         // item, control, or accelerator identifier 
+	Int wNotifyCode = HIWORD(wParam); // notification code
+	Int wID = LOWORD(wParam);         // item, control, or accelerator identifier
 	NameKeyType key;
 	if (wNotifyCode == EN_CHANGE) {
 		Int editCtrl = wID;
@@ -484,18 +484,18 @@ BOOL TeamIdentity::OnCommand(WPARAM wParam, LPARAM lParam)
 			return true;
 		}
 	}
- 	
+
 	return CPropertyPage::OnCommand(wParam, lParam);
 }
 
-void TeamIdentity::OnAiRecruitable() 
+void TeamIdentity::OnAiRecruitable()
 {
 	CButton *pCheck = (CButton *) GetDlgItem(IDC_AI_RECRUITABLE);
 	Bool checked = 	pCheck->GetCheck()==1;
 	m_teamDict->setBool(TheKey_teamIsAIRecruitable, checked);
 }
 
-void TeamIdentity::OnAutoReinforce() 
+void TeamIdentity::OnAutoReinforce()
 {
 	CButton *pCheck = (CButton *) GetDlgItem(IDC_AUTO_REINFORCE);
 	Bool checked = 	pCheck->GetCheck()==1;
@@ -503,7 +503,7 @@ void TeamIdentity::OnAutoReinforce()
 }
 
 
-void TeamIdentity::OnChangeDescription() 
+void TeamIdentity::OnChangeDescription()
 {
 	CWnd *pWnd = GetDlgItem(IDC_DESCRIPTION);
 	if (pWnd) {
@@ -514,7 +514,7 @@ void TeamIdentity::OnChangeDescription()
 	}
 }
 
-void TeamIdentity::OnChangeMax() 
+void TeamIdentity::OnChangeMax()
 {
 	CWnd *pWnd = GetDlgItem(IDC_MAX);
 	if (pWnd) {
@@ -525,7 +525,7 @@ void TeamIdentity::OnChangeMax()
 	}
 }
 
-void TeamIdentity::OnChangePriorityDecrease() 
+void TeamIdentity::OnChangePriorityDecrease()
 {
 	CWnd *pWnd = GetDlgItem(IDC_PRIORITY_DECREASE);
 	if (pWnd) {
@@ -536,7 +536,7 @@ void TeamIdentity::OnChangePriorityDecrease()
 	}
 }
 
-void TeamIdentity::OnChangePriorityIncrease() 
+void TeamIdentity::OnChangePriorityIncrease()
 {
 	CWnd *pWnd = GetDlgItem(IDC_PRIORITY_INCREASE);
 	if (pWnd) {
@@ -547,7 +547,7 @@ void TeamIdentity::OnChangePriorityIncrease()
 	}
 }
 
-void TeamIdentity::OnSelchangeProductionCondition() 
+void TeamIdentity::OnSelchangeProductionCondition()
 {
 	CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_PRODUCTION_CONDITION);
 	CString txt;
@@ -560,7 +560,7 @@ void TeamIdentity::OnSelchangeProductionCondition()
 	m_teamDict->setAsciiString(TheKey_teamProductionCondition, comboText);
 }
 
-void TeamIdentity::OnChangeProductionPriority() 
+void TeamIdentity::OnChangeProductionPriority()
 {
 	CWnd *pWnd = GetDlgItem(IDC_PRODUCTION_PRIORITY);
 	if (pWnd) {
@@ -571,7 +571,7 @@ void TeamIdentity::OnChangeProductionPriority()
 	}
 }
 
-void TeamIdentity::OnSelchangeHomeWaypoint() 
+void TeamIdentity::OnSelchangeHomeWaypoint()
 {
 	CComboBox *pCombo = (CComboBox *)GetDlgItem(IDC_HOME_WAYPOINT);
 	CString txt;
@@ -584,7 +584,7 @@ void TeamIdentity::OnSelchangeHomeWaypoint()
 	m_teamDict->setAsciiString(TheKey_teamHome, comboText);
 }
 
-void TeamIdentity::OnUnitTypeButton(Int idcUnitType) 
+void TeamIdentity::OnUnitTypeButton(Int idcUnitType)
 {
 #ifdef RTS_HAS_QT
 	{
@@ -677,37 +677,37 @@ void TeamIdentity::OnUnitTypeButton(Int idcUnitType)
 
 }
 
-void TeamIdentity::OnUnitType1Button() 
+void TeamIdentity::OnUnitType1Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE1);
 }
 
-void TeamIdentity::OnUnitType2Button() 
+void TeamIdentity::OnUnitType2Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE2);
 }
 
-void TeamIdentity::OnUnitType3Button() 
+void TeamIdentity::OnUnitType3Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE3);
 }
 
-void TeamIdentity::OnUnitType4Button() 
+void TeamIdentity::OnUnitType4Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE4);
 }
 
-void TeamIdentity::OnUnitType5Button() 
+void TeamIdentity::OnUnitType5Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE5);
 }
 
-void TeamIdentity::OnUnitType6Button() 
+void TeamIdentity::OnUnitType6Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE6);
 }
 
-void TeamIdentity::OnUnitType7Button() 
+void TeamIdentity::OnUnitType7Button()
 {
 	OnUnitTypeButton(IDC_UNIT_TYPE7);
 }
@@ -722,18 +722,18 @@ void TeamIdentity::OnExecuteActions()
 	m_teamDict->setBool(TheKey_teamExecutesActionsOnCreate, pButton->GetCheck() ? true : false);
 }
 
-void TeamIdentity::OnChangeTeamName() 
+void TeamIdentity::OnChangeTeamName()
 {
 
 }
 
-void TeamIdentity::OnTeamSingleton() 
+void TeamIdentity::OnTeamSingleton()
 {
 	CButton *singleton = (CButton*)GetDlgItem(IDC_TEAM_SINGLETON);
 	m_teamDict->setBool(TheKey_teamIsSingleton, singleton->GetCheck() != 0);
 }
 
-void TeamIdentity::OnKillfocusTeamName() 
+void TeamIdentity::OnKillfocusTeamName()
 {
 	CWnd *pWnd = GetDlgItem(IDC_TEAM_NAME);
 	if (pWnd) {
@@ -771,7 +771,7 @@ void TeamIdentity::OnKillfocusTeamName()
 	}
 }
 
-void TeamIdentity::OnSelendokTeamowner() 
+void TeamIdentity::OnSelendokTeamowner()
 {
 	CWnd *pWnd = GetDlgItem(IDC_TEAMOWNER);
 	if (pWnd) {
@@ -782,7 +782,7 @@ void TeamIdentity::OnSelendokTeamowner()
 	}
 }
 
-void TeamIdentity::OnChangeTeamBuildFrames() 
+void TeamIdentity::OnChangeTeamBuildFrames()
 {
 	CWnd *pWnd = GetDlgItem(IDC_TEAM_BUILD_FRAMES);
 	if (pWnd) {
@@ -791,5 +791,5 @@ void TeamIdentity::OnChangeTeamBuildFrames()
 		Int idleFrames = atoi(val);
 		m_teamDict->setInt(TheKey_teamInitialIdleFrames, idleFrames);
 	}
-	
+
 }

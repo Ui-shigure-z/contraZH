@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_ADDTOLINEUPDIALOG_H__AD8B92C5_25CB_11D4_8A1D_0090272E6F90__INCLUDED_)
-#define AFX_ADDTOLINEUPDIALOG_H__AD8B92C5_25CB_11D4_8A1D_0090272E6F90__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // AddToLineupDialog.h : header file
 //
 
@@ -34,7 +30,7 @@ class CAddToLineupDialog : public CDialog
 {
 // Construction
 public:
-	CAddToLineupDialog(ViewerSceneClass *scene, CWnd* pParent = NULL);   // standard constructor
+	CAddToLineupDialog(ViewerSceneClass *scene, CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CAddToLineupDialog)
@@ -47,7 +43,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CAddToLineupDialog)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -57,13 +53,11 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CAddToLineupDialog)
-	virtual BOOL OnInitDialog();
-	virtual void OnOK();
+	virtual BOOL OnInitDialog() override;
+	virtual void OnOK() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_ADDTOLINEUPDIALOG_H__AD8B92C5_25CB_11D4_8A1D_0090272E6F90__INCLUDED_)

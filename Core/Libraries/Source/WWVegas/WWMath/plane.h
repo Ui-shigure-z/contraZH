@@ -17,32 +17,27 @@
 */
 
 /* $Header: /Commando/Code/wwmath/plane.h 16    5/05/01 5:48p Jani_p $ */
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Voxel Technology                                             * 
- *                                                                                             * 
- *                    File Name : PLANE.H                                                      * 
- *                                                                                             * 
- *                   Programmer : Greg Hjelstrom                                               * 
- *                                                                                             * 
- *                   Start Date : 03/17/97                                                     * 
- *                                                                                             * 
- *                  Last Update : March 17, 1997 [GH]                                          * 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Voxel Technology                                             *
+ *                                                                                             *
+ *                    File Name : PLANE.h                                                      *
+ *                                                                                             *
+ *                   Programmer : Greg Hjelstrom                                               *
+ *                                                                                             *
+ *                   Start Date : 03/17/97                                                     *
+ *                                                                                             *
+ *                  Last Update : March 17, 1997 [GH]                                          *
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if defined(_MSC_VER)
 #pragma once
-#endif
 
-#ifndef PLANE_H
-#define PLANE_H
-
-#include "always.h"
+#include "WWLib/always.h"
 #include "vector3.h"
 #include "sphere.h"
 
@@ -51,10 +46,10 @@
 **
 ** 3D-planes.  This class uses the Normal+Distance description of a plane.
 ** The relationship for all points (p) on the plane is given by:
-** 
+**
 **   N.X * p.X + N.Y * p.Y + N.Z * p.Z = D
 **
-** BEWARE, if you are used to the Ax + By + Cz + D = 0 description, the 
+** BEWARE, if you are used to the Ax + By + Cz + D = 0 description, the
 ** sign of the D value is inverted.
 */
 
@@ -64,10 +59,17 @@ public:
 
 	enum { FRONT = 0, BACK, ON };
 
+	enum IntersectionResType
+	{
+		NO_INTERSECTION = 0, // No intersection when the line is parallel to the plane
+		INSIDE_SEGMENT = 1, // The segment INSIDE point A and B intersects the plane
+		OUTSIDE_LINE = 2, // The infinite line OUTSIDE point A and B intersects the plane
+	};
+
 	Vector3	N;			// Normal of the plane
 	float		D;			// Distance along the normal from the origin
 
-	PlaneClass(void) : N(0.0f,0.0f,1.0f), D(0.0f) { }
+	PlaneClass() : N(0.0f,0.0f,1.0f), D(0.0f) { }
 
 	/*
 	** Plane initialization:
@@ -86,7 +88,7 @@ public:
 	inline void Set(const Vector3 & normal,const Vector3 & point);
 	inline void Set(const Vector3 & point1,const Vector3 & point2,const Vector3 & point3);
 
-	bool Compute_Intersection(const Vector3 & p0,const Vector3 & p1,float * set_t) const;
+	PlaneClass::IntersectionResType Compute_Intersection(const Vector3 & p0,const Vector3 & p1,float * set_t) const;
 	bool In_Front(const Vector3 & point) const;
 	bool In_Front(const SphereClass & sphere) const;
 	bool In_Front_Or_Intersecting(const SphereClass & sphere) const;
@@ -94,12 +96,12 @@ public:
 	static void Intersect_Planes(const PlaneClass & a, const PlaneClass & b, Vector3 *line_dir, Vector3 *line_point);
 };
 
-inline PlaneClass::PlaneClass(float nx,float ny,float nz,float dist) 
+inline PlaneClass::PlaneClass(float nx,float ny,float nz,float dist)
 {
 	Set(nx,ny,nz,dist);
 }
-	
-inline PlaneClass::PlaneClass(const Vector3 & normal,float dist) 
+
+inline PlaneClass::PlaneClass(const Vector3 & normal,float dist)
 {
 	Set(normal,dist);
 }
@@ -109,7 +111,7 @@ inline PlaneClass::PlaneClass(const Vector3 & normal,const Vector3 & point)
 	Set(normal,point);
 }
 
-inline PlaneClass::PlaneClass(const Vector3 & point1, const Vector3 & point2, const Vector3 & point3) 
+inline PlaneClass::PlaneClass(const Vector3 & point1, const Vector3 & point2, const Vector3 & point3)
 {
 	Set(point1,point2,point3);
 }
@@ -122,7 +124,7 @@ inline void PlaneClass::Set(float a,float b,float c,float d)
 	D = d;
 }
 
-inline void PlaneClass::Set(const Vector3 & normal,float dist) 
+inline void PlaneClass::Set(const Vector3 & normal,float dist)
 {
 	N = normal;
 	D = dist;
@@ -135,7 +137,7 @@ inline void PlaneClass::Set(const Vector3 & normal,const Vector3 & point)
 }
 
 
-inline void PlaneClass::Set(const Vector3 & point1, const Vector3 & point2, const Vector3 & point3) 
+inline void PlaneClass::Set(const Vector3 & point1, const Vector3 & point2, const Vector3 & point3)
 {
 #ifdef ALLOW_TEMPORARIES
 	N = Vector3::Cross_Product((point2 - point1), (point3 - point1));
@@ -153,7 +155,7 @@ inline void PlaneClass::Set(const Vector3 & point1, const Vector3 & point2, cons
 	}
 }
 
-inline bool PlaneClass::Compute_Intersection(const Vector3 & p0,const Vector3 & p1,float * set_t) const
+inline PlaneClass::IntersectionResType PlaneClass::Compute_Intersection(const Vector3 & p0,const Vector3 & p1,float * set_t) const
 {
 	float num,den;
 	den = Vector3::Dot_Product(N,p1-p0);
@@ -162,7 +164,7 @@ inline bool PlaneClass::Compute_Intersection(const Vector3 & p0,const Vector3 & 
 	** If the denominator is zero, the ray is parallel to the plane
 	*/
 	if (den == 0.0f) {
-		return false;
+		return PlaneClass::NO_INTERSECTION;
 	}
 
 	num = -(Vector3::Dot_Product(N,p0) - D);
@@ -174,10 +176,10 @@ inline bool PlaneClass::Compute_Intersection(const Vector3 & p0,const Vector3 & 
 	** the plane but the segment does not
 	*/
 	if ((*set_t < 0.0f) || (*set_t > 1.0f)) {
-		return false;
+		return PlaneClass::OUTSIDE_LINE;
 	}
 
-	return true;
+	return PlaneClass::INSIDE_SEGMENT;
 }
 
 inline bool PlaneClass::In_Front(const Vector3 & point) const
@@ -246,5 +248,3 @@ inline void PlaneClass::Intersect_Planes(const PlaneClass & a, const PlaneClass 
 	// find the point).
 	line_dir->Normalize();
 }
-
-#endif /*PLANE_H*/

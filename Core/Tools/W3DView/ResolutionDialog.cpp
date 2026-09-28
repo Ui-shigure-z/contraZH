@@ -19,18 +19,18 @@
 // ResolutionDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "ResolutionDialog.h"
-#include "WW3D.H"
+#include "WW3D2/ww3d.h"
 #include "Globals.h"
 #include "GraphicView.h"
 #include "Utils.h"
-#include "rddesc.h"
+#include "WW3D2/rddesc.h"
 
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -42,13 +42,12 @@ static char THIS_FILE[] = __FILE__;
 // ResolutionDialogClass
 //
 /////////////////////////////////////////////////////////////////////////////
-ResolutionDialogClass::ResolutionDialogClass(CWnd* pParent /*=NULL*/)
+ResolutionDialogClass::ResolutionDialogClass(CWnd* pParent /*=nullptr*/)
 	: CDialog(ResolutionDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(ResolutionDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -64,7 +63,6 @@ ResolutionDialogClass::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(ResolutionDialogClass)
 	DDX_Control(pDX, IDC_RESOLUTION_LIST_CTRL, m_ListCtrl);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -81,7 +79,7 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-ResolutionDialogClass::OnInitDialog (void)
+ResolutionDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
@@ -126,7 +124,7 @@ ResolutionDialogClass::OnInitDialog (void)
 		int width	= res_list[index].Width;
 		int height	= res_list[index].Height;
 		int bpp		= res_list[index].BitDepth;
-		
+
 		//
 		//	Format description strings for this resolution
 		//
@@ -157,7 +155,7 @@ ResolutionDialogClass::OnInitDialog (void)
 			}
 		}
 	}
-	
+
 	//
 	//	Select the first entry by default (if necessary)
 	//
@@ -175,7 +173,7 @@ ResolutionDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-ResolutionDialogClass::OnOK (void)
+ResolutionDialogClass::OnOK ()
 {
 	CDialog::OnOK ();
 
@@ -199,14 +197,14 @@ ResolutionDialogClass::OnOK (void)
 			g_iWidth				= res_list[index].Width;
 			g_iHeight			= res_list[index].Height;
 			g_iBitsPerPixel	= res_list[index].BitDepth;
-			
+
 			//
 			// Cache this information in the registry
 			//
 			theApp.WriteProfileInt ("Config", "DeviceWidth", g_iWidth);
 			theApp.WriteProfileInt ("Config", "DeviceHeight", g_iHeight);
 			theApp.WriteProfileInt ("Config", "DeviceBitsPerPix", g_iBitsPerPixel);
-					
+
 			//
 			//	Reset the display
 			//
@@ -214,8 +212,6 @@ ResolutionDialogClass::OnOK (void)
 			::Get_Graphic_View ()->Set_Fullscreen (fullscreen);
 		}
 	}
-
-	return ;
 }
 
 
@@ -237,5 +233,4 @@ ResolutionDialogClass::OnDblclkResolutionListCtrl
 	}
 
 	(*pResult) = 0;
-	return ;
 }

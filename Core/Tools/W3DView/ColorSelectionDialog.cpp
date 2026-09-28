@@ -19,13 +19,13 @@
 // ColorSelectionDialog.cpp : implementation file
 //
 
-#include "StdAfx.H"
-#include "W3DView.H"
-#include "ColorSelectionDialog.H"
-#include "Utils.H"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "ColorSelectionDialog.h"
+#include "Utils.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -48,7 +48,6 @@ ColorSelectionDialogClass::ColorSelectionDialogClass
 	//{{AFX_DATA_INIT(ColorSelectionDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -69,7 +68,6 @@ ColorSelectionDialogClass::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_SLIDER_GREEN, m_GreenSlider);
 	DDX_Control(pDX, IDC_SLIDER_RED, m_RedSlider);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -90,7 +88,7 @@ END_MESSAGE_MAP()
 //	ColorSelectionDialogClass
 //
 BOOL
-ColorSelectionDialogClass::OnInitDialog (void)
+ColorSelectionDialogClass::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CDialog::OnInitDialog ();
@@ -118,7 +116,7 @@ ColorSelectionDialogClass::OnInitDialog (void)
 	// Set the initial slider positions
 	m_RedSlider.SetPos (red_value);
 	m_GreenSlider.SetPos (green_value);
-	m_BlueSlider.SetPos (blue_value);	
+	m_BlueSlider.SetPos (blue_value);
 	m_RedSpin.SetPos (red_value);
 	m_GreenSpin.SetPos (green_value);
 	m_BlueSpin.SetPos (blue_value);
@@ -131,14 +129,13 @@ ColorSelectionDialogClass::OnInitDialog (void)
 //	ColorSelectionDialogClass
 //
 void
-ColorSelectionDialogClass::OnOK (void)
+ColorSelectionDialogClass::OnOK ()
 {
 	// Record the color
 	m_Color = m_PaintColor;
 
 	// Allow the base class to process this message
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -159,7 +156,6 @@ ColorSelectionDialogClass::OnHScroll
 
 	// Allow the base class to process this message
 	CDialog::OnHScroll (nSBCode, nPos, pScrollBar);
-	return ;
 }
 
 
@@ -168,10 +164,10 @@ ColorSelectionDialogClass::OnHScroll
 //	OnPaint
 //
 void
-ColorSelectionDialogClass::OnPaint (void) 
+ColorSelectionDialogClass::OnPaint ()
 {
 	CPaintDC dc (this);
-        
+
 	// Paint the gradients for each color
 	::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_RED_GRADIENT), 1, 0, 0);
 	::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
@@ -179,7 +175,6 @@ ColorSelectionDialogClass::OnPaint (void)
 
 	// Update the window that displays the color the user has selected
 	Paint_Color_Window ();
-	return ;
 }
 
 
@@ -188,22 +183,21 @@ ColorSelectionDialogClass::OnPaint (void)
 //	Paint_Color_Window
 //
 void
-ColorSelectionDialogClass::Paint_Color_Window (void)
+ColorSelectionDialogClass::Paint_Color_Window ()
 {
 	// Get the client coords of the 'color' window
 	CRect rect;
 	m_ColorWindow.GetClientRect (&rect);
-	
+
 	// Fill the window with the selected color
 	CDC *pdc = m_ColorWindow.GetDC ();
 	::FrameRect (*pdc, &rect, (HBRUSH)::GetStockObject (BLACK_BRUSH));
 	rect.DeflateRect (1, 1);
 	pdc->FillSolidRect (&rect, RGB (int(m_PaintColor.X * 255), int(m_PaintColor.Y * 255), int(m_PaintColor.Z * 255)));
 	m_ColorWindow.ReleaseDC (pdc);
-	
+
 	// Let the window know it doesn't need to be repainted
-	m_ColorWindow.ValidateRect (NULL);
-	return; 
+	m_ColorWindow.ValidateRect (nullptr);
 }
 
 
@@ -212,11 +206,11 @@ ColorSelectionDialogClass::Paint_Color_Window (void)
 //	OnGrayscaleCheck
 //
 void
-ColorSelectionDialogClass::OnGrayscaleCheck (void)
+ColorSelectionDialogClass::OnGrayscaleCheck ()
 {
 	// Is the checkbox checked?
 	if (SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_GETCHECK)) {
-		
+
 		// Make the green and blue sliders the same as red
 		m_GreenSlider.SetPos (m_RedSlider.GetPos ());
 		m_BlueSlider.SetPos (m_RedSlider.GetPos ());
@@ -226,10 +220,8 @@ ColorSelectionDialogClass::OnGrayscaleCheck (void)
 		m_PaintColor.Z = float(m_BlueSlider.GetPos ()) / 255.00F;
 
 		// Update the window that displays the color the user has selected
-		Paint_Color_Window ();		
+		Paint_Color_Window ();
 	}
-
-	return ;
 }
 
 
@@ -238,7 +230,7 @@ ColorSelectionDialogClass::OnGrayscaleCheck (void)
 //	OnChangeBlueEdit
 //
 void
-ColorSelectionDialogClass::OnChangeBlueEdit (void) 
+ColorSelectionDialogClass::OnChangeBlueEdit ()
 {
 	if (::IsWindow (m_BlueSlider)) {
 		int value = GetDlgItemInt (IDC_BLUE_EDIT);
@@ -250,8 +242,6 @@ ColorSelectionDialogClass::OnChangeBlueEdit (void)
 		// Reset the cursor to the end of the edit box
 		SendDlgItemMessage (IDC_BLUE_EDIT, EM_SETSEL, (WPARAM)(int)10, (LPARAM)(int)20);
 	}
-
-	return ;
 }
 
 
@@ -260,7 +250,7 @@ ColorSelectionDialogClass::OnChangeBlueEdit (void)
 //	OnChangeGreenEdit
 //
 void
-ColorSelectionDialogClass::OnChangeGreenEdit (void)
+ColorSelectionDialogClass::OnChangeGreenEdit ()
 {
 	if (::IsWindow (m_GreenSlider)) {
 		int value = GetDlgItemInt (IDC_GREEN_EDIT);
@@ -272,8 +262,6 @@ ColorSelectionDialogClass::OnChangeGreenEdit (void)
 		// Reset the cursor to the end of the edit box
 		SendDlgItemMessage (IDC_GREEN_EDIT, EM_SETSEL, (WPARAM)(int)10, (LPARAM)(int)20);
 	}
-
-	return ;
 }
 
 
@@ -282,7 +270,7 @@ ColorSelectionDialogClass::OnChangeGreenEdit (void)
 //	OnChangeRedEdit
 //
 void
-ColorSelectionDialogClass::OnChangeRedEdit (void)
+ColorSelectionDialogClass::OnChangeRedEdit ()
 {
 	if (::IsWindow (m_RedSlider)) {
 		int value = GetDlgItemInt (IDC_RED_EDIT);
@@ -294,8 +282,6 @@ ColorSelectionDialogClass::OnChangeRedEdit (void)
 		// Reset the cursor to the end of the edit box
 		SendDlgItemMessage (IDC_RED_EDIT, EM_SETSEL, (WPARAM)(int)10, (LPARAM)(int)20);
 	}
-
-	return ;
 }
 
 
@@ -309,7 +295,7 @@ ColorSelectionDialogClass::Update_Sliders (int slider_id)
 	// Are the sliders moving together?
 	if (SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_GETCHECK)) {
 		int position = 0;
-		
+
 		// Determine which slider sent this message and
 		// use its current position
 		if (slider_id == IDC_SLIDER_RED) {
@@ -341,5 +327,4 @@ ColorSelectionDialogClass::Update_Sliders (int slider_id)
 
 	// Update the window that displays the color the user has selected
 	Paint_Color_Window ();
-	return ;
 }

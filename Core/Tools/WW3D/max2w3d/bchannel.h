@@ -34,16 +34,14 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#ifndef BCHANNEL_H
-#define BCHANNEL_H
+#pragma once
 
 #ifndef ALWAYS_H
 #include "always.h"
 #endif
 
 #ifndef BITTYPE_H
-#include "BITTYPE.H"
+#include "BITTYPE.h"
 #endif
 
 #ifndef CHUNKIO_H
@@ -51,7 +49,7 @@
 #endif
 
 #ifndef VECTOR_H
-#include "Vector.H"
+#include "Vector.h"
 #endif
 
 #ifndef W3D_FILE_H
@@ -65,12 +63,12 @@ class BitChannelClass
 public:
 
 	BitChannelClass(uint32 id,int maxframes,uint32 chntype,bool def_val);
-	~BitChannelClass(void);
+	~BitChannelClass();
 
 	void		Set_Bit(int framenumber,bool bit);
 	void		Set_Bits(BooleanVectorClass & bits);
 	bool		Get_Bit(int frameidx);
-	bool		Is_Empty(void) { return IsEmpty; }
+	bool		Is_Empty() { return IsEmpty; }
 	bool		Save(ChunkSaveClass & csave, bool compress);
 
 private:
@@ -89,15 +87,12 @@ private:
 	bool is_default(bool bit);
 
 	// This function finds the start and end of the "non-default" data
-	void compute_range(void);
-  
+	void compute_range();
+
   // compress functions
 	void remove_packet(W3dTimeCodedBitChannelStruct * c, uint32 packet_idx);
 	uint32 find_useless_packet(W3dTimeCodedBitChannelStruct * c);
 	void compress(W3dTimeCodedBitChannelStruct * c);
-  
-  
+
+
 };
-
-
-#endif

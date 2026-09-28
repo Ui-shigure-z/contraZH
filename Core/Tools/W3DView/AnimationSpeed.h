@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_ANIMATIONSPEED_H__D60CC3CD_5F94_11D2_9FC7_00104B791122__INCLUDED_)
-#define AFX_ANIMATIONSPEED_H__D60CC3CD_5F94_11D2_9FC7_00104B791122__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // AnimationSpeed.h : header file
 //
 
@@ -32,7 +28,7 @@ class CAnimationSpeed : public CDialog
 {
 // Construction
 public:
-	CAnimationSpeed(CWnd* pParent = NULL);   // standard constructor
+	CAnimationSpeed(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CAnimationSpeed)
@@ -45,7 +41,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CAnimationSpeed)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -53,7 +49,7 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CAnimationSpeed)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnDestroy();
 	afx_msg void OnBlend();
@@ -69,5 +65,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_ANIMATIONSPEED_H__D60CC3CD_5F94_11D2_9FC7_00104B791122__INCLUDED_)

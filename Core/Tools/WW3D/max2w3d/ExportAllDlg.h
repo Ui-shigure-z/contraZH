@@ -34,9 +34,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#ifndef EXPORTALLDLG_H
-#define EXPORTALLDLG_H
+#pragma once
 
 #include "dllmain.h"
 #include "resource.h"
@@ -55,7 +53,7 @@ public:
 	ExportAllDlg (Interface *max_interface);
 
 	// Methods
-	int DoModal (void);
+	int DoModal ();
 
 	// DialogProc
 	BOOL CALLBACK DialogProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -72,10 +70,7 @@ public:
 protected:
 
 	// Message Handlers
-	void OnInitDialog (void);
-	void OnBrowse (void);
-	BOOL OnOK (void);		// TRUE if ok to close dialog
+	void OnInitDialog ();
+	void OnBrowse ();
+	BOOL OnOK ();		// TRUE if ok to close dialog
 };
-
-
-#endif

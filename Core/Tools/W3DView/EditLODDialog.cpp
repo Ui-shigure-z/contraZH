@@ -19,16 +19,16 @@
 // EditLODDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "EditLODDialog.h"
-#include "DistLod.H"
-#include "Utils.H"
-#include "RendObj.H"
-#include "W3DViewDoc.H"
+#include "WW3D2/distlod.h"
+#include "Utils.h"
+#include "WW3D2/rendobj.h"
+#include "W3DViewDoc.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -47,13 +47,12 @@ const int COL_SWITCH_DN     = 2;
 //
 //  CEditLODDialog
 //
-CEditLODDialog::CEditLODDialog(CWnd* pParent /*=NULL*/)
+CEditLODDialog::CEditLODDialog(CWnd* pParent /*=nullptr*/)
 	: m_spinIncrement (0.5F),
       CDialog(CEditLODDialog::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CEditLODDialog)
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -71,7 +70,6 @@ CEditLODDialog::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_SWITCH_DN_SPIN, m_switchDownSpin);
 	DDX_Control(pDX, IDC_HIERARCHY_LIST, m_hierarchyListCtrl);
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -91,7 +89,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CEditLODDialog::OnInitDialog (void) 
+CEditLODDialog::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CDialog::OnInitDialog ();
@@ -117,11 +115,11 @@ CEditLODDialog::OnInitDialog (void)
             m_hierarchyListCtrl.InsertColumn (COL_SWITCH_DN, "Switch Down");
 
             RenderObjClass *pfirst_subobj = pLOD->Get_Sub_Object (0);
-				if (pfirst_subobj != NULL) {
+				if (pfirst_subobj != nullptr) {
 					m_spinIncrement = pfirst_subobj->Get_Bounding_Sphere ().Radius / 5.0F;
-					MEMBER_RELEASE (pfirst_subobj);
+					REF_PTR_RELEASE (pfirst_subobj);
 				}
-            
+
             // Loop through all the subobjects
             for (int iObject = 0;
                  (iObject < iSubObjects);
@@ -142,13 +140,13 @@ CEditLODDialog::OnInitDialog (void)
                     m_hierarchyListCtrl.SetItemText (iIndex, COL_SWITCH_DN, stringTemp);
 
                     // Free this object
-						  MEMBER_RELEASE (pCSubObject);
+						  REF_PTR_RELEASE (pCSubObject);
                 }
             }
 
             m_switchUpSpin.SetRange (-20, UD_MAXVAL-20);
             m_switchDownSpin.SetRange (-20, UD_MAXVAL-20);
-            
+
             // Resize the columns so they are wide enough to display the largest string
             m_hierarchyListCtrl.SetColumnWidth (COL_NAME, LVSCW_AUTOSIZE);
             m_hierarchyListCtrl.SetColumnWidth (COL_SWITCH_UP, LVSCW_AUTOSIZE_USEHEADER);
@@ -158,7 +156,7 @@ CEditLODDialog::OnInitDialog (void)
             m_hierarchyListCtrl.SetItemState (0, LVIS_SELECTED, LVIS_SELECTED);
         }
     }
-	
+
 	return TRUE;
 }
 
@@ -167,7 +165,7 @@ CEditLODDialog::OnInitDialog (void)
 //  OnOK
 //
 void
-CEditLODDialog::OnOK (void) 
+CEditLODDialog::OnOK ()
 {
 
     // Get a pointer to the doc
@@ -188,7 +186,7 @@ CEditLODDialog::OnOK (void)
             {
                 // Get the switch up distance from the list control
                 CString stringTemp = m_hierarchyListCtrl.GetItemText (iObject, COL_SWITCH_UP);
-                
+
                 // Convert the string to a float and pass this value
                 // onto the LOD manager
                 float switchDistance = ::atof (stringTemp);
@@ -196,18 +194,17 @@ CEditLODDialog::OnOK (void)
 
                 // Get the switch down distance from the list control
                 stringTemp = m_hierarchyListCtrl.GetItemText (iObject, COL_SWITCH_DN);
-                
+
                 // Convert the string to a float and pass this value
                 // onto the LOD manager
                 switchDistance = ::atof (stringTemp);
                 pLOD->Set_Switch_Down_Dist (iObject, switchDistance);
             }
         }
-    }    
+    }
 
 	// Allow the base class to process this message
     CDialog::OnOK ();
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -215,11 +212,10 @@ CEditLODDialog::OnOK (void)
 //  OnCancel
 //
 void
-CEditLODDialog::OnCancel (void) 
+CEditLODDialog::OnCancel ()
 {
 	// Allow the base class to process this message
     CDialog::OnCancel ();
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -251,9 +247,8 @@ CEditLODDialog::OnDeltaposSwitchUpSpin
             m_hierarchyListCtrl.SetItemText (iIndex, COL_SWITCH_UP, stringTemp);
         }
     }
-	
+
 	*pResult = 0;
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -285,9 +280,8 @@ CEditLODDialog::OnDeltaposSwitchDnSpin
             m_hierarchyListCtrl.SetItemText (iIndex, COL_SWITCH_DN, stringTemp);
         }
     }
-	
+
 	*pResult = 0;
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -306,14 +300,14 @@ CEditLODDialog::OnItemChangedHierarchyList
     if (pNMListView &&
         (pNMListView->uChanged & LVIF_STATE) == LVIF_STATE)
     {
-               
+
         if ((pNMListView->uNewState & LVIS_SELECTED) != LVIS_SELECTED)
         {
             // Is there a selected item in the list control?
             if (m_hierarchyListCtrl.GetNextItem (-1, LVNI_ALL | LVNI_SELECTED) == -1)
             {
                 // Disabled the edit and spin controls
-                EnableControls (FALSE);                
+                EnableControls (FALSE);
             }
         }
         else
@@ -321,13 +315,12 @@ CEditLODDialog::OnItemChangedHierarchyList
             // Enable the edit and spin controls
             EnableControls (TRUE);
 
-            // Load the control with data for the selected item.            
-            ResetControls (pNMListView->iItem);            
+            // Load the control with data for the selected item.
+            ResetControls (pNMListView->iItem);
         }
     }
-	
+
 	*pResult = 0;
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -356,7 +349,7 @@ CEditLODDialog::ResetControls (int iIndex)
 
     // Set the text of the edit control to reflect the switching distance
     SetDlgItemText (IDC_SWITCH_UP_EDIT, stringTemp);
-    
+
     // Set the current position of the spin control
     float switchDistance = ::atof (stringTemp);
     m_switchUpSpin.SetPos (int(switchDistance * 10.00F));
@@ -374,7 +367,6 @@ CEditLODDialog::ResetControls (int iIndex)
     // Set the current position of the spin control
     switchDistance = ::atof (stringTemp);
     m_switchDownSpin.SetPos (int(switchDistance * 10.00F));
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -383,15 +375,14 @@ CEditLODDialog::ResetControls (int iIndex)
 //
 void
 CEditLODDialog::EnableControls (BOOL bEnable)
-{    
+{
     // Enable or disable the windows
     ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SETTINGS_GROUP), bEnable);
     ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SWITCH_UP_SPIN), bEnable);
     ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SWITCH_UP_EDIT), bEnable);
     ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SWITCH_DN_SPIN), bEnable);
-    ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SWITCH_DN_EDIT), bEnable);    
-    ::EnableWindow (::GetDlgItem (m_hWnd, IDC_RECALC), bEnable); 
-    return ;
+    ::EnableWindow (::GetDlgItem (m_hWnd, IDC_SWITCH_DN_EDIT), bEnable);
+    ::EnableWindow (::GetDlgItem (m_hWnd, IDC_RECALC), bEnable);
 }
 
 /////////////////////////////////////////////////////////////
@@ -399,8 +390,8 @@ CEditLODDialog::EnableControls (BOOL bEnable)
 //  OnUpdateSwitchDnEdit
 //
 void
-CEditLODDialog::OnUpdateSwitchDnEdit (void) 
-{    
+CEditLODDialog::OnUpdateSwitchDnEdit ()
+{
     // Get the switching distance from the edit control
     CString stringTemp;
     GetDlgItemText (IDC_SWITCH_DN_EDIT, stringTemp);
@@ -416,15 +407,13 @@ CEditLODDialog::OnUpdateSwitchDnEdit (void)
         // Change the switching distance in the list control
         m_hierarchyListCtrl.SetItemText (iIndex, COL_SWITCH_DN, stringTemp);
     }
-
-	return ;
 }
 
 /////////////////////////////////////////////////////////////
 //
 //  OnUpdateSwitchUpEdit
 //
-void CEditLODDialog::OnUpdateSwitchUpEdit (void)
+void CEditLODDialog::OnUpdateSwitchUpEdit ()
 {
     // Get the switching distance from the edit control
     CString stringTemp;
@@ -432,7 +421,7 @@ void CEditLODDialog::OnUpdateSwitchUpEdit (void)
     float newVal = ::atof (stringTemp);
 
     // Change the switching distance in the spin control
-    m_switchUpSpin.SetPos (int(newVal * 10.00F));    
+    m_switchUpSpin.SetPos (int(newVal * 10.00F));
 
     // Find the selected item in the list control
     int iIndex = m_hierarchyListCtrl.GetNextItem (-1, LVNI_ALL | LVNI_SELECTED);
@@ -441,15 +430,13 @@ void CEditLODDialog::OnUpdateSwitchUpEdit (void)
         // Change the switching distance in the list control
         m_hierarchyListCtrl.SetItemText (iIndex, COL_SWITCH_UP, stringTemp);
     }
-
-	return ;
 }
 
 /////////////////////////////////////////////////////////////
 //
 //  OnRecalc
 //
-void CEditLODDialog::OnRecalc (void)
+void CEditLODDialog::OnRecalc ()
 {
     // Get the up switching distance from the edit control
     CString stringTemp;
@@ -499,6 +486,4 @@ void CEditLODDialog::OnRecalc (void)
             }
         }
     }
-
-    return ;
 }

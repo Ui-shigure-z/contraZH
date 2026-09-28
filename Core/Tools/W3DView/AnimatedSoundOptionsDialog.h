@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_ANIMATEDSOUNDOPTIONSDIALOG_H__5FD0B3D4_3975_4315_B412_44586622684B__INCLUDED_)
-#define AFX_ANIMATEDSOUNDOPTIONSDIALOG_H__5FD0B3D4_3975_4315_B412_44586622684B__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // AnimatedSoundOptionsDialog.h : header file
 //
 
@@ -32,7 +28,7 @@ class AnimatedSoundOptionsDialogClass : public CDialog
 {
 // Construction
 public:
-	AnimatedSoundOptionsDialogClass(CWnd* pParent = NULL);   // standard constructor
+	AnimatedSoundOptionsDialogClass(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(AnimatedSoundOptionsDialogClass)
@@ -45,7 +41,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(AnimatedSoundOptionsDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -55,8 +51,8 @@ protected:
 	//{{AFX_MSG(AnimatedSoundOptionsDialogClass)
 	afx_msg void OnSoundDefinitionLibraryBrowseButton();
 	afx_msg void OnSoundIniBrowseButton();
-	virtual void OnOK();
-	virtual BOOL OnInitDialog();
+	virtual void OnOK() override;
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnSoundPathBrowseButton();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
@@ -65,17 +61,15 @@ public:
 
 	///////////////////////////////////////////////////////////////////
 	//	Public methods
-	///////////////////////////////////////////////////////////////////	
-	static void			Load_Animated_Sound_Settings (void);
+	///////////////////////////////////////////////////////////////////
+	static void			Load_Animated_Sound_Settings ();
 
 private:
-	
+
 	///////////////////////////////////////////////////////////////////
 	//	Private methods
-	///////////////////////////////////////////////////////////////////	
+	///////////////////////////////////////////////////////////////////
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_ANIMATEDSOUNDOPTIONSDIALOG_H__5FD0B3D4_3975_4315_B412_44586622684B__INCLUDED_)

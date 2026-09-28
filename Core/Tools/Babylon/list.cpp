@@ -25,11 +25,11 @@
 #include <assert.h>
 #include "list.h"
 
-ListNode::ListNode	( void )
+ListNode::ListNode	()
 {
 	prev = next = this;
 	pri = NORMAL_PRIORITY;
-	item = NULL;
+	item = nullptr;
 }
 
 void				ListNode::Append			( ListNode *new_node )
@@ -60,34 +60,34 @@ void				ListNode::Link ( ListNode *node)
 	node->prev = next;
 }
 
-void				ListNode::Remove			( void )
+void				ListNode::Remove			()
 {
 	prev->next = next;
 	next->prev = prev;
 	prev = next = this;		/* so we know that the node is not in a list */
 }
 
-ListNode*		ListNode::Next				( void )
+ListNode*		ListNode::Next				()
 {
 	if ( next->IsHead ( ) )
 	{
-		return NULL;
+		return nullptr;
 	}
 
 	return next;
 }
 
-ListNode*		ListNode::Prev				( void )
+ListNode*		ListNode::Prev				()
 {
 	if ( prev->IsHead () )
 	{
-		return NULL;
+		return nullptr;
 	}
 
 	return prev;
 }
 
-ListNode*		ListNode::NextLoop		( void )
+ListNode*		ListNode::NextLoop		()
 {
 	ListNode *next_node = next;
 
@@ -97,7 +97,7 @@ ListNode*		ListNode::NextLoop		( void )
 		next_node = next_node->next;
 		if ( next_node->IsHead ( ))
 		{
-			return NULL;	/* it is an empty list */
+			return nullptr;	/* it is an empty list */
 		}
 	}
 
@@ -105,7 +105,7 @@ ListNode*		ListNode::NextLoop		( void )
 
 }
 
-ListNode*		ListNode::PrevLoop		( void )
+ListNode*		ListNode::PrevLoop		()
 {
 	ListNode *prev_node = prev;
 
@@ -115,14 +115,14 @@ ListNode*		ListNode::PrevLoop		( void )
 		prev_node = prev_node->prev;
 		if ( prev_node->IsHead ( ))
 		{
-			return NULL;	/* it is an empty list */
+			return nullptr;	/* it is an empty list */
 		}
 	}
 
 	return prev_node;
 }
 
-void*				ListNode::Item				( void )
+void*				ListNode::Item				()
 {
 
 	assert ( !IsHead () );
@@ -137,18 +137,18 @@ void				ListNode::SetItem			( void *new_item )
 	item = new_item	;
 }
 
-int					ListNode::InList			( void )
+int					ListNode::InList			()
 {
 
 	return prev != this;
 }
 
-int					ListNode::IsHead			( void )
+int					ListNode::IsHead			()
 {
 	return item == &this->item;
 }
 
-int					ListNode::Priority		( void )
+int					ListNode::Priority		()
 {
 	return pri;
 
@@ -162,7 +162,7 @@ void				ListNode::SetPriority ( int new_pri )
 
 }
 
-List::List ( void )
+List::List ()
 {
 
 	SetItem ( &this->item );
@@ -222,16 +222,16 @@ void				List::Merge			( List *list )
 	{
 		return;
 	}
-	
+
 	node = Prev();
 	node->Link ( first );
 	last->Link ( this );
-	
+
 	list->Empty ();
 
 }
 
-int					List::NumItems  ( void )
+int					List::NumItems  ()
 {
 	int count = 0;
 	ListNode *node;
@@ -265,24 +265,24 @@ void*				List::Item			( int list_index )
 		return node->Item();
 	}
 
-	return NULL;
+	return nullptr;
 }
 
-ListNode*		List::FirstNode ( void )
+ListNode*		List::FirstNode ()
 {
 	assert ( IsHead ());
 	return Next ();
 
 }
 
-ListNode*		List::LastNode ( void )
+ListNode*		List::LastNode ()
 {
 	assert ( IsHead ());
 	return Prev ();
 
 }
 
-int					List::IsEmpty		( void )
+int					List::IsEmpty		()
 {
 	assert ( IsHead ());
 
@@ -290,7 +290,7 @@ int					List::IsEmpty		( void )
 
 }
 
-void				List::Empty			( void )
+void				List::Empty			()
 {
 	assert ( IsHead ());
 	Remove ();
@@ -312,5 +312,5 @@ ListNode*		List::Find			( void *item )
 
 		node = node->Next ();
 	}
-	return NULL;
+	return nullptr;
 }

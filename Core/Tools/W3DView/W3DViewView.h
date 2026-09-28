@@ -20,12 +20,7 @@
 //
 /////////////////////////////////////////////////////////////////////////////
 
-#if !defined(AFX_W3DVIEWVIEW_H__2BB39E33_5D3A_11D2_9FC6_00104B791122__INCLUDED_)
-#define AFX_W3DVIEWVIEW_H__2BB39E33_5D3A_11D2_9FC6_00104B791122__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
 
 class CW3DViewView : public CView
 {
@@ -52,9 +47,9 @@ public:
 // Implementation
 public:
 	virtual ~CW3DViewView();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 protected:
@@ -66,7 +61,7 @@ protected:
 	DECLARE_MESSAGE_MAP()
 };
 
-#ifndef _DEBUG  // debug version in W3DViewView.cpp
+#ifndef RTS_DEBUG  // debug version in W3DViewView.cpp
 inline CW3DViewDoc* CW3DViewView::GetDocument()
    { return (CW3DViewDoc*)m_pDocument; }
 #endif
@@ -75,5 +70,3 @@ inline CW3DViewDoc* CW3DViewView::GetDocument()
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_W3DVIEWVIEW_H__2BB39E33_5D3A_11D2_9FC6_00104B791122__INCLUDED_)

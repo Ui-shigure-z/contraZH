@@ -31,13 +31,13 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
-#include "Stdafx.H"
-#include "W3DView.H"
-#include "VolumeRandomDialog.H"
-#include "V3_Rnd.H"
-#include "Utils.H"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "VolumeRandomDialog.h"
+#include "WWMath/v3_rnd.h"
+#include "Utils.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -56,7 +56,6 @@ VolumeRandomDialogClass::VolumeRandomDialogClass (Vector3Randomizer *randomizer,
 	//{{AFX_DATA_INIT(VolumeRandomDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -77,7 +76,6 @@ VolumeRandomDialogClass::DoDataExchange (CDataExchange *pDX)
 	DDX_Control(pDX, IDC_BOX_Y_SPIN, m_BoxYSpin);
 	DDX_Control(pDX, IDC_BOX_X_SPIN, m_BoxXSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -96,10 +94,10 @@ END_MESSAGE_MAP()
 //
 ////////////////////////////////////////////////////////////////////
 void
-VolumeRandomDialogClass::OnOK (void)
+VolumeRandomDialogClass::OnOK ()
 {
 	if (SendDlgItemMessage (IDC_BOX_RADIO, BM_GETCHECK) == 1) {
-		
+
 		//
 		//	Create a box randomizer
 		//
@@ -109,7 +107,7 @@ VolumeRandomDialogClass::OnOK (void)
 		extents.Z = ::GetDlgItemFloat (m_hWnd, IDC_BOX_Z_EDIT);
 		m_Randomizer = new Vector3SolidBoxRandomizer (extents);
 	} else if (SendDlgItemMessage (IDC_SPHERE_RADIO, BM_GETCHECK) == 1) {
-		
+
 		//
 		//	What type of sphere is this, hollow or solid?
 		//
@@ -120,7 +118,7 @@ VolumeRandomDialogClass::OnOK (void)
 			m_Randomizer = new Vector3SolidSphereRandomizer (radius);
 		}
 	} else if (SendDlgItemMessage (IDC_CYLINDER_RADIO, BM_GETCHECK) == 1) {
-		
+
 		//
 		//	Create a cylinder randomizer
 		//
@@ -128,9 +126,8 @@ VolumeRandomDialogClass::OnOK (void)
 		float height = ::GetDlgItemFloat (m_hWnd, IDC_CYLINDER_HEIGHT_EDIT);
 		m_Randomizer = new Vector3SolidCylinderRandomizer (height, radius);
 	}
-	
+
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -140,7 +137,7 @@ VolumeRandomDialogClass::OnOK (void)
 //
 ////////////////////////////////////////////////////////////////////
 BOOL
-VolumeRandomDialogClass::OnInitDialog (void)
+VolumeRandomDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
@@ -157,11 +154,11 @@ VolumeRandomDialogClass::OnInitDialog (void)
 	//
 	//	Initialize from the provided randomizer
 	//
-	if (m_Randomizer != NULL) {
-		
+	if (m_Randomizer != nullptr) {
+
 		// What type of randomizer is this?
 		switch (m_Randomizer->Class_ID ())
-		{		
+		{
 			case Vector3Randomizer::CLASSID_SOLIDBOX:
 				initial_type = IDC_BOX_RADIO;
 				initial_box = ((Vector3SolidBoxRandomizer *)m_Randomizer)->Get_Extents ();
@@ -178,13 +175,13 @@ VolumeRandomDialogClass::OnInitDialog (void)
 				initial_sphere_radius = ((Vector3HollowSphereRandomizer *)m_Randomizer)->Get_Radius ();
 				initial_sphere_hollow = true;
 				break;
-			
+
 			case Vector3Randomizer::CLASSID_SOLIDCYLINDER:
 				initial_type = IDC_CYLINDER_RADIO;
 				initial_cylinder_radius = ((Vector3SolidCylinderRandomizer *)m_Randomizer)->Get_Radius ();
 				initial_cylinder_height = ((Vector3SolidCylinderRandomizer *)m_Randomizer)->Get_Height ();
 				break;
-			
+
 			default:
 				ASSERT (0);
 				break;
@@ -225,10 +222,9 @@ VolumeRandomDialogClass::OnInitDialog (void)
 //
 ////////////////////////////////////////////////////////////////////
 void
-VolumeRandomDialogClass::OnBoxRadio (void)
+VolumeRandomDialogClass::OnBoxRadio ()
 {
 	Update_Enable_State ();
-	return ;
 }
 
 
@@ -238,10 +234,9 @@ VolumeRandomDialogClass::OnBoxRadio (void)
 //
 ////////////////////////////////////////////////////////////////////
 void
-VolumeRandomDialogClass::OnCylinderRadio (void) 
+VolumeRandomDialogClass::OnCylinderRadio ()
 {
 	Update_Enable_State ();
-	return ;
 }
 
 
@@ -251,10 +246,9 @@ VolumeRandomDialogClass::OnCylinderRadio (void)
 //
 ////////////////////////////////////////////////////////////////////
 void
-VolumeRandomDialogClass::OnSphereRadio (void) 
+VolumeRandomDialogClass::OnSphereRadio ()
 {
 	Update_Enable_State ();
-	return ;
 }
 
 
@@ -264,7 +258,7 @@ VolumeRandomDialogClass::OnSphereRadio (void)
 //
 ////////////////////////////////////////////////////////////////////
 void
-VolumeRandomDialogClass::Update_Enable_State (void) 
+VolumeRandomDialogClass::Update_Enable_State ()
 {
 	bool enable_box_ctrls = (SendDlgItemMessage (IDC_BOX_RADIO, BM_GETCHECK) == 1);
 	bool enable_sphere_ctrls = (SendDlgItemMessage (IDC_SPHERE_RADIO, BM_GETCHECK) == 1);
@@ -285,7 +279,7 @@ VolumeRandomDialogClass::Update_Enable_State (void)
 	//
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_SPHERE_RADIUS_EDIT), enable_sphere_ctrls);
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_SPHERE_RADIUS_SPIN), enable_sphere_ctrls);
-	::EnableWindow (::GetDlgItem (m_hWnd, IDC_SPHERE_HOLLOW_CHECK), enable_sphere_ctrls);	
+	::EnableWindow (::GetDlgItem (m_hWnd, IDC_SPHERE_HOLLOW_CHECK), enable_sphere_ctrls);
 
 	//
 	//	Update the cylinder controls
@@ -294,7 +288,6 @@ VolumeRandomDialogClass::Update_Enable_State (void)
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_CYLINDER_RADIUS_SPIN), enable_cylinder_ctrls);
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_CYLINDER_HEIGHT_EDIT), enable_cylinder_ctrls);
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_CYLINDER_HEIGHT_SPIN), enable_cylinder_ctrls);
-	return ;
 }
 
 
@@ -309,17 +302,17 @@ VolumeRandomDialogClass::OnNotify
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
-	
+
 	// Allow the base class to process this message
 	return CDialog::OnNotify (wParam, lParam, pResult);
 }

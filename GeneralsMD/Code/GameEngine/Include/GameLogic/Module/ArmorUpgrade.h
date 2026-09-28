@@ -24,12 +24,12 @@
 
 // FILE: ArmorUpgrade.h /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	July 2002
@@ -37,16 +37,13 @@
 //	Filename: 	ArmorUpgrade.h
 //
 //	author:		Chris Brue
-//	
-//	purpose:	
+//
+//	purpose:
 //
 //-----------------------------------------------------------------------------
 ///////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-
-#ifndef __ARMOR_UPGRADE_H_
-#define __ARMOR_UPGRADE_H_
 
 //-----------------------------------------------------------------------------
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
@@ -56,21 +53,36 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 #include "GameLogic/Module/UpgradeModule.h"
+#include "GameLogic/ArmorSet.h"
 
 //-----------------------------------------------------------------------------
 // FORWARD REFERENCES /////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 class Thing;
+enum ArmorSetType CPP_11(: Int);
 
-//-----------------------------------------------------------------------------
-// TYPE DEFINES ///////////////////////////////////////////////////////////////
-//-----------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+class ArmorUpgradeModuleData : public UpgradeModuleData
+{
 
+public:
+
+	ArmorUpgradeModuleData(void);
+
+	static void buildFieldParse(MultiIniFieldParse& p);
+
+	ArmorSetType m_armorSetFlag;  ///< The weaponset flag to set (default = WEAPONSET_PLAYER_UPGRADE)
+	ArmorSetFlags m_armorSetFlagsToClear;  ///< The weaponset flags to clear. This is needed if we want to disable a previous upgrade.
+	//Bool m_needsParkedAircraft;   ///< Aircraft attempting this upgrade needs to be stationary in hangar
+
+};
+//-------------------------------------------------------------------------------------------------
 class ArmorUpgrade : public UpgradeModule
 {
 
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( ArmorUpgrade, "ArmorUpgrade" )
-	MAKE_STANDARD_MODULE_MACRO( ArmorUpgrade );
+	MAKE_STANDARD_MODULE_MACRO_WITH_MODULE_DATA( ArmorUpgrade, ArmorUpgradeModuleData);
 
 public:
 
@@ -78,8 +90,10 @@ public:
 	// virtual destructor prototype defined by MemoryPoolObject
 
 protected:
-	virtual void upgradeImplementation( ); ///< Here's the actual work of Upgrading
-	virtual Bool isSubObjectsUpgrade() { return false; }
+	virtual void upgradeImplementation( ) override; ///< Here's the actual work of Upgrading
+	virtual Bool isSubObjectsUpgrade() override { return false; }
+
+	virtual Bool attemptUpgrade(UpgradeMaskType keyMask);
 
 };
 
@@ -90,5 +104,3 @@ protected:
 //-----------------------------------------------------------------------------
 // EXTERNALS //////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-
-#endif // __ARMOR_UPGRADE_H_

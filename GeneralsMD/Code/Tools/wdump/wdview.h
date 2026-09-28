@@ -20,12 +20,7 @@
 //
 /////////////////////////////////////////////////////////////////////////////
 
-#if !defined(AFX_WDUMPVIEW_H__41C157EF_5631_11D1_8CDB_006097C6A583__INCLUDED_)
-#define AFX_WDUMPVIEW_H__41C157EF_5631_11D1_8CDB_006097C6A583__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
 
 class CWdumpView : public CView
 {
@@ -44,17 +39,17 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CWdumpView)
 	public:
-	virtual void OnDraw(CDC* pDC);  // overridden to draw this view
-	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+	virtual void OnDraw(CDC* pDC) override;  // overridden to draw this view
+	virtual BOOL PreCreateWindow(CREATESTRUCT& cs) override;
 	protected:
 	//}}AFX_VIRTUAL
 
 // Implementation
 public:
 	virtual ~CWdumpView();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 protected:
@@ -68,7 +63,7 @@ protected:
 	DECLARE_MESSAGE_MAP()
 };
 
-#ifndef _DEBUG  // debug version in wdumpView.cpp
+#ifndef RTS_DEBUG  // debug version in wdumpView.cpp
 inline CWdumpDoc* CWdumpView::GetDocument()
    { return (CWdumpDoc*)m_pDocument; }
 #endif
@@ -77,5 +72,3 @@ inline CWdumpDoc* CWdumpView::GetDocument()
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_WDUMPVIEW_H__41C157EF_5631_11D1_8CDB_006097C6A583__INCLUDED_)

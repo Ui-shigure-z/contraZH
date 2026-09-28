@@ -28,9 +28,9 @@
 #include <string.h>
 #include <memory.h>
 
-void CreateTranslationTable ( void )
+void CreateTranslationTable ()
 {
-	int i; 
+	int i;
 	FILE *out;
 	wchar_t wc;
 	wchar_t mb;

@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_OPACITYSETTINGSDIALOG_H__52B0C804_0D48_11D3_A031_00104B791122__INCLUDED_)
-#define AFX_OPACITYSETTINGSDIALOG_H__52B0C804_0D48_11D3_A031_00104B791122__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // OpacitySettingsDialog.h : header file
 //
 
@@ -35,7 +31,7 @@ class OpacitySettingsDialogClass : public CDialog
 {
 // Construction
 public:
-	OpacitySettingsDialogClass(float opacity, CWnd* pParent = NULL);   // standard constructor
+	OpacitySettingsDialogClass(float opacity, CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(OpacitySettingsDialogClass)
@@ -48,7 +44,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(OpacitySettingsDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -56,8 +52,8 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(OpacitySettingsDialogClass)
-	virtual BOOL OnInitDialog();
-	virtual void OnOK();
+	virtual BOOL OnInitDialog() override;
+	virtual void OnOK() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -66,8 +62,8 @@ protected:
 		////////////////////////////////////////////////////////////////
 		//	Public methods
 		////////////////////////////////////////////////////////////////
-		float					Get_Opacity (void) const	{ return m_Opacity; }
-		
+		float					Get_Opacity () const	{ return m_Opacity; }
+
 	private:
 
 		////////////////////////////////////////////////////////////////
@@ -79,5 +75,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_OPACITYSETTINGSDIALOG_H__52B0C804_0D48_11D3_A031_00104B791122__INCLUDED_)

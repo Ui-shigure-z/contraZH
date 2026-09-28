@@ -29,12 +29,10 @@
 
 #pragma once
 
-#ifndef __PARTICLE_UPLINK_CANNON_UPDATE_H_
-#define __PARTICLE_UPLINK_CANNON_UPDATE_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/KindOf.h"
 #include "Common/Science.h"
+#include "GameLogic/Module/LaserUpdate.h"
 #include "GameLogic/Module/SpecialPowerUpdateModule.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -74,7 +72,7 @@ public:
 	AsciiString			m_laserBaseLightFlareParticleSystemName;
 	AsciiString			m_laserBaseMediumFlareParticleSystemName;
 	AsciiString			m_laserBaseIntenseFlareParticleSystemName;
-	
+
 	AsciiString			m_fireBoneName;
 	AsciiString			m_particleBeamLaserName;
 
@@ -85,6 +83,7 @@ public:
 	Real						m_swathOfDeathAmplitude;
 	UnsignedInt			m_totalScorchMarks;
 	Real						m_scorchMarkScalar;
+	UnsignedInt			m_scorchTypeMask;
 
 	UnsignedInt			m_totalDamagePulses;
 	Real						m_damagePerSecond;
@@ -105,11 +104,13 @@ public:
   Real					m_manualDrivingSpeed;
   Real					m_manualFastDrivingSpeed;
   UnsignedInt		m_doubleClickToFastDriveDelay;
+	Bool          m_hitWaterSurface;
+	AsciiString   m_tornadoObjectName;
 
 	ParticleUplinkCannonUpdateModuleData();
 	static void buildFieldParse(MultiIniFieldParse& p);
 
-private: 
+private:
 
 };
 
@@ -157,17 +158,17 @@ public:
 	// virtual destructor prototype provided by memory pool declaration
 
 	// SpecialPowerUpdateInterface
-	virtual Bool initiateIntentToDoSpecialPower(const SpecialPowerTemplate *specialPowerTemplate, const Object *targetObj, const Coord3D *targetPos, const Waypoint *way, UnsignedInt commandOptions );
-	virtual Bool isSpecialAbility() const { return false; }
-	virtual Bool isSpecialPower() const { return true; }
-	virtual Bool isActive() const {return m_status != STATUS_IDLE;}
-	virtual SpecialPowerUpdateInterface* getSpecialPowerUpdateInterface() { return this; }
-	virtual CommandOption getCommandOption() const { return (CommandOption)0; }
-	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = NULL ) const;
-	virtual ScienceType getExtraRequiredScience() const { return SCIENCE_INVALID; } //Does this object have more than one special power module with the same spTemplate?
+	virtual Bool initiateIntentToDoSpecialPower(const SpecialPowerTemplate *specialPowerTemplate, const Object *targetObj, const Coord3D *targetPos, const Waypoint *way, UnsignedInt commandOptions ) override;
+	virtual Bool isSpecialAbility() const override { return false; }
+	virtual Bool isSpecialPower() const override { return true; }
+	virtual Bool isActive() const override {return m_status != STATUS_IDLE;}
+	virtual SpecialPowerUpdateInterface* getSpecialPowerUpdateInterface() override { return this; }
+	virtual CommandOption getCommandOption() const override { return (CommandOption)0; }
+	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = nullptr ) const override;
+	virtual ScienceType getExtraRequiredScience() const override { return SCIENCE_INVALID; } //Does this object have more than one special power module with the same spTemplate?
 
-	virtual void onObjectCreated();
-	virtual UpdateSleepTime update();
+	virtual void onObjectCreated() override;
+	virtual UpdateSleepTime update() override;
 
 	void removeAllEffects();
 
@@ -182,18 +183,24 @@ public:
 	Bool calculateDefaultInformation();
 	Bool calculateUpBonePositions();
 
-	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const; //Is it active now?
-	virtual Bool doesSpecialPowerHaveOverridableDestination() const { return true; }	//Does it have it, even if it's not active?
-	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc );
+	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const override; //Is it active now?
+	virtual Bool doesSpecialPowerHaveOverridableDestination() const override { return true; }	//Does it have it, even if it's not active?
+	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) override;
 
 	// Disabled conditions to process (termination conditions!)
-	virtual DisabledMaskType getDisabledTypesToProcess() const { return MAKE_DISABLED_MASK4( DISABLED_SUBDUED, DISABLED_UNDERPOWERED, DISABLED_EMP, DISABLED_HACKED ); }
+	virtual DisabledMaskType getDisabledTypesToProcess() const override { return MAKE_DISABLED_MASK5( DISABLED_SUBDUED, DISABLED_UNDERPOWERED, DISABLED_EMP, DISABLED_HACKED, DISABLED_FROZEN ); }
 
 protected:
 
 	void setLogicalStatus( PUCStatus status );
 	void setClientStatus( PUCStatus status, Bool revealThisFrame );
 	void killEverything();
+
+	void createTornado();
+	void moveTornado();
+	void rampDownTornado();
+	void destroyTornado();
+	Object *getTornado() const;
 
 	SpecialPowerModuleInterface* m_specialPowerModule;
 
@@ -218,6 +225,7 @@ protected:
 	DrawableID				m_laserBeamIDs[ MAX_OUTER_NODES ];
 	DrawableID				m_groundToOrbitBeamID;
 	DrawableID				m_orbitToTargetBeamID;
+	LaserRadiusUpdate	m_orbitToTargetLaserRadius;
 	ParticleSystemID	m_connectorSystemID;
 	ParticleSystemID	m_laserBaseSystemID;
 
@@ -231,6 +239,9 @@ protected:
 	UnsignedInt			m_lastDrivingClickFrame;
 	UnsignedInt			m_2ndLastDrivingClickFrame;
 	UnsignedInt			m_nextDestWaypointID;
+	ObjectID				m_tornadoObjectID;
+
+	XferVersion			m_xferVersion;
 
 	Bool						m_upBonesCached;
 	Bool						m_defaultInfoCached;
@@ -239,7 +250,3 @@ protected:
 	Bool						m_scriptedWaypointMode;
 	Bool						m_clientShroudedLastFrame;
 };
-
-
-#endif
-

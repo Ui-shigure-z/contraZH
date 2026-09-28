@@ -24,12 +24,9 @@
 
 // FILE:		DumbProjectileBehavior.h
 // Author:	Steven Johnson, July 2002
-// Desc:		
+// Desc:
 
 #pragma once
-
-#ifndef _DumbProjectileBehavior_H_
-#define _DumbProjectileBehavior_H_
 
 #include "Common/GameType.h"
 #include "Common/GlobalData.h"
@@ -42,6 +39,7 @@
 #include "WWMath/matrix3d.h"
 
 class ParticleSystem;
+enum ParticleSystemID CPP_11(: Int);
 class FXList;
 
 
@@ -65,7 +63,10 @@ public:
 	KindOfMaskType	m_garrisonHitKillKindofNot;		///< the kind(s) of units that CANNOT be collided with
 	const FXList*		m_garrisonHitKillFX;
 	Real m_flightPathAdjustDistPerFrame;
+	Bool m_applyLauncherBonus;
 
+	Real m_dynamicHeightMinScale;
+	Real m_dynamicHeightMinRange;
 
 	DumbProjectileBehaviorModuleData();
 
@@ -86,8 +87,8 @@ public:
 	// virtual destructor provided by memory pool object
 
 	// UpdateModuleInterface
-	virtual UpdateSleepTime update();
-	virtual ProjectileUpdateInterface* getProjectileUpdateInterface() { return this; }
+	virtual UpdateSleepTime update() override;
+	virtual ProjectileUpdateInterface* getProjectileUpdateInterface() override { return this; }
 
 	// ProjectileUpdateInterface
 	virtual void projectileLaunchAtObjectOrPosition(const Object *victim, const Coord3D* victimPos, const Object *launcher, WeaponSlotType wslot, Int specificBarrelToUse, const WeaponTemplate* detWeap, const ParticleSystemTemplate* exhaustSysOverride);
@@ -95,18 +96,26 @@ public:
 	virtual Bool projectileHandleCollision( Object *other );
 	virtual Bool projectileIsArmed() const { return true; }
 	virtual ObjectID projectileGetLauncherID() const { return m_launcherID; }
+	virtual const WeaponTemplate* projectileGetDetonationWeapon() const override { return m_detonationWeaponTmpl; }
+	virtual Bool projectileGetLaunchPos(Coord3D& pos) const { if (m_launcherID == INVALID_ID) return false; pos = m_flightPathStart; return true; }
+	virtual void projectileSetLaunchVeterancy(VeterancyLevel v) { m_launchVeterancy = v; }
+	virtual Bool projectileGetLaunchVeterancy(VeterancyLevel& v) const { if (m_launcherID == INVALID_ID) return false; v = m_launchVeterancy; return true; }
 	virtual void setFramesTillCountermeasureDiversionOccurs( UnsignedInt frames ) {}
 	virtual void projectileNowJammed() {}
+	virtual Object* getTargetObject();
+	virtual const Coord3D* getTargetPosition();
+	virtual Bool projectileShouldCollideWithWater() const override;
 
 protected:
 
 	void positionForLaunch(const Object *launcher, WeaponSlotType wslot, Int specificBarrelToUse);
-	void detonate();
+	void detonate( Object *victim = nullptr );
 
 private:
 
 	ObjectID							m_launcherID;							///< ID of object that launched us (zero if not yet launched)
 	ObjectID							m_victimID;								///< ID of object we are targeting (zero if not yet launched)
+	VeterancyLevel				m_launchVeterancy;				///< launcher's veterancy at launch time (for veterancy FX/OCL selection)
 	const WeaponTemplate*	m_detonationWeaponTmpl;		///< weapon to fire at end (or null)
 	UnsignedInt						m_lifespanFrame;					///< if we haven't collided by this frame, blow up anyway
 	VecCoord3D						m_flightPath;							///< The frame by frame flight path in a Bezier curve
@@ -116,15 +125,17 @@ private:
 	Int										m_flightPathSegments;			///< number of segments in the flightpath (in case we must regen it)
 	Int										m_currentFlightPathStep;	///< Our current index in the flight path vector.  Quicker than popping off.
 	WeaponBonusConditionFlags		m_extraBonusFlags;
-  
-  Bool                  m_hasDetonated;           ///< 
+
+	const ParticleSystemTemplate* m_exhaustSysTmpl;
+	ParticleSystemID			m_exhaustID;
+
+  Bool                  m_hasDetonated;           ///<
 
 	Bool calcFlightPath(Bool recalcNumSegments);
-#if defined(_DEBUG) || defined(_INTERNAL)
+#if defined(RTS_DEBUG)
 	void displayFlightPath();	///< Uses little debug icons in worldspace to show the path chosen when it is decided upon
 #endif
 
+	void tossExhaust();
+
 };
-
-#endif // _DumbProjectileBehavior_H_
-

@@ -30,9 +30,9 @@
 #define MAX_SETS 20
 #define TREES_PER_SET 11
 
-/*extern*/ GroveOptions *TheGroveOptions = NULL;
+/*extern*/ GroveOptions *TheGroveOptions = nullptr;
 
-void GroveOptions::makeMain(void)
+void GroveOptions::makeMain()
 {
 	TheGroveOptions = this;
 }
@@ -42,7 +42,7 @@ GroveOptions::GroveOptions(CWnd* pParent)
 
 }
 
-int GroveOptions::getNumTrees(void)
+int GroveOptions::getNumTrees()
 {
 	CWnd* pWnd = GetDlgItem(IDC_Grove_NumberTrees);
 	if (!pWnd) {
@@ -163,7 +163,7 @@ AsciiString GroveOptions::getTypeName(int type)
 	}
 }
 
-int GroveOptions::getTotalTreePerc(void)
+int GroveOptions::getTotalTreePerc()
 {
     if (isUsePropsOnly()) {
         return getNumType(11); // only props count
@@ -183,7 +183,7 @@ int GroveOptions::getTotalTreePerc(void)
 	return -1;
 }
 
-Bool GroveOptions::getCanPlaceInWater(void)
+Bool GroveOptions::getCanPlaceInWater()
 {
 	CButton* pButt;
 
@@ -194,7 +194,7 @@ Bool GroveOptions::getCanPlaceInWater(void)
 	return false;
 }
 
-Bool GroveOptions::getCanPlaceOnCliffs(void)
+Bool GroveOptions::getCanPlaceOnCliffs()
 {
 	CButton* pButt;
 
@@ -246,7 +246,7 @@ void GroveOptions::OnMove(int x, int y)
 
 GroveOptions::~GroveOptions()
 {
-	TheGroveOptions = NULL;
+	TheGroveOptions = nullptr;
 }
 
 /**
@@ -539,7 +539,7 @@ void GroveOptions::_updateGroveMakeup()
 	m_objectPreview.Invalidate();
 }
 
-void GroveOptions::_buildTreeList(void)
+void GroveOptions::_buildTreeList()
 {
 	const ThingTemplate* pTemplate;
 	for (pTemplate = TheThingFactory->firstTemplate(); pTemplate; pTemplate = pTemplate->friend_getNextTemplate()) {
@@ -612,12 +612,12 @@ void GroveOptions::_setDefaultNumTrees(void)
 
 	int defaultNumTrees = CustomConfigProfile::ReadInt("AdrianeGroveOptions", "NumberofTrees", 10, GROVE_INI_FILE);
 	static char buff[ARBITRARY_BUFF_SIZE];
-	sprintf(buff, "%d", defaultNumTrees);
+	snprintf(buff, ARRAY_SIZE(buff), "%d", defaultNumTrees);
 
 	pWnd->SetWindowText(buff);
 }
 
-void GroveOptions::_setDefaultPlacementAllowed(void)
+void GroveOptions::_setDefaultPlacementAllowed()
 {
 	CButton* pButt;
 	int state;
@@ -694,7 +694,7 @@ void GroveOptions::_updateTreeWeights(void)
 
 void GroveOptions::_updateTreeCount(void)
 {
-	static char buff[ARBITRARY_BUFF_SIZE];	
+	static char buff[ARBITRARY_BUFF_SIZE];
 	CWnd* pWnd = GetDlgItem(IDC_Grove_NumberTrees);
 	if (pWnd) {
 		pWnd->GetWindowText(buff, ARBITRARY_BUFF_SIZE - 1);
@@ -703,7 +703,7 @@ void GroveOptions::_updateTreeCount(void)
 	}
 }
 
-void GroveOptions::_updatePlacementAllowed(void)
+void GroveOptions::_updatePlacementAllowed()
 {
 	// huh huh huh-huh
 	CButton* pButt;

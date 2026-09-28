@@ -30,7 +30,7 @@
 //				can use any or all features, some of which are specialized.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/RandomValue.h"
 #include "Common/Xfer.h"
@@ -50,11 +50,6 @@
 #include "GameLogic/Module/SlavedUpdate.h"
 #include "GameLogic/Weapon.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 #define STRAY_MULTIPLIER 2.0f // Multiplier from stating diestance from tunnel, to max distance from
 const Real CLOSE_ENOUGH = 15;				// Our moveTo commands and pathfinding can't handle people in the way, so quit trying to hump someone on your spot
@@ -70,12 +65,12 @@ SlavedUpdate::SlavedUpdate( Thing *thing, const ModuleData* moduleData ) : Updat
 	m_framesToWait = 0;
 	m_repairState = REPAIRSTATE_NONE;
 	m_repairing = false;
-} 
+}
 
 //-------------------------------------------------------------------------------------------------
-SlavedUpdate::~SlavedUpdate( void )
+SlavedUpdate::~SlavedUpdate()
 {
-} 
+}
 
 //-------------------------------------------------------------------------------------------------
 void SlavedUpdate::onObjectCreated()
@@ -112,8 +107,15 @@ void SlavedUpdate::onSlaverDamage( const DamageInfo *info )
 
 
 //-------------------------------------------------------------------------------------------------
-UpdateSleepTime SlavedUpdate::update( void )
+UpdateSleepTime SlavedUpdate::update()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	if (!TheGameLogic->HasLegacyFrameAdvanced())
+	{
+		return UPDATE_SLEEP_NONE;
+	}
+#endif
+
 /// @todo srj use SLEEPY_UPDATE here
 	if( m_framesToWait > 0 )
 	{
@@ -152,7 +154,7 @@ UpdateSleepTime SlavedUpdate::update( void )
 	if( !master || master->isEffectivelyDead() || master->isDisabledByType( DISABLED_UNMANNED ) )
 	{
 		stopSlavedEffects();
-		
+
 		//Killing is lame.
 		//me->kill();
 
@@ -164,7 +166,7 @@ UpdateSleepTime SlavedUpdate::update( void )
 
 		return UPDATE_SLEEP_NONE;
 	}
-	else 
+	else
 	{
 		Team *masterTeam = master->getTeam();
 		Team *myTeam     = me->getTeam();
@@ -173,25 +175,25 @@ UpdateSleepTime SlavedUpdate::update( void )
 			me->defect( masterTeam, 0 );
 		}
 
-    
+
 
 
 	}
-	
+
 	if (data->m_stayOnSameLayerAsMaster)
 		me->setLayer(master->getLayer());
-	
+
 	//Clear the drone spotting bonus to the master. Up to the drone
 	//to satisfy the conditions to set it again for the next update.
 	master->clearWeaponBonusCondition( WEAPONBONUSCONDITION_DRONE_SPOTTING );
-	
+
 	//Get my master's AI. If he is attacking something, grant him a range bonus,
 	//and I'll fly over the target.
-	Object *target = NULL;
+	Object *target = nullptr;
 	AIUpdateInterface *masterAI = master->getAIUpdateInterface();
 	if( masterAI )
 	{
-		target = masterAI->getCurrentVictim(); 
+		target = masterAI->getCurrentVictim();
 	}
 
 	//Calculate the health percentage of the master -- there are two places we care.
@@ -208,7 +210,7 @@ UpdateSleepTime SlavedUpdate::update( void )
 			healthPercentage = (Int)(health / maxHealth * 100.0f);
 		}
 	}
-		
+
 	//Determine whether or not we need to go back to the master to repair him
 	if( healthPercentage <= data->m_repairWhenHealthBelowPercentage )
 	{
@@ -222,7 +224,34 @@ UpdateSleepTime SlavedUpdate::update( void )
 		//2ND PRIORITY: Go to the master's current victim (as close as wander distance allows)
 		if( target )
 		{
-			//At this point, we officially are in an attack mode! Now, simply 
+#if !PRESERVE_SLAVED_DRONE_CHASE
+			// TheSuperHackers @bugfix triatomic 01/09/2026 Enforce the guard leash while chasing the
+			// master's victim. Retail returns here unconditionally, so the hard leash at the bottom of
+			// this function is unreachable for as long as the master has a victim - and the victim id
+			// persists after the master stops attacking or drives away, so the drone chases forever.
+			// Go idle first: an aiMoveToPosition with CMD_FROM_AI on a non idle unit is layered on as a
+			// twenty second temporary AI_MOVE_TO, so repeating it just stacks temporary states and the
+			// drone keeps following the old goal. aiIdle clears the machine, and leaves us idle so the
+			// move in doGuardLogic takes the clean path. Guarded because aiIdle re-enters AI_IDLE and
+			// draws a logic random each time.
+			if( isBeyondLeash( master ) )
+			{
+				endRepair();
+				if( !myAI->isIdle() )
+				{
+					myAI->aiIdle( CMD_FROM_AI );
+				}
+
+				Coord3D leashPosition = *master->getPosition();
+				leashPosition.x += m_guardPointOffset.x;
+				leashPosition.y += m_guardPointOffset.y;
+				m_guardPointOffset.z = TheTerrainLogic->getGroundHeight( leashPosition.x, leashPosition.y );
+
+				doGuardLogic( &leashPosition );
+				return UPDATE_SLEEP_NONE;
+			}
+#endif
+			//At this point, we officially are in an attack mode! Now, simply
 			endRepair();
 			doAttackLogic( target );
 			return UPDATE_SLEEP_NONE;
@@ -274,7 +303,7 @@ UpdateSleepTime SlavedUpdate::update( void )
 			endRepair();
 			doGuardLogic( &pinnedPosition );
 		}
-		else if( ThePartitionManager->getDistanceSquared( me, master, FROM_CENTER_3D ) > sqr(STRAY_MULTIPLIER * data->m_guardMaxRange ) )
+		else if( isBeyondLeash( master ) )
 		{
 			//I'm too far away, no matter what I'm doing.
 			endRepair();
@@ -294,7 +323,7 @@ void SlavedUpdate::doAttackLogic( const Object *target )
 	Object *master = TheGameLogic->findObjectByID( m_slaver );
 	Coord3D attackPosition;
 
-	//First, determine the attack position. If the target is too far away, then we'll 
+	//First, determine the attack position. If the target is too far away, then we'll
 	//calculate the closest allowable position.
 	const Coord3D *targetPos = target->getPosition();
 	Real dist = ThePartitionManager->getDistanceSquared( me, targetPos, FROM_BOUNDINGSPHERE_2D );
@@ -302,19 +331,19 @@ void SlavedUpdate::doAttackLogic( const Object *target )
 	{
 		//The distance is too far, so calculate the best allowable position.
 		Coord3D vector;
-		vector.set( targetPos );
-		vector.sub( master->getPosition() );
+		vector.set( *targetPos );
+		vector.sub( *master->getPosition() );
 		vector.normalize();
 		vector.scale( data->m_attackRange );
 
 		//Now that we have calculated the vector relative to me, add it to my position to get my goal.
-		attackPosition.set( master->getPosition() );
-		attackPosition.add( &vector );
+		attackPosition.set( *master->getPosition() );
+		attackPosition.add( vector );
 	}
 	else
 	{
 		//We are close enough, so use the target position -- easy!
-		attackPosition.set( targetPos );
+		attackPosition.set( *targetPos );
 	}
 
 	//Finally, if we have a wander distance, then randomly select a point within
@@ -342,7 +371,7 @@ void SlavedUpdate::doAttackLogic( const Object *target )
 
 	if( dist < sqr( data->m_distToTargetToGrantRangeBonus ) )
 	{
-		//Finally, seeing we are close enough to the target, grant our 
+		//Finally, seeing we are close enough to the target, grant our
 		//master extended weapon range!
 		master->setWeaponBonusCondition( WEAPONBONUSCONDITION_DRONE_SPOTTING );
 	}
@@ -358,26 +387,26 @@ void SlavedUpdate::doScoutLogic( const Coord3D *mastersDestination )
 	Object *master = TheGameLogic->findObjectByID( m_slaver );
 	Coord3D scoutPosition;
 
-	//First, determine the scout position. If our master's destination is too far away, then we'll 
+	//First, determine the scout position. If our master's destination is too far away, then we'll
 	//calculate the closest allowable position.
 	Real dist = ThePartitionManager->getDistanceSquared( me, mastersDestination, FROM_BOUNDINGSPHERE_2D );
 	if( dist > sqr( data->m_scoutRange ) )
 	{
 		//The distance is too far, so calculate the best allowable position.
 		Coord3D vector;
-		vector.set( mastersDestination );
-		vector.sub( master->getPosition() );
+		vector.set( *mastersDestination );
+		vector.sub( *master->getPosition() );
 		vector.normalize();
 		vector.scale( data->m_scoutRange );
 
 		//Now that we have calculated the vector relative to me, add it to my position to get my goal.
-		scoutPosition.set( master->getPosition() );
-		scoutPosition.add( &vector );
+		scoutPosition.set( *master->getPosition() );
+		scoutPosition.add( vector );
 	}
 	else
 	{
 		//We are close enough, so use the target position -- easy!
-		scoutPosition.set( mastersDestination );
+		scoutPosition.set( *mastersDestination );
 	}
 
 	//Finally, if we have a wander distance, then randomly select a point within
@@ -402,6 +431,22 @@ void SlavedUpdate::doScoutLogic( const Coord3D *mastersDestination )
 	{
 		ai->aiMoveToPosition( &scoutPosition, CMD_FROM_AI );
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+// Have I strayed further from my master than I am ever allowed to, whatever I am doing?
+//-------------------------------------------------------------------------------------------------
+Bool SlavedUpdate::isBeyondLeash( const Object *master ) const
+{
+	const SlavedUpdateModuleData* data = getSlavedUpdateModuleData();
+
+	if( !data->m_guardMaxRange )
+	{
+		return FALSE;
+	}
+
+	return ThePartitionManager->getDistanceSquared( getObject(), master, FROM_CENTER_3D )
+			> sqr( STRAY_MULTIPLIER * data->m_guardMaxRange );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -488,7 +533,7 @@ void SlavedUpdate::doRepairLogic()
 			locomotor->setUsePreciseZPos( closeEnoughForZPrecision );
 		}
 		Coord3D pos;
-		pos.set( master->getPosition() );
+		pos.set( *master->getPosition() );
 		Real altitude = GameLogicRandomValueReal( data->m_repairMinAltitude, data->m_repairMaxAltitude );
 		pos.z += altitude;
 		ai->aiMoveToPosition( &pos, CMD_FROM_AI );
@@ -509,7 +554,7 @@ void SlavedUpdate::doRepairLogic()
 		{
 			//Calculate the repair rate per frame.
 			Real repairAmount = data->m_repairRatePerSecond / LOGICFRAMES_PER_SECOND;
-			
+
 			DamageInfo healingInfo;
 			healingInfo.in.m_amount = repairAmount;
 			healingInfo.in.m_damageType = DAMAGE_HEALING;
@@ -570,7 +615,7 @@ void SlavedUpdate::setRepairState( RepairStates repairState )
 	const SlavedUpdateModuleData* data = getSlavedUpdateModuleData();
 
 	if( repairState == m_repairState )
-	{	
+	{
 		return;
 	}
 
@@ -626,30 +671,31 @@ void SlavedUpdate::setRepairState( RepairStates repairState )
 				if( !data->m_weldingSysName.isEmpty() )
 				{
 					const ParticleSystemTemplate *tmp = TheParticleSystemManager->findTemplate( data->m_weldingSysName );
-					if( tmp )
+					ParticleSystem *weldingSys = TheParticleSystemManager->createParticleSystem(tmp);
+					if( weldingSys )
 					{
-						ParticleSystem *weldingSys = TheParticleSystemManager->createParticleSystem(tmp);
-						if( weldingSys )
+						Coord3D pos;
+						//Get the bone position
+						if( draw->getPristineBonePositions( data->m_weldingFXBone.str(), 0, &pos, nullptr, 1 ) )
 						{
-							Coord3D pos;
-							//Get the bone position
-							if( draw->getPristineBonePositions( data->m_weldingFXBone.str(), 0, &pos, NULL, 1 ) )
-							{
-								pos.add( obj->getPosition() );
-							}
-							else
-							{
-								pos.set( obj->getPosition() );
-							}
-
-							weldingSys->setPosition( &pos );
-							Real time = (Real)(m_framesToWait * LOGICFRAMES_PER_SECOND);
-							weldingSys->setLifetimeRange( time, time );
-
-							AudioEventRTS soundToPlay = TheAudio->getMiscAudio()->m_repairSparks;	
-							soundToPlay.setPosition( &pos );
-							TheAudio->addAudioEvent( &soundToPlay );
+							pos.add( *obj->getPosition() );
 						}
+						else
+						{
+							pos.set( *obj->getPosition() );
+						}
+
+						weldingSys->setPosition( &pos );
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+						Real time = (Real)(m_framesToWait * (LOGICFRAMES_PER_SECOND / GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER));
+#else
+						Real time = (Real)(m_framesToWait * LOGICFRAMES_PER_SECOND);
+#endif
+						weldingSys->setLifetimeRange( time, time );
+
+						AudioEventRTS soundToPlay = TheAudio->getMiscAudio()->m_repairSparks;
+						soundToPlay.setPosition( &pos );
+						TheAudio->addAudioEvent( &soundToPlay );
 					}
 				}
 
@@ -683,7 +729,7 @@ void SlavedUpdate::moveToNewRepairSpot()
 	{
 		//Allow me to wander away from the pinnedPosition.
 		Real randomDirection = GameLogicRandomValue( 0, 2*PI );
-		m_guardPointOffset.set( master->getPosition() );
+		m_guardPointOffset.set( *master->getPosition() );
 		m_guardPointOffset.x += data->m_repairRange * Cos( randomDirection );
 		m_guardPointOffset.y += data->m_repairRange * Sin( randomDirection );
 		m_guardPointOffset.z = TheTerrainLogic->getGroundHeight( m_guardPointOffset.x, m_guardPointOffset.y );
@@ -709,7 +755,7 @@ void SlavedUpdate::moveToNewRepairSpot()
 //-------------------------------------------------------------------------------------------------
 void SlavedUpdate::startSlavedEffects( const Object *slaver )
 {
-	if( slaver == NULL )
+	if( slaver == nullptr )
 		return;
 
 	m_slaver = slaver->getID();
@@ -720,7 +766,7 @@ void SlavedUpdate::startSlavedEffects( const Object *slaver )
 	m_guardPointOffset.zero();
 	m_guardPointOffset.x += data->m_guardMaxRange * Cos( randomDirection );
 	m_guardPointOffset.y += data->m_guardMaxRange * Sin( randomDirection );
-	
+
 	// mark selves as not selectable
 	getObject()->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_UNSELECTABLE ) );
 
@@ -731,7 +777,7 @@ void SlavedUpdate::startSlavedEffects( const Object *slaver )
     if ( myStealth )
     {
       myStealth->receiveGrant( true );
-      // note to anyone... once stealth is granted to this drone(or such) 
+      // note to anyone... once stealth is granted to this drone(or such)
       // let its own stealthupdate govern the allowedtostealth cases
     }
   }
@@ -759,7 +805,7 @@ void SlavedUpdate::crc( Xfer *xfer )
 	// extend base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -792,16 +838,16 @@ void SlavedUpdate::xfer( Xfer *xfer )
 	// repairing
 	xfer->xferBool( &m_repairing );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void SlavedUpdate::loadPostProcess( void )
+void SlavedUpdate::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}
 

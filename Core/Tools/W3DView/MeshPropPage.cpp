@@ -19,16 +19,16 @@
 // MeshPropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "MeshPropPage.h"
-#include "RendObj.H"
-#include "AssetMgr.H"
-#include "Mesh.H"
-#include "MeshMdl.H"
-#include "w3d_file.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/mesh.h"
+#include "WW3D2/meshmdl.h"
+#include "WW3D2/w3d_file.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -52,16 +52,14 @@ CMeshPropPage::CMeshPropPage (const CString &stringMeshName)
 	//}}AFX_DATA_INIT
 
     m_stringMeshName = stringMeshName;
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
 //
 //  ~CMeshPropPage
 //
-CMeshPropPage::~CMeshPropPage (void)
+CMeshPropPage::~CMeshPropPage ()
 {
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -75,7 +73,6 @@ CMeshPropPage::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CMeshPropPage)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -93,21 +90,21 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CMeshPropPage::OnInitDialog (void)
+CMeshPropPage::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CPropertyPage::OnInitDialog();
-	
+
     if (m_stringMeshName.GetLength () > 0)
     {
         // Get a pointer to the mesh object from the asset manager
         MeshClass *pCMesh = (MeshClass *)WW3DAssetManager::Get_Instance()->Create_Render_Obj (m_stringMeshName);
-        
+
         ASSERT (pCMesh);
         if (pCMesh)
         {
             CString stringDesc;
-            stringDesc.Format (IDS_MESH_PROP_DESC, m_stringMeshName);
+            stringDesc.Format (IDS_MESH_PROP_DESC, static_cast<const char*>(m_stringMeshName));
 
             // Put the description onto the dialog
             SetDlgItemText (IDC_DESCRIPTION, stringDesc);
@@ -154,7 +151,7 @@ CMeshPropPage::OnInitDialog (void)
             {
                 SendDlgItemMessage (IDC_COLLISION_TYPE_PHYSICAL, BM_SETCHECK, (WPARAM)TRUE);
             }
-            
+
             // Is this collision type projectile?
             if ((dwCollisionFlags & W3D_MESH_FLAG_COLLISION_TYPE_PROJECTILE) == W3D_MESH_FLAG_COLLISION_TYPE_PROJECTILE)
             {
@@ -169,20 +166,19 @@ CMeshPropPage::OnInitDialog (void)
 
             // Free the object
             pCMesh->Release_Ref ();
-            pCMesh = NULL;
+            pCMesh = nullptr;
         }
     }
 
     GetParent ()->GetDlgItem (IDOK)->ShowWindow (SW_HIDE);
-    GetParent ()->GetDlgItem (IDCANCEL)->SetWindowText ("Close");	
+    GetParent ()->GetDlgItem (IDCANCEL)->SetWindowText ("Close");
 	return TRUE;
 }
 
 
-void CMeshPropPage::OnClose() 
+void CMeshPropPage::OnClose()
 {
 	// TODO: Add your message handler code here and/or call default
-	
+
 	CPropertyPage::OnClose();
-    return ;
 }

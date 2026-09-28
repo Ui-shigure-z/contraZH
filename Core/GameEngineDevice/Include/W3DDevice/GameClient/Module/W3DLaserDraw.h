@@ -1,0 +1,144 @@
+/*
+**	Command & Conquer Generals Zero Hour(tm)
+**	Copyright 2025 Electronic Arts Inc.
+**
+**	This program is free software: you can redistribute it and/or modify
+**	it under the terms of the GNU General Public License as published by
+**	the Free Software Foundation, either version 3 of the License, or
+**	(at your option) any later version.
+**
+**	This program is distributed in the hope that it will be useful,
+**	but WITHOUT ANY WARRANTY; without even the implied warranty of
+**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+**	GNU General Public License for more details.
+**
+**	You should have received a copy of the GNU General Public License
+**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+//																																						//
+//  (c) 2001-2003 Electronic Arts Inc.																				//
+//																																						//
+////////////////////////////////////////////////////////////////////////////////
+
+// FILE: W3DLaserDraw.h ///////////////////////////////////////////////////////////////////////////
+// Author:
+// Desc:
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+// INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
+#include "Common/DrawModule.h"
+//#include "WW3D2/Line3D.h"
+#include "GameClient/Color.h"
+
+class SegmentedLineClass;
+class TextureClass;
+class W3DDynamicLight;
+class LaserUpdate;
+
+enum { MAX_LASER_GROUND_LIGHTS = 12 };
+
+// Laser and electric shading settings of one beam. In the W3DLaserDraw block a negative value, the default, takes GameData.ini's.
+struct BeamShaderTuning
+{
+	Real laserCore;						///< brightness of the white-hot core, 0 for none
+	Real laserCoreWidth;			///< core width as a fraction of the beam's half width
+	Real laserShimmer;				///< how far the core's width wavers along the beam
+	Real laserPulse;					///< how far brightness swings along the beam, 0 for steady
+	Real laserPulseSize;			///< world units across one tile of pulse noise
+	Real laserPulseSpeed;			///< world units a second the pulses travel towards the target
+	Real electricArcs;				///< arc brightness, 0 for none
+	Real electricArcSharpness;	///< lower gives broad glowing bands, higher thin threads
+	Real electricNoiseSize;		///< world units across one tile of arc noise
+	Real electricJitter;			///< how far the texture jumps each crackle, in texture widths
+	Real electricFlicker;			///< brightness swing as a fraction, 0 for steady
+	Real electricRate;				///< crackles per second, 0 freezes the arcs
+};
+
+class W3DLaserDrawModuleData : public ModuleData
+{
+public:
+
+  Color m_innerColor;
+  Color m_outerColor;
+	Real m_innerBeamWidth;
+	Real m_outerBeamWidth;
+	Real m_scrollRate;
+	Bool m_tile;
+  UnsignedInt m_numBeams;
+  UnsignedInt m_maxIntensityFrames;
+  UnsignedInt m_fadeFrames;
+	AsciiString m_textureName;
+	UnsignedInt m_segments;
+	Real m_arcHeight;
+	Real m_segmentOverlapRatio;
+	Real m_tilingScalar;
+	UnsignedInt m_gridColumns;
+	UnsignedInt m_gridColumnsTotal;
+	Bool m_useHouseColorInner;
+	Bool m_useHouseColorOuter;
+	Color m_groundGlowColor;
+	Real m_groundGlowRadius;
+	Real m_groundGlowIntensity;
+	Bool m_laserShader;		///< shade the beam with the laser shader: a hot core and pulses running along it
+	Bool m_electricShader;	///< shade the beam with the electric shader instead: arcs, jitter and flicker
+	BeamShaderTuning m_shaderTuning;
+
+	W3DLaserDrawModuleData();
+	virtual ~W3DLaserDrawModuleData() override;
+	static void buildFieldParse(MultiIniFieldParse& p);
+
+	/// The beam's own settings where it has them and GameData.ini's elsewhere. Null takes GameData.ini's throughout.
+	static void resolveShaderTuning(const BeamShaderTuning *own, BeamShaderTuning &tuning);
+};
+
+//-------------------------------------------------------------------------------------------------
+/** W3D laser draw */
+//-------------------------------------------------------------------------------------------------
+class W3DLaserDraw : public DrawModule, public LaserDrawInterface
+{
+
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( W3DLaserDraw, "W3DLaserDraw" )
+	MAKE_STANDARD_MODULE_MACRO_WITH_MODULE_DATA( W3DLaserDraw, W3DLaserDrawModuleData )
+
+public:
+
+	W3DLaserDraw( Thing *thing, const ModuleData* moduleData );
+	// virtual destructor prototype provided by memory pool declaration
+
+	virtual void doDrawModule(const Matrix3D* transformMtx) override;
+	virtual void releaseShadows() override {};	///< we don't care about preserving temporary shadows.
+	virtual void allocateShadows() override {};	///< we don't care about preserving temporary shadows.
+	virtual void setShadowsEnabled(Bool enable) override { }
+	virtual void setFullyObscuredByShroud(Bool fullyObscured) override;
+	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override { }
+	virtual void reactToGeometryChange() override { }
+	virtual Bool isLaser() const override { return true; }
+	virtual Real getLaserTemplateWidth() const override;
+
+	virtual LaserDrawInterface* getLaserDrawInterface() override { return this; }
+	virtual const LaserDrawInterface* getLaserDrawInterface() const override { return this; }
+
+protected:
+
+	SegmentedLineClass **m_line3D;  ///< line 3D for effect
+	TextureClass *m_texture;
+	Real m_textureAspectRatio;			///< aspect ratio of texture
+	Bool m_selfDirty;								// not saved
+
+	Int	        m_hexColor;  ///< player house color
+	W3DDynamicLight *m_groundLights[MAX_LASER_GROUND_LIGHTS];	///< terrain-only lights spaced along the beam, runtime only
+	Int m_numGroundLights;
+	RGBColor m_tintedInner;			///< beam colors with house color applied, set on each dirty draw
+	RGBColor m_tintedOuter;
+	RGBColor m_textureColor;		///< average color of the beam texture, white without one
+
+	void getGroundGlowColor( Real &red, Real &green, Real &blue ) const;
+	void acquireGroundLights( Int count );
+	void releaseGroundLights();
+	void updateGroundLights( LaserUpdate *update, Bool beamChanged );
+
+};

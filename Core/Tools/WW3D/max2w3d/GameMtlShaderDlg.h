@@ -34,10 +34,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-
-#ifndef GAMEMTLSHADERDLG_H
-#define GAMEMTLSHADERDLG_H
+#pragma once
 
 #include <max.h>
 #include "GameMtlForm.h"
@@ -57,14 +54,12 @@ public:
 	virtual BOOL		Dialog_Proc (HWND dlg_wnd, UINT message, WPARAM wparam, LPARAM lparam);
 
 	void					ActivateDlg(BOOL onOff);
-	void					ReloadDialog(void);
+	void					ReloadDialog();
 
 private:
 
 	void					Apply_Preset(int preset_index);
-	void					Set_Preset(void);
+	void					Set_Preset();
 	bool					CompareShaderToBlendPreset(const ShaderBlendSettingPreset &blend_preset);
-	void					Set_Advanced_Defaults(void);
+	void					Set_Advanced_Defaults();
 };
-
-#endif

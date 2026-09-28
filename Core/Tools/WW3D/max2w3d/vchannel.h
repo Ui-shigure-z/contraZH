@@ -17,34 +17,32 @@
 */
 
 /* $Header: /Commando/Code/Tools/max2w3d/vchannel.h 8     10/30/00 6:56p Greg_h $ */
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Commando Tools - W3D export                                  * 
- *                                                                                             * 
- *                     $Archive:: /Commando/Code/Tools/max2w3d/vchannel.h                     $* 
- *                                                                                             * 
- *                      $Author:: Greg_h                                                      $* 
- *                                                                                             * 
- *                     $Modtime:: 10/30/00 5:25p                                              $* 
- *                                                                                             * 
- *                    $Revision:: 8                                                           $* 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Commando Tools - W3D export                                  *
+ *                                                                                             *
+ *                     $Archive:: /Commando/Code/Tools/max2w3d/vchannel.h                     $*
+ *                                                                                             *
+ *                      $Author:: Greg_h                                                      $*
+ *                                                                                             *
+ *                     $Modtime:: 10/30/00 5:25p                                              $*
+ *                                                                                             *
+ *                    $Revision:: 8                                                           $*
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#ifndef VCHANNEL_H
-#define VCHANNEL_H
+#pragma once
 
 #ifndef ALWAYS_H
 #include "always.h"
 #endif
 
 #ifndef BITTYPE_H
-#include "BITTYPE.H"
+#include "BITTYPE.h"
 #endif
 
 #ifndef CHUNKIO_H
@@ -80,11 +78,11 @@ class VectorChannelClass
 public:
 
 	VectorChannelClass(uint32 id,int maxframes,uint32 flags,int vectorlength,float32 * identvec);
-	~VectorChannelClass(void);
+	~VectorChannelClass();
 
 	void		Set_Vector(int framenumber,float32 * vector);
 	float *	Get_Vector(int frameidx);
-	bool		Is_Empty(void) { return IsEmpty; }
+	bool		Is_Empty() { return IsEmpty; }
 	void		SetSaveOptions(bool compress, int flavor, float Terr, float Rerr, bool reduce, int reduce_percent);
 	bool		Save(ChunkSaveClass & csave, BitChannelClass *binmov);
 	void		ClearInvisibleData(BitChannelClass *vis);
@@ -121,7 +119,7 @@ private:
 	bool is_identity(float32 * vec);
 
 	// This function finds the start and end of the "non-identity" data
-	void compute_range(void);
+	void compute_range();
 
 	// compress functions
 	void		compress(W3dTimeCodedAnimChannelStruct * c);
@@ -134,7 +132,5 @@ private:
 	void		remove_packet(W3dTimeCodedAnimChannelStruct * c, uint32 packet_idx);
 	bool		SaveTimeCoded(ChunkSaveClass & csave, BitChannelClass *binmov);
 	bool		SaveAdaptiveDelta(ChunkSaveClass & csave, BitChannelClass *binmov);
-  
-};
 
-#endif /*VCHANNEL_H*/
+};

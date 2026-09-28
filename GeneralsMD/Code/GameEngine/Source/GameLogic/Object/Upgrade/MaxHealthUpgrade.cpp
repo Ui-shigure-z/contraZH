@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #define DEFINE_MAXHEALTHCHANGETYPE_NAMES
 #include "Common/Xfer.h"
@@ -39,29 +39,31 @@
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-MaxHealthUpgradeModuleData::MaxHealthUpgradeModuleData( void )
+MaxHealthUpgradeModuleData::MaxHealthUpgradeModuleData()
 {
 	m_addMaxHealth = 0.0f;
+	m_multiplyMaxHealth = 1.0f;
 	m_maxHealthChangeType = SAME_CURRENTHEALTH;
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void MaxHealthUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p) 
+void MaxHealthUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
 
   UpgradeModuleData::buildFieldParse( p );
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "AddMaxHealth",					INI::parseReal,					NULL,										offsetof( MaxHealthUpgradeModuleData, m_addMaxHealth ) },
+		{ "AddMaxHealth",					INI::parseReal,					nullptr,										offsetof( MaxHealthUpgradeModuleData, m_addMaxHealth ) },
+		{ "MultiplyMaxHealth",				INI::parseReal,					NULL,										offsetof( MaxHealthUpgradeModuleData, m_multiplyMaxHealth ) },
 		{ "ChangeType",						INI::parseIndexList,		TheMaxHealthChangeTypeNames, offsetof( MaxHealthUpgradeModuleData, m_maxHealthChangeType ) },
-		{ 0, 0, 0, 0 }
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 
   p.add(dataFieldParse);
 
-}  // end buildFieldParse
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -71,13 +73,13 @@ MaxHealthUpgrade::MaxHealthUpgrade( Thing *thing, const ModuleData* moduleData )
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-MaxHealthUpgrade::~MaxHealthUpgrade( void )
+MaxHealthUpgrade::~MaxHealthUpgrade()
 {
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void MaxHealthUpgrade::upgradeImplementation( )
+void MaxHealthUpgrade::upgradeImplementation()
 {
 	const MaxHealthUpgradeModuleData *data = getMaxHealthUpgradeModuleData();
 
@@ -87,7 +89,10 @@ void MaxHealthUpgrade::upgradeImplementation( )
 	BodyModuleInterface *body = obj->getBodyModule();
 	if( body )
 	{
-		body->setMaxHealth( body->getMaxHealth() + data->m_addMaxHealth, data->m_maxHealthChangeType );
+		Real newVal = (body->getMaxHealth() * data->m_multiplyMaxHealth) + data->m_addMaxHealth;
+		// DEBUG_LOG(("MaxHealthUpgrade::upgradeImplementation - newVal: (%f * %f) + %f = %f.\n",
+		//  	body->getMaxHealth(), data->m_multiplyMaxHealth, data->m_addMaxHealth, newVal));
+		body->setMaxHealth( newVal, data->m_maxHealthChangeType );
 	}
 }
 
@@ -100,7 +105,7 @@ void MaxHealthUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -118,15 +123,15 @@ void MaxHealthUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void MaxHealthUpgrade::loadPostProcess( void )
+void MaxHealthUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

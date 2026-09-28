@@ -31,14 +31,14 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
-#include "StdAfx.H"
-#include "Texture.H"
-#include "W3DView.H"
-#include "TextureSettingsDialog.H"
-#include "Utils.H"
-#include "AssetMgr.H"
+#include "StdAfx.h"
+#include "WW3D2/texture.h"
+#include "W3DView.h"
+#include "TextureSettingsDialog.h"
+#include "Utils.h"
+#include "WW3D2/assetmgr.h"
 
-/*#ifdef _DEBUG
+/*#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -53,7 +53,7 @@ typedef enum
 {
 	TYPE_LOOP			= 0,
 	TYPE_ONCE,
-	TYPE_PING_PONG,	
+	TYPE_PING_PONG,
 	TYPE_MANUAL,
 	TYPE_COUNT
 } ANIM_TYPES;
@@ -70,18 +70,17 @@ TextureSettingsDialogClass::TextureSettingsDialogClass
 	IndirectTextureClass *poriginal_texture,
 	CWnd *pParent
 )
-	: m_pTexture (NULL),
-	  m_pOriginalTexture (NULL),
-	  m_pStartingTexture (NULL),
-	  m_hThumbnail (NULL),
+	: m_pTexture (nullptr),
+	  m_pOriginalTexture (nullptr),
+	  m_pStartingTexture (nullptr),
+	  m_hThumbnail (nullptr),
 	  m_bWereSettingsModified (false),
 	  CDialog(TextureSettingsDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(TextureSettingsDialogClass)
 	//}}AFX_DATA_INIT
-	MEMBER_ADD (m_pTexture, ptexture);
-	MEMBER_ADD (m_pOriginalTexture, poriginal_texture);
-	return ;
+	REF_PTR_SET (m_pTexture, ptexture);
+	REF_PTR_SET (m_pOriginalTexture, poriginal_texture);
 }
 
 
@@ -89,12 +88,11 @@ TextureSettingsDialogClass::TextureSettingsDialogClass
 //
 // ~TextureSettingsDialogClass
 //
-TextureSettingsDialogClass::~TextureSettingsDialogClass (void)
+TextureSettingsDialogClass::~TextureSettingsDialogClass ()
 {
 	SR_RELEASE (m_pTexture);
 	SR_RELEASE (m_pOriginalTexture);
 	SR_RELEASE (m_pStartingTexture);
-	return ;
 }
 
 
@@ -111,7 +109,6 @@ TextureSettingsDialogClass::DoDataExchange (CDataExchange *pDX)
 	DDX_Control(pDX, IDC_FPS_SPIN, m_FrameRateSpin);
 	DDX_Control(pDX, IDC_FRAME_COUNT_SPIN, m_FrameCountSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -131,13 +128,13 @@ END_MESSAGE_MAP()
 // OnInitDialog
 //
 BOOL
-TextureSettingsDialogClass::OnInitDialog (void)
+TextureSettingsDialogClass::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CDialog::OnInitDialog ();
-	ASSERT (m_pTexture != NULL);
+	ASSERT (m_pTexture != nullptr);
 	ASSERT (m_pTexture->getClassID () == ID_INDIRECT_TEXTURE_CLASS);
-	
+
 	// Determine what the starting texture was so we can restore on cancel (if necessary)
 	m_pStartingTexture = m_pTexture->Get_Texture ();
 	//m_pStartingTexture->addReference ();
@@ -153,7 +150,7 @@ TextureSettingsDialogClass::OnInitDialog (void)
 
 	// Enable or disable the 'restore' button based on whether or not we
 	// have an original texture to switch to...
-	::EnableWindow (::GetDlgItem (m_hWnd, IDC_RESTORE), (m_pOriginalTexture != NULL));
+	::EnableWindow (::GetDlgItem (m_hWnd, IDC_RESTORE), (m_pOriginalTexture != nullptr));
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_APPLY), FALSE);
 
 	// Fill the dialog controls with data from the texture
@@ -167,12 +164,12 @@ TextureSettingsDialogClass::OnInitDialog (void)
 //  Load_Texture_Settings
 //
 void
-TextureSettingsDialogClass::Load_Texture_Settings (void)
+TextureSettingsDialogClass::Load_Texture_Settings ()
 {
 	// Free the old thumbnail (if there was one)
-	if (m_hThumbnail != NULL) {
+	if (m_hThumbnail != nullptr) {
 		DeleteObject (m_hThumbnail);
-		m_hThumbnail = NULL;
+		m_hThumbnail = nullptr;
 	}
 
 	// Get the actual texture...
@@ -189,7 +186,6 @@ TextureSettingsDialogClass::Load_Texture_Settings (void)
 
 	// Release our hold on the texture
 	SR_RELEASE (ptexture);
-	return ;
 }
 
 
@@ -200,7 +196,7 @@ TextureSettingsDialogClass::Load_Texture_Settings (void)
 void
 TextureSettingsDialogClass::Fill_Controls (TextureClass *ptexture)
 {
-	srTexture *psource = NULL;
+	srTexture *psource = nullptr;
 
 	// What type of texture is this?
 	switch (ptexture->getClassID ())
@@ -217,28 +213,26 @@ TextureSettingsDialogClass::Fill_Controls (TextureClass *ptexture)
 			psource = ((ResizeableTextureInstanceClass *)ptexture)->Peek_Source();
 
 			// Fill the 'filename' edit control
-			if (psource != NULL && (psource->getClassID () == ID_FILE_LIST_TEXTURE_CLASS)) {
+			if (psource != nullptr && (psource->getClassID () == ID_FILE_LIST_TEXTURE_CLASS)) {
 				FileListTextureClass *pfile_list = static_cast<FileListTextureClass *>(psource);
 				SetDlgItemText (IDC_FILENAME_EDIT, pfile_list->Get_Filename (0));
 			}
-			
+
 			break;
 
 		default:
 			ASSERT (0);
 			break;
 	}
-	
+
 	// Set the checkboxes
-	ASSERT (psource != NULL);
-	if (psource != NULL) {
+	ASSERT (psource != nullptr);
+	if (psource != nullptr) {
 		SendDlgItemMessage (IDC_MIPMAP_OFF_CHECK, BM_SETCHECK, (WPARAM)(psource->getMipmap () == srTextureIFace::MIPMAP_NONE));
-		SendDlgItemMessage (IDC_ALPHA_CHECK, BM_SETCHECK, (WPARAM)(psource->isHintEnabled(srTextureIFace::HINT_ALPHA_BITMASK)));	
+		SendDlgItemMessage (IDC_ALPHA_CHECK, BM_SETCHECK, (WPARAM)(psource->isHintEnabled(srTextureIFace::HINT_ALPHA_BITMASK)));
 		SendDlgItemMessage (IDC_CLAMPU_CHECK, BM_SETCHECK, (WPARAM)(psource->Get_U_Addr_Mode() == TextureClass::TEXTURE_ADDRESS_CLAMP));
 		SendDlgItemMessage (IDC_CLAMPV_CHECK, BM_SETCHECK, (WPARAM)(psource->Get_V_Addr_Mode() == TextureClass::TEXTURE_ADDRESS_CLAMP));
 	}
-
-	return ;
 }
 
 
@@ -266,7 +260,7 @@ TextureSettingsDialogClass::Fill_Animation_Controls (TextureClass *ptexture)
 			banimated = true;
 		}
 		break;
-		
+
 		case ID_TIME_ANIM_TEXTURE_INSTANCE_CLASS:
 		{
 			// What mode is this animated texture using
@@ -291,23 +285,23 @@ TextureSettingsDialogClass::Fill_Animation_Controls (TextureClass *ptexture)
 			frames_per_sec = anim_texture->Get_Frame_Rate ();
 			banimated = true;
 		}
-		break;		
+		break;
 	}
 
 	// Check or uncheck the animation box depending on if it was an animated texture
 	SendDlgItemMessage (IDC_ANIMATION_CHECK, BM_SETCHECK, (WPARAM)banimated);
-	
-	// Was this an animated texture?	
+
+	// Was this an animated texture?
 	if (banimated == true) {
-		
+
 		// Pass the frame count onto the control
 		frame_count = (frame_count > 0) ? frame_count : 1;
-		SetDlgItemInt (IDC_FRAME_COUNT_EDIT, frame_count);		
+		SetDlgItemInt (IDC_FRAME_COUNT_EDIT, frame_count);
 		m_FrameCountSpin.SetPos (frame_count);
-		
+
 		// Pass the frame rate onto the control
 		frames_per_sec = (frames_per_sec > 0) ? frames_per_sec : 1;
-		SetDlgItemInt (IDC_FPS_EDIT, (int)frames_per_sec);		
+		SetDlgItemInt (IDC_FPS_EDIT, (int)frames_per_sec);
 		m_FrameRateSpin.SetPos (frames_per_sec);
 
 		// Select the type in the combobox
@@ -315,8 +309,6 @@ TextureSettingsDialogClass::Fill_Animation_Controls (TextureClass *ptexture)
 	} else {
 		m_TypeCombo.SetCurSel (0);
 	}
-
-	return ;
 }
 
 
@@ -325,14 +317,13 @@ TextureSettingsDialogClass::Fill_Animation_Controls (TextureClass *ptexture)
 // OnOK
 //
 void
-TextureSettingsDialogClass::OnOK (void)
-{	
+TextureSettingsDialogClass::OnOK ()
+{
 	// Force the new settings to take effect
 	OnApply ();
 
 	// Allow the base class to process this message
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -341,14 +332,13 @@ TextureSettingsDialogClass::OnOK (void)
 // OnCancel
 //
 void
-TextureSettingsDialogClass::OnCancel (void) 
+TextureSettingsDialogClass::OnCancel ()
 {
 	// Reuse the starting texture
 	m_pTexture->Set_Texture (m_pStartingTexture);
 
 	// Allow the base class to process this message
 	CDialog::OnCancel ();
-	return ;
 }
 
 
@@ -357,7 +347,7 @@ TextureSettingsDialogClass::OnCancel (void)
 // OnAnimationCheck
 //
 void
-TextureSettingsDialogClass::OnAnimationCheck (void)
+TextureSettingsDialogClass::OnAnimationCheck ()
 {
 	bool benable = (SendDlgItemMessage (IDC_ANIMATION_CHECK, BM_GETCHECK) == 1);
 
@@ -367,7 +357,6 @@ TextureSettingsDialogClass::OnAnimationCheck (void)
 	::EnableWindow (m_TypeCombo, benable);
 	::EnableWindow (m_FrameRateSpin, benable);
 	::EnableWindow (m_FrameCountSpin, benable);
-	return ;
 }
 
 
@@ -386,7 +375,7 @@ TextureSettingsDialogClass::WindowProc
 	if (message == WM_PAINT) {
 		Paint_Thumbnail ();
 	} else if (message == WM_COMMAND) {
-		
+
 		// What control sent us this notification?
 		switch (LOWORD (wParam))
 		{
@@ -417,7 +406,7 @@ TextureSettingsDialogClass::WindowProc
 				break;
 		}
 	}
-	
+
 	// Allow the base class to process this message
 	return CDialog::WindowProc (message, wParam, lParam);
 }
@@ -428,16 +417,15 @@ TextureSettingsDialogClass::WindowProc
 // OnDestroy
 //
 void
-TextureSettingsDialogClass::OnDestroy (void)
+TextureSettingsDialogClass::OnDestroy ()
 {
-	if (m_hThumbnail != NULL) {
+	if (m_hThumbnail != nullptr) {
 		::DeleteObject (m_hThumbnail);
-		m_hThumbnail = NULL;
+		m_hThumbnail = nullptr;
 	}
 
 	// Allow the base class to process this message
 	CDialog::OnDestroy ();
-	return ;
 }
 
 
@@ -446,7 +434,7 @@ TextureSettingsDialogClass::OnDestroy (void)
 // OnBrowseButton
 //
 void
-TextureSettingsDialogClass::OnBrowseButton (void) 
+TextureSettingsDialogClass::OnBrowseButton ()
 {
 	// Get the current filename to display
 	CString filename;
@@ -470,8 +458,6 @@ TextureSettingsDialogClass::OnBrowseButton (void)
 		// Enable the apply button
 		::EnableWindow (::GetDlgItem (m_hWnd, IDC_APPLY), TRUE);
 	}
-
-	return ;	
 }
 
 
@@ -480,16 +466,16 @@ TextureSettingsDialogClass::OnBrowseButton (void)
 // Paint_Thumbnail
 //
 void
-TextureSettingsDialogClass::Paint_Thumbnail (void) 
+TextureSettingsDialogClass::Paint_Thumbnail ()
 {
 	// Paint the thumbnail
-	if (m_hThumbnail != NULL) {
-		
+	if (m_hThumbnail != nullptr) {
+
 		// Get the misc crap windows requries before we can
 		// paint to the screen
 		HWND hchild_wnd = ::GetDlgItem (m_hWnd, IDC_TEXTURE_THUMBNAIL);
 		HDC hdc = ::GetDC (hchild_wnd);
-		HDC hmem_dc = ::CreateCompatibleDC (NULL);
+		HDC hmem_dc = ::CreateCompatibleDC (nullptr);
 		HBITMAP hold_bmp = (HBITMAP)::SelectObject (hmem_dc, m_hThumbnail);
 
 		// Paint the thumbnail onto the dialog
@@ -509,10 +495,8 @@ TextureSettingsDialogClass::Paint_Thumbnail (void)
 		::SelectObject (hmem_dc, hold_bmp);
 		::ReleaseDC (hchild_wnd, hmem_dc);
 		::DeleteDC (hmem_dc);
-		::ValidateRect (hchild_wnd, NULL);
+		::ValidateRect (hchild_wnd, nullptr);
 	}
-
-	return ;
 }
 
 
@@ -521,14 +505,14 @@ TextureSettingsDialogClass::Paint_Thumbnail (void)
 // OnRestore
 //
 void
-TextureSettingsDialogClass::OnRestore (void)
+TextureSettingsDialogClass::OnRestore ()
 {
-	if (m_pOriginalTexture != NULL) {
+	if (m_pOriginalTexture != nullptr) {
 
 		// Get the original texture
 		TextureClass *pnew_texture = m_pOriginalTexture->Get_Texture ();
 		m_pTexture->Set_Texture (pnew_texture);
-		MEMBER_RELEASE (pnew_texture);
+		REF_PTR_RELEASE (pnew_texture);
 
 		// Reload the dialog control settings
 		Load_Texture_Settings ();
@@ -536,8 +520,6 @@ TextureSettingsDialogClass::OnRestore (void)
 		// Disable the apply button because we just did...
 		::EnableWindow (::GetDlgItem (m_hWnd, IDC_APPLY), FALSE);
 	}
-
-	return ;
 }
 
 
@@ -546,7 +528,7 @@ TextureSettingsDialogClass::OnRestore (void)
 // OnApply
 //
 void
-TextureSettingsDialogClass::OnApply (void)
+TextureSettingsDialogClass::OnApply ()
 {
 	// Get the current texture name from the edit control
 	CString texture_name;
@@ -560,11 +542,11 @@ TextureSettingsDialogClass::OnApply (void)
 
 	// Does the user want this to be an animated texture?
 	if (SendDlgItemMessage (IDC_ANIMATION_CHECK, BM_GETCHECK) == 1) {
-		
+
 		// What type of animated texture is this?
 		switch ((ANIM_TYPES)m_TypeCombo.GetCurSel ())
 		{
-			case TYPE_LOOP:					
+			case TYPE_LOOP:
 				pnew_texture = new TimeAnimTextureInstanceClass (*(WW3DAssetManager::Get_Instance ()),
 																				 texture_name,
 																				 frame_count,
@@ -609,9 +591,9 @@ TextureSettingsDialogClass::OnApply (void)
 		//}
 	}
 
-	ASSERT (pnew_texture != NULL);
-	if (pnew_texture != NULL) {			
-		
+	ASSERT (pnew_texture != nullptr);
+	if (pnew_texture != nullptr) {
+
 		// Turn mipmapping off if necessary
 		if (SendDlgItemMessage (IDC_MIPMAP_OFF_CHECK, BM_GETCHECK) == 1) {
 			::MipMapping_Off (pnew_texture);
@@ -621,12 +603,12 @@ TextureSettingsDialogClass::OnApply (void)
 		if (SendDlgItemMessage (IDC_ALPHA_CHECK, BM_GETCHECK) == 1) {
 			::Set_Alpha_Bitmap (pnew_texture);
 		}
-		
+
 		// Clamp the UVs if necessary
 		::Set_Clamping (pnew_texture,
 							 (SendDlgItemMessage (IDC_CLAMPU_CHECK, BM_GETCHECK) == 1),
 							 (SendDlgItemMessage (IDC_CLAMPV_CHECK, BM_GETCHECK) == 1));
-		
+
 
 		// Pass the new texture on, and free the old texture
 		m_pTexture->Set_Texture (pnew_texture);
@@ -645,7 +627,6 @@ TextureSettingsDialogClass::OnApply (void)
 
 	// Disable the apply button because we just did...
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_APPLY), FALSE);
-	return ;
 }
 
 #endif //WW3D_DX8

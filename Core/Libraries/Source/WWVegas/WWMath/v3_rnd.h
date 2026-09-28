@@ -33,16 +33,12 @@
  *---------------------------------------------------------------------------------------------*
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-#if defined(_MSC_VER)
+
 #pragma once
-#endif
 
-#ifndef V3_RND_H
-#define V3_RND_H
-
-#include "always.h"
+#include "WWLib/always.h"
 #include "vector3.h"
-#include "RANDOM.H"
+#include "WWLib/RANDOM.h"
 #include <limits.h>
 
 /*
@@ -58,7 +54,7 @@ class Vector3Randomizer {
 
 	public:
 
-		enum 
+		enum
 		{
 			CLASSID_UNKNOWN		= 0xFFFFFFFF,
 			CLASSID_SOLIDBOX		= 0,
@@ -69,22 +65,22 @@ class Vector3Randomizer {
 			CLASSID_LAST			= 0x0000FFFF
 		};
 
-		virtual ~Vector3Randomizer(void)																		{ }
+		virtual ~Vector3Randomizer()																		{ }
 
 		// RTTI identifiction
-		virtual unsigned int				Class_ID (void) const											= 0;
+		virtual unsigned int				Class_ID () const											= 0;
 
 		// Return a random vector
 		virtual void						Get_Vector(Vector3 &vector) 									= 0;
 
 		// Get the maximum component possible for generated vectors
-		virtual float						Get_Maximum_Extent(void)										= 0;
+		virtual float						Get_Maximum_Extent()										= 0;
 
 		// Scale all vectors produced in future
 		virtual void						Scale(float scale)												= 0;
 
 		// Clone the randomizer
-		virtual Vector3Randomizer *	Clone(void) const													= 0;
+		virtual Vector3Randomizer *	Clone() const													= 0;
 
 	protected:
 
@@ -114,12 +110,12 @@ class Vector3SolidBoxRandomizer : public Vector3Randomizer {
 
 		Vector3SolidBoxRandomizer(const Vector3 & extents);
 
-		virtual unsigned int				Class_ID (void) const { return CLASSID_SOLIDBOX; }
-		virtual const Vector3 &			Get_Extents (void) const { return Extents; }
-		virtual void						Get_Vector(Vector3 &vector);
-		virtual float						Get_Maximum_Extent(void);
-		virtual void						Scale(float scale);
-		virtual Vector3Randomizer *	Clone(void) const	{ return W3DNEW Vector3SolidBoxRandomizer(*this); }
+		virtual unsigned int				Class_ID () const override { return CLASSID_SOLIDBOX; }
+		virtual const Vector3 &			Get_Extents () const { return Extents; }
+		virtual void						Get_Vector(Vector3 &vector) override;
+		virtual float						Get_Maximum_Extent() override;
+		virtual void						Scale(float scale) override;
+		virtual Vector3Randomizer *	Clone() const override { return W3DNEW Vector3SolidBoxRandomizer(*this); }
 
 	protected:
 
@@ -129,7 +125,7 @@ class Vector3SolidBoxRandomizer : public Vector3Randomizer {
 	private:
 
 		// Derived classes should have a private dummy assignment operator to block usage
-		Vector3SolidBoxRandomizer & operator = (const Vector3SolidBoxRandomizer &that) { that; return *this; }
+		Vector3SolidBoxRandomizer & operator = (const Vector3SolidBoxRandomizer&) FUNCTION_DELETE;
 
 		Vector3	Extents;
 };
@@ -145,12 +141,12 @@ class Vector3SolidSphereRandomizer : public Vector3Randomizer {
 
 		Vector3SolidSphereRandomizer(float radius);
 
-		virtual unsigned int				Class_ID (void) const { return CLASSID_SOLIDSPHERE; }
-		virtual float						Get_Radius (void) const { return Radius; }
-		virtual void						Get_Vector(Vector3 &vector);
-		virtual float						Get_Maximum_Extent(void);
-		virtual void						Scale(float scale);
-		virtual Vector3Randomizer *	Clone(void) const	{ return W3DNEW Vector3SolidSphereRandomizer(*this); }
+		virtual unsigned int				Class_ID () const override { return CLASSID_SOLIDSPHERE; }
+		virtual float						Get_Radius () const { return Radius; }
+		virtual void						Get_Vector(Vector3 &vector) override;
+		virtual float						Get_Maximum_Extent() override;
+		virtual void						Scale(float scale) override;
+		virtual Vector3Randomizer *	Clone() const override { return W3DNEW Vector3SolidSphereRandomizer(*this); }
 
 	protected:
 
@@ -160,7 +156,7 @@ class Vector3SolidSphereRandomizer : public Vector3Randomizer {
 	private:
 
 		// Derived classes should have a private dummy assignment operator to block usage
-		Vector3SolidSphereRandomizer & operator = (const Vector3SolidSphereRandomizer &that) { that; return *this; }
+		Vector3SolidSphereRandomizer & operator = (const Vector3SolidSphereRandomizer&) FUNCTION_DELETE;
 
 		float	Radius;
 };
@@ -176,12 +172,12 @@ class Vector3HollowSphereRandomizer : public Vector3Randomizer {
 
 		Vector3HollowSphereRandomizer(float radius);
 
-		virtual unsigned int				Class_ID (void) const { return CLASSID_HOLLOWSPHERE; }
-		virtual float						Get_Radius (void) const { return Radius; }
-		virtual void						Get_Vector(Vector3 &vector);
-		virtual float						Get_Maximum_Extent(void);
-		virtual void						Scale(float scale);
-		virtual Vector3Randomizer *	Clone(void) const	{ return W3DNEW Vector3HollowSphereRandomizer(*this); }
+		virtual unsigned int				Class_ID () const override { return CLASSID_HOLLOWSPHERE; }
+		virtual float						Get_Radius () const { return Radius; }
+		virtual void						Get_Vector(Vector3 &vector) override;
+		virtual float						Get_Maximum_Extent() override;
+		virtual void						Scale(float scale) override;
+		virtual Vector3Randomizer *	Clone() const override { return W3DNEW Vector3HollowSphereRandomizer(*this); }
 
 	protected:
 
@@ -191,7 +187,7 @@ class Vector3HollowSphereRandomizer : public Vector3Randomizer {
 	private:
 
 		// Derived classes should have a private dummy assignment operator to block usage
-		Vector3HollowSphereRandomizer & operator = (const Vector3HollowSphereRandomizer &that) { that; return *this; }
+		Vector3HollowSphereRandomizer & operator = (const Vector3HollowSphereRandomizer&) FUNCTION_DELETE;
 
 		float	Radius;
 };
@@ -207,13 +203,13 @@ class Vector3SolidCylinderRandomizer : public Vector3Randomizer {
 
 		Vector3SolidCylinderRandomizer(float extent, float radius);
 
-		virtual unsigned int				Class_ID (void) const { return CLASSID_SOLIDCYLINDER; }
-		virtual float						Get_Radius (void) const { return Radius; }
-		virtual float						Get_Height (void) const { return Extent; }
-		virtual void						Get_Vector(Vector3 &vector);
-		virtual float						Get_Maximum_Extent(void);
-		virtual void						Scale(float scale);
-		virtual Vector3Randomizer *	Clone(void) const	{ return W3DNEW Vector3SolidCylinderRandomizer(*this); }
+		virtual unsigned int				Class_ID () const override { return CLASSID_SOLIDCYLINDER; }
+		virtual float						Get_Radius () const { return Radius; }
+		virtual float						Get_Height () const { return Extent; }
+		virtual void						Get_Vector(Vector3 &vector) override;
+		virtual float						Get_Maximum_Extent() override;
+		virtual void						Scale(float scale) override;
+		virtual Vector3Randomizer *	Clone() const override { return W3DNEW Vector3SolidCylinderRandomizer(*this); }
 
 	protected:
 
@@ -223,13 +219,8 @@ class Vector3SolidCylinderRandomizer : public Vector3Randomizer {
 	private:
 
 		// Derived classes should have a private dummy assignment operator to block usage
-		Vector3SolidCylinderRandomizer & operator = (const Vector3SolidCylinderRandomizer &that) { that; return *this; }
+		Vector3SolidCylinderRandomizer & operator = (const Vector3SolidCylinderRandomizer&) FUNCTION_DELETE;
 
 		float	Extent;
 		float	Radius;
 };
-
-
-#endif
-
-

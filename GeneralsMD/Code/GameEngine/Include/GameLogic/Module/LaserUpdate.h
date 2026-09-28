@@ -30,9 +30,6 @@
 
 #pragma once
 
-#ifndef __LASER_UPDATE_H
-#define __LASER_UPDATE_H
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/ClientUpdateModule.h"
 
@@ -49,16 +46,48 @@ public:
 	AsciiString m_particleSystemName;  ///< Used for the muzzle flare while laser active.
 
 	AsciiString m_targetParticleSystemName;  ///< Used for the target effect while laser active.
-	
+
 	Real m_punchThroughScalar;	///< If non-zero, length modifier when we used to have a target object and now don't
+
+	UnsignedInt m_fadeInDurationFrames;  ///< If non-zero, beam fades in over duration
+	UnsignedInt m_fadeOutDurationFrames;  ///< If non-zero, beam fades out over duration (tries to get time from lifetimeUpdate)
+	UnsignedInt m_widenDurationFrames;  ///< If non-zero, beam grows to max size over duration
+	UnsignedInt m_decayDurationFrames;  ///< If non-zero, beam shrinks over duration (tries to get time from lifetimeUpdate)
+
+	Bool m_hasMultiDraw;  ///< Enable this to support tracking multiple LaserDraw modules
+	Bool m_useHouseColor;  ///< Enable this to color particles with house color
 
 	LaserUpdateModuleData();
 	static void buildFieldParse(MultiIniFieldParse& p);
 
-private: 
+private:
 
 };
 
+
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+class LaserRadiusUpdate
+{
+public:
+	LaserRadiusUpdate();
+
+	void initRadius(Int sizeDeltaFrames);
+	bool updateRadius();
+	void setDecayFrames(UnsignedInt decayFrames);
+	void xfer(Xfer* xfer);
+	Real getWidthScale() const { return m_currentWidthScalar; }
+
+private:
+	Bool m_widening;
+	Bool m_decaying;
+	UnsignedInt m_widenStartFrame;
+	UnsignedInt m_widenFinishFrame;
+	Real m_currentWidthScalar;
+	UnsignedInt m_decayStartFrame;
+	UnsignedInt m_decayFinishFrame;
+};
 
 //-------------------------------------------------------------------------------------------------
 /** The default	update module */
@@ -76,19 +105,35 @@ public:
 
 	//Actually puts the laser in the world.
 	void initLaser( const Object *parent, const Object *target, const Coord3D *startPos, const Coord3D *endPos, AsciiString parentBoneName, Int sizeDeltaFrames = 0 );
+	
+	// TODO: clean this Xhit
+	const LaserRadiusUpdate& getLaserRadiusUpdate() const { return m_laserRadius; }
+
 	void setDecayFrames( UnsignedInt decayFrames );
+
+	void startFadeOut( UnsignedInt fadeFrames ); ///< begin fading the beam's alpha out now over fadeFrames
+	UnsignedInt getFadeOutFrames() const { return getLaserUpdateModuleData()->m_fadeOutDurationFrames; } ///< the fade-out duration configured on this laser template
 
 	const Coord3D* getStartPos() { return &m_startPos; }
 	const Coord3D* getEndPos() { return &m_endPos; }
 
+	Real getTemplateLaserRadius() const;
 	Real getCurrentLaserRadius() const;
 
 	void setDirty( Bool dirty ) { m_dirty = dirty; }
-	Bool isDirty() { return m_dirty; }
+	Bool isDirty() { return m_dirty || getLaserUpdateModuleData()->m_hasMultiDraw; }
 
 	Real getWidthScale() const { return m_currentWidthScalar; }
+	Real getAlphaScale() const { return m_currentAlphaScalar; }
+	Bool isEnding() const { return m_decaying || m_fadingOut; }	///< the beam has started its way out
 
-	virtual void clientUpdate();
+	Real getLifeTimeProgress() const;
+
+	Int getPlayerColor() const { return m_hexColor; };
+
+	void updateContinuousLaser(const Object* parent, const Object* target, const Coord3D* startPos, const Coord3D* endPos);
+
+	virtual void clientUpdate() override;
 
 protected:
 
@@ -102,6 +147,9 @@ protected:
 	DrawableID m_parentID;
 	DrawableID m_targetID;
 
+	UnsignedInt m_startFrame;  ///< the frame this laser is initialized
+	UnsignedInt m_dieFrame;   ///< the frame this laser is scheduled to die
+
 	Bool m_dirty;
 	ParticleSystemID m_particleSystemID;
 	ParticleSystemID m_targetParticleSystemID;
@@ -112,9 +160,20 @@ protected:
 	Real m_currentWidthScalar;
 	UnsignedInt m_decayStartFrame;
 	UnsignedInt m_decayFinishFrame;
+
+	Bool m_fadingIn;
+	Bool m_fadingOut;
+	UnsignedInt m_fadeInStartFrame;
+	UnsignedInt m_fadeInFinishFrame;
+	Real m_currentAlphaScalar;
+	UnsignedInt m_fadeOutStartFrame;
+	UnsignedInt m_fadeOutFinishFrame;
+
 	AsciiString m_parentBoneName;
+
+	Int m_hexColor;
+
+	// Bool m_isMultiDraw;
+
+	LaserRadiusUpdate m_laserRadius;
 };
-
-
-#endif
-

@@ -22,9 +22,6 @@
 
 #pragma once
 
-#ifndef POINTER_TOOL_H
-#define POINTER_TOOL_H
-
 #include "PolygonTool.h"
 class WorldHeightMapEdit;
 #include "../../GameEngine/Include/Common/MapObject.h"
@@ -32,7 +29,7 @@ class WorldHeightMapEdit;
 class ModifyObjectUndoable;
 /*************************************************************************/
 /**                             PointerTool
-	 Does the select/move tool operation. 
+	 Does the select/move tool operation.
 ***************************************************************************/
 ///  Blend edges out tool.
 class PointerTool : public PolygonTool
@@ -59,7 +56,7 @@ protected:
 	static Bool m_dragDeselect;
 
 	Bool m_doPolyTool; ///< True if we are using the polygon tool to modify a polygon triggter.
-	
+
 	ModifyObjectUndoable *m_modifyUndoable;	 ///< The modify undoable that is in progress while we track the mouse.
 
 	Bool m_mouseUpRotate;///< True if we are over the "rotate" hotspot.
@@ -71,24 +68,24 @@ protected:
 	static CString m_lastPointerInfo;
 	static Bool m_pointerIsActive;
 protected:
-	void checkForPropertiesPanel(void);
+	void checkForPropertiesPanel();
 
 public:
-	PointerTool(void);
-	~PointerTool(void);
+	PointerTool();
+	virtual ~PointerTool() override;
 
 public:
 	/// Clear the selection on activate or deactivate.
-	virtual void activate();
-	virtual void deactivate();
+	virtual void activate() override;
+	virtual void deactivate() override;
 
-	virtual void setCursor(void);
-	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
-	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
-	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void setCursor() override;
+	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
+	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
+	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
 
 public:
-	static void clearSelection(void); ///< Clears the selected objects selected flags.
+	static void clearSelection(); ///< Clears the selected objects selected flags.
 	static Bool allowPick(MapObject* pMapObj, WbView* pView);
 	static CString getLastPointerInfoString(void) { return m_lastPointerInfo; }
 	static void setLastPointerInfoString(const CString& info) { m_lastPointerInfo = info; }
@@ -106,6 +103,3 @@ public:
 		m_groupRotateOptionsLoaded = true;
 	}
 };
-
-
-#endif //POINTER_TOOL_H

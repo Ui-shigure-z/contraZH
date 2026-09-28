@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef __HEIGHTDIEUPDATE_H_
-#define __HEIGHTDIEUPDATE_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/UpdateModule.h"
 
@@ -42,17 +39,19 @@ class HeightDieUpdateModuleData: public UpdateModuleData
 
 public:
 
-	HeightDieUpdateModuleData( void );
+	HeightDieUpdateModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
 
 	Real m_targetHeightAboveTerrain;				///< die at this height above terrain
+	Bool m_dieAboveTargetHeight;						///< inverted case. Die if above the given height
 	Bool m_targetHeightIncludesStructures;	///< target height considers terrain AND structure height underneath us
 	Bool m_onlyWhenMovingDown;							///< don't detonate unless moving in downward z dir
+	Bool m_onlyWhenMovingUp;							///< don't detonate unless moving in upwards z dir
 	Real m_destroyAttachedParticlesAtHeight;  ///< HACK, destroy any attached particle system of object when below this height
 	Bool m_snapToGroundOnDeath;							///< snap to the ground when killed
 	UnsignedInt m_initialDelay;							///< Don't explode before this time
-
+	Bool m_targetHeightIncludesWater;	   ///< target height considers water height instead of terrain
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -68,10 +67,10 @@ public:
 	HeightDieUpdate( Thing *thing, const ModuleData* moduleData );
 	// virtual destructor prototype provided by memory pool declaration
 
-	virtual UpdateSleepTime update();
+	virtual UpdateSleepTime update() override;
 
 protected:
-	
+
 
 	Bool m_hasDied;							///< TRUE once we have triggered death
 	Bool m_particlesDestroyed;	///< TRUE once we destroy attached systems (so we do it only once)
@@ -79,5 +78,3 @@ protected:
 	UnsignedInt m_earliestDeathFrame; ///< Earliest we are allowed to think about dying
 
 };
-
-#endif  // end __HEIGHTDIEUPDATE_H_

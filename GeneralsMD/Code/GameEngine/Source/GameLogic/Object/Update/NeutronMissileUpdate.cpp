@@ -26,7 +26,7 @@
 // Author: Michael S. Booth, December 2001
 // Desc:   Implementation of missile behavior
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/GameState.h"
 #include "Common/Thing.h"
@@ -62,8 +62,8 @@ NeutronMissileUpdateModuleData::NeutronMissileUpdateModuleData()
 	m_forwardDamping = 0;
 	m_relativeSpeed = 1.0f;
 	m_targetFromDirectlyAbove = 0.0f;
-	m_ignitionFX = NULL;
-	m_launchFX = NULL;
+	m_ignitionFX = nullptr;
+	m_launchFX = nullptr;
 	m_specialAccelFactor = 1.0f;
 	m_specialSpeedTime = 0;
 	m_specialSpeedHeight = 0.0f;
@@ -76,22 +76,22 @@ void NeutronMissileUpdateModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
   UpdateModuleData::buildFieldParse(p);
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "DistanceToTravelBeforeTurning",	INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_initialDist ) },
-		{ "MaxTurnRate",			INI::parseAngularVelocityReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_maxTurnRate ) },
-		{ "ForwardDamping",		INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_forwardDamping ) },
-		{ "RelativeSpeed",		INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_relativeSpeed ) },
-		{ "TargetFromDirectlyAbove",		INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_targetFromDirectlyAbove ) },
-		{ "LaunchFX",					INI::parseFXList,		NULL, offsetof( NeutronMissileUpdateModuleData, m_launchFX ) },
-		{ "SpecialSpeedTime",	INI::parseDurationUnsignedInt,		NULL, offsetof( NeutronMissileUpdateModuleData, m_specialSpeedTime ) },
-		{ "SpecialSpeedHeight",	INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_specialSpeedHeight ) },
-		{ "SpecialAccelFactor",	INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_specialAccelFactor ) },
-		{ "SpecialJitterDistance",	INI::parseReal,		NULL, offsetof( NeutronMissileUpdateModuleData, m_specialJitterDistance ) },
-		{ "IgnitionFX",				INI::parseFXList,		NULL, offsetof( NeutronMissileUpdateModuleData, m_ignitionFX ) },
-		{ "DeliveryDecal",						RadiusDecalTemplate::parseRadiusDecalTemplate,	NULL, offsetof( NeutronMissileUpdateModuleData, m_deliveryDecalTemplate ) },
-		{ "DeliveryDecalRadius",			INI::parseReal,									NULL,	offsetof( NeutronMissileUpdateModuleData, m_deliveryDecalRadius ) },
-		{ 0, 0, 0, 0 }
+		{ "DistanceToTravelBeforeTurning",	INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_initialDist ) },
+		{ "MaxTurnRate",			INI::parseAngularVelocityReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_maxTurnRate ) },
+		{ "ForwardDamping",		INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_forwardDamping ) },
+		{ "RelativeSpeed",		INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_relativeSpeed ) },
+		{ "TargetFromDirectlyAbove",		INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_targetFromDirectlyAbove ) },
+		{ "LaunchFX",					INI::parseFXList,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_launchFX ) },
+		{ "SpecialSpeedTime",	INI::parseDurationUnsignedInt,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_specialSpeedTime ) },
+		{ "SpecialSpeedHeight",	INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_specialSpeedHeight ) },
+		{ "SpecialAccelFactor",	INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_specialAccelFactor ) },
+		{ "SpecialJitterDistance",	INI::parseReal,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_specialJitterDistance ) },
+		{ "IgnitionFX",				INI::parseFXList,		nullptr, offsetof( NeutronMissileUpdateModuleData, m_ignitionFX ) },
+		{ "DeliveryDecal",						RadiusDecalTemplate::parseRadiusDecalTemplate,	nullptr, offsetof( NeutronMissileUpdateModuleData, m_deliveryDecalTemplate ) },
+		{ "DeliveryDecalRadius",			INI::parseReal,									nullptr,	offsetof( NeutronMissileUpdateModuleData, m_deliveryDecalRadius ) },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 
   p.add(dataFieldParse);
@@ -111,11 +111,17 @@ NeutronMissileUpdate::NeutronMissileUpdate( Thing *thing, const ModuleData* modu
 
 	m_targetPos.zero();
 	m_intermedPos.zero();
+	m_launchPos.zero();
+	m_launchVeterancy = LEVEL_REGULAR;
 	m_accel.zero();
 	m_vel.zero();
 
 	m_state = PRELAUNCH;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 	m_isArmed = false;
 	m_isLaunched = false;
 	m_launcherID = INVALID_ID;
@@ -124,18 +130,18 @@ NeutronMissileUpdate::NeutronMissileUpdate( Thing *thing, const ModuleData* modu
 	m_heightAtLaunch = 0;
 	m_frameAtLaunch = 0;
 
-	m_exhaustSysTmpl = NULL;
+	m_exhaustSysTmpl = nullptr;
 
-} 
+}
 
 //-------------------------------------------------------------------------------------------------
-NeutronMissileUpdate::~NeutronMissileUpdate( void )
+NeutronMissileUpdate::~NeutronMissileUpdate()
 {
 	m_deliveryDecal.clear();
 }
 
 //-------------------------------------------------------------------------------------------------
-void NeutronMissileUpdate::onDelete( void )
+void NeutronMissileUpdate::onDelete()
 {
 }
 
@@ -147,6 +153,8 @@ void NeutronMissileUpdate::projectileLaunchAtObjectOrPosition(const Object *vict
 	DEBUG_ASSERTCRASH(specificBarrelToUse>=0, ("specificBarrelToUse must now be explicit"));
 
 	m_launcherID = launcher ? launcher->getID() : INVALID_ID;
+	if (launcher)
+		m_launchPos = *launcher->getPosition();
 	m_attach_wslot = wslot;
 	m_attach_specificBarrelToUse = specificBarrelToUse;
 
@@ -169,7 +177,11 @@ void NeutronMissileUpdate::projectileFireAtObjectOrPosition( const Object *victi
 	m_exhaustSysTmpl = exhaustSysOverride;
 
 	m_state = LAUNCH;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 
 	if( victim )
 	{
@@ -197,14 +209,14 @@ void NeutronMissileUpdate::projectileFireAtObjectOrPosition( const Object *victi
 /**
  * Implement LAUNCH state
  */
-void NeutronMissileUpdate::doLaunch( void )
+void NeutronMissileUpdate::doLaunch()
 {
 	if (!m_isLaunched)
 	{
 		Object *launcher = TheGameLogic->findObjectByID( m_launcherID );
 
 		// if our launch vehicle is gone, destroy ourselves
-		if (launcher == NULL)
+		if (launcher == nullptr)
 		{
 			m_launcherID = INVALID_ID;
 			TheGameLogic->destroyObject( getObject() );
@@ -213,14 +225,14 @@ void NeutronMissileUpdate::doLaunch( void )
 
 		Matrix3D attachTransform;
 		if (!launcher->getDrawable() ||
-			!launcher->getDrawable()->getProjectileLaunchOffset(m_attach_wslot, m_attach_specificBarrelToUse, &attachTransform, TURRET_INVALID, NULL))
+			!launcher->getDrawable()->getProjectileLaunchOffset(m_attach_wslot, m_attach_specificBarrelToUse, &attachTransform, TURRET_INVALID, nullptr))
 		{
-			DEBUG_CRASH(("ProjectileLaunchPos %d %d not found!\n",m_attach_wslot, m_attach_specificBarrelToUse));
+			DEBUG_CRASH(("ProjectileLaunchPos %d %d not found!",m_attach_wslot, m_attach_specificBarrelToUse));
 			attachTransform.Make_Identity();
 		}
 
 		Matrix3D worldTransform;
-		launcher->convertBonePosToWorldPos(NULL, &attachTransform, NULL, &worldTransform);
+		launcher->convertBonePosToWorldPos(nullptr, &attachTransform, nullptr, &worldTransform);
 
 		Vector3 tmp = worldTransform.Get_Translation();
 		Coord3D worldPos;
@@ -230,7 +242,7 @@ void NeutronMissileUpdate::doLaunch( void )
 
 		//
 		// the missile on the raising up launch platform is actually 45 degrees from the missile
-		// that is flying around the world ... we want to rotate it "on end and in place" so 
+		// that is flying around the world ... we want to rotate it "on end and in place" so
 		// that we don't see any decals on the side of the missile 'pop' to the new angle
 		/// @todo, this should not be a hard coded value ... I love demos!!!
 		//
@@ -249,7 +261,11 @@ void NeutronMissileUpdate::doLaunch( void )
 
 		FXList::doFXObj(getNeutronMissileUpdateModuleData()->m_launchFX, getObject());
 		m_heightAtLaunch = getObject()->getPosition()->z;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		m_frameAtLaunch = TheGameLogic->getFrameLegacy();
+#else
 		m_frameAtLaunch = TheGameLogic->getFrame();
+#endif
 
 	}
 
@@ -263,12 +279,16 @@ void NeutronMissileUpdate::doLaunch( void )
 	getObject()->setPosition( &pos );
 
 	FXList::doFXObj(getNeutronMissileUpdateModuleData()->m_ignitionFX, getObject());
-	
-	if (m_exhaustSysTmpl != NULL)
+
+	if (m_exhaustSysTmpl != nullptr)
 		TheParticleSystemManager->createAttachedParticleSystemID(m_exhaustSysTmpl, getObject());
 
 	m_state = ATTACK;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 
 	// arm the missile's "warhead"
 	m_isArmed = true;
@@ -331,14 +351,14 @@ static Real calcTransform(const Object* obj, const Coord3D *pos, Real maxTurnRat
 /**
  * Implement ATTACK state
  */
-void NeutronMissileUpdate::doAttack( void )
+void NeutronMissileUpdate::doAttack()
 {
 	Matrix3D mx;
 	Real speed = getNeutronMissileUpdateModuleData()->m_relativeSpeed;
 
 	if (getNeutronMissileUpdateModuleData()->m_targetFromDirectlyAbove && m_reachedIntermediatePos)
 		speed *= STRAIGHT_DOWN_SLOW_FACTOR;
-	
+
 	// if we're still in the no-turning-time, OR if we're out of fuel
 	if (m_noTurnDistLeft > 0.0f)
 	{
@@ -365,7 +385,7 @@ void NeutronMissileUpdate::doAttack( void )
 	Vector3 trueDir = mx.Get_X_Vector();
 	trueDir.Normalize();
 
-	// 
+	//
 	// Move forward along forward direction
 	//
 	Real damping = getNeutronMissileUpdateModuleData()->m_forwardDamping;
@@ -380,10 +400,14 @@ void NeutronMissileUpdate::doAttack( void )
 	Coord3D pos = *getObject()->getPosition();
 
 	const NeutronMissileUpdateModuleData* d = getNeutronMissileUpdateModuleData();
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt now = TheGameLogic->getFrameLegacy();
+#else
 	UnsignedInt now = TheGameLogic->getFrame();
+#endif
 	if (d->m_specialSpeedTime > 0 && now <= m_frameAtLaunch + d->m_specialSpeedTime)
 	{
-		getObject()->getDrawable()->setInstanceMatrix(NULL);
+		getObject()->getDrawable()->setInstanceMatrix(nullptr);
 		UnsignedInt elapsed = now - m_frameAtLaunch;
 		if (elapsed < d->m_specialSpeedTime)
 		{
@@ -417,9 +441,9 @@ void NeutronMissileUpdate::doAttack( void )
 	pos.y += m_vel.y;
 	pos.z += m_vel.z;
 
-//DEBUG_LOG(("vel %f accel %f z %f\n",m_vel.length(),m_accel.length(), pos.z));
+//DEBUG_LOG(("vel %f accel %f z %f",m_vel.length(),m_accel.length(), pos.z));
 //Real vm = sqrt(m_vel.x*m_vel.x+m_vel.y*m_vel.y+m_vel.z*m_vel.z);
-//DEBUG_LOG(("vel is %f %f %f (%f)\n",m_vel.x,m_vel.y,m_vel.z,vm));
+//DEBUG_LOG(("vel is %f %f %f (%f)",m_vel.x,m_vel.y,m_vel.z,vm));
 	getObject()->setTransformMatrix( &mx );
 	getObject()->setPosition( &pos );
 
@@ -436,7 +460,7 @@ Bool NeutronMissileUpdate::projectileHandleCollision( Object *other )
 		return true;
 
 	// Don't hit your own launcher, ever.
-	if (other != NULL && projectileGetLauncherID() == other->getID())
+	if (other != nullptr && projectileGetLauncherID() == other->getID())
 		return true;
 
 	// collided with something... blow'd up!
@@ -469,8 +493,15 @@ void NeutronMissileUpdate::detonate()
 /**
  * Simulate one frame of a missile's behavior
  */
-UpdateSleepTime NeutronMissileUpdate::update( void )
+UpdateSleepTime NeutronMissileUpdate::update()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	if (!TheGameLogic->HasLegacyFrameAdvanced())
+	{
+		return UPDATE_SLEEP_NONE;
+	}
+#endif
+
 	m_deliveryDecal.update();
 
 	if (!m_reachedIntermediatePos)
@@ -484,7 +515,7 @@ UpdateSleepTime NeutronMissileUpdate::update( void )
 			Real vel = m_vel.length();
 			m_vel.x = 0;
 			m_vel.y = 0;
-			m_vel.z = -vel * STRAIGHT_DOWN_SLOW_FACTOR;	
+			m_vel.z = -vel * STRAIGHT_DOWN_SLOW_FACTOR;
 
 		}
 	}
@@ -513,7 +544,7 @@ UpdateSleepTime NeutronMissileUpdate::update( void )
 	{
 		Coord3D newPos = *getObject()->getPosition();
 		Real distThisTurn = sqrt(sqr(newPos.x-oldPos.x) + sqr(newPos.y-oldPos.y) + sqr(newPos.z-oldPos.z));
-		//DEBUG_LOG(("noTurnDist goes from %f to %f\n",m_noTurnDistLeft,m_noTurnDistLeft-distThisTurn));
+		//DEBUG_LOG(("noTurnDist goes from %f to %f",m_noTurnDistLeft,m_noTurnDistLeft-distThisTurn));
 		m_noTurnDistLeft -= distThisTurn;
 	}
 
@@ -524,11 +555,16 @@ UpdateSleepTime NeutronMissileUpdate::update( void )
 		Coord3D normal;
 		normal.x = normal.y = 0.0f;
 		normal.z = -1.0f;
-		getObject()->onCollide(NULL, getObject()->getPosition(), &normal);
+		getObject()->onCollide(nullptr, getObject()->getPosition(), &normal);
 	}
 	return UPDATE_SLEEP_NONE;
 }
-
+// ------------------------------------------------------------------------------------------------
+const Coord3D* NeutronMissileUpdate::getTargetPosition()
+{
+	const Coord3D* constPos = &m_targetPos;
+	return constPos;
+}
 // ------------------------------------------------------------------------------------------------
 /** CRC */
 // ------------------------------------------------------------------------------------------------
@@ -538,7 +574,7 @@ void NeutronMissileUpdate::crc( Xfer *xfer )
 	// extend base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -549,7 +585,9 @@ void NeutronMissileUpdate::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 1;
+	// 2: Added m_launchPos (for DamageFactorAtMaxRange)
+	// 3: Added m_launchVeterancy (for veterancy FX/OCL selection)
+	XferVersion currentVersion = 3;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -601,6 +639,14 @@ void NeutronMissileUpdate::xfer( Xfer *xfer )
 	// height at launch
 	xfer->xferReal( &m_heightAtLaunch );
 
+	// launch pos
+	if( version >= 2 )
+		xfer->xferCoord3D( &m_launchPos );
+
+	// launch veterancy
+	if( version >= 3 )
+		xfer->xferUser( &m_launchVeterancy, sizeof( m_launchVeterancy ) );
+
 	// decal, if any
 	m_deliveryDecal.xferRadiusDecal(xfer);
 
@@ -610,33 +656,33 @@ void NeutronMissileUpdate::xfer( Xfer *xfer )
 	if( xfer->getXferMode() == XFER_LOAD )
 	{
 
-		// make system template NULL to be safe
-		m_exhaustSysTmpl = NULL;
+		// make system template nullptr to be safe
+		m_exhaustSysTmpl = nullptr;
 		if( name.isEmpty() == FALSE )
 		{
 
 			m_exhaustSysTmpl = TheParticleSystemManager->findTemplate( name );
-			if( m_exhaustSysTmpl == NULL )
+			if( m_exhaustSysTmpl == nullptr )
 			{
 
-				DEBUG_CRASH(( "NeutronMissileUpdate::xfer - Unable to find particle system '%s'\n", name.str() ));
+				DEBUG_CRASH(( "NeutronMissileUpdate::xfer - Unable to find particle system '%s'", name.str() ));
 				throw SC_INVALID_DATA;
 
-			}  // end if
+			}
 
-		}  // end if
+		}
 
-	}  // end if
+	}
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void NeutronMissileUpdate::loadPostProcess( void )
+void NeutronMissileUpdate::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

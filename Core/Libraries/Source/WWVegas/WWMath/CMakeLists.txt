@@ -4,24 +4,24 @@ set(WWMATH_SRC
     aabtreecull.cpp
     aabtreecull.h
     aaplane.h
-    #cardinalspline.cpp # to be moved
+    cardinalspline.cpp
     cardinalspline.h
     castres.h
     catmullromspline.cpp
     catmullromspline.h
     colmath.cpp
     colmath.h
-    #colmathaabox.cpp # to be moved
+    colmathaabox.cpp
     colmathaabox.h
-    #colmathaabtri.cpp # to be moved
+    colmathaabtri.cpp
     colmathfrustum.cpp
     colmathfrustum.h
     colmathinlines.h
     colmathline.cpp
     colmathline.h
-    #colmathobbobb.cpp # to be moved
+    colmathobbobb.cpp
     colmathobbox.cpp
-    #colmathobbtri.cpp # to be moved
+    colmathobbtri.cpp
     colmathplane.cpp
     colmathplane.h
     colmathsphere.cpp
@@ -80,7 +80,6 @@ set(WWMATH_SRC
     wwmathids.h
 )
 
-# Targets to build.
 add_library(core_wwmath STATIC)
 set_target_properties(core_wwmath PROPERTIES OUTPUT_NAME wwmath)
 
@@ -88,6 +87,8 @@ target_sources(core_wwmath PRIVATE ${WWMATH_SRC})
 
 target_link_libraries(core_wwmath PRIVATE
     core_wwcommon
+    corei_always
+    core_wwsaveload
 )
 
 # @todo Test its impact and see what to do with the legacy functions.

@@ -34,10 +34,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-
-#ifndef GAMEMTLVERTEXMATERIALDLG_H
-#define GAMEMTLVERTEXMATERIALDLG_H
+#pragma once
 
 #include <max.h>
 #include "GameMtlForm.h"
@@ -55,7 +52,7 @@ public:
 	virtual BOOL		Dialog_Proc (HWND dlg_wnd, UINT message, WPARAM wparam, LPARAM lparam);
 
 	void					ActivateDlg(BOOL onoff);
-	void					ReloadDialog(void);
+	void					ReloadDialog();
 
 private:
 
@@ -71,6 +68,3 @@ private:
 	ISpinnerControl * ShininessSpin;
 	ISpinnerControl * UVChannelSpin[MAX_STAGES];
 };
-
-
-#endif

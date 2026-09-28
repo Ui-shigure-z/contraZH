@@ -28,11 +28,12 @@
 
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 #include "GameLogic/Module/NeutronBlastBehavior.h"
 
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "Common/ThingTemplate.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
@@ -40,11 +41,6 @@
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameClient/Drawable.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -67,7 +63,7 @@ void NeutronBlastBehavior::onDie( const DamageInfo *damageInfo )
 {
 	// On death, perform the Neutron Blast!!
 	Object *self = getObject();
-	if (!self) 
+	if (!self)
 		return;
 
 	const NeutronBlastBehaviorModuleData *data = getNeutronBlastBehaviorModuleData();
@@ -77,12 +73,12 @@ void NeutronBlastBehavior::onDie( const DamageInfo *damageInfo )
 	// setup scan filters
 	PartitionFilterSameMapStatus filterMapStatus( self );
 	PartitionFilterAlive filterAlive;
-	PartitionFilter *filters[] = { &filterAlive, &filterMapStatus, NULL };
+	PartitionFilter *filters[] = { &filterAlive, &filterMapStatus, nullptr };
 
 	// scan objects in our region
 	ObjectIterator *iter = ThePartitionManager->iterateObjectsInRange( self->getPosition(), blastRadius, FROM_CENTER_2D, filters );
 	MemoryPoolObjectHolder hold( iter );
-	
+
 	// Apply neutron blast to object
 	for( Object *obj = iter->first(); obj; obj = iter->next() )
 	{
@@ -98,22 +94,117 @@ void NeutronBlastBehavior::onDie( const DamageInfo *damageInfo )
 //-------------------------------------------------------------------------------------------------
 /** The update callback. */
 //-------------------------------------------------------------------------------------------------
-UpdateSleepTime NeutronBlastBehavior::update( void )
+UpdateSleepTime NeutronBlastBehavior::update()
 {
 	return UPDATE_SLEEP_FOREVER;
 }
- 
+
+//-------------------------------------------------------------------------------------------------
+/** Is this object on the RejectEffectOnUnit list? Those are skipped whatever their KindOf says,
+  * which is the only way to spare a unit the hardcoded infantry and vehicle rules below --
+  * riders such as the Cyborg Commando being the reason the list exists. */
+//-------------------------------------------------------------------------------------------------
+Bool NeutronBlastBehavior::isRejected( const Object *obj ) const
+{
+	const NeutronBlastBehaviorModuleData *data = getNeutronBlastBehaviorModuleData();
+	if( data->m_rejectEffectOnUnit.empty() )
+	{
+		return FALSE;
+	}
+
+	const ThingTemplate *tmpl = obj ? obj->getTemplate() : nullptr;
+	if( tmpl == nullptr )
+	{
+		return FALSE;
+	}
+
+	const AsciiString& name = tmpl->getName();
+	for( std::vector<AsciiString>::const_iterator it = data->m_rejectEffectOnUnit.begin();
+			 it != data->m_rejectEffectOnUnit.end(); ++it )
+	{
+		if( it->compareNoCase( name ) == 0 )
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Kill the occupants of a container. With nothing on the reject list this is killAllContained(),
+  * which carries its own reentrancy handling: an occupant can damage the container as it dies and
+  * modify the very list being walked (a GLA Tunnel full of Terrorists hit by a Neutron Shell is the
+  * known case). Only when a rejected occupant has to be spared do we kill them one at a time, over
+  * a snapshot of the list and re-checking each ID, so that reentrancy stays survivable here too. */
+//-------------------------------------------------------------------------------------------------
+void NeutronBlastBehavior::killContained( Object *container, ContainModuleInterface *contain )
+{
+	const ContainedItemsList *items = contain->getContainedItemsList();
+	if( items == nullptr || items->empty() )
+	{
+		return;
+	}
+
+	// Take the IDs first: the list itself is rewritten as its members die.
+	std::vector<ObjectID> doomed;
+	Bool anyRejected = FALSE;
+	for( ContainedItemsList::const_iterator it = items->begin(); it != items->end(); ++it )
+	{
+		Object *rider = *it;
+		if( rider == nullptr )
+		{
+			continue;
+		}
+
+		if( isRejected( rider ) )
+		{
+			anyRejected = TRUE;
+		}
+		else
+		{
+			doomed.push_back( rider->getID() );
+		}
+	}
+
+	if( !anyRejected )
+	{
+		// Nobody is spared, so use the container's own hardened path.
+		contain->killAllContained();
+		return;
+	}
+
+	for( std::vector<ObjectID>::const_iterator it = doomed.begin(); it != doomed.end(); ++it )
+	{
+		// A previous death may have taken this one with it, or emptied the container outright.
+		Object *rider = TheGameLogic->findObjectByID( *it );
+		if( rider == nullptr || rider->isEffectivelyDead() || rider->getContainedBy() != container )
+		{
+			continue;
+		}
+
+		contain->removeFromContain( rider, TRUE );
+		rider->kill();
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void NeutronBlastBehavior::neutronBlastToObject( Object *obj )
 {
 	// early exit check
-  if ( !obj || obj == getObject() )	
+  if ( !obj || obj == getObject() )
 		return;
 
 	// Check for allies and quick exit if we are not suppose to hurt our own.
 	const NeutronBlastBehaviorModuleData *data = getNeutronBlastBehaviorModuleData();
 	if (!data->m_affectAllies && getObject()->getRelationship( obj ) == ALLIES)
+	{
+		return;
+	}
+
+	// Named on the reject list: no effect at all, not even to its passengers.
+	if (isRejected( obj ))
 	{
 		return;
 	}
@@ -124,11 +215,13 @@ void NeutronBlastBehavior::neutronBlastToObject( Object *obj )
 		obj->kill();
 	}
 
-	// Kill all contained if it is a container
+	// Kill all contained if it is a container. A garrisoned structure is the one container
+	// AffectGarrison speaks for; transports, tunnels and bunkers are not garrisons and keep
+	// losing their passengers either way.
 	ContainModuleInterface *contain = obj->getContain();
-	if( contain )
+	if( contain && ( data->m_affectGarrison || !contain->isGarrisonable() ) )
 	{
-		contain->killAllContained();
+		killContained( obj, contain );
 	}
 
 	// Kill pilots of vehicles
@@ -137,7 +230,7 @@ void NeutronBlastBehavior::neutronBlastToObject( Object *obj )
 		// If the vehicle is a combat bike, kill the whole thing
 		if ( obj->isKindOf( KINDOF_CLIFF_JUMPER ) )
 		{
-			obj->kill(); 
+			obj->kill();
 		}
 		// Just kill the pilot of the vehicle
 		else
@@ -147,7 +240,7 @@ void NeutronBlastBehavior::neutronBlastToObject( Object *obj )
 
       if ( obj->getAI() )
         obj->getAI()->aiIdle( CMD_FROM_AI );
-      
+
 			TheGameLogic->deselectObject(obj, PLAYERMASK_ALL, TRUE);
 
 			// Clear any terrain decals here
@@ -171,7 +264,7 @@ void NeutronBlastBehavior::crc( Xfer *xfer )
 	UpdateModule::crc( xfer );
 
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -189,16 +282,16 @@ void NeutronBlastBehavior::xfer( Xfer *xfer )
 	// extend base class
 	UpdateModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void NeutronBlastBehavior::loadPostProcess( void )
+void NeutronBlastBehavior::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
 
-}  // end loadPostProcess
+}

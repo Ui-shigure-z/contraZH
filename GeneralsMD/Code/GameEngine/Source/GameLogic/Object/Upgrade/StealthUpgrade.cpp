@@ -28,13 +28,30 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+
+#define DEFINE_STEALTHLEVEL_NAMES
 
 #include "Common/Xfer.h"
+#include "GameLogic/Module/StealthUpdate.h"
 #include "GameLogic/Module/StealthUpgrade.h"
 #include "GameLogic/Module/SpawnBehavior.h"
 #include "GameLogic/Object.h"
 
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void StealthUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p)
+{
+	UpgradeModuleData::buildFieldParse(p);
+
+	static const FieldParse dataFieldParse[] =
+	{
+		{ "EnableStealth", INI::parseBool, NULL, offsetof(StealthUpgradeModuleData, m_enableStealth) },
+		{ "OverrideStealthForbiddenConditions", INI::parseBitString32, TheStealthLevelNames, offsetof(StealthUpgradeModuleData, m_stealthLevel) },
+		{ 0, 0, 0, 0 }
+	};
+	p.add(dataFieldParse);
+}
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 StealthUpgrade::StealthUpgrade( Thing *thing, const ModuleData* moduleData ) : UpgradeModule( thing, moduleData )
@@ -43,24 +60,35 @@ StealthUpgrade::StealthUpgrade( Thing *thing, const ModuleData* moduleData ) : U
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-StealthUpgrade::~StealthUpgrade( void )
+StealthUpgrade::~StealthUpgrade()
 {
 }
 
 //-------------------------------------------------------------------------------------------------
-void StealthUpgrade::upgradeImplementation( )
+void StealthUpgrade::upgradeImplementation()
 {
+
+	const StealthUpgradeModuleData* d = getStealthUpgradeModuleData();
+
+	if (d->m_stealthLevel > 0) {
+		StealthUpdate* stealth = getObject()->getStealth();
+		if (stealth) {  // we should always have a stealth update module
+			stealth->setStealthLevelOverride(d->m_stealthLevel);
+		}
+		return;  // Note AW: There should be no reason to enable/disable stealth if you change the stealthLevel
+	}
+
 	// The logic that does the stealthupdate will notice this and start stealthing
-	Object *me = getObject();
-	me->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_CAN_STEALTH ) );
-	
+	Object* me = getObject();
+	me->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_CAN_STEALTH), d->m_enableStealth);
+
 	//Grant stealth to spawns if applicable.
-	if( me->isKindOf( KINDOF_SPAWNS_ARE_THE_WEAPONS ) )
+	if (me->isKindOf(KINDOF_SPAWNS_ARE_THE_WEAPONS))
 	{
-		SpawnBehaviorInterface *sbInterface = me->getSpawnBehaviorInterface();
-		if( sbInterface )
+		SpawnBehaviorInterface* sbInterface = me->getSpawnBehaviorInterface();
+		if (sbInterface)
 		{
-			sbInterface->giveSlavesStealthUpgrade( TRUE );
+			sbInterface->giveSlavesStealthUpgrade(d->m_enableStealth);
 		}
 	}
 }
@@ -74,7 +102,7 @@ void StealthUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -92,15 +120,15 @@ void StealthUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void StealthUpgrade::loadPostProcess( void )
+void StealthUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

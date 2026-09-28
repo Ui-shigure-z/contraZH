@@ -17,30 +17,25 @@
 */
 
 /* $Header: /Commando/Code/Tools/max2w3d/w3dquat.h 27    2/03/00 4:55p Jason_a $ */
-/*************************************************************************** 
- ***                  Confidential - Westwood Studios                    *** 
- *************************************************************************** 
- *                                                                         * 
- *                 Project Name : Voxel Technology                         * 
- *                                                                         * 
- *                    File Name : QUAT.H                                   * 
- *                                                                         * 
- *                   Programmer : Greg Hjelstrom                           * 
- *                                                                         * 
- *                   Start Date : 02/24/97                                 * 
- *                                                                         * 
- *                  Last Update : February 24, 1997 [GH]                   * 
- *                                                                         * 
- *-------------------------------------------------------------------------* 
- * Functions:                                                              * 
+/***************************************************************************
+ ***                  Confidential - Westwood Studios                    ***
+ ***************************************************************************
+ *                                                                         *
+ *                 Project Name : Voxel Technology                         *
+ *                                                                         *
+ *                    File Name : QUAT.h                                   *
+ *                                                                         *
+ *                   Programmer : Greg Hjelstrom                           *
+ *                                                                         *
+ *                   Start Date : 02/24/97                                 *
+ *                                                                         *
+ *                  Last Update : February 24, 1997 [GH]                   *
+ *                                                                         *
+ *-------------------------------------------------------------------------*
+ * Functions:                                                              *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if defined(_MSC_VER)
 #pragma once
-#endif
-
-#ifndef QUAT_H
-#define QUAT_H
 
 #include "always.h"
 #include "wwmath.h"
@@ -63,24 +58,24 @@ public:
 
 public:
 
-	Quaternion(void) {};
+	Quaternion() {};
 	explicit Quaternion(bool init) { if (init) { X = 0.0f; Y = 0.0f; Z = 0.0f; W = 1.0f; } }
 	explicit Quaternion(float a, float b, float c, float d) { X=a; Y=b; Z=c; W=d; }
 	explicit Quaternion(const Vector3 & axis,float angle);
 	Quaternion & operator=(const Quaternion & source);
 
 	void		Set(float a = 0.0, float b = 0.0, float c = 0.0, float d = 1.0) { X = a; Y = b; Z = c; W = d; }
-	void		Make_Identity(void) { Set(); };
+	void		Make_Identity() { Set(); };
 	void		Scale(float s) { X = (float)(s*X); Y = (float)(s*Y); Z = (float)(s*Z); W = (float)(s*W); }
 
 	// Array access
-	float &	operator [](int i) { return (&X)[i]; }     
-	const float &  operator [](int i) const { return (&X)[i]; }  
+	float &	operator [](int i) { return (&X)[i]; }
+	const float &  operator [](int i) const { return (&X)[i]; }
 
-	// Unary operators.  
-	// Remember that q and -q represent the same 3D rotation.  
-	Quaternion operator-() const { return(Quaternion(-X,-Y,-Z,-W)); } 
-	Quaternion operator+() const { return *this; } 
+	// Unary operators.
+	// Remember that q and -q represent the same 3D rotation.
+	Quaternion operator-() const { return(Quaternion(-X,-Y,-Z,-W)); }
+	Quaternion operator+() const { return *this; }
 
 	// Every 3D rotation can be expressed by two different quaternions,  This
 	// function makes the current quaternion convert itself to the representation
@@ -88,13 +83,13 @@ public:
 	Quaternion & Make_Closest(const Quaternion & qto);
 
 	// Square of the magnitude of the quaternion
-	float Length2(void) const { return (X*X + Y*Y + Z*Z + W*W); }
+	float Length2() const { return (X*X + Y*Y + Z*Z + W*W); }
 
 	// Magnitude of the quaternion
-	float Length(void) const { return WWMath::Sqrt(Length2()); }
+	float Length() const { return WWMath::Sqrt(Length2()); }
 
 	// Make the quaternion unit length
-	void Normalize(void);
+	void Normalize();
 
 	// post-concatenate rotations about the coordinate axes
 	void	Rotate_X(float theta);
@@ -102,14 +97,14 @@ public:
 	void 	Rotate_Z(float theta);
 
 	// initialize this quaternion randomly (creates a random *unit* quaternion)
-	void	Randomize(void);
+	void	Randomize();
 
 	// transform (rotate) a vector with this quaternion
 	Vector3	Rotate_Vector(const Vector3 & v) const;
 	void		Rotate_Vector(const Vector3 & v,Vector3 * set_result) const;
 
 	// verify that none of the members of this quaternion are invalid floats
-	bool		Is_Valid(void) const;
+	bool		Is_Valid() const;
 };
 
 // Inverse of the quaternion (1/q)
@@ -130,7 +125,7 @@ inline Quaternion operator + (const Quaternion & a,const Quaternion & b)
 	return Quaternion(a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]);
 }
 
-// Subract two quaternions
+// Subtract two quaternions
 inline Quaternion operator - (const Quaternion & a,const Quaternion & b)
 {
 	return Quaternion(a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]);
@@ -236,8 +231,8 @@ inline Vector3 Quaternion::Rotate_Vector(const Vector3 & v) const
 
 inline void Quaternion::Rotate_Vector(const Vector3 & v,Vector3 * result) const
 {
-	assert(result != NULL);
-	
+	assert(result != nullptr);
+
 	float x = W*v.X + (Y*v.Z - v.Y*Z);
 	float y = W*v.Y - (X*v.Z - v.X*Z);
 	float z = W*v.Z + (X*v.Y - v.X*Y);
@@ -248,15 +243,10 @@ inline void Quaternion::Rotate_Vector(const Vector3 & v,Vector3 * result) const
 	result->Z = w*(-Z) + W*z + (x*(-Y) - (-X)*y);
 }
 
-inline bool Quaternion::Is_Valid(void) const
+inline bool Quaternion::Is_Valid() const
 {
-	return (	WWMath::Is_Valid_Float(X) && 
-				WWMath::Is_Valid_Float(Y) && 
+	return (	WWMath::Is_Valid_Float(X) &&
+				WWMath::Is_Valid_Float(Y) &&
 				WWMath::Is_Valid_Float(Z) &&
 				WWMath::Is_Valid_Float(W) );
 }
-
-#endif /* QUAT_H */
-
-
-

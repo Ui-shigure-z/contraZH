@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/RandomValue.h"
 #include "Common/Xfer.h"
@@ -36,20 +36,14 @@
 #include "GameLogic/Module/LifetimeUpdate.h"
 #include "GameLogic/Object.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 LifetimeUpdate::LifetimeUpdate( Thing *thing, const ModuleData* moduleData ) : UpdateModule( thing, moduleData )
 {
 	const LifetimeUpdateModuleData* d = getLifetimeUpdateModuleData();
-	// Added By Sadullah Nader
-	// Initializations needed
 	m_dieFrame = 0;
+	m_startDieFrame = 0;
 	//
 	UnsignedInt delay;
 	if( getObject()->isKindOf( KINDOF_HULK ) && TheGameLogic->getHulkMaxLifetimeOverride() != -1 )
@@ -66,7 +60,7 @@ LifetimeUpdate::LifetimeUpdate( Thing *thing, const ModuleData* moduleData ) : U
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-LifetimeUpdate::~LifetimeUpdate( void )
+LifetimeUpdate::~LifetimeUpdate()
 {
 }
 
@@ -80,14 +74,32 @@ void LifetimeUpdate::setLifetimeRange( UnsignedInt minFrames, UnsignedInt maxFra
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+void LifetimeUpdate::resetLifetime(void)
+{
+	const LifetimeUpdateModuleData* d = getLifetimeUpdateModuleData();
+	UnsignedInt delay = delay = calcSleepDelay(d->m_minFrames, d->m_maxFrames);
+	setWakeFrame(getObject(), UPDATE_SLEEP(delay));
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
 UnsignedInt LifetimeUpdate::calcSleepDelay(UnsignedInt minFrames, UnsignedInt maxFrames)
 {
 	UnsignedInt delay = GameLogicRandomValue( minFrames, maxFrames );
 	if (delay < 1) delay = 1;
-	m_dieFrame = TheGameLogic->getFrame() + delay;
+	m_startDieFrame = TheGameLogic->getFrame();
+	m_dieFrame = m_startDieFrame + delay;
 	return delay;
 }
 
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Real LifetimeUpdate::getProgress(void) {
+	if (m_dieFrame > 0 && m_startDieFrame > 0) {
+		return INT_TO_REAL(TheGameLogic->getFrame() - m_startDieFrame) / INT_TO_REAL(m_dieFrame - m_startDieFrame);
+	}
+	return 0.0f;
+}
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 UpdateSleepTime LifetimeUpdate::update( void )
@@ -106,7 +118,7 @@ void LifetimeUpdate::crc( Xfer *xfer )
 	// extend base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -127,15 +139,18 @@ void LifetimeUpdate::xfer( Xfer *xfer )
 	// die frame
 	xfer->xferUnsignedInt( &m_dieFrame );
 
+	// start die frame
+	xfer->xferUnsignedInt( &m_startDieFrame);
+
 }  // end xfer
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void LifetimeUpdate::loadPostProcess( void )
+void LifetimeUpdate::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

@@ -35,7 +35,7 @@ static const char *FULLMONTHS[]={"January","February","March","April","May","Jun
                "July","August","September","October","November","December"};
 
 // MDC: Windows doesn't provide a localtime_r, so make our own...
-#ifdef _WINDOWS
+#ifdef _WIN32
 #ifdef _REENTRANT
 #include "critsec.h"
 static CritSec localtime_critsec;
@@ -54,9 +54,9 @@ static struct tm *localtime_r(const time_t *clockval, struct tm *res) {
 #endif
 	return res;
 }
-#endif // _WINDOWS
+#endif // _WIN32
 
-Wtime::Wtime(void)
+Wtime::Wtime()
 {
   Update();
 }
@@ -79,16 +79,16 @@ Wtime::~Wtime()
 {
 }
 
-void Wtime::Update(void)
+void Wtime::Update()
 {
  sign=POSITIVE;
- #ifdef _WINDOWS
+ #ifdef _WIN32
   struct _timeb    wintime;
   _ftime(&wintime);
   sec=wintime.time;
   usec=(wintime.millitm)*1000;
  #endif
- #ifndef _WINDOWS
+ #ifndef _WIN32
   struct timeval   unixtime;
   struct timezone  unixtzone;
   gettimeofday(&unixtime,&unixtzone);
@@ -159,11 +159,11 @@ bit8 Wtime::ParseDate(char *in)
 
   // The next part of the time is OPTIONAL (+minutes)
 
-  // first skip past the seconds 
+  // first skip past the seconds
   while ((isdigit(*ptr))&&(*ptr!=0)) ptr++;
   if (*ptr==0) return(TRUE);
 
-  // skip past any spaces 
+  // skip past any spaces
   while ((isspace(*ptr))&&(*ptr!=0)) ptr++;
   if (*ptr!='+')
   {
@@ -176,7 +176,7 @@ bit8 Wtime::ParseDate(char *in)
     //printf("\nPTR WAS 0\n");
     return(TRUE);
   }
- 
+
   minOffset=atol(ptr);
   //printf("\n\nAdding %d minutes!\n\n",minOffset);
   sec+=minOffset*60;  // add the minutes as seconds
@@ -210,7 +210,7 @@ bit8 Wtime::FormatTime(char *out, const char *format)
       if (lastWasH==1) lastWasH=2;
       sprintf(out+strlen(out),"%c",*ptr);
       ptr+=1;
-    } 
+    }
     else if (strncmp(ptr,"\"",1)==0)
     {
       break;
@@ -304,7 +304,7 @@ bit8 Wtime::FormatTime(char *out, const char *format)
     {
       sprintf(out+strlen(out),"%ld",((GetMonth()-1)/4)+1);  // GetQuarter
       ptr+=1;
-    } 
+    }
     else if (strncmp(ptr,"yyyy",4)==0)
     {
       sprintf(out+strlen(out),"%ld",GetYear());
@@ -314,7 +314,7 @@ bit8 Wtime::FormatTime(char *out, const char *format)
     {
       sprintf(out+strlen(out),"%02ld",GetYear()%100);
       ptr+=2;
-    } 
+    }
     else if (strncmp(ptr,"y",1)==0)
     {
       sprintf(out+strlen(out),"%ld",GetYDay());
@@ -411,12 +411,12 @@ void Wtime::PrintDate(char *out) const
     GetYear());
 }
 
-uint32 Wtime::GetSec(void) const
+uint32 Wtime::GetSec() const
 {
   return(sec);
 }
 
-uint32 Wtime::GetUsec(void) const
+uint32 Wtime::GetUsec() const
 {
   return(usec);
 }
@@ -438,7 +438,7 @@ void Wtime::Set(uint32 newsec, uint32 newusec)
 }
 
 // Get a timeval ptr from a Wtime class
-struct timeval *Wtime::GetTimeval(void)
+struct timeval *Wtime::GetTimeval()
 {
   static struct timeval tv;
   tv.tv_sec=sec;
@@ -454,49 +454,49 @@ void Wtime::GetTimevalMT(struct timeval &tv)
 }
 
 
-uint32 Wtime::GetSecond(void) const
+uint32 Wtime::GetSecond() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_sec);
 }
-uint32 Wtime::GetMinute(void) const
+uint32 Wtime::GetMinute() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_min);
 }
-uint32 Wtime::GetHour(void) const
+uint32 Wtime::GetHour() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_hour);
 }
-uint32 Wtime::GetMDay(void) const
+uint32 Wtime::GetMDay() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_mday);
 }
-uint32 Wtime::GetWDay(void) const
+uint32 Wtime::GetWDay() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_wday+1);
 }
-uint32 Wtime::GetYDay(void) const
+uint32 Wtime::GetYDay() const
 {
   struct tm  t;
   struct tm *tptr;
   tptr=localtime_r((time_t *)&sec,&t);
   return(tptr->tm_yday+1);
 }
-uint32 Wtime::GetYWeek(void) const
+uint32 Wtime::GetYWeek() const
 {
   uint32 yweek;
   uint32 yday=GetYDay();
@@ -504,10 +504,10 @@ uint32 Wtime::GetYWeek(void) const
   //phase holds the first weekday of the year.  If (Jan 1 = Sun) phase = 0
   sint32 phase=((wday-yday)%7);
   if (phase<0) phase+=7;
-  yweek=((yday+phase-1)/7)+1; 
+  yweek=((yday+phase-1)/7)+1;
   return(yweek);
 }
-uint32 Wtime::GetMonth(void) const
+uint32 Wtime::GetMonth() const
 {
   struct tm  t;
   struct tm *tptr;
@@ -515,7 +515,7 @@ uint32 Wtime::GetMonth(void) const
   return(tptr->tm_mon+1);
 }
 
-uint32 Wtime::GetYear(void) const
+uint32 Wtime::GetYear() const
 {
   struct tm  t;
   struct tm *tptr;
@@ -527,7 +527,7 @@ uint32 Wtime::GetYear(void) const
 }
 
 
-bit8 Wtime::GetSign(void) const
+bit8 Wtime::GetSign() const
 {
   return(sign);
 }
@@ -549,7 +549,7 @@ int   Wtime::Compare(const Wtime &other) const
   else
     return(-1);
 }
-  
+
 
 bit8 Wtime::operator == ( const Wtime &other ) const
 {
@@ -723,7 +723,7 @@ Wtime &Wtime::operator -= (const Wtime &other)
   sint32 temp;
   if (Compare(other)==-1)
   {
-    sec=0;                  // can't handle negative time 
+    sec=0;                  // can't handle negative time
     usec=0;
     return *this;
   }

@@ -19,18 +19,18 @@
 // OpacityVectorDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "OpacityVectorDialog.h"
-#include "wwmath.h"
-#include "vector3.h"
-#include "sphereobj.h"
-#include "ringobj.h"
-#include "colorbar.h"
-#include "euler.h"
-#include "matrix3.h"
+#include "WWMath/wwmath.h"
+#include "WWMath/vector3.h"
+#include "WW3D2/sphereobj.h"
+#include "WW3D2/ringobj.h"
+#include "ColorBar.h"
+#include "WWMath/euler.h"
+#include "WWMath/matrix3.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -42,16 +42,15 @@ static char THIS_FILE[] = __FILE__;
 // OpacityVectorDialogClass
 //
 /////////////////////////////////////////////////////////////////////////////
-OpacityVectorDialogClass::OpacityVectorDialogClass(CWnd* pParent /*=NULL*/)
-	:	m_OpacityBar (NULL),
-		m_RenderObj (NULL),
+OpacityVectorDialogClass::OpacityVectorDialogClass(CWnd* pParent /*=nullptr*/)
+	:	m_OpacityBar (nullptr),
+		m_RenderObj (nullptr),
 		m_KeyIndex (0),
 		CDialog(OpacityVectorDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(OpacityVectorDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -68,7 +67,6 @@ OpacityVectorDialogClass::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_SLIDER_Z, m_SliderZ);
 	DDX_Control(pDX, IDC_SLIDER_Y, m_SliderY);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -86,10 +84,10 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-OpacityVectorDialogClass::OnInitDialog (void)
+OpacityVectorDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog();
-	
+
 	m_OpacityBar = ColorBarClass::Get_Color_Bar (::GetDlgItem (m_hWnd, IDC_OPACITY_BAR));
 	ASSERT (m_OpacityBar);
 
@@ -99,7 +97,7 @@ OpacityVectorDialogClass::OnInitDialog (void)
 	m_OpacityBar->Set_Range (0, 10);
 	m_OpacityBar->Modify_Point (0, 0, 255, 255, 255);
 	m_OpacityBar->Insert_Point (1, 10, 0, 0, 0);
-	
+
 	float value =  ::atan (((m_Value.intensity / 10.0F) * 11.0F)) / DEG_TO_RAD (84.5) * 10.0F;
 	m_OpacityBar->Set_Selection_Pos (value);
 
@@ -150,7 +148,7 @@ OpacityVectorDialogClass::OnInitDialog (void)
 	y_rot = WWMath::Wrap (y_rot, 0, 360);
 	z_rot = WWMath::Wrap (z_rot, 0, 360);*/
 
-	
+
 #ifdef ALLOW_TEMPORARIES
 	Matrix3D rotation = Build_Matrix3D (m_Value.angle);
 #else
@@ -182,11 +180,10 @@ OpacityVectorDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-OpacityVectorDialogClass::OnOK (void)
+OpacityVectorDialogClass::OnOK ()
 {
 	m_Value = Update_Value ();
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -196,10 +193,9 @@ OpacityVectorDialogClass::OnOK (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-OpacityVectorDialogClass::Update_Object (void)
+OpacityVectorDialogClass::Update_Object ()
 {
 	Update_Object (Update_Value ());
-	return ;
 }
 
 
@@ -209,7 +205,7 @@ OpacityVectorDialogClass::Update_Object (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 AlphaVectorStruct
-OpacityVectorDialogClass::Update_Value (void)
+OpacityVectorDialogClass::Update_Value ()
 {
 	AlphaVectorStruct value;
 
@@ -226,12 +222,12 @@ OpacityVectorDialogClass::Update_Value (void)
 	rot_mat.Rotate_Z (z_rot);
 
 	value.angle = ::Build_Quaternion (rot_mat);
-	
+
 	float percent = ::tan ((m_OpacityBar->Get_Selection_Pos () / 10.0F) * DEG_TO_RAD (84.5)) / 11.0F;
 	percent = min (1.0F, percent);
 	percent = max (0.0F, percent);
 
-	value.intensity = 10.0F * percent;	
+	value.intensity = 10.0F * percent;
 	return value;
 }
 
@@ -244,8 +240,8 @@ OpacityVectorDialogClass::Update_Value (void)
 void
 OpacityVectorDialogClass::Update_Object (const AlphaVectorStruct &value)
 {
-	if (m_RenderObj != NULL) {
-		
+	if (m_RenderObj != nullptr) {
+
 		//
 		//	Determine what type of object this is
 		//
@@ -256,7 +252,7 @@ OpacityVectorDialogClass::Update_Object (const AlphaVectorStruct &value)
 				//
 				//	Update the key with the new vector
 				//
-				
+
 				SphereVectorChannelClass &vector_channel = ((SphereRenderObjClass *)m_RenderObj)->Get_Vector_Channel ();
 				vector_channel.Set_Key_Value (m_KeyIndex, value);
 
@@ -268,8 +264,6 @@ OpacityVectorDialogClass::Update_Object (const AlphaVectorStruct &value)
 			break;
 		}
 	}
-
-	return ;
 }
 
 
@@ -279,11 +273,10 @@ OpacityVectorDialogClass::Update_Object (const AlphaVectorStruct &value)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-OpacityVectorDialogClass::OnCancel (void)
+OpacityVectorDialogClass::OnCancel ()
 {
 	Update_Object (m_Value);
 	CDialog::OnCancel ();
-	return ;
 }
 
 
@@ -298,15 +291,14 @@ OpacityVectorDialogClass::OnHScroll
 	UINT				nSBCode,
 	UINT				nPos,
 	CScrollBar *	pScrollBar
-) 
+)
 {
 	//
 	//	Update the object
 	//
 	Update_Object ();
-	
+
 	CDialog::OnHScroll(nSBCode, nPos, pScrollBar);
-	return ;
 }
 
 
@@ -321,7 +313,7 @@ OpacityVectorDialogClass::OnNotify
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	CBR_NMHDR *color_bar_hdr = (CBR_NMHDR *)lParam;
 
@@ -334,13 +326,13 @@ OpacityVectorDialogClass::OnNotify
 		{
 			//
 			// Update the object
-			//			
+			//
 			if (color_bar_hdr->hdr.code == CBRN_SEL_CHANGED) {
 				Update_Object ();
 			}
 		}
 		break;
 	}
-		
+
 	return CDialog::OnNotify (wParam, lParam, pResult);
 }

@@ -16,12 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_CAMERADISTANCEDIALOG_H__548D3315_D582_4B97_8607_31B4659DF498__INCLUDED_)
-#define AFX_CAMERADISTANCEDIALOG_H__548D3315_D582_4B97_8607_31B4659DF498__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
 
 #include "resource.h"
 
@@ -34,7 +29,7 @@ class CameraDistanceDialogClass : public CDialog
 {
 // Construction
 public:
-	CameraDistanceDialogClass(CWnd* pParent = NULL);   // standard constructor
+	CameraDistanceDialogClass(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CameraDistanceDialogClass)
@@ -47,8 +42,8 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CameraDistanceDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -56,13 +51,11 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CameraDistanceDialogClass)
-	virtual BOOL OnInitDialog();
-	virtual void OnOK();
+	virtual BOOL OnInitDialog() override;
+	virtual void OnOK() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_CAMERADISTANCEDIALOG_H__548D3315_D582_4B97_8607_31B4659DF498__INCLUDED_)

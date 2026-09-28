@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef _Armor_H_
-#define _Armor_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/NameKeyGenerator.h"
 #include "Common/STLTypedefs.h"
@@ -41,7 +38,7 @@
 class ArmorStore;
 
 //-------------------------------------------------------------------------------------------------
-/** 
+/**
 	An Armor encapsulates the a particular type of actual modifier to damage taken, in order
 	to simulate different materials, and to help make game balance easier to adjust.
 */
@@ -54,27 +51,30 @@ public:
 
 	void clear();
 
+	void copyFrom(const ArmorTemplate* other);
+
 	/**
 		This is the real "meat" of the class: given a damage type and amount, adjust the damage
-		and return the amount that should be dealt. 
-	*/	
+		and return the amount that should be dealt.
+	*/
 	Real adjustDamage(DamageType t, Real damage) const;
 
 	static void parseArmorCoefficients( INI* ini, void *instance, void* /* store */, const void* userData );
+	static void parseArmorMultiplier( INI* ini, void *instance, void* /* store */, const void* userData );
 
 protected:
 
 private:
 	Real						m_damageCoefficient[DAMAGE_NUM_TYPES];	///< modifiers to damage
-};  
+};
 
 //-------------------------------------------------------------------------------------------------
 class Armor
 {
 public:
 
-	inline Armor(const ArmorTemplate* tmpl = NULL) : m_template(tmpl) 
-	{ 
+	inline Armor(const ArmorTemplate* tmpl = nullptr) : m_template(tmpl)
+	{
 	}
 
 	inline Real adjustDamage(DamageType t, Real damage) const
@@ -84,7 +84,7 @@ public:
 
 	inline void clear()
 	{
-		m_template = NULL;
+		m_template = nullptr;
 	}
 
 private:
@@ -102,16 +102,26 @@ class ArmorStore : public SubsystemInterface
 public:
 
 	ArmorStore();
-	~ArmorStore();
+	virtual ~ArmorStore() override;
 
-	void init() { }
-	void reset() { }
-	void update() { }
+	virtual void init() override { }
+	virtual void reset() override { }
+	virtual void update() override { }
 
+	const ArmorTemplate* findArmorTemplate(NameKeyType namekey) const;
 	/**
 		Find the Armor with the given name. If no such Armor exists, return null.
 	*/
-	const ArmorTemplate* findArmorTemplate(AsciiString name) const;
+	const ArmorTemplate* findArmorTemplate(const AsciiString& name) const;
+	const ArmorTemplate* findArmorTemplate(const char* name) const;
+
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	// TheSuperHackers @feature The name an armor template was defined under. The parsed ArmorSet
+	// keeps only the resolved pointer, so the only way back to the name is to walk the store, which
+	// is keyed by it. Only needed by the armor overlay cheat, so it is not compiled into a normal
+	// build.
+	AsciiString getArmorTemplateName(const ArmorTemplate* tmpl) const;
+#endif
 
 	inline Armor makeArmor(const ArmorTemplate *tmpl) const
 	{
@@ -119,16 +129,14 @@ public:
 	}
 
 	static void parseArmorDefinition(INI* ini);
+	static void parseArmorExtendDefinition(INI* ini);
 
 private:
 
-	typedef std::hash_map< NameKeyType, ArmorTemplate, rts::hash<NameKeyType>, rts::equal_to<NameKeyType> > ArmorTemplateMap;
+	typedef std::hash_map< NameKeyType, ArmorTemplate, rts::hash<NameKeyType>, rts::equal_to<NameKeyType>/**/> ArmorTemplateMap;
 	ArmorTemplateMap m_armorTemplates;
 
 };
 
 // EXTERNALS //////////////////////////////////////////////////////////////////////////////////////
 extern ArmorStore *TheArmorStore;
-
-#endif // _Armor_H_
-

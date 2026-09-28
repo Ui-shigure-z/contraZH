@@ -16,16 +16,12 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_EMITTERLINEGROUPPROPPAGE_H__51E7B2D1_1943_454E_B188_5F7D508D7203__INCLUDED_)
-#define AFX_EMITTERLINEGROUPPROPPAGE_H__51E7B2D1_1943_454E_B188_5F7D508D7203__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // EmitterLineGroupPropPage.h : header file
 //
 
-#include "part_emt.h"
+#include "WW3D2/part_emt.h"
 
 // Forward declarations
 
@@ -56,16 +52,16 @@ public:
 	// ClassWizard generate virtual function overrides
 	//{{AFX_VIRTUAL(EmitterLineGroupPropPageClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
 	// Generated message map functions
 	//{{AFX_MSG(EmitterLineGroupPropPageClass)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -79,15 +75,15 @@ public:
 	//
 	//	Inline accessors
 	//
-	EmitterInstanceListClass *	Get_Emitter (void) const { return m_pEmitterList; }
+	EmitterInstanceListClass *	Get_Emitter () const { return m_pEmitterList; }
 	void								Set_Emitter (EmitterInstanceListClass *pemitter_list) { m_pEmitterList = pemitter_list; Initialize (); }
-	bool								Is_Data_Valid (void) const { return m_bValid; }
+	bool								Is_Data_Valid () const { return m_bValid; }
 
 	void								Get_Blur_Time_Keyframes (ParticlePropertyStruct<float> &blurtimes)	{ blurtimes = m_BlurTimes; }
 	void								On_Lifetime_Changed (float lifetime);
 
-	void								Initialize (void);
-	void								Update_Blur_Times (void);
+	void								Initialize ();
+	void								Update_Blur_Times ();
 
 private:
 
@@ -98,7 +94,7 @@ private:
 	/////////////////////////////////////////////////////////
 	//
 	//	Private member data
-	//		
+	//
 	EmitterInstanceListClass *			m_pEmitterList;
 	bool										m_bValid;
 
@@ -112,5 +108,3 @@ private:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_EMITTERLINEGROUPPROPPAGE_H__51E7B2D1_1943_454E_B188_5F7D508D7203__INCLUDED_)

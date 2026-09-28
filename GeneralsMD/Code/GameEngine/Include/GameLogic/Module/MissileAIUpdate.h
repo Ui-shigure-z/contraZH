@@ -28,9 +28,6 @@
 
 #pragma once
 
-#ifndef _MISSILE_AI_UPDATE_H_
-#define _MISSILE_AI_UPDATE_H_
-
 #include "Common/GameType.h"
 #include "Common/GlobalData.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -49,7 +46,7 @@ public:
 	Bool						m_tryToFollowTarget;	///< if true, attack object, not pos
 	UnsignedInt			m_fuelLifetime;				///< num frames till missile runs out of motive power (0 == inf)
 	UnsignedInt			m_ignitionDelay;			///< delay in frames from when missile is 'fired', to when it starts moving		15
-	Real						m_initialVel;			
+	Real						m_initialVel;
 	Real						m_initialDist;
 	Real						m_diveDistance;				///< If I get this close to my target, start ignoring my preferred height
 	const FXList*		m_ignitionFX;					///< FXList to do when missile 'ignites'
@@ -63,8 +60,20 @@ public:
 
 	Real						m_lockDistance;				///< If I get this close to my target, guaranteed hit.
 	Bool						m_detonateCallsKill;			///< if true, kill() will be called, instead of KILL_SELF state, which calls destroy.
-  Int             m_killSelfDelay;      ///< If I have detonated and entered the KILL-SELF state, how ling do I wait before I Kill/destroy self?
-	MissileAIUpdateModuleData();
+    Int             m_killSelfDelay;      ///< If I have detonated and entered the KILL-SELF state, how ling do I wait before I Kill/destroy self?
+	
+	// Real	m_turnRateAttacking;    ///< Turn rate of the missile after ignition and no-turn stage
+	// Real	m_turnRateInitial;      ///< Turn rate of the missile during no-turn stage
+
+	Real	m_zDirFactor;          ///< Z correction factor for AA weapons with no pitch
+
+	Real m_randomPathOffset;       ///< Max distance to scatter for random path offset
+
+	Bool m_applyLauncherBonus;     ///< Apply the launcher's weapon bonus flags (for any non-detonate triggered weapon)
+
+	Bool m_isTorpedo; ///< die outside of water, strike objects from below.
+
+    MissileAIUpdateModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
 
@@ -89,6 +98,7 @@ public:
 		DEAD					= 5,
 		KILL					= 6, ///< Hit victim (cheat).
 		KILL_SELF			= 7, ///< Destroy self.
+		ATTACK_RANDOM_PATH = 8, ///< fly toward victim
 	};
 
 	virtual ProjectileUpdateInterface* getProjectileUpdateInterface() { return this; }
@@ -97,18 +107,28 @@ public:
 	virtual Bool projectileHandleCollision( Object *other );
 	virtual Bool projectileIsArmed() const { return m_isArmed; }
 	virtual ObjectID projectileGetLauncherID() const { return m_launcherID; }
+	virtual const WeaponTemplate* projectileGetDetonationWeapon() const { return m_detonationWeaponTmpl; }
+	virtual Bool projectileGetLaunchPos(Coord3D& pos) const { if (m_launcherID == INVALID_ID) return false; pos = m_launchPos; return true; }
+	virtual void projectileSetLaunchVeterancy(VeterancyLevel v) { m_launchVeterancy = v; }
+	virtual Bool projectileGetLaunchVeterancy(VeterancyLevel& v) const { if (m_launcherID == INVALID_ID) return false; v = m_launchVeterancy; return true; }
 	virtual void setFramesTillCountermeasureDiversionOccurs( UnsignedInt frames ); ///< Number of frames till missile diverts to countermeasures.
 	virtual void projectileNowJammed();///< We lose our Object target and scatter to the ground
+	virtual Object* getTargetObject();
+	virtual const Coord3D* getTargetPosition();
+	virtual bool projectileShouldCollideWithWater() const override;
 
-	virtual Bool processCollision(PhysicsBehavior *physics, Object *other); ///< Returns true if the physics collide should apply the force.  Normally not.  jba.
+	virtual Bool processCollision(PhysicsBehavior *physics, Object *other) override; ///< Returns true if the physics collide should apply the force.  Normally not.  jba.
 
-	virtual UpdateSleepTime update();
-	virtual void onDelete( void );
+	virtual UpdateSleepTime update() override;
+	virtual void onDelete() override;
 
+	virtual void switchToState(MissileStateType s);
+
+	virtual MissileStateType getMissileState() { return m_state; }
 
 protected:
 
-	void detonate();
+	virtual void detonate( Object *victim = nullptr );
 
 private:
 
@@ -119,9 +139,12 @@ private:
 	ObjectID							m_victimID;								///< ID of object that I am rocketing towards (INVALID_ID if not yet launched)
 	UnsignedInt						m_fuelExpirationDate;			///< how long 'til we run out of fuel
 	Real									m_noTurnDistLeft;					///< when zero, ok to start turning
+	Real									m_randomPathDistLeft;					///< when zero, leave random path
 	Real									m_maxAccel;
 	Coord3D								m_originalTargetPos;			///< When firing uphill, we aim high to clear the brow of the hill.  jba.
 	Coord3D								m_prevPos;
+	Coord3D								m_launchPos;							///< launcher's position at launch time (for DamageFactorAtMaxRange)
+	VeterancyLevel				m_launchVeterancy;				///< launcher's veterancy at launch time (for veterancy FX/OCL selection)
 	WeaponBonusConditionFlags		m_extraBonusFlags;
 	const WeaponTemplate*	m_detonationWeaponTmpl;		///< weapon to fire at end (or null)
 	const ParticleSystemTemplate* m_exhaustSysTmpl;
@@ -131,11 +154,11 @@ private:
 	Bool									m_isArmed;								///< if true, missile will explode on contact
 	Bool									m_noDamage;								///< if true, missile will not cause damage when it detonates. (Used for flares).
 	Bool									m_isJammed;								///< No target, just shooting at a scattered position
-	
+
 	void doPrelaunchState();
 	void doLaunchState();
 	void doIgnitionState();
-	void doAttackState(Bool turnOK);
+	void doAttackState(Bool turnOK, Bool randomPath = FALSE);
 	void doKillState();
 	void doKillSelfState();
 	void doDeadState();
@@ -143,10 +166,5 @@ private:
 	void airborneTargetGone();											///< My airborne target has died, so I have to do something cool to make up for that
 
 	void tossExhaust();
-	void switchToState(MissileStateType s);
-
 
 };
-
-#endif // _MISSILE_AI_UPDATE_H_
-

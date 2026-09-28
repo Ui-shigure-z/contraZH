@@ -34,18 +34,10 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#if defined(_MSC_VER)
 #pragma once
-#endif
 
-
-#ifndef __ASSET_INFO_H
-#define __ASSET_INFO_H
-
-#include "RendObj.H"
-#include "Utils.H"
-#include "AssetTypes.H"
+#include "WW3D2/rendobj.h"
+#include "AssetTypes.h"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -63,18 +55,17 @@ class AssetInfoClass
 		//
 		//  Public constructors/destructors
 		//
-		AssetInfoClass (void)
+		AssetInfoClass ()
 			: m_AssetType (TypeUnknown),
-			  m_dwUserData (0L),
-			  m_pRenderObj (NULL)			{ Initialize (); }
+			  m_dwUserData (0L)			{ Initialize (); }
 
-		AssetInfoClass (LPCTSTR passet_name, ASSET_TYPE type, RenderObjClass *prender_obj = NULL, DWORD user_data = 0L)
+		AssetInfoClass (LPCTSTR passet_name, ASSET_TYPE type, RenderObjClass *prender_obj = nullptr, DWORD user_data = 0L)
 			: m_Name (passet_name),
 			  m_AssetType (type),
 			  m_dwUserData (user_data),
-			  m_pRenderObj (NULL)			{ MEMBER_ADD (m_pRenderObj, prender_obj); Initialize (); }
-		
-		virtual ~AssetInfoClass (void)	{ MEMBER_RELEASE (m_pRenderObj); }
+			  m_pRenderObj (Create_Add_Ref (prender_obj))			{ Initialize (); }
+
+		virtual ~AssetInfoClass ()	{}
 
 		//////////////////////////////////////////////////////////////
 		//
@@ -84,35 +75,35 @@ class AssetInfoClass
 		//
 		//  Inline accessors
 		//
-		const CString &	Get_Name (void) const						{ return m_Name; }
-		const CString &	Get_Hierarchy_Name (void) const			{ return m_HierarchyName; }
-		const CString &	Get_Original_Name (void) const			{ return m_OriginalName; }
-		ASSET_TYPE			Get_Type (void) const						{ return m_AssetType; }
-		DWORD					Get_User_Number (void) const				{ return m_dwUserData; }
-		const CString &	Get_User_String (void) const				{ return m_UserString; }
-		RenderObjClass *	Get_Render_Obj (void) const				{ SAFE_ADD_REF (m_pRenderObj); return m_pRenderObj; }
-		RenderObjClass *	Peek_Render_Obj (void) const				{ return m_pRenderObj; }
+		const CString &	Get_Name () const						{ return m_Name; }
+		const CString &	Get_Hierarchy_Name () const			{ return m_HierarchyName; }
+		const CString &	Get_Original_Name () const			{ return m_OriginalName; }
+		ASSET_TYPE			Get_Type () const						{ return m_AssetType; }
+		DWORD					Get_User_Number () const				{ return m_dwUserData; }
+		const CString &	Get_User_String () const				{ return m_UserString; }
+		RenderObjClass *	Get_Render_Obj () const				{ RenderObjClass *ptr = m_pRenderObj.Peek(); if (ptr) ptr->Add_Ref(); return ptr; }
+		RenderObjClass *	Peek_Render_Obj () const				{ return m_pRenderObj.Peek(); }
 		void					Set_Name (LPCTSTR pname)					{ m_Name = pname; }
 		void					Set_Hierarchy_Name (LPCTSTR pname)		{ m_HierarchyName = pname; }
 		void					Set_Type (ASSET_TYPE type)					{ m_AssetType = type; }
 		void					Set_User_Number (DWORD user_data)		{ m_dwUserData = user_data; }
 		void					Set_User_String (LPCTSTR string)			{ m_UserString = string; }
-		void					Set_Render_Obj (RenderObjClass *pobj)	{ MEMBER_ADD (m_pRenderObj, pobj); }
+		void					Set_Render_Obj (RenderObjClass *pobj)	{ m_pRenderObj.Assign_Add_Ref (pobj); }
 
 		//
 		//	Information methods
 		//
-		bool					Can_Asset_Have_Animations (void) const	{ return bool(m_HierarchyName.GetLength () > 0); }
+		bool					Can_Asset_Have_Animations () const	{ return bool(m_HierarchyName.GetLength () > 0); }
 
 	protected:
-		
+
 		//////////////////////////////////////////////////////////////
 		//
 		//  Protected methods
 		//
-		void					Initialize (void);
-		
-		
+		void					Initialize ();
+
+
 	private:
 
 		//////////////////////////////////////////////////////////////
@@ -125,9 +116,5 @@ class AssetInfoClass
 		CString				m_OriginalName;
 		ASSET_TYPE			m_AssetType;
 		DWORD					m_dwUserData;
-		RenderObjClass *	m_pRenderObj;
+		RefCountPtr<RenderObjClass>		m_pRenderObj;
 };
-
-
-
-#endif //__ASSET_INFO_H

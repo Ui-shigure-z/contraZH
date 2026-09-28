@@ -22,17 +22,14 @@
 
 #pragma once
 
-#ifndef FEATHERTOOL_H
-#define FEATHERTOOL_H
-
 #include "Tool.h"
 class WorldHeightMapEdit;
 /**************************************************************************/
 /**                             FeatherTool
-	 Does the smooth height map tool operation. 
+	 Does the smooth height map tool operation.
 ***************************************************************************/
 ///  smooth height map tool.
-class FeatherTool : public Tool 
+class FeatherTool : public Tool
 {
 protected:
 	WorldHeightMapEdit *m_htMapEditCopy; //< ref counted.
@@ -48,8 +45,8 @@ protected:
 	static Bool m_mirrorY;   // top/bottom
 	static Bool m_mirrorDiag; // diagonal only (XY corner)
 public:
-	FeatherTool(void);
-	~FeatherTool(void);
+	FeatherTool();
+	virtual ~FeatherTool() override;
 
 	static Int getFeather(void) {return m_feather;}; ///<Returns feather (the brush size).
 	static Int getRadius(void) {return m_radius;};
@@ -76,6 +73,3 @@ public:
 	virtual void activate(); ///< Become the current tool.
 	virtual void abandonStroke(void); ///< Drop an uncommitted stroke on a tool swap.
 };
-
-
-#endif //FEATHERTOOL_H

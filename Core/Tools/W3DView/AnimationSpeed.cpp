@@ -19,15 +19,15 @@
 // AnimationSpeed.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "AnimationSpeed.h"
-#include "MainFrm.H"
-#include "GraphicView.H"
-#include "Utils.H"
-#include "W3DViewDoc.H"
+#include "MainFrm.h"
+#include "GraphicView.h"
+#include "Utils.h"
+#include "W3DViewDoc.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -52,7 +52,6 @@ CAnimationSpeed::CAnimationSpeed (CWnd* pParent)
 	//{{AFX_DATA_INIT(CAnimationSpeed)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -66,7 +65,6 @@ CAnimationSpeed::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CAnimationSpeed)
 	DDX_Control(pDX, IDC_SPEED_SLIDER, m_speedSlider);
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -87,7 +85,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CAnimationSpeed::OnInitDialog (void) 
+CAnimationSpeed::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CDialog::OnInitDialog ();
@@ -128,10 +126,10 @@ CAnimationSpeed::OnInitDialog (void)
             m_iInitialPercent = int(animationSpeed*100.00F);
         }
     }
-	
+
     // Set the range of the slider control
     m_speedSlider.SetRange (1, 200);
-    
+
     // Set the initial pos of the slider control
     m_speedSlider.SetPos (m_iInitialPercent);
     return TRUE;
@@ -163,10 +161,9 @@ CAnimationSpeed::OnHScroll
             pCGraphicView->SetAnimationSpeed (((float)m_iInitialPercent) / (100.00F));
         }
     }
-	
+
 	// Allow the base class to process this message
     CDialog::OnHScroll (nSBCode, nPos, pScrollBar);
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -174,11 +171,10 @@ CAnimationSpeed::OnHScroll
 //  OnDestroy
 //
 void
-CAnimationSpeed::OnDestroy (void)
+CAnimationSpeed::OnDestroy ()
 {
     m_iInitialPercent = m_speedSlider.GetPos ();
 	CDialog::OnDestroy();
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -186,7 +182,7 @@ CAnimationSpeed::OnDestroy (void)
 //  OnBlend
 //
 void
-CAnimationSpeed::OnBlend (void)
+CAnimationSpeed::OnBlend ()
 {
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
@@ -196,8 +192,6 @@ CAnimationSpeed::OnBlend (void)
         // Turn on/off the blending option
         pCDoc->SetAnimationBlend (SendDlgItemMessage (IDC_BLEND, BM_GETCHECK));
     }
-
-    return ;	
 }
 
 void CAnimationSpeed::
@@ -227,7 +221,7 @@ OnCompressq(){
 
 void CAnimationSpeed::
 On16bit(){
-/*	
+/*
 CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
 	pCDoc->SetChannelQnBytes(2);
 	QnBytes = 2;

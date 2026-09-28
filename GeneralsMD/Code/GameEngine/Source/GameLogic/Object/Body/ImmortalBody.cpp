@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 #include "Common/Xfer.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Damage.h"
@@ -38,27 +38,27 @@
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ImmortalBody::ImmortalBody( Thing *thing, const ModuleData* moduleData ) 
+ImmortalBody::ImmortalBody( Thing *thing, const ModuleData* moduleData )
 						 : ActiveBody( thing, moduleData )
 {
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ImmortalBody::~ImmortalBody( void )
+ImmortalBody::~ImmortalBody()
 {
 
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-void ImmortalBody::internalChangeHealth( Real delta )
+void ImmortalBody::internalChangeHealth( Real delta, Bool changeModelCondition)
 {
 	// Don't let anything changes us to below one hit point
 	delta = max( delta, -getHealth() + 1 );
 
 	// extend functionality, but I go first because I can't let you die and then fix it, I must prevent
-	ActiveBody::internalChangeHealth( delta );
+	ActiveBody::internalChangeHealth( delta, changeModelCondition );
 
 	// nothing -- never mark it as dead.
 	DEBUG_ASSERTCRASH( (getHealth() > 0 && !getObject()->isEffectivelyDead() ), ("Immortal objects should never get marked as dead!"));
@@ -74,7 +74,7 @@ void ImmortalBody::crc( Xfer *xfer )
 	// extend base class
 	ActiveBody::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -92,15 +92,15 @@ void ImmortalBody::xfer( Xfer *xfer )
 	// extend base class
 	ActiveBody::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void ImmortalBody::loadPostProcess( void )
+void ImmortalBody::loadPostProcess()
 {
 
 	// extend base class
 	ActiveBody::loadPostProcess();
 
-}  // end loadPostProcess
+}

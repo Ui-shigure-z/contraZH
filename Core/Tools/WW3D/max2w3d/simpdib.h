@@ -16,26 +16,25 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Command & Conquer                                            * 
- *                                                                                             * 
- *                     $Archive:: /Commando/Code/Tools/max2w3d/simpdib.h                      $* 
- *                                                                                             * 
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Command & Conquer                                            *
+ *                                                                                             *
+ *                     $Archive:: /Commando/Code/Tools/max2w3d/simpdib.h                      $*
+ *                                                                                             *
  *                      $Author:: Greg_h                                                      $*
- *                                                                                             * 
+ *                                                                                             *
  *                     $Modtime:: 10/14/97 3:07p                                              $*
- *                                                                                             * 
+ *                                                                                             *
  *                    $Revision:: 3                                                           $*
  *                                                                                             *
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef SIMPDIB_H
-#define SIMPDIB_H
+#pragma once
 
 #ifndef ALWAYS_H
 #include "always.h"
@@ -56,11 +55,11 @@ class SimpleDIBClass
 public:
 
 	SimpleDIBClass(HWND hwnd,int width, int height,PaletteClass & pal);
-	~SimpleDIBClass(void);
+	~SimpleDIBClass();
 
 	HBITMAP		Get_Handle()		{ return Handle; }
-	int			Get_Width(void)		{ return Width; }
-	int			Get_Height(void)	{ return Height; }
+	int			Get_Width()		{ return Width; }
+	int			Get_Height()	{ return Height; }
 
 	void			Clear(unsigned char color);
 	void			Set_Pixel(int i,int j,unsigned char color);
@@ -77,6 +76,3 @@ private:
 	int					Pitch;		// offset from DIBPixelBase to next row (can be negative for bottom-up DIBS)
 
 };
-
-
-#endif /*SIMPDIB_H*/

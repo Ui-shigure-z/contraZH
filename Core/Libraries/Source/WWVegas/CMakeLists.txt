@@ -8,52 +8,37 @@ target_compile_definitions(core_wwcommon INTERFACE
 
 target_link_libraries(core_wwcommon INTERFACE
     d3d8lib
-    core_config
-    core_utility
-    milesstub
+    dbghelploader
+    milesloader
     stlport
 )
 
 target_include_directories(core_wwcommon INTERFACE
-    .
-    WWDebug
-    WWLib
-    WWMath
-    WWSaveLoad
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# add_subdirectory(WWAudio)
+add_subdirectory(WW3D2)
+add_subdirectory(WWAudio)
 add_subdirectory(WWDebug)
+add_subdirectory(WWDownload)
 add_subdirectory(WWLib)
 add_subdirectory(WWMath)
-# add_subdirectory(Wwutil)
 add_subdirectory(WWSaveLoad)
 add_subdirectory(WWStub)
-# add_subdirectory(WW3D2)
-# add_subdirectory(WWDownload)
-# add_subdirectory(wwshade)
 
 # Helpful interface to bundle the ww modules together.
 add_library(core_wwvegas INTERFACE)
 
 target_include_directories(core_wwvegas INTERFACE
-    .
-    #WW3D2
-    WWDebug
-    #WWDownload
-    WWLib
-    WWMath
-    WWSaveLoad
-    #Wwutil
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(core_wwvegas INTERFACE
     # core_ww3d2
+    # core_wwaudio
     core_wwdebug
     # core_wwdownload
     core_wwlib
-    # core_wwmath
+    core_wwmath
     core_wwsaveload
-    # core_wwshade
-    # core_wwutil
 )

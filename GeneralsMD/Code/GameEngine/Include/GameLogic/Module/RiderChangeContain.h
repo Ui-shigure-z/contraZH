@@ -29,36 +29,37 @@
 
 #pragma once
 
-#ifndef __RIDER_CHANGE_CONTAIN_H
-#define __RIDER_CHANGE_CONTAIN_H
-
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/TransportContain.h"
 
-#define MAX_RIDERS 8 //***NOTE: If you change this, make sure you update the parsing section!
+#define MAX_RIDERS 16 //***NOTE: If you change this, make sure you update the parsing section!
 
 enum WeaponSetType CPP_11(: Int);
 enum ObjectStatusType CPP_11(: Int);
 enum LocomotorSetType CPP_11(: Int);
+enum ArmorSetType CPP_11(: Int);
 
 struct RiderInfo
 {
 	AsciiString m_templateName;
 	WeaponSetType m_weaponSetFlag;
-	ModelConditionFlagType m_modelConditionFlagType; 
+	ModelConditionFlagType m_modelConditionFlagType;
 	ObjectStatusType m_objectStatusType;
 	AsciiString m_commandSet;
 	LocomotorSetType m_locomotorSetType;
+	ArmorSetType m_armorSetFlag;
 };
 
 //-------------------------------------------------------------------------------------------------
 class RiderChangeContainModuleData : public TransportContainModuleData
 {
 public:
-	
+
 	RiderInfo m_riders[ MAX_RIDERS ];
 	UnsignedInt m_scuttleFrames;
 	ModelConditionFlagType m_scuttleState;
+	Bool m_surviveScuttle;
+	Bool m_silentScuttle;
 
 	RiderChangeContainModuleData();
 
@@ -79,34 +80,45 @@ public:
 	RiderChangeContain( Thing *thing, const ModuleData* moduleData );
 	// virtual destructor prototype provided by memory pool declaration
 
-	virtual Bool isValidContainerFor( const Object* obj, Bool checkCapacity) const;
+	virtual Bool isValidContainerFor( const Object* obj, Bool checkCapacity) const override;
 
-	virtual void onCapture( Player *oldOwner, Player *newOwner ); // have to kick everyone out on capture.
-	virtual void onContaining( Object *obj, Bool wasSelected );		///< object now contains 'obj'
-	virtual void onRemoving( Object *obj );			///< object no longer contains 'obj'
-	virtual UpdateSleepTime update();							///< called once per frame
+	virtual void onCapture( Player *oldOwner, Player *newOwner ) override; // have to kick everyone out on capture.
+	virtual void onContaining( Object *obj, Bool wasSelected ) override;		///< object now contains 'obj'
+	virtual void onRemoving( Object *obj ) override;			///< object no longer contains 'obj'
+	virtual UpdateSleepTime update() override;							///< called once per frame
 
-	virtual Bool isRiderChangeContain() const { return TRUE; }
-	virtual const Object *friend_getRider() const; 
+	virtual Bool isRiderChangeContain() const override { return TRUE; }
 
-	virtual Int getContainMax( void ) const;
+#if RETAIL_COMPATIBLE_CRC
+	// Retail treats a rider as an enclosed passenger. Kept as-is so replay and network CRCs match.
+	virtual Bool isEnclosingContainerFor( const Object *obj ) const override { return TRUE; }
+#else
+	// TheSuperHackers @bugfix A rider is visibly mounted on its host, not sealed inside it, so it
+	// must not report as enclosing. OpenContain answers TRUE for every container, which made
+	// Object::getEnclosingContainedBy treat a rider as enclosed and switch off any influence the
+	// rider carries -- such as the PropagandaTowerBehavior Contra mounts on its Propaganda Officer.
+	virtual Bool isEnclosingContainerFor( const Object *obj ) const override { return FALSE; }
+#endif
+	virtual const Object *friend_getRider() const override;
 
-	virtual Int getExtraSlotsInUse( void ) { return m_extraSlotsInUse; }///< Transports have the ability to carry guys how take up more than spot.
+	virtual Int getContainMax() const override;
 
-	virtual Bool isExitBusy() const;	///< Contain style exiters are getting the ability to space out exits, so ask this before reserveDoor as a kind of no-commitment check.
-	virtual ExitDoorType reserveDoorForExit( const ThingTemplate* objType, Object *specificObject );
-	virtual void unreserveDoorForExit( ExitDoorType exitDoor );
-	virtual Bool isDisplayedOnControlBar() const {return TRUE;}///< Does this container display its contents on the ControlBar?
+	virtual Int getExtraSlotsInUse() override { return m_extraSlotsInUse; }///< Transports have the ability to carry guys how take up more than spot.
 
-	virtual Bool getContainerPipsToShow( Int& numTotal, Int& numFull );
+	virtual Bool isExitBusy() const override;	///< Contain style exiters are getting the ability to space out exits, so ask this before reserveDoor as a kind of no-commitment check.
+	virtual ExitDoorType reserveDoorForExit( const ThingTemplate* objType, Object *specificObject ) override;
+	virtual void unreserveDoorForExit( ExitDoorType exitDoor ) override;
+	virtual Bool isDisplayedOnControlBar() const override {return TRUE;}///< Does this container display its contents on the ControlBar?
+
+	virtual Bool getContainerPipsToShow( Int& numTotal, Int& numFull ) override;
 
 protected:
 
 	// exists primarily for RiderChangeContain to override
-	virtual void killRidersWhoAreNotFreeToExit();
-	virtual Bool isSpecificRiderFreeToExit(Object* obj);
-	virtual void createPayload();
-	
+	virtual void killRidersWhoAreNotFreeToExit() override;
+	virtual Bool isSpecificRiderFreeToExit(Object* obj) override;
+	virtual void createPayload() override;
+
 private:
 
 	Int m_extraSlotsInUse;
@@ -116,6 +128,3 @@ private:
 	Bool m_containing; //doesn't require xfer.
 
 };
-
-#endif // __RIDER_CHANGE_CONTAIN_H
-

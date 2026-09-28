@@ -24,13 +24,10 @@
 
 // FILE: ParkingPlaceBehavior.h /////////////////////////////////////////////////////////////////////////
 // Author: Steven Johnson, June 2002
-// Desc:   
+// Desc:
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-
-#ifndef __ParkingPlaceBehavior_H_
-#define __ParkingPlaceBehavior_H_
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/BehaviorModule.h"
@@ -50,9 +47,21 @@ public:
 	Real					m_landingDeckHeightOffset;
 	Bool					m_hasRunways;			// if true, each col has a runway in front of it
 	Bool					m_parkInHangars;	// if true, park at the hangar production spot, not the "real" parking place
+	Real                    m_damageScalar;     // Damage reduction for parked aircraft
+	Real                    m_damageScalarUpgraded;     // Damage reduction for parked aircraft
+	AsciiString				m_damageScalarUpgradeTrigger; // Upgrade template for damageScalar upgrade
+
+	KindOfMaskType	m_kindof;			///< the kind(s) of units that can land here
+	KindOfMaskType	m_kindofnot;		///< the kind(s) of units that must not land here
+
+	std::vector<AsciiString> m_allowedObjects;		///< if not empty, only these objects may land here, whatever their KindOfs
+	std::vector<AsciiString> m_forbiddenObjects;	///< these objects may never land here, whatever their KindOfs
+
+	Bool isTemplateAllowedToLand( const ThingTemplate *tmpl ) const;
 
 	ParkingPlaceBehaviorModuleData()
 	{
+		m_damageScalarUpgradeTrigger.clear();
 		//m_framesForFullHeal = 0;
 		m_healAmount = 0;
 //    m_extraHealAmount4Helicopters = 0;
@@ -62,26 +71,34 @@ public:
 		m_landingDeckHeightOffset = 0.0f;
 		m_hasRunways = false;
 		m_parkInHangars = false;
+		m_damageScalar = 1.0f;
+		m_damageScalarUpgraded = 1.0f;
 	}
 
 	static void buildFieldParse(MultiIniFieldParse& p)
 	{
 		UpdateModuleData::buildFieldParse(p);
 
-		static const FieldParse dataFieldParse[] = 
+		static const FieldParse dataFieldParse[] =
 		{
-			{ "NumRows",						     INI::parseInt,	 NULL, offsetof( ParkingPlaceBehaviorModuleData, m_numRows ) },
-			{ "NumCols",						     INI::parseInt,	 NULL, offsetof( ParkingPlaceBehaviorModuleData, m_numCols ) },
-			{ "ApproachHeight",			     INI::parseReal, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_approachHeight ) },
-			{ "LandingDeckHeightOffset", INI::parseReal, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_landingDeckHeightOffset ) },
-			{ "HasRunways",					     INI::parseBool, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_hasRunways ) },
-			{ "ParkInHangars",			     INI::parseBool, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_parkInHangars ) },
-			{ "HealAmountPerSecond",     INI::parseReal, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_healAmount ) },
-//			{ "ExtraHealAmount4Helicopters",  INI::parseReal, NULL, offsetof( ParkingPlaceBehaviorModuleData, m_extraHealAmount4Helicopters ) },
+			{ "NumRows",						     INI::parseInt,	 nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_numRows ) },
+			{ "NumCols",						     INI::parseInt,	 nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_numCols ) },
+			{ "ApproachHeight",			     INI::parseReal, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_approachHeight ) },
+			{ "LandingDeckHeightOffset", INI::parseReal, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_landingDeckHeightOffset ) },
+			{ "HasRunways",					     INI::parseBool, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_hasRunways ) },
+			{ "ParkInHangars",			     INI::parseBool, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_parkInHangars ) },
+			{ "HealAmountPerSecond",     INI::parseReal, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_healAmount ) },
+//			{ "ExtraHealAmount4Helicopters",  INI::parseReal, nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_extraHealAmount4Helicopters ) },
+			{ "ParkedUnitsDamageScalar",     INI::parseReal, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_damageScalar) },
+			{ "ParkedUnitsDamageScalarUpgraded",     INI::parseReal, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_damageScalarUpgraded) },
+			{ "DamageScalarUpgradedTriggeredBy", INI::parseAsciiString,	NULL, offsetof(ParkingPlaceBehaviorModuleData, m_damageScalarUpgradeTrigger) },
 
+			{ "RequiredKindOf", KindOfMaskType::parseFromINI, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_kindof) },
+			{ "ForbiddenKindOf", KindOfMaskType::parseFromINI, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_kindofnot) },
+			{ "AllowedObjects", INI::parseAsciiStringVector, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_allowedObjects) },
+			{ "ForbiddenObjects", INI::parseAsciiStringVector, NULL, offsetof(ParkingPlaceBehaviorModuleData, m_forbiddenObjects) },
 
-
-			//{ "TimeForFullHeal",	INI::parseDurationUnsignedInt,	NULL, offsetof( ParkingPlaceBehaviorModuleData, m_framesForFullHeal ) },
+			//{ "TimeForFullHeal",	INI::parseDurationUnsignedInt,	nullptr, offsetof( ParkingPlaceBehaviorModuleData, m_framesForFullHeal ) },
 			{ 0, 0, 0, 0 }
 		};
 		p.add(dataFieldParse);
@@ -93,7 +110,7 @@ private:
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-class ParkingPlaceBehavior : public UpdateModule, 
+class ParkingPlaceBehavior : public UpdateModule,
 														 public DieModuleInterface,
 														 public ParkingPlaceBehaviorInterface,
 														 public ExitInterface
@@ -110,63 +127,65 @@ public:
 	static Int getInterfaceMask() { return UpdateModule::getInterfaceMask() | (MODULEINTERFACE_DIE); }
 
 	// BehaviorModule
-	virtual DieModuleInterface *getDie( void ) { return this; }
-	virtual ParkingPlaceBehaviorInterface* getParkingPlaceBehaviorInterface() { return this; }
-	virtual ExitInterface* getUpdateExitInterface() { return this; }
+	virtual DieModuleInterface *getDie() override { return this; }
+	virtual ParkingPlaceBehaviorInterface* getParkingPlaceBehaviorInterface() override { return this; }
+	virtual ExitInterface* getUpdateExitInterface() override { return this; }
 
 	// ExitInterface
-	virtual Bool isExitBusy() const {return FALSE;}	///< Contain style exiters are getting the ability to space out exits, so ask this before reserveDoor as a kind of no-commitment check.
-	virtual ExitDoorType reserveDoorForExit( const ThingTemplate* objType, Object *specificObject );
-	virtual void exitObjectViaDoor( Object *newObj, ExitDoorType exitDoor );
-	virtual void unreserveDoorForExit( ExitDoorType exitDoor );
-	virtual void exitObjectByBudding( Object *newObj, Object *budHost ) { return; }
+	virtual Bool isExitBusy() const override {return FALSE;}	///< Contain style exiters are getting the ability to space out exits, so ask this before reserveDoor as a kind of no-commitment check.
+	virtual ExitDoorType reserveDoorForExit( const ThingTemplate* objType, Object *specificObject ) override;
+	virtual void exitObjectViaDoor( Object *newObj, ExitDoorType exitDoor ) override;
+	virtual void unreserveDoorForExit( ExitDoorType exitDoor ) override;
+	virtual void exitObjectByBudding( Object *newObj, Object *budHost ) override { return; }
 
-	virtual Bool getExitPosition( Coord3D& rallyPoint ) const;		
-	virtual Bool getNaturalRallyPoint( Coord3D& rallyPoint, Bool offset = TRUE ) const;
-	virtual void setRallyPoint( const Coord3D *pos );			///< define a "rally point" for units to move towards
-	virtual const Coord3D *getRallyPoint( void ) const;			///< define a "rally point" for units to move towards
+	virtual Bool getExitPosition( Coord3D& rallyPoint ) const override;
+	virtual Bool getNaturalRallyPoint( Coord3D& rallyPoint, Bool offset = TRUE ) const override;
+	virtual void setRallyPoint( const Coord3D *pos ) override;			///< define a "rally point" for units to move towards
+	virtual const Coord3D *getRallyPoint() const override;			///< define a "rally point" for units to move towards
 
 	// UpdateModule
-	virtual UpdateSleepTime update();
+	virtual UpdateSleepTime update() override;
 
 	// DieModule
-	virtual void onDie( const DamageInfo *damageInfo );
+	virtual void onDie( const DamageInfo *damageInfo ) override;
 
 	// ParkingPlaceBehaviorInterface
-	virtual Bool shouldReserveDoorWhenQueued(const ThingTemplate* thing) const; 
-	virtual Bool hasAvailableSpaceFor(const ThingTemplate* thing) const; 
-	virtual Bool hasReservedSpace(ObjectID id) const;
-	virtual Int  getSpaceIndex( ObjectID id ) const;
-	virtual Bool reserveSpace(ObjectID id, Real parkingOffset, PPInfo* info);
-	virtual void releaseSpace(ObjectID id); 
-	virtual Bool reserveRunway(ObjectID id, Bool forLanding);
-	virtual void releaseRunway(ObjectID id); 
-	virtual void calcPPInfo( ObjectID id, PPInfo *info );
-	virtual Int getRunwayCount() const { return m_runways.size(); }
-	virtual ObjectID getRunwayReservation( Int r, RunwayReservationType type );
-	virtual void transferRunwayReservationToNextInLineForTakeoff(ObjectID id);
-	virtual Real getApproachHeight() const { return getParkingPlaceBehaviorModuleData()->m_approachHeight; }
-	virtual Real getLandingDeckHeightOffset() const { return getParkingPlaceBehaviorModuleData()->m_landingDeckHeightOffset; }
-	virtual void setHealee(Object* healee, Bool add);
-	virtual void killAllParkedUnits();
-	virtual void defectAllParkedUnits(Team* newTeam, UnsignedInt detectionTime);
-	virtual Bool calcBestParkingAssignment( ObjectID id, Coord3D *pos, Int *oldIndex = NULL, Int *newIndex = NULL ) { return FALSE; }
-	virtual const std::vector<Coord3D>* getTaxiLocations( ObjectID id ) const { return NULL; }
-	virtual const std::vector<Coord3D>* getCreationLocations( ObjectID id ) const { return NULL; }
+	virtual Bool shouldReserveDoorWhenQueued(const ThingTemplate* thing) const override;
+	virtual Bool hasAvailableSpaceFor(const ThingTemplate* thing, UnsignedInt count = 1) const override;
+	virtual Bool hasReservedSpace(ObjectID id) const override;
+	virtual Int  getSpaceIndex( ObjectID id ) const override;
+	virtual Bool reserveSpace(ObjectID id, Real parkingOffset, PPInfo* info) override;
+	virtual void releaseSpace(ObjectID id) override;
+	virtual Bool reserveRunway(ObjectID id, Bool forLanding) override;
+	virtual void releaseRunway(ObjectID id) override;
+	virtual void calcPPInfo( ObjectID id, PPInfo *info ) override;
+	virtual Int getRunwayIndex(ObjectID id) override;
+	virtual Int getRunwayCount() const override { return m_runways.size(); }
+	virtual ObjectID getRunwayReservation( Int r, RunwayReservationType type ) override;
+	virtual void transferRunwayReservationToNextInLineForTakeoff(ObjectID id) override;
+	virtual Real getApproachHeight() const override { return getParkingPlaceBehaviorModuleData()->m_approachHeight; }
+	virtual Real getLandingDeckHeightOffset() const override { return getParkingPlaceBehaviorModuleData()->m_landingDeckHeightOffset; }
+	virtual void setHealee(Object* healee, Bool add) override;
+	virtual void killAllParkedUnits() override;
+	virtual void defectAllParkedUnits(Team* newTeam, UnsignedInt detectionTime) override;
+	virtual Bool calcBestParkingAssignment( ObjectID id, Coord3D *pos, Int *oldIndex = nullptr, Int *newIndex = nullptr ) override { return FALSE; }
+	virtual const std::vector<Coord3D>* getTaxiLocations( ObjectID id ) const override { return nullptr; }
+	virtual const std::vector<Coord3D>* getCreationLocations( ObjectID id ) const override { return nullptr; }
 
 private:
 
 	struct ParkingPlaceInfo
 	{
-		Coord3D				m_hangarStart;
-		Real					m_hangarStartOrient;
-		Coord3D				m_location;
-		Coord3D				m_prep;
-		Real					m_orientation;
-		Int						m_runway;
-		ExitDoorType	m_door;
-		ObjectID			m_objectInSpace;
-		Bool					m_reservedForExit;
+		Coord3D      m_hangarStart;
+		Real         m_hangarStartOrient;
+		Coord3D      m_location;
+		Coord3D      m_prep;
+		Real         m_orientation;
+		Int          m_runway;
+		ExitDoorType m_door;
+		ObjectID     m_objectInSpace;
+		Bool         m_reservedForExit;
+		Bool         m_postponedRunwayReservationForTakeoff;
 
 		ParkingPlaceInfo()
 		{
@@ -179,7 +198,8 @@ private:
 			m_door = DOOR_NONE_AVAILABLE;
 			m_objectInSpace = INVALID_ID;
 			m_reservedForExit = false;
-		} 
+			m_postponedRunwayReservationForTakeoff = false;
+		}
 	};
 
 	struct RunwayInfo
@@ -203,6 +223,7 @@ private:
 	UnsignedInt										m_nextHealFrame;
 	Bool													m_gotInfo;
 
+	Bool postponeRunwayReservation(UnsignedInt spaceIndex, Bool forLanding);
 	void buildInfo();
 	void purgeDead();
 	void resetWakeFrame();
@@ -210,9 +231,13 @@ private:
 	ParkingPlaceInfo* findPPI(ObjectID id);
 	ParkingPlaceInfo* findEmptyPPI();
 
+	void applyDamageScalar(Object* obj, Real scalarNew, Real scalarOld = 1.0f);
+	void removeDamageScalar(Object* obj, Real scalar);
+	Real getDamageScalar();
+	void updateDamageScalars();
+
 	Coord3D m_heliRallyPoint;		
 	Bool m_heliRallyPointExists;				///< Only move to the rally point if this is true
+	
+	Bool m_damageScalarUpgradeApplied;
 };
-
-#endif // __ParkingPlaceBehavior_H_
-

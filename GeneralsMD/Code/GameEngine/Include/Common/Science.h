@@ -24,13 +24,10 @@
 
 // FILE: Science.h ////////////////////////////////////////////////////////////////////////////////
 // Author: Steven Johnson, Colin Day November 2001
-// Desc:   Science descriptoins
+// Desc:   Science descriptions
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-
-#ifndef __SCIENCE_H_
-#define __SCIENCE_H_
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/Overridable.h"
@@ -63,6 +60,7 @@ private:
 	ScienceVec						m_prereqSciences;
 	Int										m_sciencePurchasePointCost;
 	Bool									m_grantable;
+	std::vector<AsciiString>	m_grantedUpgradeNames;
 
 	ScienceInfo() :
 		m_science(SCIENCE_INVALID),
@@ -81,15 +79,17 @@ class ScienceStore : public SubsystemInterface
 	friend class ScienceInfo;
 
 public:
-	virtual ~ScienceStore();
+	virtual ~ScienceStore() override;
 
-	void init();
-	void reset();
-	void update() { }
+	virtual void init() override;
+	virtual void reset() override;
+	virtual void update() override { }
 
 	Bool isValidScience(ScienceType st) const;
 
 	Bool isScienceGrantable(ScienceType st) const;
+
+	Bool getGrantedUpgradeNames(ScienceType st, std::vector<AsciiString>& grantedUpgradeNames) const;
 
 	Bool getNameAndDescription(ScienceType st, UnicodeString& name, UnicodeString& description) const;
 
@@ -98,8 +98,8 @@ public:
 	/**
 		this is a subtle call, and should ALMOST NEVER be called by external code...
 		this is used to determine if you have the "root" requirements for a given science,
-		and thus could *potentially* obtain it if you got extra prereqs. 
-		
+		and thus could *potentially* obtain it if you got extra prereqs.
+
 		Generally, you should call getPurchasableSciences() instead of this!
 	*/
 	Bool playerHasRootPrereqsForScience(const Player* player, ScienceType st) const;
@@ -109,7 +109,7 @@ public:
 	ScienceType getScienceFromInternalName(const AsciiString& name) const;
 	AsciiString getInternalNameForScience(ScienceType science) const;
 
-	/** return a list of the sciences the given player can purchase now, and a list he might be able to purchase in the future, 
+	/** return a list of the sciences the given player can purchase now, and a list he might be able to purchase in the future,
 		but currently lacks prereqs or points for. (either might be an empty list) */
 	void getPurchasableSciences(const Player* player, ScienceVec& purchasable, ScienceVec& potentiallyPurchasable) const;
 
@@ -134,7 +134,3 @@ private:
 };
 
 extern ScienceStore* TheScienceStore;
-
-
-#endif // __SCIENCE_H_
-

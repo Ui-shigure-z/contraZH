@@ -20,7 +20,7 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+#include "StdAfx.h"
 #include "resource.h"
 #include "MainFrm.h"
 #include "DrawObject.h"
@@ -33,16 +33,16 @@
 /// Tool class.
 //
 /// Constructor
-Tool::Tool(Int toolID, Int cursorID) 
+Tool::Tool(Int toolID, Int cursorID)
 {
-	m_toolID = toolID; 
+	m_toolID = toolID;
 	m_cursorID = cursorID;
-	m_cursor = NULL;
+	m_cursor = nullptr;
 }
 
 
 /// Destructor
-Tool::~Tool(void) 
+Tool::~Tool()
 {
 	if (m_cursor) {
 		::DestroyCursor(m_cursor);
@@ -85,14 +85,14 @@ void Tool::revertAbandonedPreview(void)
 
 void Tool::setCursor(void) 
 {
-		if (m_cursor == NULL) {
+		if (m_cursor == nullptr) {
 			m_cursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(m_cursorID));
 		}
 		::SetCursor(m_cursor);
 }
 
 /// Calculate the round blend factor.
-/** Calculates the blend amount of the brush.  1.0 means the brush sets the 
+/** Calculates the blend amount of the brush.  1.0 means the brush sets the
 height, 0.0 means no change, and between blends proportionally. */
 Real Tool::calcRoundBlendFactor(CPoint center, Int x, Int y, Int brushWidth, Int featherWidth)
 {
@@ -116,12 +116,12 @@ Real Tool::calcRoundBlendFactor(CPoint center, Int x, Int y, Int brushWidth, Int
 	if (dist <= featherWidth) {
 		return (featherWidth-dist)/featherWidth;
 	}
-	
+
 	return(0);
 }
 
 /// Calculate the square blend factor.
-/** Calculates the blend amount of the brush.  1.0 means the brush sets the 
+/** Calculates the blend amount of the brush.  1.0 means the brush sets the
 height, 0.0 means no change, and between blends proportionally. */
 Real Tool::calcSquareBlendFactor(CPoint center, Int x, Int y, Int brushWidth, Int featherWidth)
 {
@@ -145,7 +145,7 @@ Real Tool::calcSquareBlendFactor(CPoint center, Int x, Int y, Int brushWidth, In
 	if (dist <= featherWidth) {
 		return (featherWidth-dist)/featherWidth;
 	}
-	
+
 	return(0);
 }
 
@@ -164,9 +164,9 @@ void Tool::getCenterIndex(Coord3D *docLocP, Int brushWidth, CPoint *center, CWor
 	}
 }
 
-void Tool::getAllIndexesIn(const Coord3D *bl, const Coord3D *br, 
-													 const Coord3D *tl, const Coord3D *tr, 
-													 Int widthOutside, CWorldBuilderDoc *pDoc, 
+void Tool::getAllIndexesIn(const Coord3D *bl, const Coord3D *br,
+													 const Coord3D *tl, const Coord3D *tr,
+													 Int widthOutside, CWorldBuilderDoc *pDoc,
 													 VecHeightMapIndexes* allIndices)
 {
 	if (!(bl && br && tl && tr && pDoc && allIndices)) {

@@ -19,14 +19,14 @@
 // EmitterLinePropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "EmitterLinePropPage.h"
-#include "w3d_file.h"
+#include "WW3D2/w3d_file.h"
 #include "EmitterInstanceList.h"
 #include "Utils.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -37,9 +37,9 @@ static char THIS_FILE[] = __FILE__;
 
 IMPLEMENT_DYNCREATE(EmitterLinePropPageClass, CPropertyPage)
 
-EmitterLinePropPageClass::EmitterLinePropPageClass() : 
+EmitterLinePropPageClass::EmitterLinePropPageClass() :
 	CPropertyPage(EmitterLinePropPageClass::IDD),
-	m_pEmitterList(NULL),
+	m_pEmitterList(nullptr),
 	m_bValid(true),
 	m_MappingMode(W3D_EMITTER_RENDER_MODE_TRI_PARTICLES),
 	m_MergeIntersections(false),
@@ -90,9 +90,9 @@ END_MESSAGE_MAP()
 //  Initialize
 //
 void
-EmitterLinePropPageClass::Initialize (void)
+EmitterLinePropPageClass::Initialize ()
 {
-	if (m_pEmitterList != NULL) {
+	if (m_pEmitterList != nullptr) {
 
 		//
 		// Read the settings from the emitter
@@ -105,19 +105,17 @@ EmitterLinePropPageClass::Initialize (void)
 		m_NoiseAmplitude = m_pEmitterList->Get_Noise_Amplitude();
 		m_MergeAbortFactor = m_pEmitterList->Get_Merge_Abort_Factor();
 		m_TextureTileFactor = m_pEmitterList->Get_Texture_Tile_Factor();
-		
+
 		Vector2 uvrate = m_pEmitterList->Get_UV_Offset_Rate();
 		m_UPerSec = uvrate.X;
 		m_VPerSec = uvrate.Y;
 	}
-
-	return ;
 }
 
-BOOL EmitterLinePropPageClass::OnInitDialog() 
+BOOL EmitterLinePropPageClass::OnInitDialog()
 {
 	CPropertyPage::OnInitDialog();
-	
+
 	// Set up the spinner ranges
 	m_SubdivisionLevelSpin.SetRange(0,8);
 	m_SubdivisionLevelSpin.SetPos(m_SubdivisionLevel);
@@ -138,11 +136,11 @@ BOOL EmitterLinePropPageClass::OnInitDialog()
 
 	bool enable = (m_pEmitterList->Get_Render_Mode() == W3D_EMITTER_RENDER_MODE_LINE);
 	::Enable_Dialog_Controls(m_hWnd,enable);
-	
+
 	return TRUE;
 }
 
-BOOL EmitterLinePropPageClass::OnApply() 
+BOOL EmitterLinePropPageClass::OnApply()
 {
 	//
 	//	Get the data from the controls
@@ -153,7 +151,7 @@ BOOL EmitterLinePropPageClass::OnApply()
 	m_TextureTileFactor = ::GetDlgItemFloat (m_hWnd, IDC_UVTILING_EDIT);
 	m_UPerSec = ::GetDlgItemFloat (m_hWnd, IDC_UPERSEC_EDIT);
 	m_VPerSec = ::GetDlgItemFloat (m_hWnd, IDC_VPERSEC_EDIT);
-	
+
 	m_MappingMode = SendDlgItemMessage (IDC_MAPMODE_COMBO, CB_GETCURSEL);
 	m_MergeIntersections = !!SendDlgItemMessage (IDC_MERGE_INTERSECTIONS_CHECK, BM_GETCHECK);
 	m_EndCaps = !!SendDlgItemMessage (IDC_END_CAPS_CHECK, BM_GETCHECK);
@@ -179,11 +177,11 @@ BOOL EmitterLinePropPageClass::OnApply()
 }
 
 
-BOOL EmitterLinePropPageClass::OnCommand(WPARAM wParam, LPARAM lParam) 
+BOOL EmitterLinePropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 {
 	switch (LOWORD (wParam))
 	{
-		// Check if any of the edit boxes were modified, 
+		// Check if any of the edit boxes were modified,
 		case IDC_SUBDIVISION_LEVEL_EDIT:
 		case IDC_NOISE_AMPLITUDE_EDIT:
 		case IDC_MERGE_ABORT_FACTOR_EDIT:
@@ -208,20 +206,20 @@ BOOL EmitterLinePropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 				SetModified ();
 			}
 			break;
-	
+
 	}
-	
+
 	return CPropertyPage::OnCommand(wParam, lParam);
 }
 
-BOOL EmitterLinePropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) 
+BOOL EmitterLinePropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 		SetModified ();
 	}

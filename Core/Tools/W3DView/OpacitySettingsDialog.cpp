@@ -31,12 +31,12 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "OpacitySettingsDialog.h"
-#include "ColorBar.H"
+#include "ColorBar.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -49,14 +49,13 @@ static char THIS_FILE[] = __FILE__;
 //
 /////////////////////////////////////////////////////////////////////////////
 OpacitySettingsDialogClass::OpacitySettingsDialogClass (float opacity, CWnd *pParent)
-	:	m_OpacityBar (NULL),
+	:	m_OpacityBar (nullptr),
 		m_Opacity (opacity),
 		CDialog(OpacitySettingsDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(OpacitySettingsDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -72,7 +71,6 @@ OpacitySettingsDialogClass::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(OpacitySettingsDialogClass)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -88,10 +86,10 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-OpacitySettingsDialogClass::OnInitDialog (void)
+OpacitySettingsDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog();
-	
+
 	m_OpacityBar = ColorBarClass::Get_Color_Bar (::GetDlgItem (m_hWnd, IDC_OPACITY_BAR));
 	ASSERT (m_OpacityBar);
 
@@ -112,9 +110,8 @@ OpacitySettingsDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-OpacitySettingsDialogClass::OnOK (void)
+OpacitySettingsDialogClass::OnOK ()
 {
 	m_Opacity = m_OpacityBar->Get_Selection_Pos ();
 	CDialog::OnOK ();
-	return ;
 }

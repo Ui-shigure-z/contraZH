@@ -34,9 +34,9 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#include "StdAfx.H"
-#include "DialogToolbar.H"
-#include "AfxPriv.H"
+#include "StdAfx.h"
+#include "DialogToolbar.h"
+#include "AfxPriv.h"
 
 
 BEGIN_MESSAGE_MAP(DialogToolbarClass, CToolBar)
@@ -48,17 +48,15 @@ BEGIN_MESSAGE_MAP(DialogToolbarClass, CToolBar)
 END_MESSAGE_MAP()
 
 
-DialogToolbarClass::DialogToolbarClass (void)
+DialogToolbarClass::DialogToolbarClass ()
 	: CToolBar ()
 {
 	//{{AFX_DATA_INIT(DialogToolbarClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-
-	return ;
 }
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 void DialogToolbarClass::AssertValid() const
 {
 	CToolBar::AssertValid();
@@ -68,7 +66,7 @@ void DialogToolbarClass::Dump(CDumpContext& dc) const
 {
 	CToolBar::Dump(dc);
 }
-#endif //_DEBUG
+#endif //RTS_DEBUG
 
 
 ///////////////////////////////////////////////////////////////////
@@ -83,10 +81,10 @@ DialogToolbarClass::Enable_Button
 )
 {
 	// Get the button's style (we enable by using a style bit)
-	int index = CommandToIndex (id);	
+	int index = CommandToIndex (id);
 	UINT style = GetButtonStyle (index) & (~TBBS_DISABLED);
-	
-	// If we are disabling the button, set the 
+
+	// If we are disabling the button, set the
 	// disabled style bit.
 	if (benable == false) {
 		style |= TBBS_DISABLED;
@@ -97,8 +95,6 @@ DialogToolbarClass::Enable_Button
 	if (!(style & TBBS_SEPARATOR)) {
 		SetButtonStyle (index, style);
 	}
-
-	return ;
 }
 
 
@@ -118,9 +114,8 @@ DialogToolbarClass::OnIdleUpdateCmdUI (WPARAM, LPARAM)
 //	OnInitialUpdate
 //
 void
-DialogToolbarClass::OnInitialUpdate (void)
+DialogToolbarClass::OnInitialUpdate ()
 {
-	return ;
 }
 
 
@@ -137,7 +132,7 @@ DialogToolbarClass::OnNeedToolTipText
 )
 {
 	if (pTTTStruct->code == TTN_NEEDTEXTA) {
-		
+
 		TOOLTIPTEXTA *ptooltip_info = (TOOLTIPTEXTA*)pTTTStruct;
 		::lstrcpy (ptooltip_info->szText, "test");
 	}

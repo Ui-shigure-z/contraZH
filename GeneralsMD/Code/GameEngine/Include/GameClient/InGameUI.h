@@ -30,9 +30,6 @@
 
 #pragma once
 
-#ifndef _IN_GAME_UI_H_
-#define _IN_GAME_UI_H_
-
 #include "Common/GameCommon.h"
 #include "Common/GameType.h"
 #include "Common/MessageStream.h"		// for GameMessageTranslator
@@ -56,6 +53,10 @@ class VideoBuffer;
 class VideoStreamInterface;
 class CommandButton;
 class SpecialPowerTemplate;
+#if defined(GENERALS_ONLINE)
+class Player;
+enum ScienceType CPP_11(: Int);
+#endif
 class WindowLayout;
 class Anim2DTemplate;
 class Anim2D;
@@ -77,38 +78,113 @@ enum RadiusCursorType CPP_11(: Int)
 	RADIUSCURSOR_FRIENDLY_SPECIALPOWER,
 	RADIUSCURSOR_OFFENSIVE_SPECIALPOWER,
 	RADIUSCURSOR_SUPERWEAPON_SCATTER_AREA,
-	
-	RADIUSCURSOR_PARTICLECANNON, 
+
+	RADIUSCURSOR_PARTICLECANNON,
 	RADIUSCURSOR_A10STRIKE,
 	RADIUSCURSOR_CARPETBOMB,
 	RADIUSCURSOR_DAISYCUTTER,
 	RADIUSCURSOR_PARADROP,
-	RADIUSCURSOR_SPYSATELLITE, 
+	RADIUSCURSOR_SPYSATELLITE,
 	RADIUSCURSOR_SPECTREGUNSHIP,
 	RADIUSCURSOR_HELIX_NAPALM_BOMB,
 
-	RADIUSCURSOR_NUCLEARMISSILE, 
+	RADIUSCURSOR_NUCLEARMISSILE,
 	RADIUSCURSOR_EMPPULSE,
 	RADIUSCURSOR_ARTILLERYBARRAGE,
 	RADIUSCURSOR_NAPALMSTRIKE,
 	RADIUSCURSOR_CLUSTERMINES,
 
-	RADIUSCURSOR_SCUDSTORM, 
+	RADIUSCURSOR_SCUDSTORM,
 	RADIUSCURSOR_ANTHRAXBOMB,
-	RADIUSCURSOR_AMBUSH, 
+	RADIUSCURSOR_AMBUSH,
 	RADIUSCURSOR_RADAR,
 	RADIUSCURSOR_SPYDRONE,
 	RADIUSCURSOR_FRENZY,
-	
+
 	RADIUSCURSOR_CLEARMINES,
 	RADIUSCURSOR_AMBULANCE,
 
+	//New OFS and Generic Radius Cursors
+	RADIUSCURSOR_IONCANNON,
+	RADIUSCURSOR_CLUSTERMISSILE,
+	RADIUSCURSOR_SUNSTORM,
+  RADIUSCURSOR_METEORSTRIKE,
+  RADIUSCURSOR_PUNISHER,
+  RADIUSCURSOR_CHEMICALMISSILE,
 
-	RADIUSCURSOR_COUNT	// keep last
+	RADIUSCURSOR_CARPETBOMB_USA,
+	RADIUSCURSOR_MOAB,
+	RADIUSCURSOR_SUPERSONICSTRIKE,
+	RADIUSCURSOR_HELISUPPORT,
+	RADIUSCURSOR_INTERCEPTORS,
+	RADIUSCURSOR_HOLOGRAMS,
+	RADIUSCURSOR_PARADROP_AIRF,
+
+	RADIUSCURSOR_COASTALBARRAGE,
+	RADIUSCURSOR_PARADROP_COMMANDOS,
+
+	RADIUSCURSOR_IONSTRIKE,
+	RADIUSCURSOR_CRYOBOMB,
+	RADIUSCURSOR_FORCEFIELD,
+	RADIUSCURSOR_SPACESHIP,
+	RADIUSCURSOR_ORBITALSTRIKE,
+	RADIUSCURSOR_DROPPODS,
+	RADIUSCURSOR_DROPPODS_SUPER,
+
+	RADIUSCURSOR_LASERSTRIKE,
+	RADIUSCURSOR_ANTIMATTERBOMB,
+	RADIUSCURSOR_CHRONOAMBUSH,
+	RADIUSCURSOR_CHRONOSPHERE,
+	RADIUSCURSOR_SUBORBITALSTRIKE,
+	RADIUSCURSOR_NANOSWARM,
+
+	RADIUSCURSOR_SPYPLANE,
+	RADIUSCURSOR_OBSERVATION,
+
+	RADIUSCURSOR_AIRSTRIKE_NUKE,
+	RADIUSCURSOR_ICBM_NUKE,
+	RADIUSCURSOR_CARPETBOMB_NUKE,
+	RADIUSCURSOR_ARTILLERYBARRAGE_NUKE,
+
+	RADIUSCURSOR_SUPERHACK,
+	RADIUSCURSOR_SYSTEMHACK,
+	RADIUSCURSOR_CARPETBOMB_NAPALM,
+	RADIUSCURSOR_DRAGONSTAR,
+	RADIUSCURSOR_SPIDERMINES,
+
+	RADIUSCURSOR_EARTHSHAKER,
+	RADIUSCURSOR_IRONCURTAIN,
+	RADIUSCURSOR_PARADROP_TANK,
+
+	RADIUSCURSOR_MORTARBARRAGE,
+	RADIUSCURSOR_NAPALMBOMB,
+	RADIUSCURSOR_PARADROP_LARGE,
+
+	RADIUSCURSOR_DEMOTRAPS,
+	RADIUSCURSOR_FRENZY_GLA,
+	RADIUSCURSOR_GPSSCRAMBLER,
+	RADIUSCURSOR_JUNKREPAIR,
+	RADIUSCURSOR_ROCKETBARRAGE,
+	RADIUSCURSOR_CARPETBOMB_CLUSTER,
+	RADIUSCURSOR_SUICIDEPLANE,
+	RADIUSCURSOR_ARTILLERYBARRAGE_GLA,
+
+	RADIUSCURSOR_VIRUS,
+	RADIUSCURSOR_CHEMTRAILS,
+	RADIUSCURSOR_AIRSTRIKE_GLA,
+	RADIUSCURSOR_CHEMICALBOMB,
+	RADIUSCURSOR_TOXINDROP,
+
+	RADIUSCURSOR_JUMPJET,
+	RADIUSCURSOR_ATTACK_DAMAGE_AREA2,
+	RADIUSCURSOR_ATTACK_DAMAGE_AREA3,
+	RADIUSCURSOR_ATTACK_DAMAGE_AREA4,
+
+	RADIUSCURSOR_COUNT
 };
 
 #ifdef DEFINE_RADIUSCURSOR_NAMES
-static const char *TheRadiusCursorNames[] = 
+static const char *const TheRadiusCursorNames[] =
 {
 	"NONE",
 	"ATTACK_DAMAGE_AREA",
@@ -120,33 +196,99 @@ static const char *TheRadiusCursorNames[] =
 	"OFFENSIVE_SPECIALPOWER", //red
 	"SUPERWEAPON_SCATTER_AREA",//red
 
-	"PARTICLECANNON", 
+	"PARTICLECANNON",
 	"A10STRIKE",
 	"CARPETBOMB",
 	"DAISYCUTTER",
 	"PARADROP",
-	"SPYSATELLITE",  
+	"SPYSATELLITE",
   "SPECTREGUNSHIP",
   "HELIX_NAPALM_BOMB",
 
-	"NUCLEARMISSILE", 
+	"NUCLEARMISSILE",
 	"EMPPULSE",
 	"ARTILLERYBARRAGE",
 	"NAPALMSTRIKE",
 	"CLUSTERMINES",
 
-	"SCUDSTORM", 
+	"SCUDSTORM",
 	"ANTHRAXBOMB",
-	"AMBUSH", 
+	"AMBUSH",
 	"RADAR",
 	"SPYDRONE",
 	"FRENZY",
-	
+
 	"CLEARMINES",
 	"AMBULANCE",
 
-	NULL
+	//New OFS and Generic Radius Cursors
+	"IONCANNON",
+	"CLUSTERMISSILE",
+	"SUNSTORM",
+	"METEORSTRIKE",
+	"PUNISHER",
+	"CHEMICALMISSILE",
+	"CARPETBOMB_USA",
+	"MOAB",
+	"SUPERSONICSTRIKE",
+	"HELISUPPORT",
+	"INTERCEPTORS",
+	"HOLOGRAMS",
+	"PARADROP_AIRF",
+	"COASTALBARRAGE",
+	"PARADROP_COMMANDOS",
+	"IONSTRIKE",
+	"CRYOBOMB",
+	"FORCEFIELD",
+	"SPACESHIP",
+	"ORBITALSTRIKE",
+	"DROPPODS",
+	"DROPPODS_SUPER",
+	"LASERSTRIKE",
+	"ANTIMATTERBOMB",
+	"CHRONOAMBUSH",
+	"CHRONOSPHERE",
+	"SUBORBITALSTRIKE",
+	"NANOSWARM",
+	"SPYPLANE",
+	"OBSERVATION",
+	"AIRSTRIKE_NUKE",
+	"ICBM_NUKE",
+	"CARPETBOMB_NUKE",
+	"ARTILLERYBARRAGE_NUKE",
+	"SUPERHACK",
+	"SYSTEMHACK",
+	"CARPETBOMB_NAPALM",
+	"DRAGONSTAR",
+	"SPIDERMINES",
+	"EARTHSHAKER",
+	"IRONCURTAIN",
+	"PARADROP_TANK",
+	"MORTARBARRAGE",
+	"NAPALMBOMB",
+	"PARADROP_LARGE",
+	"DEMOTRAPS",
+	"FRENZY_GLA",
+	"GPSSCRAMBLER",
+	"JUNKREPAIR",
+	"ROCKETBARRAGE",
+	"CARPETBOMB_CLUSTER",
+	"SUICIDEPLANE",
+	"ARTILLERYBARRAGE_GLA",
+	"VIRUS",
+	"CHEMTRAILS",
+	"AIRSTRIKE_GLA",
+	"CHEMICALBOMB",
+	"TOXINDROP",
+
+	"JUMPJET",
+	"ATTACK_DAMAGE_AREA2",
+	"ATTACK_DAMAGE_AREA3",
+	"ATTACK_DAMAGE_AREA4",
+
+	nullptr
 };
+static_assert(ARRAY_SIZE(TheRadiusCursorNames) == RADIUSCURSOR_COUNT + 1, "Incorrect array size");
 #endif
 
 // ------------------------------------------------------------------------------------------------
@@ -171,7 +313,7 @@ typedef std::list<Drawable *>::const_iterator DrawableListCIt;
 // ------------------------------------------------------------------------------------------------
 class SuperweaponInfo : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(SuperweaponInfo, "SuperweaponInfo")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(SuperweaponInfo, "SuperweaponInfo")
 
 private:
 // not saved
@@ -189,10 +331,10 @@ public:
 		Bool hiddenByScience,
 		Bool ready,
     Bool evaReadyPlayed,
-		const AsciiString& superweaponNormalFont, 
-		Int superweaponNormalPointSize, 
+		const AsciiString& superweaponNormalFont,
+		Int superweaponNormalPointSize,
 		Bool superweaponNormalBold,
-		Color c, 
+		Color c,
 		const SpecialPowerTemplate* spt
 	);
 
@@ -209,7 +351,7 @@ public:
 	UnsignedInt									m_timestamp;									  ///< seconds shown in display string
 	Bool												m_hiddenByScript;
 	Bool												m_hiddenByScience;
- 	Bool												m_ready;											///< Stores if we were ready last draw, since readyness can change without time changing
+ 	Bool												m_ready;											///< Stores if we were ready last draw, since readiness can change without time changing
   Bool                        m_evaReadyPlayed;             ///< Stores if Eva announced superweapon is ready
 // not saved, but public
  	Bool												m_forceUpdateText;
@@ -224,7 +366,7 @@ typedef std::map<AsciiString, SuperweaponList> SuperweaponMap;
 // Popup message box
 class PopupMessageData : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(PopupMessageData, "PopupMessageData")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(PopupMessageData, "PopupMessageData")
 public:
 	UnicodeString		message;
 	Int							x;
@@ -240,7 +382,7 @@ EMPTY_DTOR(PopupMessageData)
 // ------------------------------------------------------------------------------------------------
 class NamedTimerInfo : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(NamedTimerInfo, "NamedTimerInfo")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(NamedTimerInfo, "NamedTimerInfo")
 public:
 	AsciiString			m_timerName;							///< Timer name, needed on Load to reconstruct Map.
 	UnicodeString		timerText;								///< timer text
@@ -262,10 +404,10 @@ enum {MAX_SUBTITLE_LINES = 4};							///< The maximum number of lines a subtitle
 // Floating Text Data
 class FloatingTextData : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(FloatingTextData, "FloatingTextData")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(FloatingTextData, "FloatingTextData")
 public:
-	FloatingTextData(void);
-	//~FloatingTextData(void);
+	FloatingTextData();
+	//~FloatingTextData();
 
 	Color						m_color;														///< It's current color
 	UnicodeString		m_text;											///< the text we're displaying
@@ -278,7 +420,7 @@ public:
 typedef std::list<FloatingTextData *> FloatingTextList;
 typedef FloatingTextList::iterator	FloatingTextListIt;
 
-enum 
+enum
 {
 	DEFAULT_FLOATING_TEXT_TIMEOUT = LOGICFRAMES_PER_SECOND/3,
 };
@@ -301,8 +443,8 @@ class WorldAnimationData
 
 public:
 
-	WorldAnimationData( void );
-	~WorldAnimationData( void ) { }
+	WorldAnimationData();
+	~WorldAnimationData() { }
 
 	Anim2D *m_anim;												///< the animation instance
 	Coord3D m_worldPos;										///< position in the world
@@ -318,12 +460,17 @@ typedef WorldAnimationList::iterator WorldAnimationListIterator;
 
 // ------------------------------------------------------------------------------------------------
 /** Basic functionality common to all in-game user interfaces */
-// ------------------------------------------------------------------------------------------------ 
+// ------------------------------------------------------------------------------------------------
 class InGameUI : public SubsystemInterface, public Snapshot
 {
-	
+
 friend class Drawable;	// for selection/deselection transactions
-		
+
+protected:
+
+	typedef std::list<Object*> ObjectList;
+	typedef std::list<Object*>::iterator ObjectListIt;
+
 public:  // ***************************************************************************************
 
 	enum SelectionRules
@@ -355,39 +502,80 @@ public:  // ********************************************************************
 		ACTIONTYPE_COMBATDROP_INTO,
 		ACTIONTYPE_SABOTAGE_BUILDING,
 
-		//Keep last.
 		NUM_ACTIONTYPES
 	};
 
-	InGameUI( void );
-	virtual ~InGameUI( void );
-	
+	InGameUI();
+	virtual ~InGameUI() override;
+
 	// Inherited from subsystem interface -----------------------------------------------------------
-	virtual	void init( void );															///< Initialize the in-game user interface
-	virtual void update( void );														///< Update the UI by calling preDraw(), draw(), and postDraw()
-	virtual void reset( void );															///< Reset
+	virtual	void init() override;															///< Initialize the in-game user interface
+	virtual void update() override;														///< Update the UI by calling preDraw(), draw(), and postDraw()
+	virtual void reset() override;															///< Reset
 	//-----------------------------------------------------------------------------------------------
+	void validate();
 
 	// interface for the popup messages
 	virtual void popupMessage( const AsciiString& message, Int x, Int y, Int width, Bool pause, Bool pauseMusic);
 	virtual void popupMessage( const AsciiString& message, Int x, Int y, Int width, Color textColor, Bool pause, Bool pauseMusic);
-	PopupMessageData *getPopupMessageData( void ) { return m_popupMessageData; }
-	void clearPopupMessageData( void );
+	PopupMessageData *getPopupMessageData() { return m_popupMessageData; }
+	void clearPopupMessageData();
 
 	// interface for messages to the user
 	// srj sez: passing as const-ref screws up varargs for some reason. dunno why. just pass by value.
+#if defined(GENERALS_ONLINE)
+	virtual void messageColor( Bool isChat, const RGBColor *rgbColor, UnicodeString format, ... );	///< display a colored message to the user
+#else
 	virtual void messageColor( const RGBColor *rgbColor, UnicodeString format, ... );	///< display a colored message to the user
+#endif
+	virtual void messageNoFormat( const UnicodeString& message ); ///< display a message to the user
+	virtual void messageNoFormat( const RGBColor *rgbColor, const UnicodeString& message ); ///< display a colored message to the user
 	virtual void message( UnicodeString format, ... );				  ///< display a message to the user
 	virtual void message( AsciiString stringManagerLabel, ... );///< display a message to the user
-	virtual void toggleMessages( void ) { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
-	virtual Bool isMessagesOn( void ) { return m_messagesOn; }	///< are the display messages on
-	void freeMessageResources( void );				///< free resources for the ui messages
+	virtual void toggleMessages() { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
+	virtual Bool isMessagesOn() { return m_messagesOn; }	///< are the display messages on
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	// TheSuperHackers @feature Debug name overlays, toggled by the Ctrl+[ and Ctrl+] cheats. Runtime
+	// only and never saved, so they live here rather than in GlobalData with the Options.ini flags.
+	// TheSuperHackers @feature Three states rather than two: off, the object's template name, then
+	// the sub objects of its model as well.
+	enum ObjectNameOverlayMode CPP_11(: Int)
+	{
+		OBJECT_NAME_OVERLAY_OFF = 0,
+		OBJECT_NAME_OVERLAY_NAME,
+		OBJECT_NAME_OVERLAY_SUBOBJECTS,
+		OBJECT_NAME_OVERLAY_MODE_COUNT
+	};
+	virtual void toggleObjectNameOverlay( void )
+	{
+		m_objectNameOverlayMode = (ObjectNameOverlayMode)
+				( ( m_objectNameOverlayMode + 1 ) % OBJECT_NAME_OVERLAY_MODE_COUNT );
+	}
+	virtual ObjectNameOverlayMode getObjectNameOverlayMode( void ) const { return m_objectNameOverlayMode; }
+	virtual Bool isObjectNameOverlayOn( void ) const { return m_objectNameOverlayMode != OBJECT_NAME_OVERLAY_OFF; }
+	virtual void toggleParticleNameOverlay( void ) { m_particleNameOverlayOn = !m_particleNameOverlayOn; }
+	virtual Bool isParticleNameOverlayOn( void ) const { return m_particleNameOverlayOn; }
+	// TheSuperHackers @feature The CommandSet an object uses. Independent of the name overlay: alone
+	// it takes the object name's line, and with the name on it is drawn to the right of it.
+	virtual void toggleCommandSetOverlay( void ) { m_commandSetOverlayOn = !m_commandSetOverlayOn; }
+	virtual Bool isCommandSetOverlayOn( void ) const { return m_commandSetOverlayOn; }
+	// TheSuperHackers @feature The WeaponSet flags an object currently has, drawn under the command
+	// set. Independent of the other overlays: it shows only when toggled on.
+	virtual void toggleWeaponSetOverlay( void ) { m_weaponSetOverlayOn = !m_weaponSetOverlayOn; }
+	virtual Bool isWeaponSetOverlayOn( void ) const { return m_weaponSetOverlayOn; }
+	// TheSuperHackers @feature The Armor an object currently uses, drawn under the weapons. Shows
+	// only when toggled on.
+	virtual void toggleArmorSetOverlay( void ) { m_armorSetOverlayOn = !m_armorSetOverlayOn; }
+	virtual Bool isArmorSetOverlayOn( void ) const { return m_armorSetOverlayOn; }
+#endif
+	void freeMessageResources();				///< free resources for the ui messages
+	void freeCustomUiResources();				///< free resources for custom ui elements
 	Color getMessageColor(Bool altColor) { return (altColor)?m_messageColor2:m_messageColor1; }
-	
+
 	// interface for military style messages
 	virtual void militarySubtitle( const AsciiString& label, Int duration );			// time in milliseconds
-	virtual void removeMilitarySubtitle( void );
-	
+	virtual void removeMilitarySubtitle();
+
 	// for can't build messages
 	virtual void displayCantBuildMessage( LegalBuildCode lbc ); ///< display message to use as to why they can't build here
 
@@ -401,13 +589,13 @@ public:  // ********************************************************************
 	virtual void createMouseoverHint( const GameMessage *msg );	///< An object is mouse hovered over, start hint if any
 	virtual void createCommandHint( const GameMessage *msg );		///< Used by HintSpy. Someone is selected so generate the right Cursor for the potential action
 	virtual void createGarrisonHint( const GameMessage *msg );  ///< A garrison command has occurred, start graphical "hint"
-	
+
 	virtual void addSuperweapon(Int playerIndex, const AsciiString& powerName, ObjectID id, const SpecialPowerTemplate *powerTemplate);
 	virtual Bool removeSuperweapon(Int playerIndex, const AsciiString& powerName, ObjectID id, const SpecialPowerTemplate *powerTemplate);
 	virtual void objectChangedTeam(const Object *obj, Int oldPlayerIndex, Int newPlayerIndex);	// notification for superweapons, etc
 
 	virtual void setSuperweaponDisplayEnabledByScript( Bool enable );	///< Set the superweapon display enabled or disabled
-	virtual Bool getSuperweaponDisplayEnabledByScript( void ) const;				///< Get the current superweapon display status
+	virtual Bool getSuperweaponDisplayEnabledByScript() const;				///< Get the current superweapon display status
 
 	virtual void hideObjectSuperweaponDisplayByScript(const Object *obj);
 	virtual void showObjectSuperweaponDisplayByScript(const Object *obj);
@@ -418,74 +606,95 @@ public:  // ********************************************************************
 
 	// mouse mode interface
 	virtual void setScrolling( Bool isScrolling );							///< set right-click scroll mode
-	virtual Bool isScrolling( void );														///< are we scrolling?
+	virtual Bool isScrolling();														///< are we scrolling?
 	virtual void setSelecting( Bool isSelecting );							///< set drag select mode
-	virtual Bool isSelecting( void );														///< are we selecting?
+	virtual Bool isSelecting();														///< are we selecting?
 	virtual void setScrollAmount( Coord2D amt );								///< set scroll amount
-	virtual Coord2D getScrollAmount( void );										///< get scroll amount
+	virtual Coord2D getScrollAmount();										///< get scroll amount
 
 	// gui command interface
 	virtual void setGUICommand( const CommandButton *command );				///< the command has been clicked in the UI and needs additional data
-	virtual const CommandButton *getGUICommand( void ) const;								///< get the pending gui command
+	virtual const CommandButton *getGUICommand() const;								///< get the pending gui command
+
+	// N-point (NEED_N_TARGET_POS) special power selection: the target clicks are captured client-side
+	// and commit nothing; only the final click dispatches. RADIUS_ANCHORED_AREA additionally captures a
+	// first "anchor" click that defines the constraint area but is never a delivered target. Right-click
+	// cancels (via setGUICommand). The chronosphere is the N=2 case.
+	virtual void addPendingSpecialPowerLocation( const Coord3D *loc );							///< append an accepted target point (+ spawn a marker)
+	virtual const std::vector<Coord3D>& getPendingSpecialPowerLocations( void ) const { return m_pendingSpecialPowerLocations; }
+	virtual Int getPendingSpecialPowerLocationCount( void ) const { return (Int)m_pendingSpecialPowerLocations.size(); }
+	virtual Bool hasPendingSpecialPowerLocations( void ) const { return !m_pendingSpecialPowerLocations.empty() || m_hasSpecialPowerAreaAnchor; }
+	virtual void setSpecialPowerAreaAnchor( const Coord3D *loc );									///< store the RADIUS_ANCHORED_AREA anchor (constraint-only, + spawn a marker)
+	virtual const Coord3D *getSpecialPowerAreaAnchor( void ) const { return &m_specialPowerAreaAnchor; }
+	virtual Bool hasSpecialPowerAreaAnchor( void ) const { return m_hasSpecialPowerAreaAnchor; }
+	virtual void clearPendingSpecialPowerLocations( void );												///< clear target points + anchor + all markers
+	virtual Bool getSpecialPowerTargetAreaConstraint( const CommandButton *cmd, Coord3D &outCenter, Real &outRadius ) const;	///< active target-phase area constraint (anchor/first/prev), false if none
+	virtual Bool clampToSpecialPowerTargetArea( const CommandButton *cmd, Coord3D &pos ) const;		///< clamp pos into the active constraint area; returns TRUE if a constraint applied
 
 	// build interface
 	virtual void placeBuildAvailable( const ThingTemplate *build, Drawable *buildDrawable );				///< built thing being placed
-	virtual const ThingTemplate *getPendingPlaceType( void );					///< get item we're trying to place
-	virtual const ObjectID getPendingPlaceSourceObjectID( void );			///< get producing object
+	virtual const ThingTemplate *getPendingPlaceType();					///< get item we're trying to place
+	virtual ObjectID getPendingPlaceSourceObjectID();			///< get producing object
 	virtual Bool getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() const { return m_preventLeftClickDeselectionInAlternateMouseModeForOneClick; }
 	virtual void setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( Bool set ) { m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = set; }
 	virtual void setPlacementStart( const ICoord2D *start );					///< placement anchor point (for choosing angles)
 	virtual void setPlacementEnd( const ICoord2D *end );							///< set target placement point (for choosing angles)
-	virtual Bool isPlacementAnchored( void );													///< is placement arrow anchor set
+	virtual Bool isPlacementAnchored();													///< is placement arrow anchor set
 	virtual void getPlacementPoints( ICoord2D *start, ICoord2D *end );///< get the placemnt arrow points
-	virtual Real getPlacementAngle( void );														///< placement angle of drawable at cursor when placing down structures
+	virtual Real getPlacementAngle();														///< placement angle of drawable at cursor when placing down structures
 
 	// Drawable selection mechanisms
 	virtual void selectDrawable( Drawable *draw );					///< Mark given Drawable as "selected"
 	virtual void deselectDrawable( Drawable *draw );				///< Clear "selected" status from Drawable
-	virtual void deselectAllDrawables( Bool postMsg = true );							///< Clear the "select" flag from all drawables
-	virtual Int getSelectCount( void ) { return m_selectCount; }		///< Get count of currently selected drawables
-	virtual Int getMaxSelectCount( void ) { return m_maxSelectCount; }	///< Get the max number of selected drawables
-	virtual UnsignedInt getFrameSelectionChanged( void ) { return m_frameSelectionChanged; }	///< Get the max number of selected drawables
-	virtual const DrawableList *getAllSelectedDrawables( void ) const;	///< Return the list of all the currently selected Drawable IDs.
-	virtual const DrawableList *getAllSelectedLocalDrawables( void );		///< Return the list of all the currently selected Drawable IDs owned by the current player.
-	virtual Drawable *getFirstSelectedDrawable( void );							///< get the first selected drawable (if any)
-	virtual DrawableID getSoloNexusSelectedDrawableID( void ) { return m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected 
+	virtual void deselectAllDrawables();							///< Clear the "select" flag from all drawables
+	virtual Int getSelectCount() { return m_selectCount; }		///< Get count of currently selected drawables
+	virtual Int getMaxSelectCount() { return m_maxSelectCount; }	///< Get the max number of selected drawables
+	virtual UnsignedInt getFrameSelectionChanged() { return m_frameSelectionChanged; }	///< Get the max number of selected drawables
+	virtual const DrawableList *getAllSelectedDrawables() const;	///< Return the list of all the currently selected Drawable IDs.
+	virtual const DrawableList *getAllSelectedLocalDrawables();		///< Return the list of all the currently selected Drawable IDs owned by the current player.
+	virtual Drawable *getFirstSelectedDrawable();							///< get the first selected drawable (if any)
+	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
 	virtual Bool isDrawableSelected( DrawableID idToCheck ) const;	///< Return true if the selected ID is in the drawable list
-	virtual Bool isAnySelectedKindOf( KindOfType kindOf ) const;		///< is any selected object a kind of 
+	virtual Bool areAllObjectsSelected(const std::vector<Object*>& objectsToCheck) const;	///< Return true if all of the selected objects are in the drawable list
+	virtual Bool isAnySelectedKindOf( KindOfType kindOf ) const;		///< is any selected object a kind of
 	virtual Bool isAllSelectedKindOf( KindOfType kindOf ) const;		///< are all selected objects a kind of
 
-	virtual void setRadiusCursor(RadiusCursorType r, const SpecialPowerTemplate* sp, WeaponSlotType wslot);
-	virtual void setRadiusCursorNone() { setRadiusCursor(RADIUSCURSOR_NONE, NULL, PRIMARY_WEAPON); }
+	virtual void setRadiusCursor(RadiusCursorType r, const SpecialPowerTemplate* sp, WeaponSlotType wslot, Real radiusOverride = -1.0f);
+	virtual void setRadiusCursorNone() { setRadiusCursor(RADIUSCURSOR_NONE, nullptr, PRIMARY_WEAPON); }
 
 	virtual void setInputEnabled( Bool enable );										///< Set the input enabled or disabled
-	virtual Bool getInputEnabled( void ) { return m_inputEnabled; }	///< Get the current input status
+	virtual Bool getInputEnabled() { return m_inputEnabled; }	///< Get the current input status
 
 	virtual void disregardDrawable( Drawable *draw );				///< Drawable is being destroyed, clean up any UI elements associated with it
 
-	virtual void preDraw( void );														///< Logic which needs to occur before the UI renders
-	virtual void draw( void ) = 0;													///< Render the in-game user interface
-	virtual void postDraw( void );													///< Logic which needs to occur after the UI renders
+	virtual void preDraw();														///< Logic which needs to occur before the UI renders
+	virtual void draw() override = 0;													///< Render the in-game user interface
+	virtual void postDraw();													///< Logic which needs to occur after the UI renders
+	virtual void postWindowDraw();											///< Logic which needs to occur after the WindowManager has repainted the menus
 
-	/// Ingame video playback 
+	/// Ingame video playback
 	virtual void playMovie( const AsciiString& movieName );
-	virtual void stopMovie( void );
-	virtual VideoBuffer* videoBuffer( void );
+	virtual void stopMovie();
+	virtual VideoBuffer* videoBuffer();
 
-	/// Ingame cameo video playback 
+	/// Ingame cameo video playback
 	virtual void playCameoMovie( const AsciiString& movieName );
-	virtual void stopCameoMovie( void );
-	virtual VideoBuffer* cameoVideoBuffer( void );
+	virtual void stopCameoMovie();
+	virtual VideoBuffer* cameoVideoBuffer();
 
-  // mouse over information	
-	virtual DrawableID getMousedOverDrawableID( void ) const;	///< Get drawble ID of drawable under cursor
-	
+  // mouse over information
+	virtual DrawableID getMousedOverDrawableID() const;	///< Get drawble ID of drawable under cursor
+
 	/// Set the ingame flag as to if we have the Quit menu up or not
 	virtual void setQuitMenuVisible( Bool t ) { m_isQuitMenuVisible = t; }
-	virtual Bool isQuitMenuVisible( void ) const { return m_isQuitMenuVisible; }
+	virtual Bool isQuitMenuVisible() const { return m_isQuitMenuVisible; }
 
 	// INI file parsing
-	virtual const FieldParse* getFieldParse( void ) const { return s_fieldParseTable; }
+	virtual const FieldParse* getFieldParse() const { return s_fieldParseTable; }
+
+	// Generic "RadiusCursor" parser: cursor type is the token after the keyword (e.g. "GUARD_AREA"),
+	// then the RadiusDecalTemplate fields; stores into m_radiusCursors[type].
+	static void parseRadiusCursor( INI* ini, void* instance, void* store, const void* userData );
 
 
 	//Provides a global way to determine whether or not we can issue orders to what we have selected.
@@ -505,43 +714,51 @@ public:  // ********************************************************************
 	virtual Int selectMatchingAcrossMap();                            ///< selects matching units across map
 	virtual Int selectMatchingAcrossRegion( IRegion2D *region );			// -1 = no locally-owned selection, 0+ = # of units selected
 
-	virtual Int selectAllUnitsByType(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);                
-	virtual Int selectAllUnitsByTypeAcrossScreen(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);                         
-	virtual Int selectAllUnitsByTypeAcrossMap(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);                            
-	virtual Int selectAllUnitsByTypeAcrossRegion( IRegion2D *region, KindOfMaskType mustBeSet, KindOfMaskType mustBeClear );			
-	
+	virtual Int selectAllUnitsByType(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);
+	virtual Int selectAllUnitsByTypeAcrossScreen(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);
+	virtual Int selectAllUnitsByTypeAcrossMap(KindOfMaskType mustBeSet, KindOfMaskType mustBeClear);
+	virtual Int selectAllUnitsByTypeAcrossRegion( IRegion2D *region, KindOfMaskType mustBeSet, KindOfMaskType mustBeClear );
+
 	virtual void buildRegion( const ICoord2D *anchor, const ICoord2D *dest, IRegion2D *region );  ///< builds a region around the specified coordinates
 
-	virtual Bool getDisplayedMaxWarning( void ) { return m_displayedMaxWarning; }
+	virtual Bool getDisplayedMaxWarning() { return m_displayedMaxWarning; }
 	virtual void setDisplayedMaxWarning( Bool selected ) { m_displayedMaxWarning = selected; }
 
 	// Floating Test Methods
 	virtual void addFloatingText(const UnicodeString& text,const Coord3D * pos, Color color);
 
 	// Drawable caption stuff
-	AsciiString	getDrawableCaptionFontName( void )	{ return m_drawableCaptionFont; }
-	Int					getDrawableCaptionPointSize( void )	{ return m_drawableCaptionPointSize; }
-	Bool				isDrawableCaptionBold( void )				{ return m_drawableCaptionBold; }
-	Color				getDrawableCaptionColor( void )			{ return m_drawableCaptionColor; }
+	AsciiString	getDrawableCaptionFontName()	{ return m_drawableCaptionFont; }
+	Int					getDrawableCaptionPointSize()	{ return m_drawableCaptionPointSize; }
+	Bool				isDrawableCaptionBold()				{ return m_drawableCaptionBold; }
+	Color				getDrawableCaptionColor()			{ return m_drawableCaptionColor; }
 
-	inline Bool shouldMoveRMBScrollAnchor( void ) { return m_moveRMBScrollAnchor; }
+	Bool shouldMoveRMBScrollAnchor() { return m_moveRMBScrollAnchor; }
 
-	Bool isClientQuiet( void ) const			{ return m_clientQuiet; }
-	Bool isInWaypointMode( void ) const			{ return m_waypointMode; }
-	Bool isInForceAttackMode( void ) const	{ return m_forceAttackMode; }
-	Bool isInForceMoveToMode( void ) const	{ return m_forceMoveToMode; }
-	Bool isInPreferSelectionMode( void ) const { return m_preferSelection; }
+	Bool isClientQuiet() const			{ return m_clientQuiet; }
+	Bool isInWaypointMode() const			{ return m_waypointMode; }
+	Bool isInForceAttackMode() const	{ return m_forceAttackMode; }
+	Bool isInForceMoveToMode() const	{ return m_forceMoveToMode; }
+	Bool isInPreferSelectionMode() const { return m_preferSelection; }
 
 	void setClientQuiet( Bool enabled )  { m_clientQuiet = enabled; }
 	void setWaypointMode( Bool enabled )		{ m_waypointMode = enabled; }
 	void setForceMoveMode( Bool enabled )		{ m_forceMoveToMode = enabled; }
 	void setForceAttackMode( Bool enabled )		{ m_forceAttackMode = enabled; }
 	void setPreferSelectionMode( Bool enabled )		{ m_preferSelection = enabled; }
-	
-	void toggleAttackMoveToMode( void )				{ m_attackMoveToMode = !m_attackMoveToMode; }
-	Bool isInAttackMoveToMode( void ) const		{ return m_attackMoveToMode; }
-	void clearAttackMoveToMode( void )				{ m_attackMoveToMode = FALSE; }
-	
+
+	enum ArmedMoveMode
+	{
+		ARMED_MOVE_NONE,
+		ARMED_MOVE_ATTACK,
+		ARMED_MOVE_REVERSE
+	};
+	void toggleAttackMoveToMode()				{ m_armedMoveMode = (m_armedMoveMode == ARMED_MOVE_ATTACK) ? ARMED_MOVE_NONE : ARMED_MOVE_ATTACK; }
+	void toggleReverseMoveToMode()			{ m_armedMoveMode = (m_armedMoveMode == ARMED_MOVE_REVERSE) ? ARMED_MOVE_NONE : ARMED_MOVE_REVERSE; }
+	Bool isInAttackMoveToMode() const		{ return m_armedMoveMode == ARMED_MOVE_ATTACK; }
+	Bool isInReverseMoveToMode() const	{ return m_armedMoveMode == ARMED_MOVE_REVERSE; }
+	void clearArmedMoveMode()						{ m_armedMoveMode = ARMED_MOVE_NONE; }
+
 	void setCameraRotateLeft( Bool set )		{ m_cameraRotatingLeft = set; }
 	void setCameraRotateRight( Bool set )		{ m_cameraRotatingRight = set; }
 	void setCameraZoomIn( Bool set )				{ m_cameraZoomingIn = set; }
@@ -556,9 +773,22 @@ public:  // ********************************************************************
 
 	virtual void addIdleWorker( Object *obj );
 	virtual void removeIdleWorker( Object *obj, Int playerNumber );
-	virtual void selectNextIdleWorker( void );
+	virtual void selectNextIdleWorker();
+	static std::vector<Object*> getUniqueIdleWorkers(const ObjectList& idleWorkers);
 
-	virtual void recreateControlBar( void );
+	virtual void recreateControlBar();
+	virtual void refreshCustomUiResources();
+	virtual void refreshNetworkLatencyResources();
+	virtual void refreshRenderFpsResources();
+	virtual void refreshSystemTimeResources();
+	virtual void refreshGameTimeResources();
+	virtual void refreshPlayerInfoListResources();
+#if defined(GENERALS_ONLINE)
+	virtual void refreshObserverNotificationResources();
+	void toggleObserverOverlay();
+	void notifyGeneralPromotion( Player *player, ScienceType science );
+	void notifySpecialPowerUsed( Player *player, const SpecialPowerTemplate *powerTemplate );
+#endif
 
 	virtual void disableTooltipsUntil(UnsignedInt frameNum);
 	virtual void clearTooltipsDisabled();
@@ -571,39 +801,68 @@ public:  // ********************************************************************
 	void setMoveRMBScrollAnchor(Bool b) { m_moveRMBScrollAnchor = b; }
 
 private:
-	virtual Int getIdleWorkerCount( void );
+	virtual Int getIdleWorkerCount();
 	virtual Object *findIdleWorker( Object *obj);
-	virtual void showIdleWorkerLayout( void );
-	virtual void hideIdleWorkerLayout( void );
-	virtual void updateIdleWorker( void );
-	virtual void resetIdleWorker( void );
+	virtual void showIdleWorkerLayout();
+	virtual void hideIdleWorkerLayout();
+	virtual void updateIdleWorker();
+	virtual void resetIdleWorker();
+
+	void updateRenderFpsString();
+	void drawNetworkLatency(Int &x, Int &y);
+	void drawRenderFps(Int &x, Int &y);
+	void drawSystemTime(Int &x, Int &y);
+	void drawGameTime();
+	void drawPlayerInfoList();
+#if defined(GENERALS_ONLINE)
+	void drawObserverNotifications();
+	void checkObserverMilestones();
+	void addObserverNotification( const UnicodeString& message, Color color );
+	void resetObserverNotifications();
+#endif
 
 public:
 	void registerWindowLayout(WindowLayout *layout); // register a layout for updates
 	void unregisterWindowLayout(WindowLayout *layout); // stop updates for this layout
 
-  void triggerDoubleClickAttackMoveGuardHint( void );
-  
+  void triggerDoubleClickAttackMoveGuardHint();
+  // TheSuperHackers @feature Flash the targeting decal where a quick cast landed.
+  void triggerQuickCastHint( const CommandButton *command, const ICoord2D &screenPos );
+
+  // TheSuperHackers @feature Queued quick cast -- remember a cast requested while the ability
+  // was still recharging, and fire it once the logic side says it is ready.
+  void queueQuickCast( const CommandButton *command, const ICoord2D &screenPos );
+  void cancelQueuedQuickCast( void );
+  Bool hasQueuedQuickCast( void ) const { return m_queuedCastCommandName.isNotEmpty(); }
+  void updateQueuedQuickCast( void );
+
 
 public:
 	// World 2D animation methods
-	void addWorldAnimation( Anim2DTemplate *animTemplate, 
+	void addWorldAnimation( Anim2DTemplate *animTemplate,
 													const Coord3D *pos,
 													WorldAnimationOptions options,
 													Real durationInSeconds,
 													Real zRisePerSecond );
 
-#if defined(_DEBUG) || defined(_INTERNAL)
+#if defined(RTS_DEBUG)
 	virtual void DEBUG_addFloatingText(const AsciiString& text,const Coord3D * pos, Color color);
 #endif
 
+	const SpecialPowerTemplate* getTargetDesignatorPower();
+
 protected:
 	// snapshot methods
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess( void );
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
-protected: 
+protected:
+
+	void spawnSpecialPowerLocationMarker( const Coord3D *loc, Bool isAnchor = FALSE );	///< spawn the optional client-only marker (model + one-shot FX) + radius decal at an accepted N-point pick; isAnchor selects the ANCHORED_AREA anchor cursor/radius
+	void destroySpecialPowerLocationMarkers( void );	///< remove all N-point special power marker drawables if present
+	void destroySpecialPowerLocationDecals( void );	///< remove all N-point special power radius decals if present
+	void resolveSpecialPowerRadiusCursor( const CommandButton *command, RadiusCursorType &outType, Real &outRadius );	///< phase-aware mouse radius cursor for ANCHORED_AREA (anchor vs target)
 
 	// ----------------------------------------------------------------------------------------------
 	// Protected Types ------------------------------------------------------------------------------
@@ -613,19 +872,17 @@ protected:
 	{
 		MOVE_HINT = 0,
 		ATTACK_HINT,
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 		DEBUG_HINT,
 #endif
-		NUM_HINT_TYPES  // keep this one last
 	};
 
 	// mouse mode interface
-	enum MouseMode 
+	enum MouseMode
 	{
 		MOUSEMODE_DEFAULT = 0,
 		MOUSEMODE_BUILD_PLACE,
 		MOUSEMODE_GUI_COMMAND,
-		MOUSEMODE_MAX
 	};
 
 	enum { MAX_MOVE_HINTS = 256 };
@@ -642,13 +899,36 @@ protected:
 		DisplayString *displayString;						///< display string used to render the message
 		UnsignedInt timestamp;									///< logic frame message was created on
 		Color color;														///< color to render this in
+#if defined(GENERALS_ONLINE)
+		Bool isChat;														///< chat lives as long as GO settings say
+#endif
 	};
 	enum { MAX_UI_MESSAGES = 6 };
+
+#if defined(GENERALS_ONLINE)
+	struct ObserverNotification
+	{
+		UnicodeString message;
+		Color color;
+		UnsignedInt createdMs;
+		Bool active;
+	};
+
+	struct ObserverMilestone
+	{
+		Bool reachedLevel3;
+		Bool reachedLevel5;
+		Bool reached10kCPM;
+		Bool gotPower;
+		Bool gotHunted;
+	};
+	enum { MAX_OBSERVER_NOTIFICATIONS = 8 };
+#endif
 
 	struct MilitarySubtitleData
 	{
 		UnicodeString subtitle;										///< The complete subtitle to be drawn, each line is separated by L"\n"
-		UnsignedInt index;												///< the current index that we are at through the sibtitle
+		UnsignedInt index;												///< the current index that we are at through the subtitle
 		ICoord2D position;												///< Where on the screen the subtitle should be drawn
 		DisplayString *displayStrings[MAX_SUBTITLE_LINES];	///< We'll only allow MAX_SUBTITLE_LINES worth of display strings
 		UnsignedInt currentDisplayString;					///< contains the current display string we're on. (also lets us know the last display string allocated
@@ -660,40 +940,46 @@ protected:
 		Color color;															///< what color should we display the military subtitles
 	};
 
-	typedef std::list<Object *> ObjectList;
-	typedef std::list<Object *>::iterator ObjectListIt;
-	
 	// ----------------------------------------------------------------------------------------------
 	// Protected Methods ----------------------------------------------------------------------------
 	// ----------------------------------------------------------------------------------------------
 
-	void destroyPlacementIcons( void );													///< Destroy placement icons
-	void handleBuildPlacements( void );													///< handle updating of placement icons based on mouse pos
+	void destroyPlacementIcons();													///< Destroy placement icons
+	void handleBuildPlacements();													///< handle updating of placement icons based on mouse pos
+	Real getPlacementRangeCircleRadius( const ThingTemplate *build ) const;	///< widest weapon reach of the thing being placed, 0 when it has none
+	void updatePlacementRangeCircle( Drawable *icon );			///< put the range ring under a placement ghost, or take it away
 	void handleRadiusCursor();																	///< handle updating of "radius cursors" that follow the mouse pos
 
-	void incrementSelectCount( void ) { ++m_selectCount; }			///< Increase by one the running total of "selected" drawables
-	void decrementSelectCount( void ) { --m_selectCount; }			///< Decrease by one the running total of "selected" drawables
-	virtual View *createView( void ) = 0;												///< Factory for Views
-	void evaluateSoloNexus( Drawable *newlyAddedDrawable = NULL );
+	//void showDesignatorDecals(const SpecialPowerTemplate* powerTemplate);
+	//void hideDesignatorDecals(void);
+
+	void incrementSelectCount() { ++m_selectCount; }			///< Increase by one the running total of "selected" drawables
+	void decrementSelectCount() { --m_selectCount; }			///< Decrease by one the running total of "selected" drawables
+	virtual View *createView(bool dummy = false) = 0;								///< Factory for Views
+	void evaluateSoloNexus( Drawable *newlyAddedDrawable = nullptr );
 
 	/// expire a hint from of the specified type at the hint index
 	void expireHint( HintType type, UnsignedInt hintIndex );
 
-	void createControlBar( void );			///< create the control bar user interface
-	void createReplayControl( void );		///< create the replay control window
+	void createControlBar();			///< create the control bar user interface
+	void createReplayControl();		///< create the replay control window
 
 	void setMouseCursor(Mouse::MouseCursor c);
 
-	
-	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = NULL );  ///< internal workhorse for adding plain text for messages
+
+#if defined(GENERALS_ONLINE)
+	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr, Bool isChat = FALSE );  ///< internal workhorse for adding plain text for messages
+#else
+	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr );  ///< internal workhorse for adding plain text for messages
+#endif
 	void removeMessageAtIndex( Int i );				///< remove the message at index i
 
-	void updateFloatingText( void );						///< Update function to move our floating text
-	void drawFloatingText( void );							///< Draw all our floating text
-	void clearFloatingText( void );							///< clear the floating text list
+	void updateFloatingText();						///< Update function to move our floating text
+	void drawFloatingText();							///< Draw all our floating text
+	void clearFloatingText();							///< clear the floating text list
 
-	void clearWorldAnimations( void );					///< delete all world animations
-	void updateAndDrawWorldAnimations( void );	///< update and draw visible world animations
+	void clearWorldAnimations();					///< delete all world animations
+	void updateAndDrawWorldAnimations();	///< update and draw visible world animations
 
 	SuperweaponInfo* findSWInfo(Int playerIndex, const AsciiString& powerName, ObjectID id, const SpecialPowerTemplate *powerTemplate);
 
@@ -718,6 +1004,11 @@ protected:
 	MoveHintStruct							m_moveHint[ MAX_MOVE_HINTS ];
 	Int													m_nextMoveHint;
 	const CommandButton *				m_pendingGUICommand;										///< GUI command that needs additional interaction from the user
+	std::vector<Coord3D>				m_pendingSpecialPowerLocations;					///< accepted target points for a NEED_N_TARGET_POS power (in click order)
+	Bool												m_hasSpecialPowerAreaAnchor;						///< TRUE once a RADIUS_ANCHORED_AREA anchor is captured
+	Coord3D											m_specialPowerAreaAnchor;								///< the RADIUS_ANCHORED_AREA anchor (constraint only, never delivered)
+	std::vector<Drawable*>			m_specialPowerLocationMarkers;					///< client-only marker drawables shown at each accepted point/anchor
+	std::vector<RadiusDecal*>		m_specialPowerLocationDecals;						///< client-only radius decals shown at each accepted point/anchor (heap-owned; RadiusDecal copy is broken)
 	BuildProgress								m_buildProgress[ MAX_BUILD_PROGRESS ];	///< progress for building units
 	const ThingTemplate *				m_pendingPlaceType;											///< type of built thing we're trying to place
 	ObjectID										m_pendingPlaceSourceObjectID;						///< source object of the thing constructing the item
@@ -730,9 +1021,25 @@ protected:
 	Int													m_maxSelectCount;												///< Max number of objects to select
 	UnsignedInt									m_frameSelectionChanged;								///< Frame when the selection last changed.
 
-  Int                         m_duringDoubleClickAttackMoveGuardHintTimer; ///< Frames left to draw the doubleClickFeedbackTimer 
-  Coord3D                     m_duringDoubleClickAttackMoveGuardHintStashedPosition; 
-  
+  Int                         m_duringDoubleClickAttackMoveGuardHintTimer; ///< Frames left to draw the doubleClickFeedbackTimer
+  Coord3D                     m_duringDoubleClickAttackMoveGuardHintStashedPosition;
+  // TheSuperHackers @feature Quick cast indicator, same shape as the hint above.
+  Int                         m_quickCastHintTimer;
+  Coord3D                     m_quickCastHintPosition;
+  RadiusCursorType            m_quickCastHintCursorType;
+  Real                        m_quickCastHintRadius;
+  // Remembered so the fading redraw recreates the cursor with the same radius inputs.
+  const SpecialPowerTemplate *m_quickCastHintTemplate;
+  WeaponSlotType              m_quickCastHintWeaponSlot;
+  // TheSuperHackers @feature Queued quick cast state.
+  // The command is remembered by name and re-resolved at fire time: the control bar owns
+  // the button objects and recreates them on a resolution change, so a retained pointer
+  // could dangle while the queue waits.
+  AsciiString                 m_queuedCastCommandName;
+  Coord3D                     m_queuedCastWorldPos;
+  ObjectID                    m_queuedCastSourceID;
+  UnsignedInt                 m_queuedCastExpiryFrame;
+
 	// Video playback data
 	VideoBuffer*								m_videoBuffer;			///< video playback buffer
 	VideoStreamInterface*				m_videoStream;			///< Video stream;
@@ -740,6 +1047,125 @@ protected:
 	// Video playback data
 	VideoBuffer*								m_cameoVideoBuffer;///< video playback buffer
 	VideoStreamInterface*				m_cameoVideoStream;///< Video stream;
+
+	// Network Latency Counter
+	DisplayString *							m_networkLatencyString;
+	AsciiString									m_networkLatencyFont;
+	Int													m_networkLatencyPointSize;
+	Bool												m_networkLatencyBold;
+	Coord2D											m_networkLatencyPosition;
+	Color												m_networkLatencyColor;
+	Color												m_networkLatencyDropColor;
+	UnsignedInt									m_lastNetworkLatencyFrames;
+
+	// Render FPS Counter
+	DisplayString *							m_renderFpsString;
+	DisplayString *							m_renderFpsLimitString;
+	AsciiString									m_renderFpsFont;
+	Int													m_renderFpsPointSize;
+	Bool												m_renderFpsBold;
+	Coord2D											m_renderFpsPosition;
+	Color												m_renderFpsColor;
+	Color												m_renderFpsLimitColor;
+	Color												m_renderFpsDropColor;
+	UnsignedInt									m_renderFpsRefreshMs;
+	UnsignedInt									m_lastRenderFps;
+	UnsignedInt									m_lastRenderFpsLimit;
+	UnsignedInt									m_lastRenderFpsUpdateMs;
+
+	// System Time
+	DisplayString *										m_systemTimeString;
+	AsciiString											m_systemTimeFont;
+	Int													m_systemTimePointSize;
+	Bool												m_systemTimeBold;
+	Coord2D												m_systemTimePosition;
+	Color												m_systemTimeColor;
+	Color												m_systemTimeDropColor;
+
+	// Game Time
+	DisplayString *										m_gameTimeString;
+	DisplayString *										m_gameTimeFrameString;
+	AsciiString											m_gameTimeFont;
+	Int													m_gameTimePointSize;
+	Bool												m_gameTimeBold;
+	Coord2D												m_gameTimePosition;
+	Color												m_gameTimeColor;
+	Color												m_gameTimeDropColor;
+
+	struct PlayerInfoList
+	{
+		PlayerInfoList();
+		void init(const AsciiString &fontName, Int pointSize, Bool bold);
+		void clear();
+
+		enum LabelType
+		{
+			LabelType_Team,
+			LabelType_Money,
+			LabelType_MoneyPerMinute,
+			LabelType_Rank,
+			LabelType_Xp,
+#if defined(GENERALS_ONLINE)
+			LabelType_SciencePoints,
+			LabelType_Kills,
+			LabelType_Losses,
+			LabelType_Power,
+#endif
+
+			LabelType_Count
+		};
+
+		enum ValueType
+		{
+			ValueType_Team,
+			ValueType_Money,
+			ValueType_MoneyPerMinute,
+			ValueType_Rank,
+			ValueType_Xp,
+#if defined(GENERALS_ONLINE)
+			ValueType_SciencePoints,
+			ValueType_Kills,
+			ValueType_Losses,
+			ValueType_Power,
+			ValueType_Army,
+#endif
+			ValueType_Name,
+
+			ValueType_Count
+		};
+
+		struct LastValues
+		{
+			LastValues();
+			UnsignedInt values[LabelType_Count][MAX_PLAYER_COUNT];
+			UnicodeString name[MAX_PLAYER_COUNT];
+#if defined(GENERALS_ONLINE)
+			UnicodeString army[MAX_PLAYER_COUNT];
+#endif
+		};
+
+		DisplayString *labels[LabelType_Count];
+		DisplayString *values[ValueType_Count][MAX_PLAYER_COUNT];
+		LastValues lastValues;
+	};
+
+	PlayerInfoList								m_playerInfoList;
+	AsciiString										m_playerInfoListFont;
+	Int														m_playerInfoListPointSize;
+	Bool													m_playerInfoListBold;
+	Coord2D												m_playerInfoListPosition;
+	Color													m_playerInfoListLabelColor;
+	Color													m_playerInfoListValueColor;
+	Color													m_playerInfoListDropColor;
+	UnsignedInt										m_playerInfoListBackgroundAlpha;
+#if defined(GENERALS_ONLINE)
+	Bool													m_observerOverlayHidden;
+	std::vector<ObserverNotification>	m_observerNotifications;
+	ObserverMilestone							m_observerMilestones[MAX_PLAYER_COUNT];
+	DisplayString									*m_observerNotificationString;
+	Int														m_observerNotificationPointSize;
+	UnsignedInt										m_observerMilestoneCheckFrame;
+#endif
 
 	// message data
 	UIMessage										m_uiMessages[ MAX_UI_MESSAGES ];/**< messages to display to the user, the
@@ -749,7 +1175,7 @@ protected:
 	SuperweaponMap							m_superweapons[MAX_PLAYER_COUNT];
 	Coord2D											m_superweaponPosition;
 	Real												m_superweaponFlashDuration;
-	
+
 	// superweapon timer font info
 	AsciiString									m_superweaponNormalFont;
 	Int													m_superweaponNormalPointSize;
@@ -797,6 +1223,13 @@ protected:
 	Coord2D											m_scrollAmt;
 	Bool												m_isQuitMenuVisible;
 	Bool												m_messagesOn;
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	ObjectNameOverlayMode					m_objectNameOverlayMode;
+	Bool												m_particleNameOverlayOn;
+	Bool												m_commandSetOverlayOn;
+	Bool												m_weaponSetOverlayOn;
+	Bool												m_armorSetOverlayOn;
+#endif
 
 	Color												m_messageColor1;
 	Color												m_messageColor2;
@@ -823,6 +1256,7 @@ protected:
 	RadiusDecalTemplate					m_radiusCursors[RADIUSCURSOR_COUNT];
 	RadiusDecal									m_curRadiusCursor;
 	RadiusCursorType						m_curRcType;
+	Real										m_curRcRadiusOverride;					///< last radius override applied to m_curRadiusCursor (-1 = SpecialPower default); guards phase rebuilds
 
 	//Floating Text Data
 	FloatingTextList						m_floatingTextList;				///< Our list of floating text
@@ -832,22 +1266,22 @@ protected:
 
 	PopupMessageData *					m_popupMessageData;
 	Color												m_popupMessageColor;
-	
+
  	Bool												m_waypointMode;			///< are we in waypoint plotting mode?
 	Bool												m_forceAttackMode;		///< are we in force attack mode?
 	Bool												m_forceMoveToMode;		///< are we in force move mode?
-	Bool												m_attackMoveToMode;	///< are we in attack move mode?
+	ArmedMoveMode										m_armedMoveMode;	///< move order armed for the next terrain click
 	Bool												m_preferSelection;		///< the shift key has been depressed.
 
-	Bool												m_cameraRotatingLeft; 
+	Bool												m_cameraRotatingLeft;
 	Bool 												m_cameraRotatingRight;
 	Bool 												m_cameraZoomingIn;
 	Bool 												m_cameraTrackingDrawable;
 	Bool 												m_cameraZoomingOut;
-	
+
 	Bool												m_drawRMBScrollAnchor;
 	Bool												m_moveRMBScrollAnchor;
-	Bool												m_clientQuiet;         ///< When the user clicks exit,restart, etc. this is set true 
+	Bool												m_clientQuiet;         ///< When the user clicks exit,restart, etc. this is set true
 																												///< to skip some client sounds/fx during shutdown
 
 	// World Animation Data
@@ -860,6 +1294,11 @@ protected:
 
 	DrawableID									m_soloNexusSelectedDrawableID;  ///< The drawable of the nexus, if only one angry mob is selected, otherwise, null
 
+	// UI Decals
+	//Bool							m_showDesignatorDecals;
+	const CommandButton* m_designatorCommand;
+
+
 	// ----------------------------------------------------------------------------------------------
 	// STATIC Protected Data -------------------------------------------------------------------------------
 	// ----------------------------------------------------------------------------------------------
@@ -870,5 +1309,3 @@ protected:
 
 // the singleton
 extern InGameUI *TheInGameUI;
-
-#endif // _IN_GAME_UI_H_

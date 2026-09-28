@@ -34,17 +34,16 @@
 *
 ******************************************************************************/
 
-#ifndef _DEBUGPRINT_H_
-#define _DEBUGPRINT_H_
+#pragma once
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-//! Ouput debug print messages to the debugger and log file.
+//! Output debug print messages to the debugger and log file.
 void __cdecl DebugPrint(const char* string, ...);
 void __cdecl PrintWin32Error(const char* string, ...);
 
@@ -55,11 +54,9 @@ extern char debugLogName[];
 }
 #endif
 
-#else // _DEBUG
+#else // RTS_DEBUG
 
 #define DebugPrint
 #define PrintWin32Error
 
-#endif // _DEBUG
-
-#endif // _DEBUGPRINT_H_
+#endif // RTS_DEBUG

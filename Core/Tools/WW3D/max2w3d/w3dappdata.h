@@ -36,8 +36,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef W3DAPPDATA_H
-#define W3DAPPDATA_H
+#pragma once
 
 #include <max.h>
 
@@ -59,9 +58,9 @@
 ** structure!
 **
 **  - There are bits stored in AppData for each node
-**  - These bits indicate wether something should be exported as hierarchy,
+**  - These bits indicate whether something should be exported as hierarchy,
 **    geometry (and if so, what type of geometry: mesh, collision box, bitmap, etc)
-** 
+**
 ** When we say something is "Hierarchy" that means its transform should be put
 ** into any hierarchy tree or motion being created.  In some places I used
 ** the term "Bone" which means the same thing.
@@ -113,13 +112,13 @@ bool	Is_Shatterable(INode * node);
 bool	Is_NPatchable(INode * node);
 
 /*
-** Proxy support.  If a node has a name which contains a ~ it is considered a 
+** Proxy support.  If a node has a name which contains a ~ it is considered a
 ** proxy for an application defined named object.  This overrides all other
 ** settings (in the future, we shouldn't do things this way!)
 */
 inline bool Is_Proxy(INode &node)
 {
-	return (::strchr (node.GetName (), '~') != NULL);
+	return (::strchr (node.GetName (), '~') != nullptr);
 }
 
 
@@ -145,7 +144,7 @@ inline bool Is_Proxy(INode &node)
 
 
 /*
-** The W3DAppData0Struct contains a bitfield.  These #defines are 
+** The W3DAppData0Struct contains a bitfield.  These #defines are
 ** used to interpret the bits.
 ** (gth) NOTE: AppData0 is now OBSOLETE!!!  Use W3DAppData2Struct now.
 */
@@ -186,28 +185,28 @@ inline bool Is_Proxy(INode &node)
 */
 struct W3DAppData0Struct
 {
-	W3DAppData0Struct(void) : ExportFlags(DEFAULT_EXPORT_FLAGS) {}
+	W3DAppData0Struct() : ExportFlags(DEFAULT_EXPORT_FLAGS) {}
 
-	bool	Is_Bone(void)							{ return (ExportFlags & EXPORT_BONE_FLAG) == EXPORT_BONE_FLAG; }
-	bool	Is_Geometry(void)						{ return (ExportFlags & EXPORT_GEOMETRY_FLAG) == EXPORT_GEOMETRY_FLAG; }
+	bool	Is_Bone()							{ return (ExportFlags & EXPORT_BONE_FLAG) == EXPORT_BONE_FLAG; }
+	bool	Is_Geometry()						{ return (ExportFlags & EXPORT_GEOMETRY_FLAG) == EXPORT_GEOMETRY_FLAG; }
 
-	bool	Is_Normal_Mesh(void)					{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_NORMAL_MESH; }
-	bool	Is_Camera_Aligned_Mesh(void)		{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_CAMERA_ALIGNED; }
-	bool	Is_Camera_Oriented_Mesh(void)		{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_CAMERA_ORIENTED; }
-	bool	Is_Collision_AABox(void)			{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_AABOX; }
-	bool	Is_Collision_OBBox(void)			{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_OBBOX; }
-	bool	Is_Null(void)							{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_NULL; }
+	bool	Is_Normal_Mesh()					{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_NORMAL_MESH; }
+	bool	Is_Camera_Aligned_Mesh()		{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_CAMERA_ALIGNED; }
+	bool	Is_Camera_Oriented_Mesh()		{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_CAMERA_ORIENTED; }
+	bool	Is_Collision_AABox()			{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_AABOX; }
+	bool	Is_Collision_OBBox()			{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_OBBOX; }
+	bool	Is_Null()							{ return (ExportFlags & GEOMETRY_TYPE_MASK) == GEOMETRY_TYPE_NULL; }
 
-	bool	Is_Physical_Collision(void)		{ return (ExportFlags & COLLISION_TYPE_PHYSICAL) == COLLISION_TYPE_PHYSICAL; }
-	bool	Is_Projectile_Collision(void)		{ return (ExportFlags & COLLISION_TYPE_PROJECTILE) == COLLISION_TYPE_PROJECTILE; }
-	bool	Is_Vis_Collision(void)				{ return (ExportFlags & COLLISION_TYPE_VIS) == COLLISION_TYPE_VIS; }
+	bool	Is_Physical_Collision()		{ return (ExportFlags & COLLISION_TYPE_PHYSICAL) == COLLISION_TYPE_PHYSICAL; }
+	bool	Is_Projectile_Collision()		{ return (ExportFlags & COLLISION_TYPE_PROJECTILE) == COLLISION_TYPE_PROJECTILE; }
+	bool	Is_Vis_Collision()				{ return (ExportFlags & COLLISION_TYPE_VIS) == COLLISION_TYPE_VIS; }
 
-	bool	Is_Hidden(void)						{ return (ExportFlags & EXPORT_HIDDEN_FLAG) == EXPORT_HIDDEN_FLAG; }
-	bool	Is_Two_Sided(void)					{ return (ExportFlags & EXPORT_TWO_SIDED_FLAG) == EXPORT_TWO_SIDED_FLAG; }
-	bool	Is_Vertex_Alpha(void)				{ return (ExportFlags & EXPORT_VERTEX_ALPHA_FLAG) == EXPORT_VERTEX_ALPHA_FLAG; }
-	bool	Is_ZNormals(void)						{ return (ExportFlags & EXPORT_ZNORMALS_FLAG) == EXPORT_ZNORMALS_FLAG; }
-	bool	Is_Shadow(void)						{ return (ExportFlags & EXPORT_CAST_SHADOW_FLAG) == EXPORT_CAST_SHADOW_FLAG; }
-	
+	bool	Is_Hidden()						{ return (ExportFlags & EXPORT_HIDDEN_FLAG) == EXPORT_HIDDEN_FLAG; }
+	bool	Is_Two_Sided()					{ return (ExportFlags & EXPORT_TWO_SIDED_FLAG) == EXPORT_TWO_SIDED_FLAG; }
+	bool	Is_Vertex_Alpha()				{ return (ExportFlags & EXPORT_VERTEX_ALPHA_FLAG) == EXPORT_VERTEX_ALPHA_FLAG; }
+	bool	Is_ZNormals()						{ return (ExportFlags & EXPORT_ZNORMALS_FLAG) == EXPORT_ZNORMALS_FLAG; }
+	bool	Is_Shadow()						{ return (ExportFlags & EXPORT_CAST_SHADOW_FLAG) == EXPORT_CAST_SHADOW_FLAG; }
+
 	unsigned short ExportFlags;	// what was I thinking??? (gth)
 };
 
@@ -227,7 +226,7 @@ struct W3DAppData0Struct
 
 struct W3DAppData1Struct
 {
-	W3DAppData1Struct(void) : DamageRegion(NO_DAMAGE_REGION) { }
+	W3DAppData1Struct() : DamageRegion(NO_DAMAGE_REGION) { }
 
 	/*
 	** NO_DAMAGE_REGION means the object isn't part of
@@ -252,13 +251,13 @@ struct W3DAppData1Struct
 
 struct W3DAppData2Struct
 {
-	W3DAppData2Struct(void);
+	W3DAppData2Struct();
 	W3DAppData2Struct(W3DAppData0Struct & olddata);
 
-	void	Init_With_Mesh_Defaults(void);
-	void	Init_With_Other_Defaults(void);
+	void	Init_With_Mesh_Defaults();
+	void	Init_With_Other_Defaults();
 	void	Init_From_AppData0(W3DAppData0Struct & olddata);
-	void	Update_Version(void);
+	void	Update_Version();
 
 	enum GeometryTypeEnum
 	{
@@ -267,39 +266,39 @@ struct W3DAppData2Struct
 		GEO_TYPE_OBBOX =				0x00000003,
 		GEO_TYPE_AABOX =				0x00000004,
 		GEO_TYPE_CAMERA_ORIENTED =	0x00000005,
-		GEO_TYPE_NULL =				0x00000006,	
+		GEO_TYPE_NULL =				0x00000006,
 		GEO_TYPE_DAZZLE =				0x00000007,
 		GEO_TYPE_AGGREGATE =			0x00000008,
 	};
-	
+
 	/*
 	** Read Access
 	*/
-	bool	Is_Bone(void) const							{ return (ExportFlags & EXPORT_TRANSFORM) == EXPORT_TRANSFORM; }
-	bool	Is_Geometry(void)	const						{ return (ExportFlags & EXPORT_GEOMETRY) == EXPORT_GEOMETRY; }
+	bool	Is_Bone() const							{ return (ExportFlags & EXPORT_TRANSFORM) == EXPORT_TRANSFORM; }
+	bool	Is_Geometry()	const						{ return (ExportFlags & EXPORT_GEOMETRY) == EXPORT_GEOMETRY; }
 
-	int	Get_Geometry_Type(void)	const				{ return GeometryType; }
-	bool	Is_Normal_Mesh(void)	const					{ return GeometryType == GEO_TYPE_NORMAL_MESH; }
-	bool	Is_Camera_Aligned_Mesh(void) const		{ return GeometryType == GEO_TYPE_CAMERA_ALIGNED; }
-	bool	Is_Camera_Oriented_Mesh(void) const		{ return GeometryType == GEO_TYPE_CAMERA_ORIENTED; }
-	bool	Is_Collision_AABox(void) const			{ return GeometryType == GEO_TYPE_AABOX; }
-	bool	Is_Collision_OBBox(void) const			{ return GeometryType == GEO_TYPE_OBBOX; }
-	bool	Is_Null(void) const							{ return GeometryType == GEO_TYPE_NULL; }
-	bool	Is_Dazzle(void) const 						{ return GeometryType == GEO_TYPE_DAZZLE; }
+	int	Get_Geometry_Type()	const				{ return GeometryType; }
+	bool	Is_Normal_Mesh()	const					{ return GeometryType == GEO_TYPE_NORMAL_MESH; }
+	bool	Is_Camera_Aligned_Mesh() const		{ return GeometryType == GEO_TYPE_CAMERA_ALIGNED; }
+	bool	Is_Camera_Oriented_Mesh() const		{ return GeometryType == GEO_TYPE_CAMERA_ORIENTED; }
+	bool	Is_Collision_AABox() const			{ return GeometryType == GEO_TYPE_AABOX; }
+	bool	Is_Collision_OBBox() const			{ return GeometryType == GEO_TYPE_OBBOX; }
+	bool	Is_Null() const							{ return GeometryType == GEO_TYPE_NULL; }
+	bool	Is_Dazzle() const 						{ return GeometryType == GEO_TYPE_DAZZLE; }
 
-	bool	Is_Hidden_Enabled(void) const				{ return (GeometryFlags & GEOMETRY_FLAG_HIDDEN) == GEOMETRY_FLAG_HIDDEN; }
-	bool	Is_Two_Sided_Enabled(void) const			{ return (GeometryFlags & GEOMETRY_FLAG_TWO_SIDED) == GEOMETRY_FLAG_TWO_SIDED; }
-	bool	Is_Vertex_Alpha_Enabled(void) const		{ return (GeometryFlags & GEOMETRY_FLAG_VERTEX_ALPHA) == GEOMETRY_FLAG_VERTEX_ALPHA; }
-	bool	Is_ZNormals_Enabled(void) const			{ return (GeometryFlags & GEOMETRY_FLAG_ZNORMALS) == GEOMETRY_FLAG_ZNORMALS; }
-	bool	Is_Shadow_Enabled(void) const				{ return (GeometryFlags & GEOMETRY_FLAG_CAST_SHADOW) == GEOMETRY_FLAG_CAST_SHADOW; }
-	bool	Is_Shatterable_Enabled(void) const		{ return (GeometryFlags & GEOMETRY_FLAG_SHATTERABLE) == GEOMETRY_FLAG_SHATTERABLE; }
-	bool	Is_NPatchable_Enabled(void) const		{ return (GeometryFlags & GEOMETRY_FLAG_NPATCHABLE) == GEOMETRY_FLAG_NPATCHABLE; }
+	bool	Is_Hidden_Enabled() const				{ return (GeometryFlags & GEOMETRY_FLAG_HIDDEN) == GEOMETRY_FLAG_HIDDEN; }
+	bool	Is_Two_Sided_Enabled() const			{ return (GeometryFlags & GEOMETRY_FLAG_TWO_SIDED) == GEOMETRY_FLAG_TWO_SIDED; }
+	bool	Is_Vertex_Alpha_Enabled() const		{ return (GeometryFlags & GEOMETRY_FLAG_VERTEX_ALPHA) == GEOMETRY_FLAG_VERTEX_ALPHA; }
+	bool	Is_ZNormals_Enabled() const			{ return (GeometryFlags & GEOMETRY_FLAG_ZNORMALS) == GEOMETRY_FLAG_ZNORMALS; }
+	bool	Is_Shadow_Enabled() const				{ return (GeometryFlags & GEOMETRY_FLAG_CAST_SHADOW) == GEOMETRY_FLAG_CAST_SHADOW; }
+	bool	Is_Shatterable_Enabled() const		{ return (GeometryFlags & GEOMETRY_FLAG_SHATTERABLE) == GEOMETRY_FLAG_SHATTERABLE; }
+	bool	Is_NPatchable_Enabled() const		{ return (GeometryFlags & GEOMETRY_FLAG_NPATCHABLE) == GEOMETRY_FLAG_NPATCHABLE; }
 
-	bool	Is_Physical_Collision_Enabled(void) const		{ return (CollisionFlags & COLLISION_FLAG_PHYSICAL) == COLLISION_FLAG_PHYSICAL; }
-	bool	Is_Projectile_Collision_Enabled(void) const	{ return (CollisionFlags & COLLISION_FLAG_PROJECTILE) == COLLISION_FLAG_PROJECTILE; }
-	bool	Is_Vis_Collision_Enabled(void) const			{ return (CollisionFlags & COLLISION_FLAG_VIS) == COLLISION_FLAG_VIS; }
-	bool	Is_Camera_Collision_Enabled(void) const		{ return (CollisionFlags & COLLISION_FLAG_CAMERA) == COLLISION_FLAG_CAMERA; }
-	bool	Is_Vehicle_Collision_Enabled(void) const		{ return (CollisionFlags & COLLISION_FLAG_VEHICLE) == COLLISION_FLAG_VEHICLE; }
+	bool	Is_Physical_Collision_Enabled() const		{ return (CollisionFlags & COLLISION_FLAG_PHYSICAL) == COLLISION_FLAG_PHYSICAL; }
+	bool	Is_Projectile_Collision_Enabled() const	{ return (CollisionFlags & COLLISION_FLAG_PROJECTILE) == COLLISION_FLAG_PROJECTILE; }
+	bool	Is_Vis_Collision_Enabled() const			{ return (CollisionFlags & COLLISION_FLAG_VIS) == COLLISION_FLAG_VIS; }
+	bool	Is_Camera_Collision_Enabled() const		{ return (CollisionFlags & COLLISION_FLAG_CAMERA) == COLLISION_FLAG_CAMERA; }
+	bool	Is_Vehicle_Collision_Enabled() const		{ return (CollisionFlags & COLLISION_FLAG_VEHICLE) == COLLISION_FLAG_VEHICLE; }
 
 	/*
 	** Write Access
@@ -339,17 +338,17 @@ struct W3DAppData2Struct
 protected:
 
 	void	Set_Version(int ver)								{ ExportFlags &= ~VERSION_MASK; ExportFlags |= (ver<<VERSION_SHIFT); }
-	int	Get_Version(void)									{ return (ExportFlags & VERSION_MASK)>>VERSION_SHIFT; }
+	int	Get_Version()									{ return (ExportFlags & VERSION_MASK)>>VERSION_SHIFT; }
 
 	enum ExportFlagsEnum
 	{
 		EXPORT_TRANSFORM =					0x00000001,		// Export flags bit-field
 		EXPORT_GEOMETRY =						0x00000002,
-		
+
 		VERSION_MASK =							0xFFFF0000,		// upper 16bits is version number.
 		VERSION_SHIFT =						16,
 	};
-	
+
 	enum GeometryFlagsEnum
 	{
 		GEOMETRY_FLAG_HIDDEN =				0x00000001,		// Geometry Flags bitfield
@@ -370,8 +369,8 @@ protected:
 		COLLISION_FLAG_VEHICLE =			0x00000010,
 	};
 
-	unsigned int ExportFlags;				
-	unsigned int GeometryType;				
+	unsigned int ExportFlags;
+	unsigned int GeometryType;
 	unsigned int GeometryFlags;
 	unsigned int CollisionFlags;
 
@@ -384,7 +383,7 @@ protected:
 /*
 ** W3D Utility Dazzle App Data
 ** ----------------------------------------------------
-** This app-data struct is used to contain parameters 
+** This app-data struct is used to contain parameters
 ** specific to dazzle render objects.  It currently only
 ** contains a type name which is limited to 128 characters
 ** and some padding variables for future use.
@@ -395,7 +394,7 @@ struct W3DDazzleAppDataStruct
 	/*
 	** Constructor, zeros everything, then initializes DazzleType to "DEFAULT"
 	*/
-	W3DDazzleAppDataStruct(void);
+	W3DDazzleAppDataStruct();
 
 	/*
 	** Get the W3DAppData2Struct for a given INode and create one if
@@ -409,7 +408,3 @@ struct W3DDazzleAppDataStruct
 	unsigned int	UnUsed[4];
 	char				DazzleType[128];
 };
-
-
-#endif
-

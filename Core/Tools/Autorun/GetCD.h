@@ -31,10 +31,6 @@
 
 #pragma once
 
-#ifndef GETCD_H
-#define GETCD_H
-
-
 extern const char *	_CD_Volume_Label[];
 extern int		_Num_Volumes;
 
@@ -197,17 +193,17 @@ struct	StopType {
 #define MAX_CD_DRIVES	26
 #define NO_CD_DRIVE		-1
 
-class	GetCDClass 
+class	GetCDClass
 {
 	public:
-		GetCDClass	( void );							// This is the default constructor
-		~GetCDClass	( void );							// This is the destructor
+		GetCDClass	();							// This is the default constructor
+		~GetCDClass	();							// This is the destructor
 
-		inline	int		Get_First_CD_Drive		( void );
-		inline	int		Get_Next_CD_Drive		( void );
-		inline	int		Get_Number_Of_Drives	( void )	{ return( CDCount ); };
-		inline	int		Get_Index				( void )	{ return( CDIndex ); };
-		inline	void	Reset_Index				( void )	{ CDIndex = 0; };
+		inline	int		Get_First_CD_Drive		();
+		inline	int		Get_Next_CD_Drive		();
+		inline	int		Get_Number_Of_Drives	()	{ return( CDCount ); };
+		inline	int		Get_Index				()	{ return( CDIndex ); };
+		inline	void	Reset_Index				()	{ CDIndex = 0; };
 
 		int		Get_CD_Drive_For_This_Volume	( const char *volume_name );
 		const char *	Get_Volume_For_This_CD_Drive	( const char *path, char *volume_name );
@@ -234,7 +230,7 @@ class	GetCDClass
  *   12/4/95    ST : fixed for Win95										*
  *==========================================================================*/
 
-inline int GetCDClass::Get_First_CD_Drive(void)
+inline int GetCDClass::Get_First_CD_Drive()
 {
 	CDIndex = 0;
 	return (Get_Next_CD_Drive());
@@ -253,7 +249,7 @@ inline int GetCDClass::Get_First_CD_Drive(void)
  *    5/21/96 3:50PM ST : Created																	*
  *==================================================================================*/
 
-inline int GetCDClass::Get_Next_CD_Drive(void)
+inline int GetCDClass::Get_Next_CD_Drive()
 {
 	if (CDCount){
 		if (CDIndex >= CDCount) {
@@ -277,12 +273,12 @@ inline int GetCDClass::Get_Next_CD_Drive(void)
  *==================================================================================*/
 
 #ifdef NOT_FOR_WIN95
-class RedBookClass : public GetCDClass 
+class RedBookClass : public GetCDClass
 {
 	public:
 
-		RedBookClass(void);					// This is the default constructor
-		~RedBookClass(void);					// This is the destructor
+		RedBookClass();					// This is the default constructor
+		~RedBookClass();					// This is the destructor
 		ULONG		RedToHS(ULONG i);
 		ULONG		MSFtoRed(UBYTE m, UBYTE s, UBYTE f);
 		void		FullCDVolume(UBYTE chan);
@@ -290,8 +286,8 @@ class RedBookClass : public GetCDClass
 		void		Play_CD_MSL(UWORD min_sec, UWORD len);
 		void		PlayMSF(UBYTE startM, UBYTE startS, UBYTE startF,
 						UBYTE endM, UBYTE endS, UBYTE endF, UBYTE chan);
-		UWORD		CheckCDMusic(void);
-		void		StopCDMusic(void);
+		UWORD		CheckCDMusic();
+		void		StopCDMusic();
 
 	private:
 
@@ -318,6 +314,3 @@ extern GetCDClass		CDList;
 // Functions
 //-----------------------------------------------------------------------------
 bool  CD_Volume_Verification ( int cd_drive, char *volume_label, char *volume_to_find );
-
-
-#endif // PLAYCD_H

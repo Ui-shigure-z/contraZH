@@ -29,7 +29,7 @@ long long after you'll be dead.
 
 #include <ctype.h>
 #include <time.h>
-#ifndef _WINDOWS
+#ifndef _WIN32
 #include <sys/time.h>
 #endif
 #include "xtime.h"
@@ -88,9 +88,9 @@ static sint32 Get_Day(int month, int day, int year)
 static bit8 Get_Date_From_Day(sint32 days, OUT sint32 &year, OUT sint32 &yday)
 {
   //register long int rem;
-  register long int y;
+  long int y;
   //register const unsigned short int *ip;
- 
+
   if (days <= 365)
   {
     year=0;
@@ -102,7 +102,7 @@ static bit8 Get_Date_From_Day(sint32 days, OUT sint32 &year, OUT sint32 &yday)
   days-=365;
 
   days--;  // zero based
- 
+
   //
   // As far as I can tell there's no non-iteritive way to
   //   do this...
@@ -111,7 +111,7 @@ static bit8 Get_Date_From_Day(sint32 days, OUT sint32 &year, OUT sint32 &yday)
   {
     /* Guess a corrected year, assuming 365 days per year.  */
     long int yg = y + days / 365 - (days % 365 < 0);
- 
+
     /* Adjust DAYS and Y to match the guessed year.  */
     days -= ((yg - y) * 365
         + LEAPS_THRU_END_OF (yg - 1)
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
         }
         ydaycount++;
       }
-    } 
+    }
     printf("(%d) ",year);
   }
 ***************************************
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
   unixtime.tv_usec=0;
 
   //gettimeofday(&unixtime,&unixtzone);
-  //ttime=time(NULL);
+  //ttime=time(nullptr);
   tmtime=*gmtime(&ttime);
 
   printf("TIME->CTIME = %s\n",ctime(&ttime));
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 //
 // Construct with current clock time
 //
-Xtime::Xtime(void)
+Xtime::Xtime()
 {
   update();
 }
@@ -265,11 +265,11 @@ void Xtime::addSeconds(sint32 seconds)
 // If msec is > 1 days worth, adjust the day count
 //   & decrement the msec counter until OK.
 //
-void Xtime::normalize(void)
+void Xtime::normalize()
 {
   day_+=(msec_/86400000);
   msec_%=86400000;
- 
+
   while (msec_ < 0)
   {
     day_--;
@@ -281,18 +281,18 @@ void Xtime::normalize(void)
 // Update time to hold the current clock time
 // (breaks in 2038 :-)
 //
-void Xtime::update(void)
+void Xtime::update()
 {
   day_=719528;  // day_s from year 0 to Jan1, 1970
   msec_=0;
 
- #ifdef _WINDOWS
+ #ifdef _WIN32
   struct _timeb    wintime;
   _ftime(&wintime);
   addSeconds(wintime.time);
   msec_+=wintime.millitm;
  #endif
- #ifndef _WINDOWS
+ #ifndef _WIN32
   struct timeval   unixtime;
   struct timezone  unixtzone;
   gettimeofday(&unixtime,&unixtzone);
@@ -318,14 +318,14 @@ bit8 Xtime::FormatTime(char *out, const char *format)
   int ampmflag = 0;
   out[0]=0;
   const char *ptr=format;
- 
+
   if (*ptr=='"') ptr++;  // skip past open quote if exists
- 
+
   while (*ptr!=0)
   {
     if (lastWasH>0)
       lastWasH--;
- 
+
     if (isspace(*ptr))
     {
       if (lastWasH==1) lastWasH=2;
@@ -501,7 +501,7 @@ bit8 Xtime::FormatTime(char *out, const char *format)
   }
   return(TRUE);
 }
- 
+
 /**************************************
 
  REPLACE THIS CRAP
@@ -567,11 +567,11 @@ bit8 Xtime::ParseDate(char *in)
 
   // The next part of the time is OPTIONAL (+minutes)
 
-  // first skip past the seconds 
+  // first skip past the seconds
   while ((isdigit(*ptr))&&(*ptr!=0)) ptr++;
   if (*ptr==0) return(TRUE);
 
-  // skip past any spaces 
+  // skip past any spaces
   while ((isspace(*ptr))&&(*ptr!=0)) ptr++;
   if (*ptr!='+')
   {
@@ -584,7 +584,7 @@ bit8 Xtime::ParseDate(char *in)
     //printf("\nPTR WAS 0\n");
     return(TRUE);
   }
- 
+
   minOffset=atol(ptr);
   //printf("\n\nAdding %d minutes!\n\n",minOffset);
   sec+=minOffset*60;  // add the minutes as seconds
@@ -623,13 +623,13 @@ void Xtime::PrintDate(char *out) const
 ********************************************/
 
 // Get day_s since year 0
-sint32 Xtime::getDay(void) const
+sint32 Xtime::getDay() const
 {
   return(day_);
 }
 
 // Get msecs since start of day
-sint32 Xtime::getMsec(void) const
+sint32 Xtime::getMsec() const
 {
   return(msec_);
 }
@@ -686,7 +686,7 @@ bit8 Xtime::setTime(int month, int mday, int year, int hour, int minute, int sec
 
 
 
-int Xtime::getYDay(void) const   // Day of Year  (1-366)  (366 = leap yr)
+int Xtime::getYDay() const   // Day of Year  (1-366)  (366 = leap yr)
 {
 	int year;
 	sint32 dayofyear;
@@ -699,7 +699,7 @@ int Xtime::getYDay(void) const   // Day of Year  (1-366)  (366 = leap yr)
 //
 // Get all the components of the time in the usual normalized format.
 //
-// Most of the uglyness is in Get_Date_From_Day() 
+// Most of the uglyness is in Get_Date_From_Day()
 //
 bit8 Xtime::getTime(int &month, int &mday, int &year, int &hour, int &minute, int &second) const
 {
@@ -728,7 +728,7 @@ bit8 Xtime::getTime(int &month, int &mday, int &year, int &hour, int &minute, in
 
   // Whew! Now all we have to do is figure out H/M/S from the msec!
   hour=(msec_/3600000)%24;  // 1000*60*60
-  minute=(msec_/60000)%60;  // 1000*60 
+  minute=(msec_/60000)%60;  // 1000*60
   second=(msec_/ 1000)%60;  // 1000
 
   return(TRUE);
@@ -738,32 +738,32 @@ bit8 Xtime::getTime(int &month, int &mday, int &year, int &hour, int &minute, in
 // These are for getting components of the time in the
 //   standard ranges.  Like Day 1-31, Second 0-59, etc...
 //
-int Xtime::getSecond(void) const
+int Xtime::getSecond() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
   return(second);
 }
-int Xtime::getMinute(void) const
+int Xtime::getMinute() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
   return(minute);
 }
-int Xtime::getHour(void) const
+int Xtime::getHour() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
   return(hour);
 }
-int Xtime::getMDay(void) const
+int Xtime::getMDay() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
   return(mday);
 }
 
-int Xtime::getMonth(void) const
+int Xtime::getMonth() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
@@ -771,7 +771,7 @@ int Xtime::getMonth(void) const
 }
 
 // based at year 0 (real 0, not 1970)
-int Xtime::getYear(void) const
+int Xtime::getYear() const
 {
   int month,mday,year,hour,minute,second;
   getTime(month, mday, year, hour, minute, second);
@@ -795,7 +795,7 @@ bit8 Xtime::setSecond(sint32 sec)
 //
 bit8 Xtime::setMinute(sint32 min)
 {
-  sint32 minute=(msec_/60000)%60;  // 1000*60 
+  sint32 minute=(msec_/60000)%60;  // 1000*60
   msec_-=(minute*60000);
   msec_+=(min*60000);
   return(TRUE);
@@ -845,7 +845,7 @@ bit8 Xtime::setMonth(sint32 _month)
 
 
 //
-// Modify the day of the month 
+// Modify the day of the month
 //
 bit8 Xtime::setMDay(sint32 _mday)
 {
@@ -881,7 +881,7 @@ int   Xtime::compare(const Xtime &other) const
   else
     return(-1);
 }
-  
+
 
 bit8 Xtime::operator == ( const Xtime &other ) const
 {

@@ -43,7 +43,7 @@
 #include "Common/WellKnownKeys.h"
 #include "wbview3d.h"
 
-BuildList *BuildList::m_staticThis = NULL;
+BuildList *BuildList::m_staticThis = nullptr;
 Bool BuildList::m_updating = false;
 
 #define BUILDLIST_OPTION_PANEL "BuildListOptionPanel"
@@ -56,7 +56,7 @@ static int s_qtPowerPercent = 0;
 // BuildList dialog
 
 
-BuildList::BuildList(CWnd* pParent /*=NULL*/)
+BuildList::BuildList(CWnd* pParent /*=nullptr*/)
 {
 	//{{AFX_DATA_INIT(BuildList)
 		// NOTE: the ClassWizard will add member initialization here
@@ -64,7 +64,7 @@ BuildList::BuildList(CWnd* pParent /*=NULL*/)
 }
 
 
-BuildList::~BuildList(void)
+BuildList::~BuildList()
 {
 }
 
@@ -107,7 +107,7 @@ END_MESSAGE_MAP()
 // BuildList message handlers
 
 /// Setup the controls in the dialog.
-BOOL BuildList::OnInitDialog() 
+BOOL BuildList::OnInitDialog()
 {
 	CDialog::OnInitDialog();
 
@@ -139,11 +139,11 @@ void BuildList::OnForcedShowObjects()
 }
 
 /// Load the sides in the sides list.
-void BuildList::loadSides(void) 
+void BuildList::loadSides()
 {
 	CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_SIDES_COMBO);
 	if (!pCombo) {
-		DEBUG_LOG(("*** BuildList::loadSides Missing resource!!!\n"));
+		DEBUG_LOG(("*** BuildList::loadSides Missing resource!!!"));
 		return;
 	}
 	pCombo->ResetContent();
@@ -163,14 +163,14 @@ void BuildList::loadSides(void)
 }
 
 /// Updates the current side, loading it's build list.
-void BuildList::updateCurSide(void) 
+void BuildList::updateCurSide()
 {
 	if (TheSidesList->getNumSides() < 1)
 		return;
 
 	CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_SIDES_COMBO);
 	if (!pCombo) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!!\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!!"));
 		return;
 	}
 	if (m_curSide<0 || m_curSide >= TheSidesList->getNumSides()) {
@@ -179,32 +179,32 @@ void BuildList::updateCurSide(void)
 	if (pCombo->GetCurSel() != m_curSide) {
 		pCombo->SetCurSel(m_curSide);
 	}
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
 	pList->ResetContent();
-	
+
 	BuildListInfo *pBuild = pSide->getBuildList();
 	while (pBuild) {
-		const char *pName = pBuild->getTemplateName().str(); 
+		const char *pName = pBuild->getTemplateName().str();
 		pList->AddString(pName);
 		pBuild = pBuild->getNext();
 	}
 	OnSelchangeBuildList();
 }
 
-void BuildList::OnSelchangeSidesCombo() 
+void BuildList::OnSelchangeSidesCombo()
 {
 	if (TheSidesList->getNumSides() < 1)
 		return;
 
 	CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_SIDES_COMBO);
 	if (!pCombo) {
-		DEBUG_LOG(("*** BuildList::OnSelchangeSidesCombo Missing resource!!!\n"));
+		DEBUG_LOG(("*** BuildList::OnSelchangeSidesCombo Missing resource!!!"));
 		return;
 	}
 
@@ -217,14 +217,14 @@ void BuildList::OnSelchangeSidesCombo()
 		}
 		OnSelchangeBuildList();
 	}
-	
+
 }
 
-void BuildList::OnMoveUp() 
+void BuildList::OnMoveUp()
 {
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
 	m_curBuildList = pList->GetCurSel();
@@ -239,10 +239,10 @@ void BuildList::OnMoveUp()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 	Int newSel = m_curBuildList-1;
-	pSide->reorderInBuildList(pBuildInfo, newSel); 
+	pSide->reorderInBuildList(pBuildInfo, newSel);
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
 	pDoc->AddAndDoUndoable(pUndo);
@@ -253,11 +253,11 @@ void BuildList::OnMoveUp()
 	OnSelchangeBuildList();
 }
 
-void BuildList::OnMoveDown() 
+void BuildList::OnMoveDown()
 {
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
 	if (m_curBuildList < 0) return;
@@ -271,15 +271,15 @@ void BuildList::OnMoveDown()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
-	if (pBuildInfo->getNext() == NULL) {
-		// there isn't one to move down after. 
+	if (pBuildInfo->getNext() == nullptr) {
+		// there isn't one to move down after.
 		return;
 	}
 	Int newSel = m_curBuildList+1;
 
-	pSide->reorderInBuildList(pBuildInfo, newSel); 
+	pSide->reorderInBuildList(pBuildInfo, newSel);
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
 	pDoc->AddAndDoUndoable(pUndo);
@@ -289,7 +289,7 @@ void BuildList::OnMoveDown()
 	OnSelchangeBuildList();
 }
 
-void BuildList::OnAddBuilding() 
+void BuildList::OnAddBuilding()
 {
 	BuildListTool::addBuilding();
 }
@@ -327,7 +327,7 @@ void BuildList::setSelectedBuildList(BuildListInfo *pInfo)
 	}
 	Int i;
  	for (i=0; i<TheSidesList->getNumSides(); i++) {
-		SidesInfo *pSide = TheSidesList->getSideInfo(i); 
+		SidesInfo *pSide = TheSidesList->getSideInfo(i);
 		Int listSel = 0;
 		for (BuildListInfo *pBuild = pSide->getBuildList(); pBuild; pBuild = pBuild->getNext()) {
 			if (pInfo == pBuild) {
@@ -349,29 +349,29 @@ void BuildList::setSelectedBuildList(BuildListInfo *pInfo)
 };
 
 
-void BuildList::OnSelchangeBuildList() 
+void BuildList::OnSelchangeBuildList()
 {
 	if (TheSidesList->getNumSides() < 1)
 		return;
 
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
 	m_curBuildList = pList->GetCurSel();
 	Int numBL = pList->GetCount();
-	
-	SidesInfo *pSide = NULL;
+
+	SidesInfo *pSide = nullptr;
 	if (TheSidesList) {
 		pSide = TheSidesList->getSideInfo(m_curSide);
 	}
 	Int count = m_curBuildList;
-	BuildListInfo *pBuildInfo = NULL;
+	BuildListInfo *pBuildInfo = nullptr;
 	if (pSide) {
 		pBuildInfo = pSide->getBuildList();
 	}
-	if (count<0) pBuildInfo = NULL;
+	if (count<0) pBuildInfo = nullptr;
 	while (count && pBuildInfo) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
@@ -389,7 +389,7 @@ void BuildList::OnSelchangeBuildList()
 
 	// add up energy consumed/produced by objects on the map
 	const ThingTemplate *thingTemplate;
-	for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) 
+	for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
 	{
 		// get thing template based from map object name
 		thingTemplate = pMapObj->getThingTemplate();
@@ -399,7 +399,7 @@ void BuildList::OnSelchangeBuildList()
 		Bool exists;
 		AsciiString objectTeamName = d->getAsciiString(TheKey_originalOwner, &exists);
 		TeamsInfo *teamInfo = TheSidesList->findTeamInfo(objectTeamName);
-		Dict *teamDict = (teamInfo)?teamInfo->getDict():NULL;
+		Dict *teamDict = (teamInfo)?teamInfo->getDict():nullptr;
 		AsciiString objectOwnerName = (teamDict)?teamDict->getAsciiString(TheKey_teamOwner):AsciiString::TheEmptyString;
 
 		Int energy = 0;
@@ -416,7 +416,7 @@ void BuildList::OnSelchangeBuildList()
 	{
 		count = m_curBuildList;
 		BuildListInfo *pBuildInfo = pSide->getBuildList();
-		if (count<0) pBuildInfo = NULL;
+		if (count<0) pBuildInfo = nullptr;
 		while (count>=0 && pBuildInfo) {
 			AsciiString tName = pBuildInfo->getTemplateName();
 			const ThingTemplate *templ = TheThingFactory->findTemplate(tName);
@@ -445,7 +445,7 @@ void BuildList::OnSelchangeBuildList()
 	{
 		energyUsed = 1.0f;
 	}
-	//DEBUG_LOG(("Energy: %d/%d - %g\n", energyConsumption, energyProduction, energyUsed));
+	//DEBUG_LOG(("Energy: %d/%d - %g", energyConsumption, energyProduction, energyUsed));
 	CProgressCtrl *progressWnd = (CProgressCtrl *)GetDlgItem(IDC_POWER);
 	if (progressWnd)
 	{
@@ -456,7 +456,7 @@ void BuildList::OnSelchangeBuildList()
 	s_qtPowerPercent = (int)((1.0f - energyUsed) * 100);
 #endif
 
-	if (pBuildInfo==NULL) {
+	if (pBuildInfo==nullptr) {
 		enableAttrs = false;
 	}
 	if (m_curBuildList > 0) {
@@ -478,23 +478,23 @@ void BuildList::OnSelchangeBuildList()
 	PointerTool::clearSelection(); // unselect other stuff.
 	if (pBuildInfo) {
 		CWnd *edit;
-		static char buff[12];
+		static char buff[32];
 		pBuildInfo->setSelected(true);
 
 		m_angle = pBuildInfo->getAngle() * 180/PI;
-		sprintf(buff, "%0.2f", m_angle);
+		snprintf(buff, ARRAY_SIZE(buff), "%0.2f", m_angle);
 		edit = GetDlgItem(IDC_MAPOBJECT_Angle);
 		edit->SetWindowText(buff);
 
 		m_height = pBuildInfo->getLocation()->z;
-		sprintf(buff, "%0.2f", m_height);
+		snprintf(buff, ARRAY_SIZE(buff), "%0.2f", m_height);
 		edit = GetDlgItem(IDC_MAPOBJECT_ZOffset);
 		edit->SetWindowText(buff);
 
 		CButton *pBtn = (CButton *)GetDlgItem(IDC_ALREADY_BUILD);
 		if (pBtn) pBtn->SetCheck(pBuildInfo->isInitiallyBuilt()?1:0);
 		CComboBox *pCombo = (CComboBox *)GetDlgItem(IDC_REBUILDS);
-		if (pCombo==NULL) return;
+		if (pCombo==nullptr) return;
 		UnsignedInt nr = pBuildInfo->getNumRebuilds();
 		if (nr == BuildListInfo::UNLIMITED_REBUILDS) {
 			pCombo->SetCurSel(6);
@@ -513,14 +513,14 @@ void BuildList::OnSelchangeBuildList()
 
 }
 
-void BuildList::OnAlreadyBuild() 
+void BuildList::OnAlreadyBuild()
 {
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 	m_curBuildList = pList->GetCurSel();
 	if (m_curBuildList < 0) return;
 	Int count = m_curBuildList;
@@ -528,7 +528,7 @@ void BuildList::OnAlreadyBuild()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 	CButton *pBtn = (CButton *)GetDlgItem(IDC_ALREADY_BUILD);
 	if (pBtn) {
@@ -536,11 +536,11 @@ void BuildList::OnAlreadyBuild()
 	}
 }
 
-void BuildList::OnDeleteBuilding() 
+void BuildList::OnDeleteBuilding()
 {
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	if (!pList) {
-		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST\n"));
+		DEBUG_LOG(("*** BuildList::updateCurSide Missing resource!!! IDC_BUILD_LIST"));
 		return;
 	}
 	m_curBuildList = pList->GetCurSel();
@@ -554,7 +554,7 @@ void BuildList::OnDeleteBuilding()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 
 	// Adriane [Deathscythe] -- Crash fix for delete -- this arrangement of code fixes it for some reason
@@ -575,10 +575,10 @@ void BuildList::OnDeleteBuilding()
 		pList->SetCurSel(-1);
 }
 
-void BuildList::OnSelendokRebuilds() 
+void BuildList::OnSelendokRebuilds()
 {
 	CComboBox *pCombo = (CComboBox *)GetDlgItem(IDC_REBUILDS);
-	if (pCombo==NULL) return;
+	if (pCombo==nullptr) return;
 	Int sel = pCombo->GetCurSel();
 	if (sel<0) return; // no selection.
 	UnsignedInt nr;
@@ -586,23 +586,23 @@ void BuildList::OnSelendokRebuilds()
 		nr = BuildListInfo::UNLIMITED_REBUILDS;
 	} else if (sel<6) {
 		nr = sel;
-	} 
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	}
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 	if (m_curBuildList < 0) return;
 	Int count = m_curBuildList;
 	BuildListInfo *pBuildInfo = pSide->getBuildList();
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 	pBuildInfo->setNumRebuilds(nr);
 }
 
-void BuildList::OnEditchangeRebuilds() 
+void BuildList::OnEditchangeRebuilds()
 {
 	CComboBox *pCombo = (CComboBox *)GetDlgItem(IDC_REBUILDS);
-	if (pCombo==NULL) return;
+	if (pCombo==nullptr) return;
 	Int sel = pCombo->GetCurSel();
 	if (sel>=0) return; // An entry is selected, and handled by OnSelendokRebuilds..
 	char buffer[_MAX_PATH];
@@ -611,22 +611,22 @@ void BuildList::OnEditchangeRebuilds()
 		Int nr;
 		if (1==sscanf(buffer, "%d", &nr)) {
 		}
-			SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+			SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 			if (m_curBuildList < 0) return;
 			Int count = m_curBuildList;
 			BuildListInfo *pBuildInfo = pSide->getBuildList();
 			while (count) {
 				count--;
 				pBuildInfo = pBuildInfo->getNext();
-				if (pBuildInfo == NULL) return;
+				if (pBuildInfo == nullptr) return;
 			}
 			pBuildInfo->setNumRebuilds(nr);
 	}
 }
 
-void BuildList::OnDblclkBuildList() 
+void BuildList::OnDblclkBuildList()
 {
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	m_curBuildList = pList->GetCurSel();
 	if (m_curBuildList < 0) return;
@@ -635,7 +635,7 @@ void BuildList::OnDblclkBuildList()
 	while (count) {
 		count--;
 		pBI = pBI->getNext();
-		if (pBI == NULL) return;
+		if (pBI == nullptr) return;
 	}
 
 #ifdef RTS_HAS_QT
@@ -688,18 +688,18 @@ void BuildList::GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, lo
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 }
 
 void BuildList::PopSliderChanged(const long sliderID, long theVal)
 {
 //	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	CWnd* edit;
-	static char buff[12];
+	static char buff[32];
 	switch (sliderID) {
 		case IDC_HEIGHT_POPUP:
 			m_height = theVal;
-			sprintf(buff, "%0.2f", m_height);
+			snprintf(buff, ARRAY_SIZE(buff), "%0.2f", m_height);
 			edit = GetDlgItem(IDC_MAPOBJECT_ZOffset);
 			edit->SetWindowText(buff);
 			OnChangeZOffset();
@@ -707,7 +707,7 @@ void BuildList::PopSliderChanged(const long sliderID, long theVal)
 
 		case IDC_ANGLE_POPUP:
 			m_angle = theVal;
-			sprintf(buff, "%0.2f", m_angle);
+			snprintf(buff, ARRAY_SIZE(buff), "%0.2f", m_angle);
 			edit = GetDlgItem(IDC_MAPOBJECT_Angle);
 			edit->SetWindowText(buff);
 			break;
@@ -716,7 +716,7 @@ void BuildList::PopSliderChanged(const long sliderID, long theVal)
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 }
 
 void BuildList::PopSliderFinished(const long sliderID, long theVal)
@@ -730,11 +730,11 @@ void BuildList::PopSliderFinished(const long sliderID, long theVal)
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 
 }
 
-void BuildList::OnChangeZOffset() 
+void BuildList::OnChangeZOffset()
 {
 	Real value = 0.0f;
 	CWnd* edit = GetDlgItem(IDC_MAPOBJECT_ZOffset);
@@ -745,7 +745,7 @@ void BuildList::OnChangeZOffset()
 	}
 	m_height = value;
 
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	m_curBuildList = pList->GetCurSel();
 	if (m_curBuildList < 0) return;
@@ -754,7 +754,7 @@ void BuildList::OnChangeZOffset()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 	Coord3D loc = *pBuildInfo->getLocation();
 	loc.z = m_height;
@@ -763,7 +763,7 @@ void BuildList::OnChangeZOffset()
 	p3View->invalBuildListItemInView(pBuildInfo);
 }
 
-void BuildList::OnChangeAngle() 
+void BuildList::OnChangeAngle()
 {
 	Real angle = 0.0f;
 	CWnd* edit = GetDlgItem(IDC_MAPOBJECT_Angle);
@@ -773,7 +773,7 @@ void BuildList::OnChangeAngle()
 		angle = atof(cstr);
 	}
 	m_angle = angle;
-	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+	SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide);
 	CListBox *pList = (CListBox*)GetDlgItem(IDC_BUILD_LIST);
 	m_curBuildList = pList->GetCurSel();
 	if (m_curBuildList < 0) return;
@@ -782,16 +782,16 @@ void BuildList::OnChangeAngle()
 	while (count) {
 		count--;
 		pBuildInfo = pBuildInfo->getNext();
-		if (pBuildInfo == NULL) return;
+		if (pBuildInfo == nullptr) return;
 	}
 	pBuildInfo->setAngle(m_angle * PI/180);
 	WbView3d *p3View = CWorldBuilderDoc::GetActiveDoc()->GetActive3DView();
 	p3View->invalBuildListItemInView(pBuildInfo);
 }
 
-void BuildList::OnExport() 
+void BuildList::OnExport()
 {
-	static FILE *theLogFile = NULL;
+	static FILE *theLogFile = nullptr;
 	Bool open = false;
 	try {
 		CFileDialog dlg(FALSE, _T("ini"), _T("BuildList.ini"), OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
@@ -822,7 +822,7 @@ void BuildList::OnExport()
 
 		AsciiString tmplname = d->getAsciiString(TheKey_playerFaction);
 		const PlayerTemplate* pt = ThePlayerTemplateStore->findPlayerTemplate(NAMEKEY(tmplname));
-		DEBUG_ASSERTCRASH(pt != NULL, ("PlayerTemplate %s not found -- this is an obsolete map (please open and resave in WB)\n",tmplname.str()));
+		DEBUG_ASSERTCRASH(pt != nullptr, ("PlayerTemplate %s not found -- this is an obsolete map (please open and resave in WB)",tmplname.str()));
 
 		fprintf(theLogFile, ";Skirmish AI Build List\n");
 		fprintf(theLogFile, "SkirmishBuildList %s\n", pt->getSide().str());

@@ -32,17 +32,13 @@
 // OpenMap dialog
 
 
-OpenMap::OpenMap(TOpenMapInfo *pInfo, CWnd* pParent /*=NULL*/)
+OpenMap::OpenMap(TOpenMapInfo *pInfo, CWnd* pParent /*=nullptr*/)
 	: CDialog(OpenMap::IDD, pParent),
 	m_pInfo(pInfo)
 {
 	m_pInfo->browse = false;
 	m_packedMode = PM_OFF;
-#if defined(_DEBUG) || defined(_INTERNAL)
 	m_usingSystemDir = ::AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE);
-#else
-	m_usingSystemDir = FALSE;
-#endif
 
 	//{{AFX_DATA_INIT(OpenMap)
 		// NOTE: the ClassWizard will add member initialization here
@@ -115,7 +111,7 @@ void OpenMap::OnBrowse()
 	OnOK();
 }
 
-void OpenMap::OnOK() 
+void OpenMap::OnOK()
 {
 
     // If Enter is pressed inside the search box -> perform search instead of opening a map
@@ -127,7 +123,7 @@ void OpenMap::OnOK()
 
     // === original behavior ===
 	CListBox *pList = (CListBox *)this->GetDlgItem(IDC_OPEN_LIST);
-	if (pList == NULL) {
+	if (pList == nullptr) {
 		OnCancel();
 		return;
 	}
@@ -195,11 +191,9 @@ void OpenMap::OnOK()
 void OpenMap::populateMapListbox( Bool systemMaps )
 {
 	m_usingSystemDir = systemMaps;
-#if defined(_DEBUG) || defined(_INTERNAL)
 	::AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
-#endif
 
-	HANDLE			hFindFile = 0;
+	HANDLE			hFindFile = nullptr;
 	WIN32_FIND_DATA			findData;
 	char				dirBuf[_MAX_PATH];
 	char				findBuf[_MAX_PATH];
@@ -209,26 +203,17 @@ void OpenMap::populateMapListbox( Bool systemMaps )
 		strcpy(dirBuf, "Maps\\");
 	else
 	{
-		strcpy(dirBuf, TheGlobalData->getPath_UserData().str());
-		strcat(dirBuf, "Maps\\");
-	}
-
-	int len = strlen(dirBuf);
-
-	if (len > 0 && dirBuf[len - 1] != '\\') {
-		dirBuf[len++] = '\\';
-		dirBuf[len] = 0;
+		snprintf(dirBuf, ARRAY_SIZE(dirBuf), "%sMaps\\", TheGlobalData->getPath_UserData().str());
 	}
 	CListBox *pList = (CListBox *)this->GetDlgItem(IDC_OPEN_LIST);
-	if (pList == NULL) return;
+	if (pList == nullptr) return;
 	pList->ResetContent();
-	strcpy(findBuf, dirBuf);
-	strcat(findBuf, "*.*");
+	snprintf(findBuf, ARRAY_SIZE(findBuf), "%s*.*", dirBuf);
 
     m_fullMapList.RemoveAll(); // before filling list
 	Bool found = false;
 
-	hFindFile = FindFirstFile(findBuf, &findData); 
+	hFindFile = FindFirstFile(findBuf, &findData);
 	if (hFindFile != INVALID_HANDLE_VALUE) {
 		do {
 			if (strcmp(findData.cFileName, ".") == 0 || strcmp(findData.cFileName, "..") == 0)
@@ -237,11 +222,7 @@ void OpenMap::populateMapListbox( Bool systemMaps )
 				continue;
 			}
 
-			strcpy(fileBuf, dirBuf);
-			strcat(fileBuf, findData.cFileName);
-			strcat(fileBuf, "\\");
-			strcat(fileBuf, findData.cFileName);
-			strcat(fileBuf, ".map");
+			snprintf(fileBuf, ARRAY_SIZE(fileBuf), "%s%s\\%s.map", dirBuf, findData.cFileName, findData.cFileName);
 			try {
 				CFileStatus status;
 				if (CFile::GetStatus(fileBuf, status)) {
@@ -265,16 +246,16 @@ void OpenMap::populateMapListbox( Bool systemMaps )
 	}
 }
 
-BOOL OpenMap::OnInitDialog() 
+BOOL OpenMap::OnInitDialog()
 {
 	CDialog::OnInitDialog();
 
 	CButton *pSystemMaps = (CButton *)this->GetDlgItem(IDC_SYSTEMMAPS);
-	if (pSystemMaps != NULL)
+	if (pSystemMaps != nullptr)
 		pSystemMaps->SetCheck( m_usingSystemDir );
 
 	CButton *pUserMaps = (CButton *)this->GetDlgItem(IDC_USERMAPS);
-	if (pUserMaps != NULL)
+	if (pUserMaps != nullptr)
 		pUserMaps->SetCheck( !m_usingSystemDir );
 
 	// Packed Maps starts unselected (we open in System/User mode).
@@ -282,12 +263,9 @@ BOOL OpenMap::OnInitDialog()
 	if (pPacked != NULL)
 		pPacked->SetCheck( 0 );
 
-#if !defined(_DEBUG) && !defined(_INTERNAL)
-	if (pSystemMaps)
-		pSystemMaps->ShowWindow( FALSE );
-	if (pUserMaps)
-		pUserMaps->ShowWindow( FALSE );
-#endif
+	// TheSuperHackers @tweak Originally World Builder has hidden the System Maps tab button in Release builds,
+	// perhaps with the intention to only show User Maps to community users. However, World Builder did release
+	// as a Debug build and always had the System Maps tab, therefore this now shows it always for simplicity.
 
 	populateMapListbox( m_usingSystemDir );
 
@@ -295,7 +273,7 @@ BOOL OpenMap::OnInitDialog()
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void OpenMap::OnDblclkOpenList() 
+void OpenMap::OnDblclkOpenList()
 {
 	OnOK();
 }

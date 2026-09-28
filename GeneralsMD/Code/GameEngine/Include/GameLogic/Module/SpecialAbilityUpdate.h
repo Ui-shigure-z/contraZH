@@ -29,14 +29,13 @@
 
 #pragma once
 
-#ifndef __SPECIAL_ABILITY_UPDATE_H
-#define __SPECIAL_ABILITY_UPDATE_H
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/AudioEventRTS.h"
 #include "Common/INI.h"
+#include "Common/KindOf.h"
+#include "GameLogic/Weapon.h"		// for TheWeaponAffectsMaskNames and WEAPON_AFFECTS_* bits
 #include "GameLogic/Module/SpecialPowerUpdateModule.h"
-#include "GameClient/ParticleSys.h"	
+#include "GameClient/ParticleSys.h"
 
 class DamageInfo;
 class SpecialPowerTemplate;
@@ -79,6 +78,11 @@ public:
 	Bool									m_approachRequiresLOS;
   Bool                  m_needToFaceTarget;
   Bool                  m_persistenceRequiresRecharge;
+  Bool                  m_requiresMoveToTurn;	///< if set, orient by moving toward target (for locomotors that can't turn in place) instead of facing in place
+  Real                  m_facingAngleTolerance;	///< heading delta (radians) considered "facing target" when m_requiresMoveToTurn
+  KindOfMaskType        m_requiredTargetKindOf;		///< target must have ALL of these kind of bits set (laser guided missiles only)
+  KindOfMaskType        m_forbiddenTargetKindOf;	///< target must have NONE of these kind of bits set (laser guided missiles only)
+  Int                   m_targetRelationship;			///< bitmask (WEAPON_AFFECTS_ALLIES/ENEMIES/NEUTRALS) of owner->target relationships that may be targeted (laser guided missiles only)
 
 	const ParticleSystemTemplate *m_disableFXParticleSystem;
 	AudioEventRTS					m_packSound;
@@ -88,7 +92,7 @@ public:
 
 	SpecialAbilityUpdateModuleData()
 	{
-		m_specialPowerTemplate = NULL;
+		m_specialPowerTemplate = nullptr;
 		m_startAbilityRange = SPECIAL_ABILITY_HUGE_DISTANCE;
 		m_abilityAbortRange = SPECIAL_ABILITY_HUGE_DISTANCE;
 		m_preparationFrames = 0;
@@ -105,7 +109,7 @@ public:
 		m_skipPackingWithNoTarget = FALSE;
 		m_flipObjectAfterPacking = FALSE;
 		m_flipObjectAfterUnpacking = FALSE;
-		m_disableFXParticleSystem = NULL;
+		m_disableFXParticleSystem = nullptr;
 		m_fleeRangeAfterCompletion = 0.0f;
 		m_doCaptureFX = FALSE;
 		m_alwaysValidateSpecialObjects = FALSE;
@@ -116,56 +120,74 @@ public:
 		m_preTriggerUnstealthFrames = 0;
     m_needToFaceTarget = TRUE;
     m_persistenceRequiresRecharge = FALSE;
+    m_requiresMoveToTurn = FALSE;
+    m_facingAngleTolerance = 0.1f;	// ~5.7 degrees
+    // TheSuperHackers @feature triatomic 01/09/2026 These defaults reproduce the target rule that
+    // used to be hardcoded for the laser guided missiles ability, so INI that does not set them
+    // behaves exactly as before.
+    m_requiredTargetKindOf = MAKE_KINDOF_MASK( KINDOF_VEHICLE );		// retail: vehicles only
+    m_forbiddenTargetKindOf = MAKE_KINDOF_MASK( KINDOF_STRUCTURE );	// retail: never structures
+    m_targetRelationship = WEAPON_AFFECTS_ENEMIES;									// retail: enemies only
 	}
 
-	static void buildFieldParse(MultiIniFieldParse& p) 
+	static void buildFieldParse(MultiIniFieldParse& p)
 	{
     UpdateModuleData::buildFieldParse(p);
 
-		static const FieldParse dataFieldParse[] = 
+		static const FieldParse dataFieldParse[] =
 		{
 			//Primary data values
-			{ "SpecialPowerTemplate",				INI::parseSpecialPowerTemplate,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_specialPowerTemplate ) },
-			{ "StartAbilityRange",					INI::parseReal,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_startAbilityRange ) },
-			{ "AbilityAbortRange",					INI::parseReal,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_abilityAbortRange ) },
-			{ "PreparationTime",						INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_preparationFrames ) },
-			{ "PersistentPrepTime",					INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_persistentPrepFrames ) },
-			{ "PackTime",										INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_packTime ) },
-			{ "UnpackTime",									INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_unpackTime ) },
-			{ "PreTriggerUnstealthTime",	  INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_preTriggerUnstealthFrames ) },
-			{ "SkipPackingWithNoTarget",		INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_skipPackingWithNoTarget ) },
-			{ "PackUnpackVariationFactor",	INI::parseReal,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_packUnpackVariationFactor ) },
- 
+			{ "SpecialPowerTemplate",				INI::parseSpecialPowerTemplate,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_specialPowerTemplate ) },
+			{ "StartAbilityRange",					INI::parseReal,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_startAbilityRange ) },
+			{ "AbilityAbortRange",					INI::parseReal,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_abilityAbortRange ) },
+			{ "PreparationTime",						INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_preparationFrames ) },
+			{ "PersistentPrepTime",					INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_persistentPrepFrames ) },
+			{ "PackTime",										INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_packTime ) },
+			{ "UnpackTime",									INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_unpackTime ) },
+			{ "PreTriggerUnstealthTime",	  INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_preTriggerUnstealthFrames ) },
+			{ "SkipPackingWithNoTarget",		INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_skipPackingWithNoTarget ) },
+			{ "PackUnpackVariationFactor",	INI::parseReal,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_packUnpackVariationFactor ) },
+
 			//Secondary data values
-			{ "SpecialObject",							INI::parseAsciiString,						NULL, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectName ) },
-			{ "SpecialObjectAttachToBone",	INI::parseAsciiString,						NULL, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectAttachToBoneName ) },
-			{ "MaxSpecialObjects",					INI::parseUnsignedInt,						NULL, offsetof( SpecialAbilityUpdateModuleData, m_maxSpecialObjects ) },
-			{ "SpecialObjectsPersistent",		INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectsPersistent ) },
-			{ "EffectDuration",							INI::parseDurationUnsignedInt,		NULL, offsetof( SpecialAbilityUpdateModuleData, m_effectDuration ) },
-			{ "EffectValue",								INI::parseInt,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_effectValue ) },
-			{ "UniqueSpecialObjectTargets", INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_uniqueSpecialObjectTargets ) },
-			{ "SpecialObjectsPersistWhenOwnerDies", INI::parseBool,						NULL, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectsPersistWhenOwnerDies ) },
-			{ "AlwaysValidateSpecialObjects",				INI::parseBool,						NULL, offsetof( SpecialAbilityUpdateModuleData, m_alwaysValidateSpecialObjects ) },
-			{ "FlipOwnerAfterPacking",			INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_flipObjectAfterPacking ) },
-			{ "FlipOwnerAfterUnpacking",		INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_flipObjectAfterUnpacking ) },
-			{ "FleeRangeAfterCompletion",		INI::parseReal,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_fleeRangeAfterCompletion ) },
-			{ "DisableFXParticleSystem",		INI::parseParticleSystemTemplate, NULL, offsetof( SpecialAbilityUpdateModuleData, m_disableFXParticleSystem ) },
-			{ "DoCaptureFX",								INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_doCaptureFX ) },
-			{ "PackSound",									INI::parseAudioEventRTS,					NULL, offsetof( SpecialAbilityUpdateModuleData, m_packSound ) },
-			{ "UnpackSound",								INI::parseAudioEventRTS,					NULL, offsetof( SpecialAbilityUpdateModuleData, m_unpackSound ) },
-			{ "PrepSoundLoop",							INI::parseAudioEventRTS,					NULL, offsetof( SpecialAbilityUpdateModuleData, m_prepSoundLoop ) },
-			{ "TriggerSound",								INI::parseAudioEventRTS,					NULL, offsetof( SpecialAbilityUpdateModuleData, m_triggerSound ) },
-			{ "LoseStealthOnTrigger",				INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_loseStealthOnTrigger ) },
-			{ "AwardXPForTriggering",				INI::parseInt,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_awardXPForTriggering ) },
-			{ "SkillPointsForTriggering",		INI::parseInt,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_skillPointsForTriggering ) },
-			{ "ApproachRequiresLOS",				INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_approachRequiresLOS ) },
-			{ "ApproachRequiresLOS",				INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_approachRequiresLOS ) },
-      { "NeedToFaceTarget",           INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_needToFaceTarget ) },
-      { "PersistenceRequiresRecharge",INI::parseBool,										NULL, offsetof( SpecialAbilityUpdateModuleData, m_persistenceRequiresRecharge ) },
+			{ "SpecialObject",							INI::parseAsciiString,						nullptr, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectName ) },
+			{ "SpecialObjectAttachToBone",	INI::parseAsciiString,						nullptr, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectAttachToBoneName ) },
+			{ "MaxSpecialObjects",					INI::parseUnsignedInt,						nullptr, offsetof( SpecialAbilityUpdateModuleData, m_maxSpecialObjects ) },
+			{ "SpecialObjectsPersistent",		INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectsPersistent ) },
+			{ "EffectDuration",							INI::parseDurationUnsignedInt,		nullptr, offsetof( SpecialAbilityUpdateModuleData, m_effectDuration ) },
+			{ "EffectValue",								INI::parseInt,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_effectValue ) },
+			{ "UniqueSpecialObjectTargets", INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_uniqueSpecialObjectTargets ) },
+			{ "SpecialObjectsPersistWhenOwnerDies", INI::parseBool,						nullptr, offsetof( SpecialAbilityUpdateModuleData, m_specialObjectsPersistWhenOwnerDies ) },
+			{ "AlwaysValidateSpecialObjects",				INI::parseBool,						nullptr, offsetof( SpecialAbilityUpdateModuleData, m_alwaysValidateSpecialObjects ) },
+			{ "FlipOwnerAfterPacking",			INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_flipObjectAfterPacking ) },
+			{ "FlipOwnerAfterUnpacking",		INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_flipObjectAfterUnpacking ) },
+			{ "FleeRangeAfterCompletion",		INI::parseReal,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_fleeRangeAfterCompletion ) },
+			{ "DisableFXParticleSystem",		INI::parseParticleSystemTemplate, nullptr, offsetof( SpecialAbilityUpdateModuleData, m_disableFXParticleSystem ) },
+			{ "DoCaptureFX",								INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_doCaptureFX ) },
+			{ "PackSound",									INI::parseAudioEventRTS,					nullptr, offsetof( SpecialAbilityUpdateModuleData, m_packSound ) },
+			{ "UnpackSound",								INI::parseAudioEventRTS,					nullptr, offsetof( SpecialAbilityUpdateModuleData, m_unpackSound ) },
+			{ "PrepSoundLoop",							INI::parseAudioEventRTS,					nullptr, offsetof( SpecialAbilityUpdateModuleData, m_prepSoundLoop ) },
+			{ "TriggerSound",								INI::parseAudioEventRTS,					nullptr, offsetof( SpecialAbilityUpdateModuleData, m_triggerSound ) },
+			{ "LoseStealthOnTrigger",				INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_loseStealthOnTrigger ) },
+			{ "AwardXPForTriggering",				INI::parseInt,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_awardXPForTriggering ) },
+			{ "SkillPointsForTriggering",		INI::parseInt,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_skillPointsForTriggering ) },
+			{ "ApproachRequiresLOS",				INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_approachRequiresLOS ) },
+			{ "ApproachRequiresLOS",				INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_approachRequiresLOS ) },
+      { "NeedToFaceTarget",           INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_needToFaceTarget ) },
+      { "PersistenceRequiresRecharge",INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_persistenceRequiresRecharge ) },
+      { "RequiresMoveToTurn",         INI::parseBool,										nullptr, offsetof( SpecialAbilityUpdateModuleData, m_requiresMoveToTurn ) },
+      { "FacingAngleTolerance",       INI::parseAngleReal,							nullptr, offsetof( SpecialAbilityUpdateModuleData, m_facingAngleTolerance ) },
+      { "RequiredTargetKindOf",       KindOfMaskType::parseFromINI,			nullptr, offsetof( SpecialAbilityUpdateModuleData, m_requiredTargetKindOf ) },
+      { "ForbiddenTargetKindOf",      KindOfMaskType::parseFromINI,			nullptr, offsetof( SpecialAbilityUpdateModuleData, m_forbiddenTargetKindOf ) },
+      { "TargetRelationship",         INI::parseBitString32,						TheWeaponAffectsMaskNames, offsetof( SpecialAbilityUpdateModuleData, m_targetRelationship ) },
 			{ 0, 0, 0, 0 }
 		};
     p.add(dataFieldParse);
 	}
+
+	/// Does 'target' pass RequiredTargetKindOf/ForbiddenTargetKindOf and TargetRelationship? Both the
+	/// targeting check in ActionManager and the abort check in SpecialAbilityUpdate::update() route
+	/// through here, so the two always agree on what may be locked.
+	Bool isValidLaserLockTarget( const Object *owner, const Object *target ) const;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -181,27 +203,29 @@ public:
 	// virtual destructor prototype provided by memory pool declaration
 
 	// SpecialPowerUpdateInterface
-	virtual Bool initiateIntentToDoSpecialPower(const SpecialPowerTemplate *specialPowerTemplate, const Object *targetObj, const Coord3D *targetPos, const Waypoint *way, UnsignedInt commandOptions );
-	virtual Bool isSpecialAbility() const { return true; }
-	virtual Bool isSpecialPower() const { return false; }
-	virtual Bool isActive() const { return m_active; }
-	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const { return false; } //Is it active now?
-	virtual Bool doesSpecialPowerHaveOverridableDestination() const { return false; }	//Does it have it, even if it's not active?
-	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) {}
-	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = NULL ) const;
+	virtual Bool initiateIntentToDoSpecialPower(const SpecialPowerTemplate *specialPowerTemplate, const Object *targetObj, const Coord3D *targetPos, const Waypoint *way, UnsignedInt commandOptions ) override;
+	virtual Bool isSpecialAbility() const override { return true; }
+	virtual Bool isSpecialPower() const override { return false; }
+	virtual Bool isActive() const override { return m_active; }
+	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const override { return false; } //Is it active now?
+	virtual Bool doesSpecialPowerHaveOverridableDestination() const override { return false; }	//Does it have it, even if it's not active?
+	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) override {}
+	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = nullptr ) const override;
 
 //	virtual Bool isBusy() const { return m_isBusy; }
 
 	// UpdateModule
-	virtual SpecialPowerUpdateInterface* getSpecialPowerUpdateInterface() { return this; }
-	virtual CommandOption getCommandOption() const { return (CommandOption)0; }
-	virtual UpdateSleepTime update();	
+	virtual SpecialPowerUpdateInterface* getSpecialPowerUpdateInterface() override { return this; }
+	virtual CommandOption getCommandOption() const override { return (CommandOption)0; }
+	virtual UpdateSleepTime update() override;
 
 	// ??? ugh, public stuff that shouldn't be -- hell yeah!
 	UnsignedInt getSpecialObjectCount() const;
 	UnsignedInt getSpecialObjectMax() const;
 	Object* findSpecialObjectWithProducerID( const Object *target );
-	SpecialPowerType getSpecialPowerType( void ) const;
+	SpecialPowerType getSpecialPowerType() const;
+	Bool isValidLaserLockTarget( const Object *target ) const
+		{ return getSpecialAbilityUpdateModuleData()->isValidLaserLockTarget( getObject(), target ); }
 
 protected:
 	void onExit( Bool cleanup );
@@ -261,22 +285,23 @@ private:
 
 	enum PackingState
 	{
-		STATE_NONE, 
-		STATE_PACKING, 
+		STATE_NONE,
+		STATE_PACKING,
 		STATE_UNPACKING,
-		STATE_PACKED,		
-		STATE_UNPACKED,	
+		STATE_PACKED,
+		STATE_UNPACKED,
 	};
-	
+
 	AudioEventRTS									m_prepSoundLoop;
 	UnsignedInt										m_prepFrames;
 	UnsignedInt										m_animFrames;	//Used for packing/unpacking unit before or after using ability.
 	ObjectID											m_targetID;
 	Coord3D												m_targetPos;
+	UnsignedInt										m_commandOptions;	//Command option flags this ability was triggered with (e.g. FORMATION_LAUNCH).
 	Int														m_locationCount;
 	std::list<ObjectID>						m_specialObjectIDList; //The list of special objects
 	UnsignedInt										m_specialObjectEntries;				 //The size of the list of member Objects
-	Real													m_captureFlashPhase;    ///< used to track the accellerating flash of the capture FX
+	Real													m_captureFlashPhase;    ///< used to track the accelerating flash of the capture FX
 	PackingState									m_packingState;
 	Bool													m_active;
 	Bool													m_noTargetCommand;
@@ -285,5 +310,3 @@ private:
 	Bool													m_withinStartAbilityRange;
 	Bool													m_doDisableFXParticles;      // smaller targets cause this flag to toggle, making the particle effect more sparse
 };
-
-#endif // _SPECIAL_POWER_UPDATE_H_

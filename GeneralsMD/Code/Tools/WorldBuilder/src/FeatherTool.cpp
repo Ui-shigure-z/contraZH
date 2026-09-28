@@ -20,7 +20,8 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "FeatherTool.h"
@@ -45,26 +46,26 @@ Int FeatherTool::m_radius = 0;
 
 //
 /// Constructor
-FeatherTool::FeatherTool(void) :
+FeatherTool::FeatherTool() :
 	Tool(ID_FEATHERTOOL, IDC_BRUSH_CROSS)
 {
-	m_htMapEditCopy = NULL;
-	m_htMapFeatherCopy = NULL;
-	m_htMapRateCopy = NULL;
+	m_htMapEditCopy = nullptr;
+	m_htMapFeatherCopy = nullptr;
+	m_htMapRateCopy = nullptr;
 }
-	
+
 /// Destructor
-FeatherTool::~FeatherTool(void) 
+FeatherTool::~FeatherTool()
 {
 	REF_PTR_RELEASE(m_htMapEditCopy);
-	REF_PTR_RELEASE(m_htMapFeatherCopy); 
-	REF_PTR_RELEASE(m_htMapRateCopy); 
+	REF_PTR_RELEASE(m_htMapFeatherCopy);
+	REF_PTR_RELEASE(m_htMapRateCopy);
 }
 
 
 
 /// Shows the brush options panel.
-void FeatherTool::activate() 
+void FeatherTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_FEATHER_OPTIONS);
 	DrawObject::setDoBrushFeedback(true);
@@ -72,8 +73,8 @@ void FeatherTool::activate()
 }
 
 /// Set the brush feather and notify the height options panel of the change.
-void FeatherTool::setFeather(Int feather) 
-{ 
+void FeatherTool::setFeather(Int feather)
+{
 	if (m_feather != feather) {
 		m_feather = feather;
 		// notify feather palette options panel
@@ -83,8 +84,8 @@ void FeatherTool::setFeather(Int feather)
 };
 
 /// Set the brush feather and notify the height options panel of the change.
-void FeatherTool::setRate(Int rate) 
-{ 
+void FeatherTool::setRate(Int rate)
+{
 	if (m_rate != rate) {
 		m_rate = rate;
 		// notify feather palette options panel
@@ -93,8 +94,8 @@ void FeatherTool::setRate(Int rate)
 };
 
 /// Set the brush feather and notify the height options panel of the change.
-void FeatherTool::setRadius(Int radius) 
-{ 
+void FeatherTool::setRadius(Int radius)
+{
 	if (m_radius != radius) {
 		m_radius = radius;
 		// notify feather palette options panel
@@ -119,7 +120,7 @@ void FeatherTool::abandonStroke(void)
 /// Start tool.
 /** Setup the tool to start brushing - make a copy of the height map
 to edit, another copy because we need it :), and call mouseMovedDown. */
-void FeatherTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void FeatherTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 
@@ -133,7 +134,7 @@ void FeatherTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 	m_htMapFeatherCopy = pDoc->GetHeightMap()->duplicate();
 	m_htMapRateCopy = pDoc->GetHeightMap()->duplicate();
 	Int size = m_htMapRateCopy->getXExtent() * m_htMapRateCopy->getYExtent();
-	UnsignedByte *pData = m_htMapRateCopy->getDataPtr();
+	HeightSampleType *pData = m_htMapRateCopy->getDataPtr();
 	Int i;
 	for (i=0; i<size; i++) {
 		*pData++ = 0;
@@ -144,9 +145,9 @@ void FeatherTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 }
 
 /// End tool.
-/** Finish the tool operation - create a command, pass it to the 
+/** Finish the tool operation - create a command, pass it to the
 doc to execute, and cleanup ref'd objects. */
-void FeatherTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void FeatherTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 
@@ -297,9 +298,9 @@ void FeatherTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWor
 
     if (redoRate) {
         Int size = m_htMapRateCopy->getXExtent() * m_htMapRateCopy->getYExtent();
-        UnsignedByte *pData    = m_htMapRateCopy->getDataPtr();
-        UnsignedByte *pFeather = m_htMapFeatherCopy->getDataPtr();
-        UnsignedByte *pEdit    = m_htMapEditCopy->getDataPtr();
+        HeightSampleType *pData    = m_htMapRateCopy->getDataPtr();
+        HeightSampleType *pFeather = m_htMapFeatherCopy->getDataPtr();
+        HeightSampleType *pEdit    = m_htMapEditCopy->getDataPtr();
         for (Int i = 0; i < size; i++) {
             *pData++ = 0;
             *pFeather = *pEdit;

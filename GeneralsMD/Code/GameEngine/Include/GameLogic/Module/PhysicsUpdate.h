@@ -28,9 +28,6 @@
 
 #pragma once
 
-#ifndef _PHYSICSUPDATE_H_
-#define _PHYSICSUPDATE_H_
-
 #include "Common/AudioEventRTS.h"
 #include "Common/GameAudio.h"
 #include "GameLogic/Module/BehaviorModule.h"
@@ -38,6 +35,8 @@
 #include "GameLogic/Module/CollideModule.h"
 
 enum ObjectID CPP_11(: Int);
+
+class FXList;
 
 enum PhysicsTurningType CPP_11(: Int)
 {
@@ -66,6 +65,13 @@ public:
 	Real	m_minFallSpeedForDamage;
 	Real	m_fallHeightDamageFactor;
 	Real	m_pitchRollYawFactor;
+	Bool    m_vehicleCrashAllowAirborne;
+	Real    m_bounceFactor;
+
+	Bool  m_doWaterPhysics;  //< We only do water collission checks if this is set!
+	Real  m_waterExtraFriction;
+	const FXList* m_waterImpactFX;
+
   
 	const WeaponTemplate* m_vehicleCrashesIntoBuildingWeaponTemplate;
 	const WeaponTemplate* m_vehicleCrashesIntoNonBuildingWeaponTemplate;
@@ -75,10 +81,10 @@ public:
 };
 
 //-------------------------------------------------------------------------------------------------
-/** 
+/**
  * Simple rigid body physics update module
  */
-class PhysicsBehavior : public UpdateModule, 
+class PhysicsBehavior : public UpdateModule,
 												public CollideModuleInterface
 {
 
@@ -91,24 +97,24 @@ public:
 
 	static Int getInterfaceMask() { return UpdateModule::getInterfaceMask() | (MODULEINTERFACE_COLLIDE); }
 
-	virtual void onObjectCreated();
+	virtual void onObjectCreated() override;
 
 	// BehaviorModule
-	virtual CollideModuleInterface* getCollide() { return this; }
+	virtual CollideModuleInterface* getCollide() override { return this; }
 
 	// CollideModuleInterface
-	virtual void onCollide( Object *other, const Coord3D *loc, const Coord3D *normal );
-	virtual Bool wouldLikeToCollideWith(const Object* other) const { return false; }
-	virtual Bool isCarBombCrateCollide() const { return false; }
-	virtual Bool isHijackedVehicleCrateCollide() const { return false; }
-	virtual Bool isRailroad() const { return false;}
-	virtual Bool isSalvageCrateCollide() const { return false; }
-	virtual Bool isSabotageBuildingCrateCollide() const { return FALSE; }
+	virtual void onCollide( Object *other, const Coord3D *loc, const Coord3D *normal ) override;
+	virtual Bool wouldLikeToCollideWith(const Object* other) const override { return false; }
+	virtual Bool isCarBombCrateCollide() const override { return false; }
+	virtual Bool isHijackedVehicleCrateCollide() const override { return false; }
+	virtual Bool isRailroad() const override { return false;}
+	virtual Bool isSalvageCrateCollide() const override { return false; }
+	virtual Bool isSabotageBuildingCrateCollide() const override { return FALSE; }
 
 	// UpdateModuleInterface
-	virtual UpdateSleepTime update();
+	virtual UpdateSleepTime update() override;
 	// Disabled conditions to process -- all
-	virtual DisabledMaskType getDisabledTypesToProcess() const { return DISABLEDMASK_ALL; }
+	virtual DisabledMaskType getDisabledTypesToProcess() const override { return DISABLEDMASK_ALL; }
 
 	void applyForce( const Coord3D *force );		///< apply a force at the object's CG
 	void applyShock( const Coord3D *force );					///< apply a shockwave force against the object's CG
@@ -135,6 +141,9 @@ public:
 
 	void setAngles( Real yaw, Real pitch, Real roll );
 	Real getMass() const;
+	Real getShockResistanceScale() const;		///< what ShockResistance leaves of an incoming force
+	Bool getDefaultAllowCollideForce() const { return getPhysicsBehaviorModuleData()->m_allowCollideForce; }
+	void clearMotiveForce() { m_motiveForceExpires = 0; }		///< forget the recent locomotor drive, so applyForce is not projected
 	void setMass( Real mass ) { m_mass = mass; }
 	Real getCenterOfMassOffset() const { return getPhysicsBehaviorModuleData()->m_centerOfMassOffset; }
 
@@ -153,9 +162,9 @@ public:
 
 	Bool isMotive() const;
 
-	PhysicsTurningType getTurning(void) const { return m_turning; }		///< 0 = not turning, -1 = turn negative, 1 = turn positive.
+	PhysicsTurningType getTurning() const { return m_turning; }		///< 0 = not turning, -1 = turn negative, 1 = turn positive.
 	void setTurning(PhysicsTurningType turning) { m_turning = turning; }
-	
+
 	/** This is a force scrub for velocity when ai objects are colliding. */
 	void scrubVelocity2D( Real desiredVelocity );
 
@@ -194,8 +203,11 @@ public:
 	void setExtraFriction(Real b) { m_extraFriction = b; }
 
 	void setBounceSound(const AudioEventRTS* bounceSound);
-	const AudioEventRTS* getBounceSound() { return m_bounceSound ? &m_bounceSound->m_event : TheAudio->getValidSilentAudioEvent(); }
-	
+	void setWaterImpactSound(const AudioEventRTS* waterImpactSound);
+	void setWaterImpactFX(const FXList* waterImpactFX);
+	const AudioEventRTS* getBounceSound() { return m_bounceSound ? m_bounceSound.Peek() : TheAudio->getValidSilentAudioEvent(); }
+	const AudioEventRTS* getWaterImpactSound() { return m_waterImpactSound ? m_waterImpactSound.Peek() : TheAudio->getValidSilentAudioEvent(); }
+
 	/**
 		Reset all values (vel, accel, etc) to starting values.
 		You should ALMOST NEVER use this; it's intended for cases where you need
@@ -209,18 +221,18 @@ public:
 	void setIgnoreCollisionsWith(const Object* obj);
 	Bool isIgnoringCollisionsWith(ObjectID id) const;
 
-	inline Bool getAllowCollideForce() const { return getFlag(ALLOW_COLLIDE_FORCE); }
+	Bool getAllowCollideForce() const { return getFlag(ALLOW_COLLIDE_FORCE); }
 
 protected:
 
 	/*
-		Physics runs in its own phase, after AI, but before all others. 
+		Physics runs in its own phase, after AI, but before all others.
 		It's actually quite important that AI (the thing that drives Locomotors) and Physics
 		run in the same order, relative to each other, for a given object; otherwise,
 		interesting oscillations can occur in some situations, with friction being applied
 		either before or after the locomotive force, making for huge stuttery messes. (srj)
 	*/
-	virtual SleepyUpdatePhase getUpdatePhase() const { return PHASE_PHYSICS; }
+	virtual SleepyUpdatePhase getUpdatePhase() const override { return PHASE_PHYSICS; }
 
 	Real getAerodynamicFriction() const;
 	Real getForwardFriction() const;
@@ -237,13 +249,15 @@ protected:
 
 	Bool checkForOverlapCollision(Object *other);
 
-	void testStunnedUnitForDestruction(void);
+	void testStunnedUnitForDestruction();
+
+	Real getExtraFriction() const;
 
 private:
 
 	enum PhysicsFlagsType
 	{
-		// Note - written out in save/load xfer; don't change these numbers.  
+		// Note - written out in save/load xfer; don't change these numbers.
 		STICK_TO_GROUND									= 0x0001,
 		ALLOW_BOUNCE										= 0x0002,
 		APPLY_FRICTION2D_WHEN_AIRBORNE	= 0x0004,
@@ -256,17 +270,19 @@ private:
 		IS_IN_FREEFALL									= 0x0200,
 		IS_IN_UPDATE										= 0x0400,
 		IS_STUNNED											= 0x0800,
+		WAS_ABOVE_WATER_LAST_FRAME      = 0x1000,
 	};
 
 	/*
-		Note: these are private because you should never manipulate these directly, 
+		Note: these are private because you should never manipulate these directly,
 		even if you are a subclass... if you want to change the acceleration, you
-		MUST call applyForce(). 
+		MUST call applyForce().
 	*/
 	Real												m_yawRate;								///< rate of rotation around up vector
 	Real												m_rollRate;								///< rate of rotation around forward vector
 	Real												m_pitchRate;							///< rate or rotation around side vector
-	DynamicAudioEventRTS*				m_bounceSound;						///< The sound for when this thing bounces, or NULL
+	RefCountPtr<DynamicAudioEventRTS>				m_bounceSound;						///< The sound for when this thing bounces, or nullptr
+	RefCountPtr<DynamicAudioEventRTS>				m_waterImpactSound;						///< The sound for when this thing hits the water surface, or NULL
 	Coord3D											m_accel;									///< current acceleration
 	Coord3D											m_prevAccel;							///< last frame's acceleration
 	Coord3D											m_vel;										///< current velocity
@@ -283,10 +299,12 @@ private:
 	ProjectileUpdateInterface*	m_pui;
 	mutable Real								m_velMag;									///< magnitude of cur vel (recalced when m_vel changes)
 
-	Bool												m_originalAllowBounce;		///< orignal state of allow bounce
+	Bool												m_originalAllowBounce;		///< original state of allow bounce
 
-	inline void setFlag(PhysicsFlagsType f, Bool set) { if (set) m_flags |= f; else m_flags &= ~f; }
-	inline Bool getFlag(PhysicsFlagsType f) const { return (m_flags & f) != 0; }
+	const FXList*											m_waterImpactFX;
+
+	void setFlag(PhysicsFlagsType f, Bool set) { if (set) m_flags |= f; else m_flags &= ~f; }
+	Bool getFlag(PhysicsFlagsType f) const { return (m_flags & f) != 0; }
 
 
 };
@@ -307,6 +325,3 @@ inline ObjectID PhysicsBehavior::getLastCollidee() const
 {
 	return m_lastCollidee;
 }
-
-#endif // _PHYSICSUPDATE_H_
-

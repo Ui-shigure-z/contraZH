@@ -34,8 +34,7 @@
 *
 ******************************************************************************/
 
-#ifndef USTRING_H
-#define USTRING_H
+#pragma once
 
 #include "UTypes.h"
 #include "RefCounted.h"
@@ -53,7 +52,7 @@ class UString
 		virtual ~UString();
 
 		//! Get the length of the string
-		UInt Length(void) const;
+		UInt Length() const;
 
 		//! Copy string
 		void Copy(const Char* s);
@@ -75,11 +74,11 @@ class UString
 		Int CompareNoCase(const WChar* ws) const;
 		Int CompareNoCase(const UString& s) const;
 
-		//! Find the first occurance of character
+		//! Find the first occurrence of character
 		Int Find(Char c) const;
 		Int Find(WChar wc) const;
 
-		//! Find the last occurance of a character
+		//! Find the last occurrence of a character
 		Int FindLast(Char c) const;
 		Int FindLast(WChar c) const;
 
@@ -98,13 +97,13 @@ class UString
 		UString Right(UInt count);
 
 		//! Convert string to uppercase
-		void ToUpper(void);
-		
+		void ToUpper();
+
 		//! Convert string to lowercase
-		void ToLower(void);
-		
+		void ToLower();
+
 		//! Reverse characters of string
-		void Reverse(void);
+		void Reverse();
 
 		//! Remove leading and trailing characters from string.
 		//  Returns true if any characters removed
@@ -128,16 +127,16 @@ class UString
 		void ConvertToANSI(Char* buffer, UInt bufferLength) const;
 
 		//! Get the size (in bytes) of the string.
-		UInt Size(void) const;
+		UInt Size() const;
 
 		//! Get the maximum number of characters this string can hold.
-		UInt Capacity(void) const;
+		UInt Capacity() const;
 
 		//! Resize the string
 		bool Resize(UInt size);
 
-		const WChar* Get(void) const
-			{return (mData != NULL) ? mData : L"";}
+		const WChar* Get() const
+			{return (mData != nullptr) ? mData : L"";}
 
 		//! Assignment operator
 		UString operator=(const Char* s)
@@ -145,7 +144,7 @@ class UString
 
 		UString operator=(const WChar* ws)
 			{Copy(ws); return *this;};
-		
+
 		UString operator=(const UString& s)
 			{Copy(s); return *this;};
 
@@ -183,7 +182,7 @@ class UString
 
 		bool operator!=(const WChar* ws)
 			{return (Compare(ws) != 0);}
-		
+
 		bool operator!=(const UString& s)
 			{return (Compare(s) != 0);}
 
@@ -235,5 +234,3 @@ class UString
 		WChar* mData;
 		UInt mCapacity;
 	};
-
-#endif // USTRING_H

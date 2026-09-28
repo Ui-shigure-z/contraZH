@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "gamespy/ghttp/ghttp.h"
 
@@ -36,13 +36,16 @@
 #include "Common/AudioSettings.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
-#include "Common/UserPreferences.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GameLOD.h"
+#include "Common/Recorder.h"
 #include "Common/Registry.h"
 #include "Common/version.h"
 
+#include "GameClient/ClientInstance.h"
 #include "GameClient/GameClient.h"
 #include "GameClient/InGameUI.h"
+#include "GameClient/LookAtXlat.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
 #include "GameClient/GadgetCheckBox.h"
@@ -58,9 +61,11 @@
 #include "GameClient/Mouse.h"
 #include "GameClient/GameText.h"
 #include "GameClient/Display.h"
+#include "GameClient/ControlBar.h"
 #include "GameClient/IMEManager.h"
 #include "GameClient/ShellHooks.h"
 #include "GameClient/GUICallbacks.h"
+#include "GameClient/GlobalLanguage.h"
 #include "GameNetwork/FirewallHelper.h"
 #include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/GameSpyOverlay.h"
@@ -68,703 +73,541 @@
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/ScriptEngine.h"
 #include "WWDownload/Registry.h"
-//added by saad
-//used to access a messagebox that does "ok" and "cancel"
 #include "GameClient/MessageBox.h"
+
+#include "WW3D2/ww3d.h"
+#include "WW3D2/texturefilter.h"
 
 // This is for non-RC builds only!!!
 #define VERBOSE_VERSION L"Release"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 
 static NameKeyType		comboBoxOnlineIPID	= NAMEKEY_INVALID;
-static GameWindow *		comboBoxOnlineIP		= NULL;
+static GameWindow *		comboBoxOnlineIP		= nullptr;
 
 static NameKeyType		comboBoxLANIPID	= NAMEKEY_INVALID;
-static GameWindow *		comboBoxLANIP		= NULL;
+static GameWindow *		comboBoxLANIP		= nullptr;
 
 static NameKeyType    comboBoxAntiAliasingID   = NAMEKEY_INVALID;
-static GameWindow *   comboBoxAntiAliasing     = NULL;
+static GameWindow *   comboBoxAntiAliasing     = nullptr;
 
 static NameKeyType    comboBoxResolutionID      = NAMEKEY_INVALID;
-static GameWindow *   comboBoxResolution       = NULL; 
+static GameWindow *   comboBoxResolution       = nullptr;
 
 static NameKeyType    comboBoxDetailID      = NAMEKEY_INVALID;
-static GameWindow *   comboBoxDetail        = NULL; 
+static GameWindow *   comboBoxDetail        = nullptr;
 
 static NameKeyType		checkAlternateMouseID	= NAMEKEY_INVALID;
-static GameWindow *		checkAlternateMouse		= NULL;
+static GameWindow *		checkAlternateMouse		= nullptr;
 
 static NameKeyType		checkRetaliationID	= NAMEKEY_INVALID;
-static GameWindow *		checkRetaliation		= NULL;
+static GameWindow *		checkRetaliation		= nullptr;
 
 static NameKeyType		checkDoubleClickAttackMoveID	= NAMEKEY_INVALID;
-static GameWindow *		checkDoubleClickAttackMove		= NULL;
+static GameWindow *		checkDoubleClickAttackMove		= nullptr;
 
 static NameKeyType		sliderScrollSpeedID	= NAMEKEY_INVALID;
-static GameWindow *		sliderScrollSpeed		= NULL;
+static GameWindow *		sliderScrollSpeed		= nullptr;
+
+static NameKeyType		checkMaxCameraHeightID	= NAMEKEY_INVALID;
+static GameWindow *		checkMaxCameraHeight		= nullptr;
+static NameKeyType		textEntryMaxCameraHeightID	= NAMEKEY_INVALID;
+static GameWindow *		textEntryMaxCameraHeight		= nullptr;
+
+static NameKeyType		checkBorderlessWindowID	= NAMEKEY_INVALID;
+static GameWindow *		checkBorderlessWindow		= nullptr;
 
 static NameKeyType    checkLanguageFilterID = NAMEKEY_INVALID;
-static GameWindow *   checkLanguageFilter   = NULL;
+static GameWindow *   checkLanguageFilter   = nullptr;
 
 static NameKeyType		checkUseCameraID		= NAMEKEY_INVALID;
-static GameWindow *		checkUseCamera			= NULL;
+static GameWindow *		checkUseCamera			= nullptr;
 
 static NameKeyType		checkSaveCameraID		= NAMEKEY_INVALID;
-static GameWindow *		checkSaveCamera			= NULL;
-
-static NameKeyType		checkSendDelayID		= NAMEKEY_INVALID;
-static GameWindow *		checkSendDelay			= NULL;
+static GameWindow *		checkSaveCamera			= nullptr;
 
 static NameKeyType		checkDrawAnchorID		= NAMEKEY_INVALID;
-static GameWindow *		checkDrawAnchor			= NULL;
+static GameWindow *		checkDrawAnchor			= nullptr;
 
 static NameKeyType		checkMoveAnchorID		= NAMEKEY_INVALID;
-static GameWindow *		checkMoveAnchor			= NULL;
+static GameWindow *		checkMoveAnchor			= nullptr;
 
 static NameKeyType		buttonFirewallRefreshID	= NAMEKEY_INVALID;
-static GameWindow *		buttonFirewallRefresh		= NULL;
+static GameWindow *		buttonFirewallRefresh		= nullptr;
 //
 //static NameKeyType    checkAudioHardwareID = NAMEKEY_INVALID;
-//static GameWindow *   checkAudioHardware   = NULL;
+//static GameWindow *   checkAudioHardware   = nullptr;
 //
 //static NameKeyType    checkAudioSurroundID = NAMEKEY_INVALID;
-//static GameWindow *   checkAudioSurround   = NULL;
+//static GameWindow *   checkAudioSurround   = nullptr;
 ////volume controls
 //
 static NameKeyType    sliderMusicVolumeID = NAMEKEY_INVALID;
-static GameWindow *   sliderMusicVolume   = NULL;
+static GameWindow *   sliderMusicVolume   = nullptr;
 
 static NameKeyType    sliderSFXVolumeID = NAMEKEY_INVALID;
-static GameWindow *   sliderSFXVolume   = NULL;
+static GameWindow *   sliderSFXVolume   = nullptr;
 
 static NameKeyType    sliderVoiceVolumeID = NAMEKEY_INVALID;
-static GameWindow *   sliderVoiceVolume   = NULL;
+static GameWindow *   sliderVoiceVolume   = nullptr;
 
 static NameKeyType    sliderGammaID = NAMEKEY_INVALID;
-static GameWindow *   sliderGamma = NULL;
+static GameWindow *   sliderGamma = nullptr;
 
 //Advanced Options Screen
 static NameKeyType    WinAdvancedDisplayID      = NAMEKEY_INVALID;
-static GameWindow *   WinAdvancedDisplay				= NULL; 
+static GameWindow *   WinAdvancedDisplay				= nullptr;
 
 static NameKeyType    ButtonAdvancedAcceptID      = NAMEKEY_INVALID;
-static GameWindow *   ButtonAdvancedAccept				= NULL; 
+static GameWindow *   ButtonAdvancedAccept				= nullptr;
 
 static NameKeyType    ButtonAdvancedCancelID      = NAMEKEY_INVALID;
-static GameWindow *   ButtonAdvancedCancel				= NULL; 
+static GameWindow *   ButtonAdvancedCancel				= nullptr;
+
+//Game Options Screen
+static NameKeyType    WinGameOptionsID            = NAMEKEY_INVALID;
+static GameWindow *   WinGameOptions              = nullptr;
+
+static NameKeyType    ButtonGameOptionsID         = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptions           = nullptr;
+
+static NameKeyType    ButtonGameOptionsAcceptID   = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptionsAccept     = nullptr;
+
+static NameKeyType    ButtonGameOptionsCancelID   = NAMEKEY_INVALID;
+static GameWindow *   ButtonGameOptionsCancel     = nullptr;
+
+static GameWindow *   buttonMainAccept            = nullptr;
+static GameWindow *   buttonMainBack              = nullptr;
+static GameWindow *   buttonMainDefaults          = nullptr;
+
+static GameWindow *   comboBoxHealthBars          = nullptr;
+static GameWindow *   comboBoxAlliedDecals        = nullptr;
+static GameWindow *   comboBoxBuildTimers         = nullptr;
+static GameWindow *   comboBoxCastMode            = nullptr;
+static GameWindow *   comboBoxTextureFilter       = nullptr;
+static GameWindow *   comboBoxAnisotropy          = nullptr;
+static GameWindow *   checkNumericalHealth        = nullptr;
+static GameWindow *   checkSmartPips              = nullptr;
+static GameWindow *   checkSelectionCircle        = nullptr;
+static GameWindow *   checkDefensesRangeCircle    = nullptr;
+static GameWindow *   checkObjectDecals           = nullptr;
+static GameWindow *   checkEasyMilitaryDrag       = nullptr;
+static GameWindow *   checkSmartSelection         = nullptr;
+static GameWindow *   checkSmartSelectionUseMouse = nullptr;
+static GameWindow *   checkSmartCommandGroup      = nullptr;
+static GameWindow *   checkNewRadar               = nullptr;
+static GameWindow *   checkLargeBlips             = nullptr;
+static NameKeyType    checkGridHotkeysID          = NAMEKEY_INVALID;
+static GameWindow *   checkGridHotkeys            = nullptr;
+static GameWindow *   textEntryGridHotkeyLayout   = nullptr;
+static GameWindow *   textEntryGridHotkeyColumns  = nullptr;
+static GameWindow *   textEntryNonGridHotkeys     = nullptr;
+static GameWindow *   checkKeyboardOverlay        = nullptr;
+static NameKeyType    checkKeyboardOverlayBackdropID = NAMEKEY_INVALID;
+static GameWindow *   checkKeyboardOverlayBackdrop = nullptr;
+static GameWindow *   textEntryKeyboardOverlayRed   = nullptr;
+static GameWindow *   textEntryKeyboardOverlayGreen = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBlue  = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropRed     = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropGreen   = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropBlue    = nullptr;
+static GameWindow *   textEntryKeyboardOverlayBackdropOpacity = nullptr;
+static NameKeyType    checkBloomID                = NAMEKEY_INVALID;
+static GameWindow *   checkBloom                  = nullptr;
+static GameWindow *   textEntryBloomStrength      = nullptr;
+static GameWindow *   checkBloomDebug             = nullptr;
+static GameWindow *   checkLaserRef               = nullptr;
+static GameWindow *   checkShadowMap              = nullptr;
+static GameWindow *   checkSpecular               = nullptr;
+static GameWindow *   checkNormalMaps             = nullptr;
+static GameWindow *   checkWaterReflections       = nullptr;
+static NameKeyType    checkDynamicLightsID        = NAMEKEY_INVALID;
+static GameWindow *   checkDynamicLights          = nullptr;
+static GameWindow *   checkPixelLights            = nullptr;
+static GameWindow *   checkSoftParticles          = nullptr;
+static GameWindow *   checkAmbientOcclusion       = nullptr;
+static GameWindow *   checkHeightBlend            = nullptr;
+static GameWindow *   checkVSync                  = nullptr;
+static GameWindow *   checkLowLatency             = nullptr;
+static GameWindow *   checkSmoothUnitMotion       = nullptr;
+
+// Options.ini spellings, indexed by the matching enum and combo box position
+static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
+static const char *const BuildTimerModeNames[] = { "None", "Seconds", "Auto" };
+static const char *const CastModeNames[] = { "Normal", "QuickCast", "QuickCastWithIndicator" };
+static const Int AnisotropyLevels[] = { 2, 4, 8, 16 };
+static_assert( ARRAY_SIZE(HealthBarModeNames) == HealthBarDisplayMode_Count, "HealthBarModeNames out of date" );
+static const char *const AlliedDecalModeNames[] = { "Hidden", "House", "Army" };
+static_assert( ARRAY_SIZE(AlliedDecalModeNames) == AlliedDecalMode_Count, "AlliedDecalModeNames out of date" );
+static_assert( ARRAY_SIZE(BuildTimerModeNames) == BuildTimerDisplayMode_Count, "BuildTimerModeNames out of date" );
+static_assert( ARRAY_SIZE(CastModeNames) == CastMode_Count, "CastModeNames out of date" );
 
 static NameKeyType    sliderTextureResolutionID = NAMEKEY_INVALID;
-static GameWindow *   sliderTextureResolution = NULL;
+static GameWindow *   sliderTextureResolution = nullptr;
 
 static NameKeyType    sliderParticleCapID = NAMEKEY_INVALID;
-static GameWindow *   sliderParticleCap = NULL;
+static GameWindow *   sliderParticleCap = nullptr;
 
 static NameKeyType    check3DShadowsID = NAMEKEY_INVALID;
-static GameWindow *   check3DShadows   = NULL;
+static GameWindow *   check3DShadows   = nullptr;
 
 static NameKeyType    check2DShadowsID = NAMEKEY_INVALID;
-static GameWindow *   check2DShadows   = NULL;
+static GameWindow *   check2DShadows   = nullptr;
 
 static NameKeyType    checkCloudShadowsID = NAMEKEY_INVALID;
-static GameWindow *   checkCloudShadows   = NULL;
+static GameWindow *   checkCloudShadows   = nullptr;
 
 static NameKeyType    checkGroundLightingID = NAMEKEY_INVALID;
-static GameWindow *   checkGroundLighting   = NULL;
+static GameWindow *   checkGroundLighting   = nullptr;
 
 static NameKeyType    checkSmoothWaterID = NAMEKEY_INVALID;
-static GameWindow *   checkSmoothWater   = NULL;
+static GameWindow *   checkSmoothWater   = nullptr;
 
 static NameKeyType    checkBuildingOcclusionID = NAMEKEY_INVALID;
-static GameWindow *   checkBuildingOcclusion   = NULL;
+static GameWindow *   checkBuildingOcclusion   = nullptr;
 
 static NameKeyType    checkPropsID = NAMEKEY_INVALID;
-static GameWindow *   checkProps   = NULL;
+static GameWindow *   checkProps   = nullptr;
 
 static NameKeyType    checkExtraAnimationsID = NAMEKEY_INVALID;
-static GameWindow *   checkExtraAnimations   = NULL;
+static GameWindow *   checkExtraAnimations   = nullptr;
 
 static NameKeyType    checkNoDynamicLodID = NAMEKEY_INVALID;
-static GameWindow *   checkNoDynamicLod   = NULL;
+static GameWindow *   checkNoDynamicLod   = nullptr;
 
 static NameKeyType    checkUnlockFpsID = NAMEKEY_INVALID;
-static GameWindow *   checkUnlockFps   = NULL;
+static GameWindow *   checkUnlockFps   = nullptr;
 
 static NameKeyType    checkHeatEffectsID = NAMEKEY_INVALID;
-static GameWindow *   checkHeatEffects   = NULL;
+static GameWindow *   checkHeatEffects   = nullptr;
 
 /*
 
 static NameKeyType    radioHighID = NAMEKEY_INVALID;
-static GameWindow *   radioHigh   = NULL;
+static GameWindow *   radioHigh   = nullptr;
 static NameKeyType    radioMediumID = NAMEKEY_INVALID;
-static GameWindow *   radioMedium   = NULL;
+static GameWindow *   radioMedium   = nullptr;
 static NameKeyType    radioLowID = NAMEKEY_INVALID;
-static GameWindow *   radioLow   = NULL;
+static GameWindow *   radioLow   = nullptr;
 
 */
 
-//Added By Saad for the resolution confirmation dialog box
 DisplaySettings oldDispSettings, newDispSettings;
 Bool dispChanged = FALSE;
 extern Int timer;
 extern void DoResolutionDialog();
-//
-
 static Bool ignoreSelected = FALSE;
-WindowLayout *OptionsLayout = NULL;
+WindowLayout *OptionsLayout = nullptr;
 
-enum Detail CPP_11(: Int)
+static OptionPreferences *pref = nullptr;
+
+// Shows a camera limit in the text entry; the entry only takes input while the checkbox is on
+static void showMaxCameraHeightEntry( Bool useCustom, Int height )
 {
-	HIGHDETAIL = 0,
-	MEDIUMDETAIL,
-	LOWDETAIL,
-	CUSTOMDETAIL,
+	if (textEntryMaxCameraHeight)
+	{
+		UnicodeString shown;
+		shown.format( L"%d", height );
+		GadgetTextEntrySetText( textEntryMaxCameraHeight, shown );
+		textEntryMaxCameraHeight->winEnable( useCustom );
+	}
+}
 
-	DETAIL,
+// Setting the checkbox re-sends GBM_SELECTED, so the click handler must not call this
+static void showMaxCameraHeight( Bool useCustom, Int height )
+{
+	if (checkMaxCameraHeight)
+	{
+		GadgetCheckBoxSetChecked( checkMaxCameraHeight, useCustom );
+	}
+	showMaxCameraHeightEntry( useCustom, height );
+}
+
+static void enableWindow( GameWindow *window, Bool on )
+{
+	if (window)
+	{
+		window->winEnable( on );
+	}
+}
+
+static void setCheck( GameWindow *check, Bool on )
+{
+	if (check)
+	{
+		GadgetCheckBoxSetChecked( check, on );
+	}
+}
+
+static Bool getCheck( GameWindow *check, Bool fallback )
+{
+	if (!check)
+	{
+		return fallback;
+	}
+	return GadgetCheckBoxIsChecked( check );
+}
+
+static void setComboPos( GameWindow *combo, Int pos )
+{
+	if (combo)
+	{
+		GadgetComboBoxSetSelectedPos( combo, pos );
+	}
+}
+
+static Int getComboPos( GameWindow *combo, Int fallback )
+{
+	if (!combo)
+	{
+		return fallback;
+	}
+	Int pos = -1;
+	GadgetComboBoxGetSelectedPos( combo, &pos );
+	return pos < 0 ? fallback : pos;
+}
+
+static void setEntryAscii( GameWindow *entry, const AsciiString &text )
+{
+	if (entry)
+	{
+		UnicodeString shown;
+		shown.translate( text );
+		GadgetTextEntrySetText( entry, shown );
+	}
+}
+
+static void setEntryInt( GameWindow *entry, Int value )
+{
+	if (entry)
+	{
+		UnicodeString shown;
+		shown.format( L"%d", value );
+		GadgetTextEntrySetText( entry, shown );
+	}
+}
+
+static AsciiString getEntryAscii( GameWindow *entry, const AsciiString &fallback )
+{
+	if (!entry)
+	{
+		return fallback;
+	}
+	AsciiString text;
+	text.translate( GadgetTextEntryGetText( entry ) );
+	return text;
+}
+
+// An empty field means the caller's fallback, so a cleared colour channel never reads as 0 by accident
+static Int getEntryInt( GameWindow *entry, Int minVal, Int maxVal, Int fallback )
+{
+	if (!entry)
+	{
+		return fallback;
+	}
+	AsciiString text;
+	text.translate( GadgetTextEntryGetText( entry ) );
+	if (text.isEmpty())
+	{
+		return fallback;
+	}
+	return clamp( minVal, atoi( text.str() ), maxVal );
+}
+
+static void showColorEntries( Color color, GameWindow *red, GameWindow *green, GameWindow *blue, GameWindow *alpha )
+{
+	UnsignedByte r, g, b, a;
+	GameGetColorComponents( color, &r, &g, &b, &a );
+	setEntryInt( red, r );
+	setEntryInt( green, g );
+	setEntryInt( blue, b );
+	setEntryInt( alpha, a );
+}
+
+// Writes the channels as <prefix>Red/Green/Blue/Opacity and returns the colour they make
+static Color saveColorEntries( const char *prefix, Color fallback, GameWindow *red, GameWindow *green, GameWindow *blue, GameWindow *alpha )
+{
+	UnsignedByte r, g, b, a;
+	GameGetColorComponents( fallback, &r, &g, &b, &a );
+	const Int channels[4] =
+	{
+		getEntryInt( red, 0, 255, r ),
+		getEntryInt( green, 0, 255, g ),
+		getEntryInt( blue, 0, 255, b ),
+		getEntryInt( alpha, 0, 255, a ),
+	};
+	static const char *const names[4] = { "Red", "Green", "Blue", "Opacity" };
+	for (Int i = 0; i < 4; ++i)
+	{
+		if (i == 3 && alpha == nullptr)
+		{
+			break;
+		}
+		AsciiString key, value;
+		key.format( "%s%s", prefix, names[i] );
+		value.format( "%d", channels[i] );
+		(*pref)[key] = value;
+	}
+	return GameMakeColor( channels[0], channels[1], channels[2], channels[3] );
+}
+
+// The plain yes/no settings, read, shown, saved and defaulted from one place
+struct BoolOption
+{
+	GameWindow **check;
+	const char *prefKey;
+	Bool (OptionPreferences::*read)() const;
+	Bool GlobalData::*field;
+	Bool defaultValue;
 };
 
-
-OptionPreferences::OptionPreferences( void )
+static const BoolOption BoolOptions[] =
 {
-	// note, the superclass will put this in the right dir automatically, this is just a leaf name
-	load("Options.ini");
+	{ &checkNumericalHealth, "NumericalHealth", &OptionPreferences::getNumericalHealthEnabled, &GlobalData::m_numericalHealth, FALSE },
+	{ &checkSmartPips, "SmartPips", &OptionPreferences::getSmartPipsEnabled, &GlobalData::m_smartPips, FALSE },
+	{ &checkSelectionCircle, "SelectionCircle", &OptionPreferences::getSelectionCircleEnabled, &GlobalData::m_selectionCircleEnabled, FALSE },
+	{ &checkDefensesRangeCircle, "DefensesRangeCircle", &OptionPreferences::getDefensesRangeCircleEnabled, &GlobalData::m_defensesRangeCircle, FALSE },
+	{ &checkObjectDecals, "ObjectDecals", &OptionPreferences::getObjectDecalsEnabled, &GlobalData::m_objectDecalsEnabled, TRUE },
+	{ &checkEasyMilitaryDrag, "EasyMilitaryDrag", &OptionPreferences::getEasyMilitaryDragEnabled, &GlobalData::m_easyMilitaryDrag, FALSE },
+	{ &checkSmartSelection, "SmartSelection", &OptionPreferences::getSmartSelectionEnabled, &GlobalData::m_smartSelection, TRUE },
+	{ &checkSmartSelectionUseMouse, "SmartSelectionUseMouse", &OptionPreferences::getSmartSelectionUseMouse, &GlobalData::m_smartSelectionUseMouse, TRUE },
+	{ &checkSmartCommandGroup, "SmartCommandGroup", &OptionPreferences::getSmartCommandGroupEnabled, &GlobalData::m_smartCommandGroup, TRUE },
+	// the radar caches this when it is created, so it waits for the next launch
+	{ &checkNewRadar, "NewRadar", &OptionPreferences::getNewRadarEnabled, &GlobalData::m_newRadar, FALSE },
+	{ &checkGridHotkeys, "GridHotkeys", &OptionPreferences::getGridHotkeysEnabled, &GlobalData::m_gridHotkeysEnabled, FALSE },
+	{ &checkKeyboardOverlay, "KeyboardOverlay", &OptionPreferences::getKeyboardOverlayEnabled, &GlobalData::m_keyboardOverlayEnabled, FALSE },
+	{ &checkKeyboardOverlayBackdrop, "KeyboardOverlayBackdrop", &OptionPreferences::getKeyboardOverlayBackdropEnabled, &GlobalData::m_keyboardOverlayBackdrop, TRUE },
+	{ &checkBloom, "Bloom", &OptionPreferences::getBloomEnabled, &GlobalData::m_useBloom, FALSE },
+	{ &checkBloomDebug, "BloomDebug", &OptionPreferences::getBloomDebugEnabled, &GlobalData::m_bloomDebug, FALSE },
+	{ &checkLaserRef, "LaserRef", &OptionPreferences::getLaserRefEnabled, &GlobalData::m_laserRef, FALSE },
+	{ &checkShadowMap, "ShadowMap", &OptionPreferences::getShadowMapEnabled, &GlobalData::m_useShadowMap, TRUE },
+	{ &checkSpecular, "Specular", &OptionPreferences::getSpecularEnabled, &GlobalData::m_useSpecular, TRUE },
+	{ &checkNormalMaps, "NormalMaps", &OptionPreferences::getNormalMapsEnabled, &GlobalData::m_useNormalMaps, TRUE },
+	{ &checkWaterReflections, "WaterReflections", &OptionPreferences::getWaterReflectionsEnabled, &GlobalData::m_waterReflections, TRUE },
+	{ &checkDynamicLights, "DynamicLights", &OptionPreferences::getDynamicLightsEnabled, &GlobalData::m_useDynamicLights, TRUE },
+	{ &checkPixelLights, "PixelLights", &OptionPreferences::getPixelLightsEnabled, &GlobalData::m_usePixelLights, TRUE },
+	{ &checkSoftParticles, "SoftParticles", &OptionPreferences::getSoftParticlesEnabled, &GlobalData::m_useSoftParticles, TRUE },
+	{ &checkAmbientOcclusion, "AmbientOcclusion", &OptionPreferences::getAmbientOcclusionEnabled, &GlobalData::m_useAmbientOcclusion, TRUE },
+	{ &checkHeightBlend, "HeightBlend", &OptionPreferences::getHeightBlendEnabled, &GlobalData::m_useHeightBlend, TRUE },
+	{ &checkLowLatency, "LowLatency", &OptionPreferences::getLowLatencyEnabled, &GlobalData::m_lowLatency, FALSE },
+	{ &checkSmoothUnitMotion, "SmoothUnitMotion", &OptionPreferences::getSmoothUnitMotionEnabled, &GlobalData::m_smoothUnitMotion, TRUE },
+};
+
+// the strength is stored as 0..1 but edited as a percentage
+static Int bloomPercent( Real strength )
+{
+	return REAL_TO_INT( strength * 100.0f + 0.5f );
 }
 
-OptionPreferences::~OptionPreferences()
+static Int anisotropyIndex( Int level )
 {
-}
-
-
-Int OptionPreferences::getCampaignDifficulty(void)
-{
-	OptionPreferences::const_iterator it = find("CampaignDifficulty");
-	if (it == end())
-		return TheScriptEngine->getGlobalDifficulty();
-
-	Int factor = atoi(it->second.str());
-	if (factor < DIFFICULTY_EASY)
-		factor = DIFFICULTY_EASY;
-	if (factor > DIFFICULTY_HARD)
-		factor = DIFFICULTY_HARD;
-	
-	return factor;
-}
-
-void OptionPreferences::setCampaignDifficulty( Int diff )
-{
-	AsciiString prefString;
-	prefString.format("%d", diff );
-	(*this)["CampaignDifficulty"] = prefString;
-}
-
-UnsignedInt OptionPreferences::getLANIPAddress(void)
-{
-	AsciiString selectedIP = (*this)["IPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
+	for (Int i = 0; i < ARRAY_SIZE(AnisotropyLevels); ++i)
 	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
+		if (AnisotropyLevels[i] == level)
 		{
-			return IPlist->getIP();
+			return i;
 		}
-		IPlist = IPlist->getNext();
 	}
-	return TheGlobalData->m_defaultIP;
+	return 0;
 }
 
-void OptionPreferences::setLANIPAddress( AsciiString IP )
+// Fields that only matter while their checkbox is on stay greyed out otherwise
+static void updateGameOptionsEnables()
 {
-	(*this)["IPAddress"] = IP;
-}
+	const Bool grid = getCheck( checkGridHotkeys, FALSE );
+	enableWindow( textEntryGridHotkeyLayout, grid );
+	enableWindow( textEntryGridHotkeyColumns, grid );
+	enableWindow( textEntryNonGridHotkeys, grid );
 
-void OptionPreferences::setLANIPAddress( UnsignedInt IP )
-{
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", ((IP & 0xff000000) >> 24), ((IP & 0xff0000) >> 16), ((IP & 0xff00) >> 8), (IP & 0xff));
-	(*this)["IPAddress"] = tmp;
-}
+	const Bool backdrop = getCheck( checkKeyboardOverlayBackdrop, FALSE );
+	enableWindow( textEntryKeyboardOverlayBackdropRed, backdrop );
+	enableWindow( textEntryKeyboardOverlayBackdropGreen, backdrop );
+	enableWindow( textEntryKeyboardOverlayBackdropBlue, backdrop );
+	enableWindow( textEntryKeyboardOverlayBackdropOpacity, backdrop );
 
-UnsignedInt OptionPreferences::getOnlineIPAddress(void)
-{
-	AsciiString selectedIP = (*this)["GameSpyIPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
+	const Bool bloom = getCheck( checkBloom, FALSE );
+	enableWindow( textEntryBloomStrength, bloom );
+	enableWindow( checkBloomDebug, bloom );
+
+	enableWindow( checkPixelLights, getCheck( checkDynamicLights, TRUE ) );
+
+	// the scene depth it reads is multisampled, and so unreadable, with anti-aliasing on
+	Int antiAliasing = 0;
+	if (comboBoxAntiAliasing)
 	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
-		{
-			return IPlist->getIP();
-		}
-		IPlist = IPlist->getNext();
+		GadgetComboBoxGetSelectedPos( comboBoxAntiAliasing, &antiAliasing );
 	}
-	return TheGlobalData->m_defaultIP;
+	enableWindow( checkAmbientOcclusion, antiAliasing <= 0 );
 }
 
-void OptionPreferences::setOnlineIPAddress( AsciiString IP )
+static void populateGameOptions()
 {
-	(*this)["GameSpyIPAddress"] = IP;
-}
-
-void OptionPreferences::setOnlineIPAddress( UnsignedInt IP )
-{
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", ((IP & 0xff000000) >> 24), ((IP & 0xff0000) >> 16), ((IP & 0xff00) >> 8), (IP & 0xff));
-	(*this)["GameSpyIPAddress"] = tmp;
-}
-
-Bool OptionPreferences::getAlternateMouseModeEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseAlternateMouse");
-	if (it == end())
-		return TheGlobalData->m_useAlternateMouse;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getRetaliationModeEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("Retaliation");
-	if (it == end())
-		return TheGlobalData->m_clientRetaliationModeEnabled;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getDoubleClickAttackMoveEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseDoubleClickAttackMove");
-	if( it == end() )
-		return TheGlobalData->m_doubleClickAttackMove;
-
-	if( stricmp( it->second.str(), "yes" ) == 0 )
-		return TRUE;
-
-	return FALSE;
-}
-
-Real OptionPreferences::getScrollFactor(void)
-{
-	OptionPreferences::const_iterator it = find("ScrollFactor");
-	if (it == end())
-		return TheGlobalData->m_keyboardDefaultScrollFactor;
-
-	Int factor = atoi(it->second.str());
-	if (factor < 0)
-		factor = 0;
-	if (factor > 100)
-		factor = 100;
-	
-	return factor/100.0f;
-}
-
-Bool OptionPreferences::usesSystemMapDir(void)
-{
-	OptionPreferences::const_iterator it = find("UseSystemMapDir");
-	if (it == end())
-		return TRUE;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::saveCameraInReplays(void)
-{
-	OptionPreferences::const_iterator it = find("SaveCameraInReplays");
-	if (it == end())
-		return TRUE;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::useCameraInReplays(void)
-{
-	OptionPreferences::const_iterator it = find("UseCameraInReplays");
-	if (it == end())
-		return TRUE;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Int OptionPreferences::getIdealStaticGameDetail(void)
-{
-	OptionPreferences::const_iterator it = find("IdealStaticGameLOD");
-	if (it == end())
-		return STATIC_GAME_LOD_UNKNOWN;
-
-	return TheGameLODManager->getStaticGameLODIndex(it->second);
-}
-
-Int OptionPreferences::getStaticGameDetail(void)
-{
-	OptionPreferences::const_iterator it = find("StaticGameLOD");
-	if (it == end())
-		return TheGameLODManager->getStaticLODLevel();
-
-	return TheGameLODManager->getStaticGameLODIndex(it->second);
-}
-
-Bool OptionPreferences::getSendDelay(void)
-{
-	OptionPreferences::const_iterator it = find("SendDelay");
-	if (it == end())
-		return TheGlobalData->m_firewallSendDelay;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Int OptionPreferences::getFirewallBehavior()
-{
-	OptionPreferences::const_iterator it = find("FirewallBehavior");
-	if (it == end())
-		return TheGlobalData->m_firewallBehavior;
-
-	Int behavior = atoi(it->second.str());
-	if (behavior < 0)
+	if (!WinGameOptions)
 	{
-		behavior = 0;
-	}
-	return behavior;
-}
-
-Short OptionPreferences::getFirewallPortAllocationDelta()
-{
-	OptionPreferences::const_iterator it = find("FirewallPortAllocationDelta");
-	if (it == end()) {
-		return TheGlobalData->m_firewallPortAllocationDelta;
-	}
-
-	Short delta = atoi(it->second.str());
-	return delta;
-}
-
-UnsignedShort OptionPreferences::getFirewallPortOverride()
-{
-	OptionPreferences::const_iterator it = find("FirewallPortOverride");
-	if (it == end()) {
-		return TheGlobalData->m_firewallPortOverride;
-	}
-
-	Int override = atoi(it->second.str());
-	if (override < 0 || override > 65535)
-		override = 0;
-	return override;
-}
-
-Bool OptionPreferences::getFirewallNeedToRefresh()
-{
-	OptionPreferences::const_iterator it = find("FirewallNeedToRefresh");
-	if (it == end()) {
-		return FALSE;
-	}
-
-	Bool retval = FALSE;
-	AsciiString str = it->second;
-	if (str.compareNoCase("TRUE") == 0) {
-		retval = TRUE;
-	}
-	return retval;
-}
-
-AsciiString OptionPreferences::getPreferred3DProvider(void)
-{
-	OptionPreferences::const_iterator it = find("3DAudioProvider");
-	if (it == end())
-		return TheAudio->getAudioSettings()->m_preferred3DProvider[MAX_HW_PROVIDERS];
-	return it->second;
-}
-
-AsciiString OptionPreferences::getSpeakerType(void)
-{
-	OptionPreferences::const_iterator it = find("SpeakerType");
-	if (it == end())
-		return TheAudio->translateUnsignedIntToSpeakerType(TheAudio->getAudioSettings()->m_defaultSpeakerType2D);
-	return it->second;
-}
-
-Real OptionPreferences::getSoundVolume(void)
-{
-	OptionPreferences::const_iterator it = find("SFXVolume");
-	if (it == end())
-	{
-		Real relative = TheAudio->getAudioSettings()->m_relative2DVolume;
-		if( relative < 0 )
-		{
-			Real scale = 1.0f + relative;
-			return TheAudio->getAudioSettings()->m_defaultSoundVolume * 100.0f * scale;
-		}
-		return TheAudio->getAudioSettings()->m_defaultSoundVolume * 100.0f;
-	}
-
-	Real volume = (Real) atof(it->second.str());
-	if (volume < 0.0f)
-	{
-		volume = 0.0f;
-	}
-	return volume;
-}
-
-Real OptionPreferences::get3DSoundVolume(void)
-{
-	OptionPreferences::const_iterator it = find("SFX3DVolume");
-	if (it == end())
-	{
-		Real relative = TheAudio->getAudioSettings()->m_relative2DVolume;
-		if( relative > 0 )
-		{
-			Real scale = 1.0f - relative;
-			return TheAudio->getAudioSettings()->m_default3DSoundVolume * 100.0f * scale;
-		}
-		return TheAudio->getAudioSettings()->m_default3DSoundVolume * 100.0f;
-	}
-
-	Real volume = (Real) atof(it->second.str());
-	if (volume < 0.0f)
-	{
-		volume = 0.0f;
-	}
-	return volume;
-}
-
-Real OptionPreferences::getSpeechVolume(void)
-{
-	OptionPreferences::const_iterator it = find("VoiceVolume");
-	if (it == end())
-		return TheAudio->getAudioSettings()->m_defaultSpeechVolume * 100.0f;
-
-	Real volume = (Real) atof(it->second.str());
-	if (volume < 0.0f)
-	{
-		volume = 0.0f;
-	}
-	return volume;
-}
-
-Bool OptionPreferences::getCloudShadowsEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseCloudMap");
-	if (it == end())
-		return TheGlobalData->m_useCloudMap;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getLightmapEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseLightMap");
-	if (it == end())
-		return TheGlobalData->m_useLightMap;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getSmoothWaterEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("ShowSoftWaterEdge");
-	if (it == end())
-		return TheGlobalData->m_showSoftWaterEdge;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getTreesEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("ShowTrees");
-	if (it == end())
-		return TheGlobalData->m_useTrees;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getExtraAnimationsDisabled(void)
-{
-	OptionPreferences::const_iterator it = find("ExtraAnimations");
-	if (it == end())
-		return TheGlobalData->m_useDrawModuleLOD;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return FALSE;	//we are enabling extra animations, so disabled LOD
-	}
-	return TRUE;
-}
-
-Bool OptionPreferences::getUseHeatEffects(void)
-{
-	OptionPreferences::const_iterator it = find("HeatEffects");
-	if (it == end())
-		return TheGlobalData->m_useHeatEffects;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getDynamicLODEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("DynamicLOD");
-	if (it == end())
-		return TheGlobalData->m_enableDynamicLOD;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getFPSLimitEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("FPSLimit");
-	if (it == end())
-		return TheGlobalData->m_useFpsLimit;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::get3DShadowsEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseShadowVolumes");
-	if (it == end())
-		return TheGlobalData->m_useShadowVolumes;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::get2DShadowsEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("UseShadowDecals");
-	if (it == end())
-		return TheGlobalData->m_useShadowDecals;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Bool OptionPreferences::getBuildingOcclusionEnabled(void)
-{
-	OptionPreferences::const_iterator it = find("BuildingOcclusion");
-	if (it == end())
-		return TheGlobalData->m_enableBehindBuildingMarkers;
-
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-Int OptionPreferences::getParticleCap(void)
-{
-	OptionPreferences::const_iterator it = find("MaxParticleCount");
-	if (it == end())
-		return TheGlobalData->m_maxParticleCount;
-
-	Int factor = (Int) atoi(it->second.str());
-	if (factor < 100)	//clamp to at least 100 particles.
-		factor = 100;
-
-	return factor;
-}
-
-Int OptionPreferences::getTextureReduction(void)
-{
-	OptionPreferences::const_iterator it = find("TextureReduction");
-	if (it == end())
-		return -1;	//unknown texture reduction
-
-	Int factor = (Int) atoi(it->second.str());
-	if (factor > 2)	//clamp it.
-		factor=2;
-	return factor;
-}
-
-Real OptionPreferences::getGammaValue(void)
-{
-	OptionPreferences::const_iterator it = find("Gamma");
- 	if (it == end())
- 		return 50.0f;
- 
- 	Real gamma = (Real) atoi(it->second.str());
- 	return gamma;
-}
-
-void OptionPreferences::getResolution(Int *xres, Int *yres)
-{
-	*xres = TheGlobalData->m_xResolution;
-	*yres = TheGlobalData->m_yResolution;
-
-	OptionPreferences::const_iterator it = find("Resolution");
-	if (it == end())
 		return;
-
-	Int selectedXRes,selectedYRes;
-	if (sscanf(it->second.str(),"%d%d", &selectedXRes, &selectedYRes) != 2)
-		return;
-
-	*xres=selectedXRes;
-	*yres=selectedYRes;
-}
-
-Real OptionPreferences::getMusicVolume(void)
-{
-	OptionPreferences::const_iterator it = find("MusicVolume");
-	if (it == end())
-		return TheAudio->getAudioSettings()->m_defaultMusicVolume * 100.0f;
-
-	Real volume = (Real) atof(it->second.str());
-	if (volume < 0.0f)
-	{
-		volume = 0.0f;
 	}
-	return volume;
+
+	setComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() );
+	setComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() );
+	setComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() );
+	setComboPos( comboBoxCastMode, pref->getCastMode() );
+	setComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
+	setComboPos( comboBoxAnisotropy, anisotropyIndex( pref->getTextureAnisotropyLevel() ) );
+
+	for (Int i = 0; i < ARRAY_SIZE(BoolOptions); ++i)
+	{
+		setCheck( *BoolOptions[i].check, (pref->*BoolOptions[i].read)() );
+	}
+	setCheck( checkLargeBlips, pref->getRadarBlipSize() == RadarBlipSize_Large );
+
+	setEntryAscii( textEntryGridHotkeyLayout, pref->getGridHotkeyLayout() );
+	setEntryInt( textEntryGridHotkeyColumns, pref->getGridHotkeyColumns() );
+	setEntryAscii( textEntryNonGridHotkeys, pref->getNonGridHotkeys() );
+
+	showColorEntries( pref->getKeyboardOverlayColor(), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
+	showColorEntries( pref->getKeyboardOverlayBackdropColor(), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, bloomPercent( pref->getBloomStrength() ) );
+
+	updateGameOptionsEnables();
 }
 
-static OptionPreferences *pref = NULL;
-
-static void setDefaults( void )
+static void setGameOptionsDefaults()
 {
+	if (!WinGameOptions)
+	{
+		return;
+	}
+
+	setComboPos( comboBoxHealthBars, HealthBarDisplayMode_Default );
+	setComboPos( comboBoxAlliedDecals, AlliedDecalMode_Default );
+	setComboPos( comboBoxBuildTimers, BuildTimerDisplayMode_Default );
+	setComboPos( comboBoxCastMode, CastMode_Default );
+	setComboPos( comboBoxTextureFilter, TextureFilterClass::TEXTURE_FILTER_BILINEAR );
+	setComboPos( comboBoxAnisotropy, anisotropyIndex( TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_2X ) );
+
+	for (Int i = 0; i < ARRAY_SIZE(BoolOptions); ++i)
+	{
+		setCheck( *BoolOptions[i].check, BoolOptions[i].defaultValue );
+	}
+	setCheck( checkLargeBlips, RadarBlipSize_Default == RadarBlipSize_Large );
+
+	setEntryAscii( textEntryGridHotkeyLayout, "QWERTYUIOASDFGHJKL" );
+	setEntryInt( textEntryGridHotkeyColumns, 9 );
+	setEntryAscii( textEntryNonGridHotkeys, AsciiString::TheEmptyString );
+
+	showColorEntries( GameMakeColor( 255, 255, 255, 255 ), textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
+	showColorEntries( GameMakeColor( 0, 0, 0, 128 ), textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+	setEntryInt( textEntryBloomStrength, 50 );
+
+	updateGameOptionsEnables();
+}
+
+static void setDefaults()
+{
+	constexpr const Bool ModifyDisplaySettings = FALSE;
+
 	//-------------------------------------------------------------------------------------------------
 	// provider type
 //	GadgetCheckBoxSetChecked(checkAudioHardware, FALSE);
@@ -777,65 +620,47 @@ static void setDefaults( void )
 	// language filter
 	GadgetCheckBoxSetChecked( checkLanguageFilter, TRUE );
 
-	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	GadgetCheckBoxSetChecked(checkSendDelay, FALSE);
-	
+	if constexpr (ModifyDisplaySettings)
+	{
 	//-------------------------------------------------------------------------------------------------
 	// LOD
-	if ((TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE)) {
-		StaticGameLODLevel level=TheGameLODManager->findStaticLODLevel();
-		switch (level)
-		{
-		case STATIC_GAME_LOD_LOW:
-			GadgetComboBoxSetSelectedPos(comboBoxDetail, LOWDETAIL);
-			break;
-		case STATIC_GAME_LOD_MEDIUM:
-			GadgetComboBoxSetSelectedPos(comboBoxDetail, MEDIUMDETAIL);
-			break;
-		case STATIC_GAME_LOD_HIGH:
-			GadgetComboBoxSetSelectedPos(comboBoxDetail, HIGHDETAIL);
-			break;
-		case STATIC_GAME_LOD_CUSTOM:
-			GadgetComboBoxSetSelectedPos(comboBoxDetail, CUSTOMDETAIL);
-			break;
-		default:
-			DEBUG_ASSERTCRASH(FALSE,("Tried to set comboBoxDetail to a value of %d ", TheGameLODManager->getStaticLODLevel()) );
-		};
-	}
-	
+	GadgetComboBoxSetSelectedPos(comboBoxDetail, (Int)TheGameLODManager->getRecommendedStaticLODLevel());
+
 	//-------------------------------------------------------------------------------------------------
 	// Resolution
 	//Find index of 800x600 mode.
-	if ((TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE)  && !TheGameSpyInfo) {
+	if ((TheGameLogic->isInGame() == FALSE || TheGameLogic->isInShellGame() == TRUE) && !TheGameSpyInfo) {
 		Int numResolutions = TheDisplay->getDisplayModeCount();
 		Int defaultResIndex=0;
 		for( Int i = 0; i < numResolutions; ++i )
 		{	Int xres,yres,bitDepth;
 			TheDisplay->getDisplayModeDescription(i,&xres,&yres,&bitDepth);
-			if (xres == 800 && yres == 600)	//keep track of default mode in case we need it.
+			if (xres == DEFAULT_DISPLAY_WIDTH && yres == DEFAULT_DISPLAY_HEIGHT)	//keep track of default mode in case we need it.
 			{	defaultResIndex=i;
 				break;
 			}
 		}
 		GadgetComboBoxSetSelectedPos( comboBoxResolution, defaultResIndex );	//should be 800x600 (our lowest supported mode)
 	}
-
+	}
 
 	//-------------------------------------------------------------------------------------------------
 	// Mouse Mode
 	GadgetCheckBoxSetChecked(checkAlternateMouse, FALSE);
 	GadgetCheckBoxSetChecked(checkRetaliation, TRUE );
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, FALSE );
+	setCheck( checkBorderlessWindow, FALSE );
 
 	//-------------------------------------------------------------------------------------------------
 //	// scroll speed val
-	Int valMin, valMax;
-//	GadgetSliderGetMinMax(sliderScrollSpeed,&valMin, &valMax);
-//	GadgetSliderSetPosition(sliderScrollSpeed, ((valMax - valMin) / 2 + valMin));
 	Int scrollPos = (Int)(TheGlobalData->m_keyboardDefaultScrollFactor*100.0f);
 	GadgetSliderSetPosition( sliderScrollSpeed, scrollPos );
 
+	showMaxCameraHeight( FALSE, (Int)TheGlobalData->m_defaultMaxCameraHeight );
+	setGameOptionsDefaults();
+
+
+	Int valMin, valMax;
 
 	//-------------------------------------------------------------------------------------------------
 	// slider music volume
@@ -858,12 +683,13 @@ static void setDefaults( void )
  	GadgetSliderGetMinMax(sliderGamma,&valMin, &valMax);
  	GadgetSliderSetPosition(sliderGamma, ((valMax - valMin) / 2 + valMin));
 
-	//-------------------------------------------------------------------------------------------------
- 	// Texture resolution slider
-	//
-
+	if constexpr (ModifyDisplaySettings)
+	{
 	if ((TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE))
-	{	
+	{
+		//-------------------------------------------------------------------------------------------------
+		// Texture resolution slider
+		//
 		Int	txtFact=TheGameLODManager->getRecommendedTextureReduction();
 
 		GadgetSliderSetPosition( sliderTextureResolution, 2-txtFact);
@@ -913,6 +739,8 @@ static void setDefaults( void )
 		//
 		GadgetCheckBoxSetChecked( checkHeatEffects, TheGlobalData->m_useHeatEffects);
 
+		setCheck( checkVSync, WW3D::Is_VSync_On() );
+
 		//-------------------------------------------------------------------------------------------------
  		// Building Occlusion checkbox
 		//
@@ -928,9 +756,10 @@ static void setDefaults( void )
 		//
 		GadgetCheckBoxSetChecked( checkProps, TheGlobalData->m_useTrees);
 	}
+	}
 }
 
-static void saveOptions( void )
+static void saveOptions()
 {
 	Int index;
 	Int val;
@@ -960,72 +789,68 @@ static void saveOptions( void )
 			TheWritableGlobalData->m_languageFilterPref = false;
 			(*pref)["LanguageFilter"] = "false";
 	}
-	
-	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	TheWritableGlobalData->m_firewallSendDelay = GadgetCheckBoxIsChecked(checkSendDelay);
-	if (TheGlobalData->m_firewallSendDelay) {
-		(*pref)["SendDelay"] = AsciiString("yes");
-	} else {
-		(*pref)["SendDelay"] = AsciiString("no");
-	}
+
 
 	//-------------------------------------------------------------------------------------------------
 	// Custom game detail settings.
 	GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
-	if (index == CUSTOMDETAIL)
+	if (index == STATIC_GAME_LOD_CUSTOM)
 	{
  		//-------------------------------------------------------------------------------------------------
  		// Texture resolution slider
 		{
+		 		val = 2 - GadgetSliderGetPosition(sliderTextureResolution);
+
 				AsciiString prefString;
-
-		 		val = GadgetSliderGetPosition(sliderTextureResolution);
-				val = 2-val;
-
 				prefString.format("%d",val);
 				(*pref)["TextureReduction"] = prefString;
 
-				if (TheGlobalData->m_textureReductionFactor != val)
-				{
-					TheGameClient->adjustLOD(val-TheGlobalData->m_textureReductionFactor);	//apply the new setting
-				}
+				TheWritableGlobalData->m_textureReductionFactor = val;
+				TheGameClient->setTextureLOD(val);
 		}
 
 		TheWritableGlobalData->m_useShadowVolumes = GadgetCheckBoxIsChecked( check3DShadows );
-		(*pref)["UseShadowVolumes"] = TheWritableGlobalData->m_useShadowVolumes ? AsciiString("yes") : AsciiString("no");
+		(*pref)["UseShadowVolumes"] = TheWritableGlobalData->m_useShadowVolumes ? "yes" : "no";
 
 		TheWritableGlobalData->m_useShadowDecals = GadgetCheckBoxIsChecked( check2DShadows );
-		(*pref)["UseShadowDecals"] = TheWritableGlobalData->m_useShadowDecals ? AsciiString("yes") : AsciiString("no");
+		(*pref)["UseShadowDecals"] = TheWritableGlobalData->m_useShadowDecals ? "yes" : "no";
 
 		TheWritableGlobalData->m_useCloudMap = GadgetCheckBoxIsChecked( checkCloudShadows );
-		(*pref)["UseCloudMap"] = TheGlobalData->m_useCloudMap ? AsciiString("yes") : AsciiString("no");
+		(*pref)["UseCloudMap"] = TheGlobalData->m_useCloudMap ? "yes" : "no";
 
 		TheWritableGlobalData->m_useLightMap = GadgetCheckBoxIsChecked( checkGroundLighting );
-		(*pref)["UseLightMap"] = TheGlobalData->m_useLightMap ? AsciiString("yes") : AsciiString("no");
+		(*pref)["UseLightMap"] = TheGlobalData->m_useLightMap ? "yes" : "no";
 
 		TheWritableGlobalData->m_showSoftWaterEdge = GadgetCheckBoxIsChecked( checkSmoothWater );
-		(*pref)["ShowSoftWaterEdge"] = TheGlobalData->m_showSoftWaterEdge ? AsciiString("yes") : AsciiString("no");
+		(*pref)["ShowSoftWaterEdge"] = TheGlobalData->m_showSoftWaterEdge ? "yes" : "no";
 
 		TheWritableGlobalData->m_useDrawModuleLOD = !GadgetCheckBoxIsChecked( checkExtraAnimations );
 		TheWritableGlobalData->m_useTreeSway = !TheWritableGlobalData->m_useDrawModuleLOD;	//borrow same setting.
-		(*pref)["ExtraAnimations"] = TheGlobalData->m_useDrawModuleLOD ? AsciiString("no") : AsciiString("yes");
+		(*pref)["ExtraAnimations"] = TheGlobalData->m_useDrawModuleLOD ? "no" : "yes";
 
 		TheWritableGlobalData->m_enableDynamicLOD = !GadgetCheckBoxIsChecked( checkNoDynamicLod );
-		(*pref)["DynamicLOD"] = TheGlobalData->m_enableDynamicLOD ? AsciiString("yes") : AsciiString("no");
+		(*pref)["DynamicLOD"] = TheGlobalData->m_enableDynamicLOD ? "yes" : "no";
 
 		TheWritableGlobalData->m_useHeatEffects = GadgetCheckBoxIsChecked( checkHeatEffects );
-		(*pref)["HeatEffects"] = TheGlobalData->m_useHeatEffects ? AsciiString("yes") : AsciiString("no");
+		(*pref)["HeatEffects"] = TheGlobalData->m_useHeatEffects ? "yes" : "no";
+
+		// Written only once changed, so an untouched Options.ini keeps vsync on in fullscreen and off in a window.
+		if (checkVSync != nullptr && GadgetCheckBoxIsChecked( checkVSync ) != (Bool)WW3D::Is_VSync_On())
+		{
+			TheWritableGlobalData->m_vsync = GadgetCheckBoxIsChecked( checkVSync ) ? 1 : 0;
+			(*pref)["VSync"] = TheGlobalData->m_vsync ? "yes" : "no";
+			WW3D::Set_VSync_Mode( TheGlobalData->m_vsync );
+		}
 
 		// Never write this out
 		//TheWritableGlobalData->m_useFpsLimit = !GadgetCheckBoxIsChecked( checkUnlockFps );
-		//(*pref)["FPSLimit"] = TheGlobalData->m_useFpsLimit ? AsciiString("yes") : AsciiString("no");
+		//(*pref)["FPSLimit"] = TheGlobalData->m_useFpsLimit ? "yes" : "no";
 
 		TheWritableGlobalData->m_enableBehindBuildingMarkers = GadgetCheckBoxIsChecked( checkBuildingOcclusion );
-		(*pref)["BuildingOcclusion"] = TheWritableGlobalData->m_enableBehindBuildingMarkers ? AsciiString("yes") : AsciiString("no");
+		(*pref)["BuildingOcclusion"] = TheWritableGlobalData->m_enableBehindBuildingMarkers ? "yes" : "no";
 
 		TheWritableGlobalData->m_useTrees = GadgetCheckBoxIsChecked( checkProps);
-		(*pref)["ShowTrees"] = TheWritableGlobalData->m_useTrees ? AsciiString("yes") : AsciiString("no");
+		(*pref)["ShowTrees"] = TheWritableGlobalData->m_useTrees ? "yes" : "no";
 
  		//-------------------------------------------------------------------------------------------------
 		// Particle Cap slider
@@ -1043,124 +868,61 @@ static void saveOptions( void )
 
 	//-------------------------------------------------------------------------------------------------
 	// LOD
-	Bool levelChanged=FALSE;
-	GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
-	//The levels stored by the LOD Manager are inverted compared to GUI so find correct one:
-	switch (index) {
-	case HIGHDETAIL:
-		levelChanged=TheGameLODManager->setStaticLODLevel(STATIC_GAME_LOD_HIGH);
-		break;
-	case MEDIUMDETAIL:
-		levelChanged=TheGameLODManager->setStaticLODLevel(STATIC_GAME_LOD_MEDIUM);
-		break;
-	case LOWDETAIL:
-		levelChanged=TheGameLODManager->setStaticLODLevel(STATIC_GAME_LOD_LOW);
-		break;
-	case CUSTOMDETAIL:
-		levelChanged=TheGameLODManager->setStaticLODLevel(STATIC_GAME_LOD_CUSTOM);
-		break;
-	default:
-		DEBUG_ASSERTCRASH(FALSE,("LOD passed in was %d, %d is not a supported LOD",index,index));
-		break;
-	}
-
-	if (levelChanged)
-	        (*pref)["StaticGameLOD"] = TheGameLODManager->getStaticGameLODLevelName(TheGameLODManager->getStaticLODLevel());
-
-	//-------------------------------------------------------------------------------------------------
-	// Resolution
-	GadgetComboBoxGetSelectedPos( comboBoxResolution, &index );
-	Int xres, yres, bitDepth;
-	
-	oldDispSettings.xRes = TheDisplay->getWidth();
-	oldDispSettings.yRes = TheDisplay->getHeight();
-	oldDispSettings.bitDepth = TheDisplay->getBitDepth();
-	oldDispSettings.windowed = TheDisplay->getWindowed();
-	
-	if (index < TheDisplay->getDisplayModeCount() && index >= 0)
+	if (comboBoxDetail && comboBoxDetail->winGetEnabled())
 	{
-		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
-		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres)
+		GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
+
+		// A match keeps the frame rate limit its game mode set, which the detail presets would overwrite
+		const Bool fpsLimit = TheGlobalData->m_useFpsLimit;
+		const Bool levelChanged = TheGameLODManager->setStaticLODLevel((StaticGameLODLevel)index);
+		if (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL)
 		{
-			
-			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,TheDisplay->getWindowed()))
-			{
-				dispChanged = TRUE;
-				TheWritableGlobalData->m_xResolution = xres;
-				TheWritableGlobalData->m_yResolution = yres;
-
-				TheHeaderTemplateManager->headerNotifyResolutionChange();
-				TheMouse->mouseNotifyResolutionChange();
-				
-				//Save new settings for a dialog box confirmation after options are accepted
-				newDispSettings.xRes = xres;
-				newDispSettings.yRes = yres;
-				newDispSettings.bitDepth = bitDepth;
-				newDispSettings.windowed = TheDisplay->getWindowed();
-
-				AsciiString prefString;
-				prefString.format("%d %d", xres, yres );
-				(*pref)["Resolution"] = prefString;
-
-				// delete the shell
-				delete TheShell;
-				TheShell = NULL;
-
-				// create the shell
-				TheShell = MSGNEW("GameClientSubsystem") Shell;
-				if( TheShell )
-					TheShell->init();
-				
-				TheInGameUI->recreateControlBar();
-
-				TheShell->push( AsciiString("Menus/MainMenu.wnd") );
-			}
+			TheWritableGlobalData->m_useFpsLimit = fpsLimit;
 		}
+
+		if (levelChanged)
+			(*pref)["StaticGameLOD"] = TheGameLODManager->getStaticGameLODLevelName(TheGameLODManager->getStaticLODLevel());
 	}
 
 	//-------------------------------------------------------------------------------------------------
 	// IP address
-	UnsignedInt ip;
-	GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
-	if (index>=0 && TheGlobalData)
+	if (comboBoxLANIP && comboBoxLANIP->winGetEnabled())
 	{
-		ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
-		TheWritableGlobalData->m_defaultIP = ip;
-		pref->setLANIPAddress(ip);
-	}
-	GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
-	if (index>=0)
-	{
-		ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
-		pref->setOnlineIPAddress(ip);
+		UnsignedInt ip;
+		GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
+		if (index>=0 && TheGlobalData)
+		{
+			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
+			TheWritableGlobalData->m_defaultIP = ip;
+			pref->setLANIPAddress(ip);
+		}
 	}
 
-	//-------------------------------------------------------------------------------------------------
-	// HTTP Proxy
-	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(NULL, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
-	if (textEntryHTTPProxy)
+	if (comboBoxOnlineIP && comboBoxOnlineIP->winGetEnabled())
 	{
-		UnicodeString uStr = GadgetTextEntryGetText(textEntryHTTPProxy);
-		AsciiString aStr;
-		aStr.translate(uStr);
-		SetStringInRegistry("", "Proxy", aStr.str());
-		ghttpSetProxy(aStr.str());
+		UnsignedInt ip;
+		GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
+		if (index>=0)
+		{
+			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
+			pref->setOnlineIPAddress(ip);
+		}
 	}
 
 	//-------------------------------------------------------------------------------------------------
 	// Firewall Port Override
-	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(NULL, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
-	if (textEntryFirewallPortOverride)
+	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
+	if (textEntryFirewallPortOverride && textEntryFirewallPortOverride->winGetEnabled())
 	{
 		UnicodeString uStr = GadgetTextEntryGetText(textEntryFirewallPortOverride);
 		AsciiString aStr;
 		aStr.translate(uStr);
-		Int override = atoi(aStr.str());
-		if (override < 0 || override > 65535)
-			override = 0;
-		if (TheGlobalData->m_firewallPortOverride != override)
-		{	TheWritableGlobalData->m_firewallPortOverride = override;
-		    aStr.format("%d", override);
+		Int portOverride = atoi(aStr.str());
+		if (portOverride < 0 || portOverride > 65535)
+			portOverride = 0;
+		if (TheGlobalData->m_firewallPortOverride != portOverride)
+		{	TheWritableGlobalData->m_firewallPortOverride = portOverride;
+		    aStr.format("%d", portOverride);
 			(*pref)["FirewallPortOverride"] = aStr;
 		}
 	}
@@ -1168,56 +930,254 @@ static void saveOptions( void )
 	//-------------------------------------------------------------------------------------------------
 	// antialiasing
   GadgetComboBoxGetSelectedPos(comboBoxAntiAliasing, &index);
-  if( index >= 0 && TheGlobalData->m_antiAliasBoxValue != index )
+  if( index >= 0 )
   {
-    TheWritableGlobalData->m_antiAliasBoxValue = index;
+		Int mode = WW3D::MULTISAMPLE_MODE_NONE;
+
+		// TheSuperHackers @info We are converting comboBox entry position to MultiSampleModeEnum values
+		index = clamp((int)OptionPreferences::AntiAliasingMode_OFF, index, (int)OptionPreferences::AntiAliasingMode_MSAA_8X);
+		mode = (index > 0) ? 1 << index : 0;
+
+		// The device is rebuilt with the new sample count, which falls back where the card lacks it
+		if (mode != (Int)WW3D::Get_MSAA_Mode())
+		{
+			WW3D::Set_MSAA_Mode( (WW3D::MultiSampleModeEnum)mode );
+			WW3D::Set_Render_Device( -1, -1, -1, -1, -1, false, true, true );
+			mode = (Int)WW3D::Get_MSAA_Mode();
+		}
+
+		TheWritableGlobalData->m_antiAliasLevel = mode;
     AsciiString prefString;
-		prefString.format("%d", index);
+		prefString.format("%d", mode);
 		(*pref)["AntiAliasing"] = prefString;
   }
 
+	//-------------------------------------------------------------------------------------------------
+	// texture filter mode
+	val = getComboPos( comboBoxTextureFilter, pref->getTextureFilterMode() );
+	if (val >= 0)
+	{
+		val = clamp((int)TextureFilterClass::TEXTURE_FILTER_NONE, val, (int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
+
+		// W3DDisplay only pushes this at init, so a menu change has to reach the renderer here
+		WW3D::Set_Texture_Filter( val );
+		TheWritableGlobalData->m_textureFilteringMode = val;
+		AsciiString prefString;
+		prefString = TextureFilterClass::TextureFilterModeString[val];
+		(*pref)["TextureFilter"] = prefString;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// anisotropy level
+	val = comboBoxAnisotropy ? AnisotropyLevels[getComboPos( comboBoxAnisotropy, 0 )] : pref->getTextureAnisotropyLevel();
+	if (val >= 0)
+	{
+		val = clamp((int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_2X, val, (int)TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC_16X);
+
+		WW3D::Set_Anisotropy_Level( val );
+		TheWritableGlobalData->m_textureAnisotropyLevel = val;
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["AnisotropyLevel"] = prefString;
+	}
 
 	//-------------------------------------------------------------------------------------------------
 	// mouse mode
 	TheWritableGlobalData->m_useAlternateMouse = GadgetCheckBoxIsChecked(checkAlternateMouse);
-	(*pref)["UseAlternateMouse"] = TheWritableGlobalData->m_useAlternateMouse ? AsciiString("yes") : AsciiString("no");
+	(*pref)["UseAlternateMouse"] = TheWritableGlobalData->m_useAlternateMouse ? "yes" : "no";
+
+	// TheSuperHackers @todo Add check box ?
+	{
+		Bool useRightMouseScrollWithAlternateMouse = pref->getRightMouseScrollWithAlternateMouseEnabled();
+		(*pref)["UseRightMouseScrollWithAlternateMouse"] = useRightMouseScrollWithAlternateMouse ? "yes" : "no";
+		TheWritableGlobalData->m_useRightMouseScrollWithAlternateMouse = useRightMouseScrollWithAlternateMouse;
+	}
 
 	TheWritableGlobalData->m_clientRetaliationModeEnabled = GadgetCheckBoxIsChecked(checkRetaliation);
-	(*pref)["Retaliation"] = TheWritableGlobalData->m_clientRetaliationModeEnabled? AsciiString("yes") : AsciiString("no");
+	(*pref)["Retaliation"] = TheWritableGlobalData->m_clientRetaliationModeEnabled? "yes" : "no";
 
 	TheWritableGlobalData->m_doubleClickAttackMove = GadgetCheckBoxIsChecked( checkDoubleClickAttackMove );
-	(*pref)["UseDoubleClickAttackMove"] = TheWritableGlobalData->m_doubleClickAttackMove ? AsciiString("yes") : AsciiString("no");
+	(*pref)["UseDoubleClickAttackMove"] = TheWritableGlobalData->m_doubleClickAttackMove ? "yes" : "no";
+
+	// TheSuperHackers @todo Add combo box ?
+	{
+		CursorCaptureMode mode = pref->getCursorCaptureMode();
+		(*pref)["CursorCaptureEnabledInWindowedGame"] = (mode & CursorCaptureMode_EnabledInWindowedGame) ? "yes" : "no";
+		(*pref)["CursorCaptureEnabledInWindowedMenu"] = (mode & CursorCaptureMode_EnabledInWindowedMenu) ? "yes" : "no";
+		(*pref)["CursorCaptureEnabledInFullscreenGame"] = (mode & CursorCaptureMode_EnabledInFullscreenGame) ? "yes" : "no";
+		(*pref)["CursorCaptureEnabledInFullscreenMenu"] = (mode & CursorCaptureMode_EnabledInFullscreenMenu) ? "yes" : "no";
+		TheMouse->setCursorCaptureMode(mode);
+	}
+
+	// TheSuperHackers @todo Add combo box ?
+	{
+		ScreenEdgeScrollMode mode = pref->getScreenEdgeScrollMode();
+		(*pref)["ScreenEdgeScrollEnabledInWindowedApp"] = (mode & ScreenEdgeScrollMode_EnabledInWindowedApp) ? "yes" : "no";
+		(*pref)["ScreenEdgeScrollEnabledInFullscreenApp"] = (mode & ScreenEdgeScrollMode_EnabledInFullscreenApp) ? "yes" : "no";
+		TheLookAtTranslator->setScreenEdgeScrollMode(mode);
+	}
+
+	// TheSuperHackers @todo Add checkbox ?
+	{
+		Bool enabled = pref->getPlayerObserverEnabled();
+		(*pref)["PlayerObserverEnabled"] = enabled ? "yes" : "no";
+		TheWritableGlobalData->m_enablePlayerObserver = enabled;
+	}
+
+	// TheSuperHackers @todo Add checkbox ?
+	{
+		Bool enabled = pref->getArchiveReplaysEnabled();
+		(*pref)["ArchiveReplays"] = enabled ? "yes" : "no";
+		TheRecorder->setArchiveEnabled(enabled);
+	}
 
 	//-------------------------------------------------------------------------------------------------
 	// scroll speed val
 	val = GadgetSliderGetPosition(sliderScrollSpeed);
-	if(val != -1)
+	if(val > 0)
 	{
 		TheWritableGlobalData->m_keyboardScrollFactor = val/100.0f;
-		DEBUG_LOG(("Scroll Spped val %d, keyboard scroll factor %f\n", val, TheGlobalData->m_keyboardScrollFactor));
+		DEBUG_LOG(("Scroll Speed val %d, keyboard scroll factor %f", val, TheGlobalData->m_keyboardScrollFactor));
 		AsciiString prefString;
 		prefString.format("%d", val);
 		(*pref)["ScrollFactor"] = prefString;
 	}
-	
+
+	//-------------------------------------------------------------------------------------------------
+	// max camera height
+	if (checkMaxCameraHeight && textEntryMaxCameraHeight)
+	{
+		const Bool useCustom = GadgetCheckBoxIsChecked( checkMaxCameraHeight );
+		(*pref)["UseCustomMaxCameraHeight"] = useCustom ? "yes" : "no";
+		if (useCustom)
+		{
+			const Int height = getEntryInt( textEntryMaxCameraHeight, OptionPreferences::MaxCameraHeightMin, OptionPreferences::MaxCameraHeightMax, (Int)pref->getMaxCameraHeight() );
+			AsciiString prefString;
+			prefString.format( "%d", height );
+			(*pref)["MaxCameraHeight"] = prefString;
+		}
+		showMaxCameraHeight( useCustom, (Int)pref->getMaxCameraHeight() );
+
+		// LAN and online games play the host's limit until they end
+		const GameMode mode = TheGameLogic->getGameMode();
+		if (mode != GAME_LAN && mode != GAME_INTERNET)
+		{
+			const Real height = pref->getMaxCameraHeight();
+			TheWritableGlobalData->m_maxCameraHeight = height;
+			if (TheTacticalView && TheGameLogic->isInGame() && mode != GAME_SHELL)
+			{
+				TheTacticalView->setMaxHeightAboveGround( height );
+				TheTacticalView->setHeightAboveGround( TheTacticalView->getHeightAboveGround() );
+			}
+		}
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// game options
+	if (WinGameOptions)
+	{
+		Int idx = clamp( 0, getComboPos( comboBoxHealthBars, pref->getHealthBarDisplayMode() ), (Int)HealthBarDisplayMode_Count - 1 );
+		(*pref)["HealthBarDisplayMode"] = HealthBarModeNames[idx];
+		TheWritableGlobalData->m_healthBarDisplayMode = idx;
+
+		idx = clamp( 0, getComboPos( comboBoxAlliedDecals, pref->getAlliedDecalMode() ), (Int)AlliedDecalMode_Count - 1 );
+		(*pref)["AlliedDecalMode"] = AlliedDecalModeNames[idx];
+		TheWritableGlobalData->m_alliedDecalMode = idx;
+
+		idx = clamp( 0, getComboPos( comboBoxBuildTimers, pref->getBuildTimerDisplayMode() ), (Int)BuildTimerDisplayMode_Count - 1 );
+		(*pref)["BuildTimerDisplayMode"] = BuildTimerModeNames[idx];
+		TheWritableGlobalData->m_buildTimerDisplayMode = idx;
+
+		idx = clamp( 0, getComboPos( comboBoxCastMode, pref->getCastMode() ), (Int)CastMode_Count - 1 );
+		(*pref)["CastMode"] = CastModeNames[idx];
+		TheWritableGlobalData->m_castMode = idx;
+
+		for (Int i = 0; i < ARRAY_SIZE(BoolOptions); ++i)
+		{
+			const BoolOption &option = BoolOptions[i];
+			const Bool on = getCheck( *option.check, (pref->*option.read)() );
+			(*pref)[option.prefKey] = on ? "yes" : "no";
+			TheWritableGlobalData->*option.field = on;
+		}
+		WW3D::Set_Low_Latency( TheGlobalData->m_lowLatency != FALSE );
+
+		// the radar caches this when it is created, so it waits for the next launch
+		const Bool large = getCheck( checkLargeBlips, pref->getRadarBlipSize() == RadarBlipSize_Large );
+		(*pref)["BlipSize"] = large ? "Large" : "Small";
+		TheWritableGlobalData->m_radarBlipSize = large ? RadarBlipSize_Large : RadarBlipSize_Small;
+
+		AsciiString layout = getEntryAscii( textEntryGridHotkeyLayout, pref->getGridHotkeyLayout() );
+		if (layout.isEmpty())
+		{
+			layout = "QWERTYUIOASDFGHJKL";
+		}
+		layout.toUpper();
+		(*pref)["GridHotkeyLayout"] = layout;
+		TheWritableGlobalData->m_gridHotkeyLayout = layout;
+
+		const Int columns = getEntryInt( textEntryGridHotkeyColumns, 0, 20, pref->getGridHotkeyColumns() );
+		AsciiString prefString;
+		prefString.format( "%d", columns );
+		(*pref)["GridHotkeyColumns"] = prefString;
+		TheWritableGlobalData->m_gridHotkeyColumns = columns;
+
+		AsciiString excluded = getEntryAscii( textEntryNonGridHotkeys, pref->getNonGridHotkeys() );
+		excluded.toUpper();
+		(*pref)["NonGridHotkeys"] = excluded;
+		TheWritableGlobalData->m_nonGridHotkeys = excluded;
+
+		// The command bar bakes the hotkeys in when it fills, so make it fill again
+		if (TheControlBar)
+		{
+			TheControlBar->markUIDirty();
+		}
+
+		TheWritableGlobalData->m_keyboardOverlayColor = saveColorEntries( "KeyboardOverlay", GameMakeColor( 255, 255, 255, 255 ),
+			textEntryKeyboardOverlayRed, textEntryKeyboardOverlayGreen, textEntryKeyboardOverlayBlue, nullptr );
+		TheWritableGlobalData->m_keyboardOverlayBackdropColor = saveColorEntries( "KeyboardOverlayBackdrop", GameMakeColor( 0, 0, 0, 128 ),
+			textEntryKeyboardOverlayBackdropRed, textEntryKeyboardOverlayBackdropGreen, textEntryKeyboardOverlayBackdropBlue, textEntryKeyboardOverlayBackdropOpacity );
+
+		const Int percent = getEntryInt( textEntryBloomStrength, 0, 100, bloomPercent( pref->getBloomStrength() ) );
+		prefString.format( "%.2f", percent / 100.0f );
+		(*pref)["BloomStrength"] = prefString;
+		TheWritableGlobalData->m_bloomStrength = percent / 100.0f;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// draw scroll anchor
+	{
+		if( TheInGameUI->getDrawRMBScrollAnchor() )
+				(*pref)["DrawScrollAnchor"] = "yes";
+		else
+				(*pref)["DrawScrollAnchor"] = "no";
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// move scroll anchor
+	{
+		if( TheInGameUI->getMoveRMBScrollAnchor() )
+				(*pref)["MoveScrollAnchor"] = "yes";
+		else
+				(*pref)["MoveScrollAnchor"] = "no";
+	}
+
 	//-------------------------------------------------------------------------------------------------
 	// slider music volume
 	val = GadgetSliderGetPosition(sliderMusicVolume);
 	if(val != -1)
 	{
-	  TheWritableGlobalData->m_musicVolumeFactor = val;
     AsciiString prefString;
     prefString.format("%d", val);
     (*pref)["MusicVolume"] = prefString;
     TheAudio->setVolume(val / 100.0f, (AudioAffect) (AudioAffect_Music | AudioAffect_SystemSetting));
 	}
-	
+
 	//-------------------------------------------------------------------------------------------------
 	// slider SFX volume
 	val = GadgetSliderGetPosition(sliderSFXVolume);
 	if(val != -1)
 	{
-		//Both 2D and 3D sound effects are sharing the same slider. However, there is a 
+		//Both 2D and 3D sound effects are sharing the same slider. However, there is a
 		//relative slider that gets applied to one of these values to lower that sound volume.
 		Real sound2DVolume = val / 100.0f;
 		Real sound3DVolume = val / 100.0f;
@@ -1239,7 +1199,6 @@ static void saveOptions( void )
 		TheAudio->setVolume( sound3DVolume, (AudioAffect) (AudioAffect_Sound3D | AudioAffect_SystemSetting) );
 
 		//Save the settings in the options.ini.
-    TheWritableGlobalData->m_SFXVolumeFactor = val;
     AsciiString prefString;
     prefString.format("%d", REAL_TO_INT( sound2DVolume * 100.0f ) );
     (*pref)["SFXVolume"] = prefString;
@@ -1252,11 +1211,21 @@ static void saveOptions( void )
 	val = GadgetSliderGetPosition(sliderVoiceVolume);
 	if(val != -1)
 	{
-    TheWritableGlobalData->m_voiceVolumeFactor = val;
     AsciiString prefString;
     prefString.format("%d", val);
     (*pref)["VoiceVolume"] = prefString;
     TheAudio->setVolume(val / 100.0f, (AudioAffect) (AudioAffect_Speech | AudioAffect_SystemSetting));
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Money tick volume
+	// TheSuperHackers @todo Add options slider ?
+	{
+		val = pref->getMoneyTransactionVolume();
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["MoneyTransactionVolume"] = prefString;
+		TheAudio->friend_getAudioSettings()->m_preferredMoneyTransactionVolume = val / 100.0f;
 	}
 
  	//-------------------------------------------------------------------------------------------------
@@ -1287,6 +1256,169 @@ static void saveOptions( void )
 		}
  	}
 
+	//-------------------------------------------------------------------------------------------------
+	// Set Network Latency Font Size
+	val = pref->getNetworkLatencyFontSize();
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["NetworkLatencyFontSize"] = prefString;
+		TheInGameUI->refreshNetworkLatencyResources();
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set Render FPS Font Size
+	val = pref->getRenderFpsFontSize();
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["RenderFpsFontSize"] = prefString;
+		TheInGameUI->refreshRenderFpsResources();
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set System Time Font Size
+	val = pref->getSystemTimeFontSize(); // TheSuperHackers @todo replace with options input when applicable
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["SystemTimeFontSize"] = prefString;
+		TheInGameUI->refreshSystemTimeResources();
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set Game Time Font Size
+	val = pref->getGameTimeFontSize(); // TheSuperHackers @todo replace with options input when applicable
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["GameTimeFontSize"] = prefString;
+		TheInGameUI->refreshGameTimeResources();
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set Player Info List Font Size
+	val = pref->getPlayerInfoListFontSize();
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["PlayerInfoListFontSize"] = prefString;
+		TheInGameUI->refreshPlayerInfoListResources();
+	}
+
+#if defined(GENERALS_ONLINE)
+	//-------------------------------------------------------------------------------------------------
+	// Set Observer Notification Font Size
+	val = pref->getObserverNotificationFontSize();
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["ObserverNotificationFontSize"] = prefString;
+		TheInGameUI->refreshObserverNotificationResources();
+	}
+#endif
+
+	//-------------------------------------------------------------------------------------------------
+	// Set User Font Scaling Percentage
+	val = pref->getResolutionFontAdjustment() * 100.0f; // TheSuperHackers @todo replace with options input when applicable
+	if (val >= 0 || val == -100)
+	{
+		AsciiString prefString;
+		prefString.format("%d", REAL_TO_INT( val ) );
+		(*pref)["ResolutionFontAdjustment"] = prefString;
+		TheGlobalLanguageData->m_userResolutionFontSizeAdjustment = (Real)val / 100.0f;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set Money Per Minute
+	{
+		Bool show = pref->getShowMoneyPerMinute();
+		AsciiString prefString;
+		prefString = show ? "yes" : "no";
+		(*pref)["ShowMoneyPerMinute"] = prefString;
+		TheWritableGlobalData->m_showMoneyPerMinute = show;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set Game Window Transition Speed Multiplier
+	{
+		Real speed = pref->getGameWindowTransitionSpeedMultiplier();
+		AsciiString prefString;
+		prefString.format("%g", speed);
+		(*pref)["GameWindowTransitionSpeedMultiplier"] = prefString;
+		TheWritableGlobalData->m_gameWindowTransitionSpeedMultiplier = speed;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Set JPEG screenshot quality
+	{
+		Int quality = pref->getJpegQuality();
+		AsciiString prefString;
+		prefString.format("%d", quality);
+		(*pref)["JpegQuality"] = prefString;
+		TheWritableGlobalData->m_jpegQuality = quality;
+	}
+
+	//-------------------------------------------------------------------------------------------------
+	// Resolution
+	//
+	// TheSuperHackers @bugfix xezon 12/06/2025 Now performs the resolution change at the very end of
+	// processing all the options. This is necessary, because recreating the Shell will destroy the
+	// Options Menu and therefore prevent any further ui gadget interactions afterwards.
+
+	GadgetComboBoxGetSelectedPos( comboBoxResolution, &index );
+	Int xres, yres, bitDepth;
+
+	oldDispSettings.xRes = TheDisplay->getWidth();
+	oldDispSettings.yRes = TheDisplay->getHeight();
+	oldDispSettings.bitDepth = TheDisplay->getBitDepth();
+	oldDispSettings.windowed = TheDisplay->getWindowed();
+
+	if (comboBoxResolution && comboBoxResolution->winGetEnabled() && index < TheDisplay->getDisplayModeCount() && index >= 0)
+	{
+		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
+
+		const Bool borderless = getCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
+		const Bool windowed = TheGlobalData->m_windowed || borderless;
+
+		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres || windowed != TheDisplay->getWindowed())
+		{
+			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,windowed))
+			{
+				dispChanged = TRUE;
+				TheWritableGlobalData->m_xResolution = xres;
+				TheWritableGlobalData->m_yResolution = yres;
+				TheWritableGlobalData->m_borderlessWindow = borderless;
+				(*pref)["BorderlessWindow"] = borderless ? "yes" : "no";
+
+				TheHeaderTemplateManager->onResolutionChanged();
+				TheMouse->onResolutionChanged();
+
+				//Save new settings for a dialog box confirmation after options are accepted
+				newDispSettings.xRes = xres;
+				newDispSettings.yRes = yres;
+				newDispSettings.bitDepth = bitDepth;
+				newDispSettings.windowed = TheDisplay->getWindowed();
+
+				AsciiString prefString;
+				prefString.format("%d %d", xres, yres );
+				(*pref)["Resolution"] = prefString;
+
+				// The control bar goes first so its full screen roots stay below the rebuilt shell, as at launch
+				TheInGameUI->recreateControlBar();
+				TheShell->recreateWindowLayouts();
+				TheInGameUI->refreshCustomUiResources();
+			}
+		}
+	}
+
+	// MUST NEVER ADD ANOTHER OPTION HERE AT THE END !
 }
 
 static void DestroyOptionsLayout() {
@@ -1294,7 +1426,7 @@ static void DestroyOptionsLayout() {
 	SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_CLOSED);
 
 	TheShell->destroyOptionsLayout();
-	OptionsLayout = NULL;
+	OptionsLayout = nullptr;
 }
 
 static void showAdvancedOptions()
@@ -1310,26 +1442,285 @@ static void acceptAdvancedOptions()
 static void cancelAdvancedOptions()
 {
 	//restore the detail selection back to initial state
-	switch (TheGameLODManager->getStaticLODLevel())
-	{
-	case STATIC_GAME_LOD_LOW:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, LOWDETAIL);
-		break;
-	case STATIC_GAME_LOD_MEDIUM:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, MEDIUMDETAIL);
-		break;
-	case STATIC_GAME_LOD_HIGH:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, HIGHDETAIL);
-		break;
-	case STATIC_GAME_LOD_CUSTOM:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, CUSTOMDETAIL);
-		break;
-	default:
-		DEBUG_ASSERTCRASH(FALSE,("Tried to set comboBoxDetail to a value of %d ", TheGameLODManager->getStaticLODLevel()) );
-	};
+	GadgetComboBoxSetSelectedPos(comboBoxDetail, (Int)TheGameLODManager->getStaticLODLevel());
 
 	WinAdvancedDisplay->winHide(TRUE);
 }
+
+// The panel is not modal, so the buttons outside its rect are switched off while it is up
+static void enableMainButtons( Bool enable )
+{
+	enableWindow( buttonMainAccept, enable );
+	enableWindow( buttonMainBack, enable );
+	enableWindow( buttonMainDefaults, enable );
+}
+
+static void showGameOptions()
+{
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide( FALSE );
+		enableMainButtons( FALSE );
+	}
+}
+
+static void acceptGameOptions()
+{
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide( TRUE );
+		enableMainButtons( TRUE );
+	}
+}
+
+static void cancelGameOptions()
+{
+	ignoreSelected = TRUE;
+	populateGameOptions();
+	ignoreSelected = FALSE;
+	acceptGameOptions();
+}
+
+static Bool isGameOptionsOpen()
+{
+	return WinGameOptions && !WinGameOptions->winIsHidden();
+}
+
+static GameWindow *findOptionsWindow( const char *name )
+{
+	return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( name ) );
+}
+
+static GameWindow *findOptionsWindow( const char *name, NameKeyType &id )
+{
+	id = TheNameKeyGenerator->nameToKey( name );
+	return TheWindowManager->winGetWindowFromId( nullptr, id );
+}
+
+static void setLabelText( const char *name, const char *label, const WideChar *fallback )
+{
+	GameWindow *window = findOptionsWindow( name );
+	if (window)
+	{
+		GadgetStaticTextSetText( window, TheGameText->FETCH_OR_SUBSTITUTE( label, fallback ) );
+	}
+}
+
+static void setCheckText( GameWindow *check, const char *label, const WideChar *fallback, const char *tip, const WideChar *tipFallback )
+{
+	if (check)
+	{
+		GadgetCheckBoxSetText( check, TheGameText->FETCH_OR_SUBSTITUTE( label, fallback ) );
+		check->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( tip, tipFallback ) );
+	}
+}
+
+static void setTooltip( GameWindow *window, const char *tip, const WideChar *fallback )
+{
+	if (window)
+	{
+		window->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( tip, fallback ) );
+	}
+}
+
+// maxDisplay stays one short of count so the list shows a scrollbar, as the Detail combo does
+static void addComboEntries( GameWindow *combo, const char *labelPrefix, const WideChar *const *fallbacks, Int count, Int maxDisplay )
+{
+	if (!combo)
+	{
+		return;
+	}
+	const Color white = GameMakeColor( 255, 255, 255, 255 );
+	GadgetComboBoxReset( combo );
+	GadgetComboBoxSetMaxDisplay( combo, maxDisplay );
+	for (Int i = 0; i < count; ++i)
+	{
+		AsciiString label;
+		label.format( "%s%d", labelPrefix, i );
+		GadgetComboBoxAddEntry( combo, TheGameText->FETCH_OR_SUBSTITUTE( label.str(), fallbacks[i] ), white );
+	}
+}
+
+// Finds the panel controls, gives them their words and fills the combo boxes
+static void initGameOptionsWindows()
+{
+	WinGameOptions = findOptionsWindow( "OptionsMenu.wnd:WinGameOptions", WinGameOptionsID );
+	ButtonGameOptions = findOptionsWindow( "OptionsMenu.wnd:ButtonGameOptions", ButtonGameOptionsID );
+
+	// A layout without the panel keeps the old menu, minus the button that would open it
+	if (!WinGameOptions)
+	{
+		if (ButtonGameOptions)
+		{
+			ButtonGameOptions->winHide( TRUE );
+		}
+		return;
+	}
+
+	ButtonGameOptionsAccept = findOptionsWindow( "OptionsMenu.wnd:ButtonGameOptionsAccept", ButtonGameOptionsAcceptID );
+	ButtonGameOptionsCancel = findOptionsWindow( "OptionsMenu.wnd:ButtonGameOptionsBack", ButtonGameOptionsCancelID );
+	buttonMainAccept = findOptionsWindow( "OptionsMenu.wnd:ButtonAccept" );
+	buttonMainBack = findOptionsWindow( "OptionsMenu.wnd:ButtonBack" );
+	buttonMainDefaults = findOptionsWindow( "OptionsMenu.wnd:ButtonDefaults" );
+
+	comboBoxHealthBars = findOptionsWindow( "OptionsMenu.wnd:ComboBoxHealthBars" );
+	comboBoxAlliedDecals = findOptionsWindow( "OptionsMenu.wnd:ComboBoxAlliedDecals" );
+	comboBoxBuildTimers = findOptionsWindow( "OptionsMenu.wnd:ComboBoxBuildTimers" );
+	comboBoxCastMode = findOptionsWindow( "OptionsMenu.wnd:ComboBoxCastMode" );
+	comboBoxTextureFilter = findOptionsWindow( "OptionsMenu.wnd:ComboBoxTextureFilter" );
+	comboBoxAnisotropy = findOptionsWindow( "OptionsMenu.wnd:ComboBoxAnisotropy" );
+	checkNumericalHealth = findOptionsWindow( "OptionsMenu.wnd:CheckNumericalHealth" );
+	checkSmartPips = findOptionsWindow( "OptionsMenu.wnd:CheckSmartPips" );
+	checkSelectionCircle = findOptionsWindow( "OptionsMenu.wnd:CheckSelectionCircle" );
+	checkDefensesRangeCircle = findOptionsWindow( "OptionsMenu.wnd:CheckDefensesRangeCircle" );
+	checkObjectDecals = findOptionsWindow( "OptionsMenu.wnd:CheckObjectDecals" );
+	checkEasyMilitaryDrag = findOptionsWindow( "OptionsMenu.wnd:CheckEasyMilitaryDrag" );
+	checkSmartSelection = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelection" );
+	checkSmartSelectionUseMouse = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelectionUseMouse" );
+	checkSmartCommandGroup = findOptionsWindow( "OptionsMenu.wnd:CheckSmartCommandGroup" );
+	checkNewRadar = findOptionsWindow( "OptionsMenu.wnd:CheckNewRadar" );
+	checkLargeBlips = findOptionsWindow( "OptionsMenu.wnd:CheckLargeBlips" );
+	checkGridHotkeys = findOptionsWindow( "OptionsMenu.wnd:CheckGridHotkeys", checkGridHotkeysID );
+	textEntryGridHotkeyLayout = findOptionsWindow( "OptionsMenu.wnd:TextEntryGridHotkeyLayout" );
+	textEntryGridHotkeyColumns = findOptionsWindow( "OptionsMenu.wnd:TextEntryGridHotkeyColumns" );
+	textEntryNonGridHotkeys = findOptionsWindow( "OptionsMenu.wnd:TextEntryNonGridHotkeys" );
+	checkKeyboardOverlay = findOptionsWindow( "OptionsMenu.wnd:CheckKeyboardOverlay" );
+	checkKeyboardOverlayBackdrop = findOptionsWindow( "OptionsMenu.wnd:CheckKeyboardOverlayBackdrop", checkKeyboardOverlayBackdropID );
+	textEntryKeyboardOverlayRed = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayRed" );
+	textEntryKeyboardOverlayGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayGreen" );
+	textEntryKeyboardOverlayBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBlue" );
+	textEntryKeyboardOverlayBackdropRed = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropRed" );
+	textEntryKeyboardOverlayBackdropGreen = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropGreen" );
+	textEntryKeyboardOverlayBackdropBlue = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropBlue" );
+	textEntryKeyboardOverlayBackdropOpacity = findOptionsWindow( "OptionsMenu.wnd:TextEntryKeyboardOverlayBackdropOpacity" );
+	checkBloom = findOptionsWindow( "OptionsMenu.wnd:CheckBloom", checkBloomID );
+	textEntryBloomStrength = findOptionsWindow( "OptionsMenu.wnd:TextEntryBloomStrength" );
+	checkBloomDebug = findOptionsWindow( "OptionsMenu.wnd:CheckBloomDebug" );
+	checkLaserRef = findOptionsWindow( "OptionsMenu.wnd:CheckLaserRef" );
+	checkShadowMap = findOptionsWindow( "OptionsMenu.wnd:CheckShadowMap" );
+	checkSpecular = findOptionsWindow( "OptionsMenu.wnd:CheckSpecular" );
+	checkNormalMaps = findOptionsWindow( "OptionsMenu.wnd:CheckNormalMaps" );
+	checkWaterReflections = findOptionsWindow( "OptionsMenu.wnd:CheckWaterReflections" );
+	checkDynamicLights = findOptionsWindow( "OptionsMenu.wnd:CheckDynamicLights", checkDynamicLightsID );
+	checkPixelLights = findOptionsWindow( "OptionsMenu.wnd:CheckPixelLights" );
+	checkSoftParticles = findOptionsWindow( "OptionsMenu.wnd:CheckSoftParticles" );
+	checkAmbientOcclusion = findOptionsWindow( "OptionsMenu.wnd:CheckAmbientOcclusion" );
+	checkHeightBlend = findOptionsWindow( "OptionsMenu.wnd:CheckHeightBlend" );
+	checkVSync = findOptionsWindow( "OptionsMenu.wnd:CheckVSync" );
+	checkLowLatency = findOptionsWindow( "OptionsMenu.wnd:CheckLowLatency" );
+	checkSmoothUnitMotion = findOptionsWindow( "OptionsMenu.wnd:CheckSmoothUnitMotion" );
+
+	if (ButtonGameOptions)
+	{
+		GadgetButtonSetText( ButtonGameOptions, TheGameText->FETCH_OR_SUBSTITUTE( "GUI:GameOptions", L"Game Options" ) );
+	}
+	setLabelText( "OptionsMenu.wnd:GameOptionsTitle", "GUI:GameOptions", L"Game Options" );
+	setLabelText( "OptionsMenu.wnd:DisplayGroupLabel", "GUI:GameOptionsDisplay", L"Display" );
+	setLabelText( "OptionsMenu.wnd:HealthBarsLabel", "GUI:HealthBars", L"Health bars" );
+	setLabelText( "OptionsMenu.wnd:AlliedDecalsLabel", "GUI:AlliedDecals", L"Allied power decals" );
+	setLabelText( "OptionsMenu.wnd:BuildTimersLabel", "GUI:BuildTimers", L"Build timers" );
+	setLabelText( "OptionsMenu.wnd:InputGroupLabel", "GUI:GameOptionsInput", L"Input" );
+	setLabelText( "OptionsMenu.wnd:CastModeLabel", "GUI:CastMode", L"Special powers" );
+	setLabelText( "OptionsMenu.wnd:RadarGroupLabel", "GUI:GameOptionsRadar", L"Radar" );
+	setLabelText( "OptionsMenu.wnd:GraphicsGroupLabel", "GUI:GameOptionsGraphics", L"Graphics" );
+	setLabelText( "OptionsMenu.wnd:TextureFilterLabel", "GUI:TextureFilter", L"Texture filter" );
+	setLabelText( "OptionsMenu.wnd:AnisotropyLabel", "GUI:Anisotropy", L"Anisotropic" );
+	setLabelText( "OptionsMenu.wnd:CameraGroupLabel", "GUI:GameOptionsCamera", L"Camera" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeysGroupLabel", "GUI:GameOptionsGridHotkeys", L"Grid hotkeys" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeyLayoutLabel", "GUI:GridHotkeyLayout", L"Layout" );
+	setLabelText( "OptionsMenu.wnd:GridHotkeyColumnsLabel", "GUI:GridHotkeyColumns", L"Columns" );
+	setLabelText( "OptionsMenu.wnd:NonGridHotkeysLabel", "GUI:NonGridHotkeys", L"Excluded keys" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayGroupLabel", "GUI:GameOptionsKeyboardOverlay", L"Hotkey letters" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayColorLabel", "GUI:KeyboardOverlayColor", L"Letter R G B" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropColorLabel", "GUI:KeyboardOverlayBackdropColor", L"Backdrop R G B" );
+	setLabelText( "OptionsMenu.wnd:KeyboardOverlayBackdropOpacityLabel", "GUI:KeyboardOverlayBackdropOpacity", L"Backdrop opacity" );
+	setLabelText( "OptionsMenu.wnd:BloomGroupLabel", "GUI:GameOptionsBloom", L"Bloom" );
+	setLabelText( "OptionsMenu.wnd:BloomStrengthLabel", "GUI:BloomStrength", L"Strength %" );
+
+	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
+	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
+	setCheckText( checkSelectionCircle, "GUI:SelectionCircle", L"Selection ring under units", "TOOLTIP:SelectionCircle", L"Draws a ring on the ground under selected units" );
+	setCheckText( checkDefensesRangeCircle, "GUI:DefensesRangeCircle", L"Attack range ring while placing", "TOOLTIP:DefensesRangeCircle", L"Rings the attack range of an armed structure while you position it" );
+	setCheckText( checkObjectDecals, "GUI:ObjectDecals", L"Object decals", "TOOLTIP:ObjectDecals", L"Draws the ground decals objects ask for" );
+	setCheckText( checkEasyMilitaryDrag, "GUI:EasyMilitaryDrag", L"Drag select skips builders", "TOOLTIP:EasyMilitaryDrag", L"A drag box that holds combat units leaves dozers and workers out" );
+	setCheckText( checkSmartSelection, "GUI:SmartSelection", L"Smart selection", "TOOLTIP:SmartSelection", L"Selecting a mixed group shows the command bar of the unit type you pick" );
+	setCheckText( checkSmartSelectionUseMouse, "GUI:SmartSelectionUseMouse", L"Smart selection follows mouse", "TOOLTIP:SmartSelectionUseMouse", L"Right clicking a unit cameo also switches the command bar" );
+	setCheckText( checkSmartCommandGroup, "GUI:SmartCommandGroup", L"Command group row", "TOOLTIP:SmartCommandGroup", L"Shows a cameo for each command group under the smart selection row" );
+	setCheckText( checkNewRadar, "GUI:NewRadar", L"New radar (needs restart)", "TOOLTIP:NewRadar", L"Outlined blips and shoreline on the radar. Takes effect after a restart." );
+	setCheckText( checkLargeBlips, "GUI:LargeBlips", L"Large radar blips (needs restart)", "TOOLTIP:LargeBlips", L"Bigger blips on the new radar. Takes effect after a restart." );
+	setCheckText( checkGridHotkeys, "GUI:GridHotkeys", L"Use grid hotkeys", "TOOLTIP:GridHotkeys", L"Command bar slots use the layout keys instead of the retail hotkeys" );
+	setCheckText( checkKeyboardOverlay, "GUI:KeyboardOverlay", L"Show hotkey letters on cameos", "TOOLTIP:KeyboardOverlay", L"Draws each cameo's hotkey letter on the cameo" );
+	setCheckText( checkKeyboardOverlayBackdrop, "GUI:KeyboardOverlayBackdrop", L"Backdrop behind letter", "TOOLTIP:KeyboardOverlayBackdrop", L"Draws a plate behind the letter so it stays readable" );
+	setCheckText( checkBloom, "GUI:Bloom", L"Glow around additive effects", "TOOLTIP:Bloom", L"Fire, lasers, muzzle flashes and additive model parts get a soft glow. Off while anti-aliasing is on." );
+	setCheckText( checkBloomDebug, "GUI:BloomDebug", L"Debug view", "TOOLTIP:BloomDebug", L"Shows only the glow buffer on black" );
+	setTooltip( textEntryBloomStrength, "TOOLTIP:BloomStrength", L"0 to 100. How bright the glow is." );
+	setCheckText( checkLaserRef, "GUI:LaserRef", L"Lasers light the ground", "TOOLTIP:LaserRef", L"Laser beams cast a colored light on the terrain along their length" );
+	setCheckText( checkSpecular, "GUI:Specular", L"Specular highlights", "TOOLTIP:Specular", L"Vehicles and structures catch a highlight from the sun, brightest on metal and gone in shadow. Needs a Direct3D 9 card." );
+	setCheckText( checkNormalMaps, "GUI:NormalMaps", L"Surface detail", "TOOLTIP:NormalMaps", L"Panels, rivets and plating on vehicles and structures, and the ground's grain, catch and lose the sun's light. Uses a texture's normal map where one exists. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkWaterReflections, "GUI:WaterReflections", L"Water reflections", "TOOLTIP:WaterReflections", L"Lakes and seas mirror the cliffs, trees, units and buildings around them. Needs Smooth water and a Direct3D 9 card." );
+	setCheckText( checkDynamicLights, "GUI:DynamicLights", L"Dynamic lights", "TOOLTIP:DynamicLights", L"Explosions, muzzle flashes and lasers light the ground, units and buildings around them." );
+	setCheckText( checkPixelLights, "GUI:PixelLights", L"Per-pixel lights", "TOOLTIP:PixelLights", L"Dynamic lights fall in smooth circles that follow the ground's detail, instead of blocky patches. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkLowLatency, "GUI:LowLatency", L"Low latency mode", "TOOLTIP:LowLatency", L"Lets the game prepare only one frame ahead of the graphics card, so the screen answers the mouse sooner. Can lower the frame rate a little. Needs the Direct3D 9 build." );
+	setCheckText( checkSmoothUnitMotion, "GUI:SmoothUnitMotion", L"Smooth unit motion", "TOOLTIP:SmoothUnitMotion", L"Above 30 frames a second, units, projectiles and turrets glide between game updates instead of stepping 30 times a second. Single player, skirmish and replays." );
+	setCheckText( checkVSync, "GUI:VSync", L"Vertical sync", "TOOLTIP:VSync", L"Waits for the monitor's refresh before showing each frame, which stops tearing but can add a little input delay." );
+	setCheckText( checkAmbientOcclusion, "GUI:AmbientOcclusion", L"Ambient occlusion", "TOOLTIP:AmbientOcclusion", L"Creases, corners and the ground where units and buildings stand fall into soft shade. Off while anti-aliasing is on. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkHeightBlend, "GUI:HeightBlend", L"Height blending", "TOOLTIP:HeightBlend", L"Where two terrain textures meet, the taller one's stones and clumps push into the other instead of a soft fade. Needs a Direct3D 9 card." );
+	setCheckText( checkSoftParticles, "GUI:SoftParticles", L"Soft particles", "TOOLTIP:SoftParticles", L"Smoke, dust and fire fade where they meet the ground and buildings, instead of cutting a hard line. Needs a Direct3D 9 card." );
+	setCheckText( checkShadowMap, "GUI:ShadowMap", L"Shadow mapping", "TOOLTIP:ShadowMap", L"Soft shadows shaped like their objects, falling on ground, bridges, units and buildings. 3D and 2D Shadows still choose which objects cast. Needs a Direct3D 9 card." );
+
+	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
+	setTooltip( comboBoxAlliedDecals, "TOOLTIP:AlliedDecals", L"Show where allies aim their general powers, in their player or faction color" );
+	setTooltip( comboBoxBuildTimers, "TOOLTIP:BuildTimers", L"Countdown numbers on build queue and cooldown cameos" );
+	setTooltip( comboBoxCastMode, "TOOLTIP:CastMode", L"How special power hotkeys fire" );
+	setTooltip( comboBoxTextureFilter, "TOOLTIP:TextureFilter", L"Texture filtering mode" );
+	setTooltip( comboBoxAnisotropy, "TOOLTIP:Anisotropy", L"Anisotropic filtering level" );
+	setTooltip( textEntryGridHotkeyLayout, "TOOLTIP:GridHotkeyLayout", L"One key per command bar slot, left to right, top to bottom" );
+	setTooltip( textEntryGridHotkeyColumns, "TOOLTIP:GridHotkeyColumns", L"Slots per row, 0 to 20. 0 keeps the retail order." );
+	setTooltip( textEntryNonGridHotkeys, "TOOLTIP:NonGridHotkeys", L"Letters that keep their retail binding, e.g. SG" );
+	setTooltip( textEntryKeyboardOverlayRed, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayGreen, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBlue, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropRed, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropGreen, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropBlue, "TOOLTIP:ColorChannel", L"0 to 255" );
+	setTooltip( textEntryKeyboardOverlayBackdropOpacity, "TOOLTIP:ColorChannel", L"0 to 255" );
+
+	static const WideChar *const healthBarNames[] = { L"Classic", L"Damaged only", L"Always" };
+	static const WideChar *const buildTimerNames[] = { L"Off", L"Seconds", L"Auto (m:ss)" };
+	static const WideChar *const castModeNames[] = { L"Click then target", L"Quick cast", L"Quick cast + indicator" };
+	static const WideChar *const textureFilterNames[] = { L"None", L"Point", L"Bilinear", L"Trilinear", L"Anisotropic" };
+	static const WideChar *const anisotropyNames[] = { L"2x", L"4x", L"8x", L"16x" };
+	static_assert( ARRAY_SIZE(textureFilterNames) == TextureFilterClass::TEXTURE_FILTER_COUNT, "textureFilterNames out of date" );
+	static_assert( ARRAY_SIZE(anisotropyNames) == ARRAY_SIZE(AnisotropyLevels), "anisotropyNames out of date" );
+	addComboEntries( comboBoxHealthBars, "GUI:HealthBars", healthBarNames, HealthBarDisplayMode_Count, 2 );
+	static const WideChar *const alliedDecalNames[] = { L"Hidden", L"House color", L"Army color" };
+	addComboEntries( comboBoxAlliedDecals, "GUI:AlliedDecals", alliedDecalNames, AlliedDecalMode_Count, 2 );
+	addComboEntries( comboBoxBuildTimers, "GUI:BuildTimers", buildTimerNames, BuildTimerDisplayMode_Count, 2 );
+	addComboEntries( comboBoxCastMode, "GUI:CastMode", castModeNames, CastMode_Count, 2 );
+	addComboEntries( comboBoxTextureFilter, "GUI:TextureFilter", textureFilterNames, TextureFilterClass::TEXTURE_FILTER_COUNT, 4 );
+	addComboEntries( comboBoxAnisotropy, "GUI:Anisotropy", anisotropyNames, ARRAY_SIZE(AnisotropyLevels), 3 );
+}
+
+// TheSuperHackers @tweak Now prints additional version information in the version label.
+static void initLabelVersion()
+{
+	NameKeyType versionID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:LabelVersion" );
+	GameWindow *labelVersion = TheWindowManager->winGetWindowFromId( nullptr, versionID );
+
+	if (labelVersion)
+	{
+		if (TheVersion && TheGlobalData)
+		{
+			UnicodeString text = TheVersion->getUnicodeProductVersionHashString();
+			GadgetStaticTextSetText( labelVersion, text );
+		}
+		else
+		{
+			labelVersion->winHide( TRUE );
+		}
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Initialize the options menu */
 //-------------------------------------------------------------------------------------------------
@@ -1346,144 +1737,142 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_OPENED);
 
-	comboBoxLANIPID				 = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ComboBoxIP" ) );
-	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( NULL,  comboBoxLANIPID);
-	comboBoxOnlineIPID		 = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ComboBoxOnlineIP" ) );
-	comboBoxOnlineIP			 = TheWindowManager->winGetWindowFromId( NULL,  comboBoxOnlineIPID);
-	checkAlternateMouseID  = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckAlternateMouse" ) );
-	checkAlternateMouse	   = TheWindowManager->winGetWindowFromId( NULL, checkAlternateMouseID);
-	checkRetaliationID		 = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:Retaliation" ) );
-	checkRetaliation	     = TheWindowManager->winGetWindowFromId( NULL, checkRetaliationID);
-	checkDoubleClickAttackMoveID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckDoubleClickAttackMove" ) );
-	checkDoubleClickAttackMove   = TheWindowManager->winGetWindowFromId( NULL, checkDoubleClickAttackMoveID );
-	sliderScrollSpeedID	   = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:SliderScrollSpeed" ) );
-	sliderScrollSpeed		   = TheWindowManager->winGetWindowFromId( NULL,  sliderScrollSpeedID);
-	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ComboBoxAntiAliasing" ) );
-	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( NULL, comboBoxAntiAliasingID );
-	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ComboBoxResolution" ) );
-	comboBoxResolution     = TheWindowManager->winGetWindowFromId( NULL, comboBoxResolutionID );
-	comboBoxDetailID			 = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ComboBoxDetail" ) );
-	comboBoxDetail		   = TheWindowManager->winGetWindowFromId( NULL, comboBoxDetailID );
+	comboBoxLANIPID				 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxIP" );
+	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLANIPID);
+	comboBoxOnlineIPID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxOnlineIP" );
+	comboBoxOnlineIP			 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxOnlineIPID);
+	checkAlternateMouseID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAlternateMouse" );
+	checkAlternateMouse	   = TheWindowManager->winGetWindowFromId( nullptr, checkAlternateMouseID);
+	checkRetaliationID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:Retaliation" );
+	checkRetaliation	     = TheWindowManager->winGetWindowFromId( nullptr, checkRetaliationID);
+	checkDoubleClickAttackMoveID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckDoubleClickAttackMove" );
+	checkDoubleClickAttackMove   = TheWindowManager->winGetWindowFromId( nullptr, checkDoubleClickAttackMoveID );
+	sliderScrollSpeedID	   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderScrollSpeed" );
+	sliderScrollSpeed		   = TheWindowManager->winGetWindowFromId( nullptr,  sliderScrollSpeedID);
+	// The layout may predate these controls, so they stay optional
+	checkMaxCameraHeight = findOptionsWindow( "OptionsMenu.wnd:CheckMaxCameraHeight", checkMaxCameraHeightID );
+	textEntryMaxCameraHeight = findOptionsWindow( "OptionsMenu.wnd:TextEntryMaxCameraHeight", textEntryMaxCameraHeightID );
+	if (checkMaxCameraHeight)
+	{
+		GadgetCheckBoxSetText( checkMaxCameraHeight, TheGameText->FETCH_OR_SUBSTITUTE( "GUI:MaxCameraHeight", L"Max Camera Height" ) );
+		checkMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:CheckMaxCameraHeight", L"Replaces the mod's camera height limit with your own. LAN and online games use the host's limit." ) );
+	}
+	if (textEntryMaxCameraHeight)
+	{
+		textEntryMaxCameraHeight->winSetTooltip( TheGameText->FETCH_OR_SUBSTITUTE( "TOOLTIP:MaxCameraHeight", L"Max camera height, 210 to 1000" ) );
+	}
+	checkBorderlessWindow = findOptionsWindow( "OptionsMenu.wnd:CheckBorderlessWindow", checkBorderlessWindowID );
+	setCheckText( checkBorderlessWindow, "GUI:BorderlessWindow", L"Borderless", "TOOLTIP:BorderlessWindow", L"Runs the game in a frameless window at the selected resolution instead of exclusive fullscreen." );
+	enableWindow( checkBorderlessWindow, !TheGlobalData->m_windowed );
+	comboBoxAntiAliasingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxAntiAliasing" );
+	comboBoxAntiAliasing   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxAntiAliasingID );
+	comboBoxResolutionID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxResolution" );
+	comboBoxResolution     = TheWindowManager->winGetWindowFromId( nullptr, comboBoxResolutionID );
+	comboBoxDetailID			 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxDetail" );
+	comboBoxDetail		   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxDetailID );
 
-	checkLanguageFilterID  = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckLanguageFilter" ) );
-	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( NULL, checkLanguageFilterID );
-	checkSendDelayID       = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckSendDelay" ) );
-	checkSendDelay				 = TheWindowManager->winGetWindowFromId( NULL, checkSendDelayID);
-	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ButtonFirewallRefresh" ) );
-	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( NULL, buttonFirewallRefreshID);
-	checkDrawAnchorID       = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckBoxDrawAnchor" ) );
-	checkDrawAnchor				 = TheWindowManager->winGetWindowFromId( NULL, checkDrawAnchorID);
-	checkMoveAnchorID       = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckBoxMoveAnchor" ) );
-	checkMoveAnchor				 = TheWindowManager->winGetWindowFromId( NULL, checkMoveAnchorID);
+	checkLanguageFilterID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckLanguageFilter" );
+	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( nullptr, checkLanguageFilterID );
+	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonFirewallRefresh" );
+	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( nullptr, buttonFirewallRefreshID);
+
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @tweak 26/07/2026 The Send Delay feature was obsoleted because it only worked around
+	// a source port remapping bug in early 2000s Netgear firewalls. Hide the obsoleted UI element accordingly.
+	GameWindow *checkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:CheckSendDelay"));
+	if (checkSendDelay)
+		checkSendDelay->winHide(TRUE);
+#endif
+
+	checkDrawAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxDrawAnchor" );
+	checkDrawAnchor				 = TheWindowManager->winGetWindowFromId( nullptr, checkDrawAnchorID);
+	checkMoveAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxMoveAnchor" );
+	checkMoveAnchor				 = TheWindowManager->winGetWindowFromId( nullptr, checkMoveAnchorID);
 
 	// Replay camera
-	checkSaveCameraID      = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckBoxSaveCamera" ) );
-	checkSaveCamera        = TheWindowManager->winGetWindowFromId( NULL, checkSaveCameraID );
-	checkUseCameraID       = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckBoxUseCamera" ) );
-	checkUseCamera         = TheWindowManager->winGetWindowFromId( NULL, checkUseCameraID );
+	checkSaveCameraID      = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxSaveCamera" );
+	checkSaveCamera        = TheWindowManager->winGetWindowFromId( nullptr, checkSaveCameraID );
+	checkUseCameraID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxUseCamera" );
+	checkUseCamera         = TheWindowManager->winGetWindowFromId( nullptr, checkUseCameraID );
 
 //	// Speakers and 3-D Audio
-//	checkAudioSurroundID   = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckAudioSurround" ) );
-//	checkAudioSurround     = TheWindowManager->winGetWindowFromId( NULL, checkAudioSurroundID );
-//	checkAudioHardwareID   = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckAudioHardware" ) );
-//	checkAudioHardware     = TheWindowManager->winGetWindowFromId( NULL, checkAudioHardwareID );
+//	checkAudioSurroundID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAudioSurround" );
+//	checkAudioSurround     = TheWindowManager->winGetWindowFromId( nullptr, checkAudioSurroundID );
+//	checkAudioHardwareID   = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAudioHardware" );
+//	checkAudioHardware     = TheWindowManager->winGetWindowFromId( nullptr, checkAudioHardwareID );
 //
 	// Volume Controls
-	sliderMusicVolumeID    = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:SliderMusicVolume" ) );
-	sliderMusicVolume      = TheWindowManager->winGetWindowFromId( NULL, sliderMusicVolumeID );
-	sliderSFXVolumeID      = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:SliderSFXVolume" ) );
-	sliderSFXVolume        = TheWindowManager->winGetWindowFromId( NULL, sliderSFXVolumeID );
-	sliderVoiceVolumeID    = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:SliderVoiceVolume" ) );
-	sliderVoiceVolume      = TheWindowManager->winGetWindowFromId( NULL, sliderVoiceVolumeID );
- 	sliderGammaID    = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:SliderGamma" ) );
- 	sliderGamma      = TheWindowManager->winGetWindowFromId( NULL, sliderGammaID );
+	sliderMusicVolumeID    = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderMusicVolume" );
+	sliderMusicVolume      = TheWindowManager->winGetWindowFromId( nullptr, sliderMusicVolumeID );
+	sliderSFXVolumeID      = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderSFXVolume" );
+	sliderSFXVolume        = TheWindowManager->winGetWindowFromId( nullptr, sliderSFXVolumeID );
+	sliderVoiceVolumeID    = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderVoiceVolume" );
+	sliderVoiceVolume      = TheWindowManager->winGetWindowFromId( nullptr, sliderVoiceVolumeID );
+ 	sliderGammaID    = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:SliderGamma" );
+ 	sliderGamma      = TheWindowManager->winGetWindowFromId( nullptr, sliderGammaID );
 
-//	checkBoxLowTextureDetailID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckLowTextureDetail" ) );
-//	checkBoxLowTextureDetail      = TheWindowManager->winGetWindowFromId( NULL, checkBoxLowTextureDetailID );
-	
-	WinAdvancedDisplayID		= TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:WinAdvancedDisplayOptions" ) );
-	WinAdvancedDisplay      = TheWindowManager->winGetWindowFromId( NULL, WinAdvancedDisplayID );
+//	checkBoxLowTextureDetailID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckLowTextureDetail" );
+//	checkBoxLowTextureDetail      = TheWindowManager->winGetWindowFromId( nullptr, checkBoxLowTextureDetailID );
 
-	ButtonAdvancedAcceptID		= TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ButtonAdvanceAccept" ) );
-	ButtonAdvancedAccept      = TheWindowManager->winGetWindowFromId( NULL, ButtonAdvancedAcceptID );
+	WinAdvancedDisplayID		= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:WinAdvancedDisplayOptions" );
+	WinAdvancedDisplay      = TheWindowManager->winGetWindowFromId( nullptr, WinAdvancedDisplayID );
 
-	ButtonAdvancedCancelID		= TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ButtonAdvanceBack" ) );
-	ButtonAdvancedCancel      = TheWindowManager->winGetWindowFromId( NULL, ButtonAdvancedCancelID );
+	ButtonAdvancedAcceptID		= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonAdvanceAccept" );
+	ButtonAdvancedAccept      = TheWindowManager->winGetWindowFromId( nullptr, ButtonAdvancedAcceptID );
 
-	sliderTextureResolutionID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:LowResSlider" ) );
-	sliderTextureResolution = TheWindowManager->winGetWindowFromId( NULL, sliderTextureResolutionID );
+	ButtonAdvancedCancelID		= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonAdvanceBack" );
+	ButtonAdvancedCancel      = TheWindowManager->winGetWindowFromId( nullptr, ButtonAdvancedCancelID );
 
-	check3DShadowsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:Check3DShadows" ) );
-	check3DShadows   = TheWindowManager->winGetWindowFromId( NULL, check3DShadowsID);
+	initGameOptionsWindows();
 
-	check2DShadowsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:Check2DShadows" ) );
-	check2DShadows   = TheWindowManager->winGetWindowFromId( NULL, check2DShadowsID);
+	sliderTextureResolutionID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:LowResSlider" );
+	sliderTextureResolution = TheWindowManager->winGetWindowFromId( nullptr, sliderTextureResolutionID );
 
-	checkCloudShadowsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckCloudShadows" ) );
-	checkCloudShadows   = TheWindowManager->winGetWindowFromId( NULL, checkCloudShadowsID);
+	check3DShadowsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:Check3DShadows" );
+	check3DShadows   = TheWindowManager->winGetWindowFromId( nullptr, check3DShadowsID);
 
-	checkGroundLightingID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckGroundLighting" ) );
-	checkGroundLighting   = TheWindowManager->winGetWindowFromId( NULL, checkGroundLightingID);
+	check2DShadowsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:Check2DShadows" );
+	check2DShadows   = TheWindowManager->winGetWindowFromId( nullptr, check2DShadowsID);
 
-	checkSmoothWaterID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckSmoothWater" ) );
-	checkSmoothWater   = TheWindowManager->winGetWindowFromId( NULL, checkSmoothWaterID);
+	checkCloudShadowsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckCloudShadows" );
+	checkCloudShadows   = TheWindowManager->winGetWindowFromId( nullptr, checkCloudShadowsID);
 
-	checkExtraAnimationsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckExtraAnimations" ) );
-	checkExtraAnimations   = TheWindowManager->winGetWindowFromId( NULL, checkExtraAnimationsID);
+	checkGroundLightingID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckGroundLighting" );
+	checkGroundLighting   = TheWindowManager->winGetWindowFromId( nullptr, checkGroundLightingID);
 
-	checkNoDynamicLodID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckNoDynamicLOD" ) );
-	checkNoDynamicLod   = TheWindowManager->winGetWindowFromId( NULL, checkNoDynamicLodID);
+	checkSmoothWaterID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckSmoothWater" );
+	checkSmoothWater   = TheWindowManager->winGetWindowFromId( nullptr, checkSmoothWaterID);
 
-	checkHeatEffectsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckHeatEffects" ) );
-	checkHeatEffects   = TheWindowManager->winGetWindowFromId( NULL, checkHeatEffectsID);
+	checkExtraAnimationsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckExtraAnimations" );
+	checkExtraAnimations   = TheWindowManager->winGetWindowFromId( nullptr, checkExtraAnimationsID);
 
-	checkUnlockFpsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckUnlockFPS" ) );
-	checkUnlockFps   = TheWindowManager->winGetWindowFromId( NULL, checkUnlockFpsID);
+	checkNoDynamicLodID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckNoDynamicLOD" );
+	checkNoDynamicLod   = TheWindowManager->winGetWindowFromId( nullptr, checkNoDynamicLodID);
 
-	checkBuildingOcclusionID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckBehindBuilding" ) );
-	checkBuildingOcclusion   = TheWindowManager->winGetWindowFromId( NULL, checkBuildingOcclusionID);
+	checkHeatEffectsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckHeatEffects" );
+	checkHeatEffects   = TheWindowManager->winGetWindowFromId( nullptr, checkHeatEffectsID);
 
-	checkPropsID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:CheckShowProps" ) );
-	checkProps   = TheWindowManager->winGetWindowFromId( NULL, checkPropsID);
+	checkUnlockFpsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckUnlockFPS" );
+	checkUnlockFps   = TheWindowManager->winGetWindowFromId( nullptr, checkUnlockFpsID);
 
-	sliderParticleCapID = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ParticleCapSlider" ) );
-  sliderParticleCap = TheWindowManager->winGetWindowFromId( NULL, sliderParticleCapID );
+	checkBuildingOcclusionID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBehindBuilding" );
+	checkBuildingOcclusion   = TheWindowManager->winGetWindowFromId( nullptr, checkBuildingOcclusionID);
+
+	checkPropsID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckShowProps" );
+	checkProps   = TheWindowManager->winGetWindowFromId( nullptr, checkPropsID);
+
+	sliderParticleCapID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ParticleCapSlider" );
+  sliderParticleCap = TheWindowManager->winGetWindowFromId( nullptr, sliderParticleCapID );
 
 	WinAdvancedDisplay->winHide(TRUE);
+	if (WinGameOptions)
+	{
+		WinGameOptions->winHide(TRUE);
+	}
 
 	Color color =  GameMakeColor(255,255,255,255);
 
-  enum AliasingMode CPP_11(: Int)
-  {
-    OFF = 0,
-    LOW,
-    HIGH,
-    NUM_ALIASING_MODES
-  };
-
-	NameKeyType versionID = TheNameKeyGenerator->nameToKey( AsciiString("OptionsMenu.wnd:LabelVersion") );
-	GameWindow *labelVersion = TheWindowManager->winGetWindowFromId( NULL, versionID );
-	UnicodeString versionString;
-	versionString.format(TheGameText->fetch("Version:Format2").str(), (GetRegistryVersion() >> 16), (GetRegistryVersion() & 0xffff));
-	
-	if (TheVersion->showFullVersion())
-	{
-		if (TheVersion)
-		{
-			UnicodeString version;
-			version.format(L"(%s) %s -- %s", versionString.str(), TheVersion->getFullUnicodeVersion().str(), TheVersion->getUnicodeBuildTime().str());
-			GadgetStaticTextSetText( labelVersion, version );
-		}
-		else
-		{
-			labelVersion->winHide( TRUE );
-		}
-	}
-	else
-	{
-		GadgetStaticTextSetText( labelVersion, versionString );
-	}
-
+	initLabelVersion();
 
 	// Choose an IP address, then initialize the IP combo box
 	UnsignedInt selectedIP = pref->getLANIPAddress();
@@ -1557,19 +1946,22 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		}
 	}
 
-	// HTTP Proxy
-	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(NULL, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @tweak 26/07/2026 The http proxy feature was obsoleted because it did nothing for the UDP game traffic or match sockets.
+	// Hide the relevant obsoleted UI elements accordingly.
+	NameKeyType textEntryHTTPProxyID = TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:TextEntryHTTPProxy");
+	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, textEntryHTTPProxyID);
 	if (textEntryHTTPProxy)
-	{
-		UnicodeString uStr;
-		std::string proxy;
-		GetStringFromRegistry("", "Proxy", proxy);
-		uStr.translate(proxy.c_str());
-		GadgetTextEntrySetText(textEntryHTTPProxy, uStr);
-	}
+		textEntryHTTPProxy->winHide(TRUE);
+
+	NameKeyType staticTextHTTPProxyID = TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:StaticTextHTTPProxy");
+	GameWindow *staticTextHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, staticTextHTTPProxyID);
+	if (staticTextHTTPProxy)
+		staticTextHTTPProxy->winHide(TRUE);
+#endif
 
 	// Firewall Port Override
-	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(NULL, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
+	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
 	if (textEntryFirewallPortOverride)
 	{
 			UnicodeString uStr;
@@ -1583,92 +1975,100 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	// populate anti aliasing modes
 	AsciiString selectedAliasingMode = (*pref)["AntiAliasing"];
-	GadgetComboBoxReset(comboBoxAntiAliasing);
-	AsciiString temp;
-	Int i=0;
-	for (; i < NUM_ALIASING_MODES; ++i)
-	{
-		temp.format("GUI:AntiAliasing%d", i);
-		str = TheGameText->fetch( temp );
-		index = GadgetComboBoxAddEntry(comboBoxAntiAliasing, str, color);
-	}
+	static const WideChar *const AntiAliasingFallbacks[OptionPreferences::AntiAliasingMode_Count] = { L"Off", L"2x", L"4x", L"8x" };
+	addComboEntries( comboBoxAntiAliasing, "GUI:AntiAliasing", AntiAliasingFallbacks, OptionPreferences::AntiAliasingMode_Count, OptionPreferences::AntiAliasingMode_Count - 1 );
+	setLabelText( "OptionsMenu.wnd:AntiAliasingLabel", "GUI:AntiAliasing", L"Anti-aliasing" );
+	setTooltip( comboBoxAntiAliasing, "TOOLTIP:AntiAliasing", L"Smooths jagged edges. Ambient occlusion needs it off, and soft particles fade only against the ground while it is on." );
 	Int val = atoi(selectedAliasingMode.str());
-	if( val < 0 || val > NUM_ALIASING_MODES )
+	Int pos = 0;
+
+	// TheSuperHackers @info We are converting from human readable value to comboBox entry position
+	val = highestBit(val);
+
+	if (val == WW3D::MULTISAMPLE_MODE_NONE)
+		pos = OptionPreferences::AntiAliasingMode_OFF;
+	else if (val == WW3D::MULTISAMPLE_MODE_2X)
+		pos = OptionPreferences::AntiAliasingMode_MSAA_2X;
+	else if (val == WW3D::MULTISAMPLE_MODE_4X)
+		pos = OptionPreferences::AntiAliasingMode_MSAA_4X;
+	else if (val == WW3D::MULTISAMPLE_MODE_8X)
+		pos = OptionPreferences::AntiAliasingMode_MSAA_8X;
+
+	if (val < 0 || val > WW3D::MULTISAMPLE_MODE_8X)
 	{
-		TheWritableGlobalData->m_antiAliasBoxValue = val = 0;
+		TheWritableGlobalData->m_antiAliasLevel = pos = 0;
 	}
-	GadgetComboBoxSetSelectedPos(comboBoxAntiAliasing, val);
+	GadgetComboBoxSetSelectedPos(comboBoxAntiAliasing, pos);
 
 	// get resolution from saved preferences file
 	AsciiString selectedResolution = (*pref) ["Resolution"];
-	Int selectedXRes=800,selectedYRes=600;
+	Int selectedXRes=DEFAULT_DISPLAY_WIDTH;
+	Int selectedYRes=DEFAULT_DISPLAY_HEIGHT;
 	Int selectedResIndex=-1;
-	Int defaultResIndex=0;	//index of default video mode that should always exist
 	if (!selectedResolution.isEmpty())
 	{	//try to parse 2 integers out of string
 		if (sscanf(selectedResolution.str(),"%d%d", &selectedXRes, &selectedYRes) != 2)
-		{	selectedXRes=800; selectedYRes=600;
+		{
+			selectedXRes=DEFAULT_DISPLAY_WIDTH;
+			selectedYRes=DEFAULT_DISPLAY_HEIGHT;
 		}
 	}
 
 	// populate resolution modes
 	GadgetComboBoxReset(comboBoxResolution);
 	Int numResolutions = TheDisplay->getDisplayModeCount();
-	for( i = 0; i < numResolutions; ++i )
+	UnsignedInt displayWidth = TheDisplay->getWidth();
+	UnsignedInt displayHeight = TheDisplay->getHeight();
+
+	for( Int i = 0; i < numResolutions; ++i )
 	{	Int xres,yres,bitDepth;
 		TheDisplay->getDisplayModeDescription(i,&xres,&yres,&bitDepth);
 		str.format(L"%d x %d",xres,yres);
 		GadgetComboBoxAddEntry( comboBoxResolution, str, color);
-		if (xres == 800 && yres == 600)	//keep track of default mode in case we need it.
-			defaultResIndex=i;
-		if (xres == selectedXRes && yres == selectedYRes)
+		// TheSuperHackers @bugfix xezon 12/06/2025 Now makes a selection with the active display resolution
+		// instead of the resolution read from the Option Preferences, because the active display resolution
+		// is the most relevant to make a selection with and the Option Preferences could be wrong.
+		if ( xres == displayWidth && yres == displayHeight )
 			selectedResIndex=i;
 	}
 
-	if (selectedResIndex == -1)	//check if saved mode no longer available
-	{	//pick default resolution
-		selectedXRes = 800;
-		selectedXRes = 600;
-		selectedResIndex = defaultResIndex;
+	if (selectedResIndex == -1)
+	{
+		// TheSuperHackers @bugfix xezon 08/06/2025 Now adds the current resolution instead of defaulting to 800 x 600.
+		// This avoids force changing the resolution when the user has set a custom resolution in the Option Preferences.
+		Int xres = displayWidth;
+		Int yres = displayHeight;
+		str.format(L"%d x %d",xres,yres);
+		GadgetComboBoxAddEntry( comboBoxResolution, str, color );
+		selectedResIndex = GadgetComboBoxGetLength( comboBoxResolution ) - 1;
 	}
-
-	TheWritableGlobalData->m_xResolution = selectedXRes;
-	TheWritableGlobalData->m_yResolution = selectedYRes;
 
 	GadgetComboBoxSetSelectedPos( comboBoxResolution, selectedResIndex );
 
 	// set the display detail
+	// TheSuperHackers @tweak xezon 24/09/2025 The Detail Combo Box now has the same value order as StaticGameLODLevel for simplicity.
+	// TheSuperHackers @feature xezon 24/09/2025 The Detail Combo Box now has a new options for "Very High".
 	GadgetComboBoxReset(comboBoxDetail);
-	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:High"), color);
-	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:Medium"), color);
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @tweak xezon 24/09/2025 Show max 4 rows because with the original layout it cannot possibly show 5.
+	GadgetComboBoxSetMaxDisplay(comboBoxDetail, 4);
+#endif
 	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:Low"), color);
+	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:Medium"), color);
+	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:High"), color);
+	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->FETCH_OR_SUBSTITUTE("GUI:VeryHigh", L"Very High"), color);
 	GadgetComboBoxAddEntry(comboBoxDetail, TheGameText->fetch("GUI:Custom"), color);
+	static_assert(STATIC_GAME_LOD_COUNT == 5, "Wrong combo box count");
 
 	//Check if level was never set and default to setting most suitable for system.
 	if (TheGameLODManager->getStaticLODLevel() == STATIC_GAME_LOD_UNKNOWN)
-		TheGameLODManager->setStaticLODLevel(TheGameLODManager->findStaticLODLevel());
-
-	switch (TheGameLODManager->getStaticLODLevel())
 	{
-	case STATIC_GAME_LOD_LOW:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, LOWDETAIL);
-		break;
-	case STATIC_GAME_LOD_MEDIUM:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, MEDIUMDETAIL);
-		break;
-	case STATIC_GAME_LOD_HIGH:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, HIGHDETAIL);
-		break;
-	case STATIC_GAME_LOD_CUSTOM:
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, CUSTOMDETAIL);
-		break;
-	default:
-		DEBUG_ASSERTCRASH(FALSE,("Tried to set comboBoxDetail to a value of %d ", TheGameLODManager->getStaticLODLevel()) );
-	};
+		TheGameLODManager->setStaticLODLevel(TheGameLODManager->getRecommendedStaticLODLevel());
+	}
 
-	Int txtFact=TheGameLODManager->getCurrentTextureReduction();
+	GadgetComboBoxSetSelectedPos(comboBoxDetail, (Int)TheGameLODManager->getStaticLODLevel());
 
-	GadgetSliderSetPosition( sliderTextureResolution, 2-txtFact);
+	GadgetSliderSetPosition( sliderTextureResolution, 2-WW3D::Get_Texture_Reduction());
 
 	GadgetCheckBoxSetChecked( check3DShadows, TheGlobalData->m_useShadowVolumes);
 
@@ -1685,6 +2085,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GadgetCheckBoxSetChecked( checkNoDynamicLod, !TheGlobalData->m_enableDynamicLOD);
 
 	GadgetCheckBoxSetChecked( checkHeatEffects, TheGlobalData->m_useHeatEffects);
+
+	setCheck( checkVSync, WW3D::Is_VSync_On() );
 
 	GadgetCheckBoxSetChecked( checkUnlockFps, !TheGlobalData->m_useFpsLimit);
 
@@ -1707,7 +2109,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		GadgetCheckBoxSetChecked( checkLanguageFilter, false);
 		TheWritableGlobalData->m_languageFilterPref = false;
 	}
-	
+
 	//set replay camera
 	if (pref->saveCameraInReplays())
 	{
@@ -1732,8 +2134,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	//set scroll options
 	AsciiString test = (*pref)["DrawScrollAnchor"];
-	DEBUG_LOG(("DrawScrollAnchor == [%s]\n", test.str()));
-	if (test == "Yes" || (test.isEmpty() && TheInGameUI->getDrawRMBScrollAnchor()))
+	DEBUG_LOG(("DrawScrollAnchor == [%s]", test.str()));
+	if (test == "yes" || (test.isEmpty() && TheInGameUI->getDrawRMBScrollAnchor()))
 	{
 		GadgetCheckBoxSetChecked( checkDrawAnchor, true);
 		TheInGameUI->setDrawRMBScrollAnchor(true);
@@ -1744,8 +2146,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		TheInGameUI->setDrawRMBScrollAnchor(false);
 	}
 	test = (*pref)["MoveScrollAnchor"];
-	DEBUG_LOG(("MoveScrollAnchor == [%s]\n", test.str()));
-	if (test == "Yes" || (test.isEmpty() && TheInGameUI->getMoveRMBScrollAnchor()))
+	DEBUG_LOG(("MoveScrollAnchor == [%s]", test.str()));
+	if (test == "yes" || (test.isEmpty() && TheInGameUI->getMoveRMBScrollAnchor()))
 	{
 		GadgetCheckBoxSetChecked( checkMoveAnchor, true);
 		TheInGameUI->setMoveRMBScrollAnchor(true);
@@ -1764,14 +2166,23 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GadgetCheckBoxSetChecked(checkAlternateMouse, TheGlobalData->m_useAlternateMouse);
 	GadgetCheckBoxSetChecked(checkRetaliation, TheGlobalData->m_clientRetaliationModeEnabled);
 	GadgetCheckBoxSetChecked( checkDoubleClickAttackMove, TheGlobalData->m_doubleClickAttackMove );
+	setCheck( checkBorderlessWindow, TheGlobalData->m_borderlessWindow );
 
 	// set scroll speed slider
+	// TheSuperHackers @tweak xezon 11/07/2025 No longer sets the slider position if the user setting
+	// is set beyond the slider limits. This gives the user more freedom to customize the scroll
+	// speed. The slider value remains 0.
 	Int scrollPos = (Int)(TheGlobalData->m_keyboardScrollFactor*100.0f);
-	GadgetSliderSetPosition( sliderScrollSpeed, scrollPos );
-	DEBUG_LOG(("Scroll SPeed %d\n", scrollPos));
+	Int scrollMin, scrollMax;
+	GadgetSliderGetMinMax( sliderScrollSpeed, &scrollMin, &scrollMax );
+	if (scrollPos >= scrollMin && scrollPos <= scrollMax)
+	{
+		GadgetSliderSetPosition( sliderScrollSpeed, scrollPos );
+	}
+	DEBUG_LOG(("Scroll Speed %d", scrollPos));
 
-	// set the send delay check box
-	GadgetCheckBoxSetChecked(checkSendDelay, TheGlobalData->m_firewallSendDelay);
+	showMaxCameraHeight( pref->getUseCustomMaxCameraHeight(), (Int)pref->getMaxCameraHeight() );
+	populateGameOptions();
 
  	// set volume sliders
 
@@ -1784,7 +2195,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	//set voice volume slider
 	GadgetSliderSetPosition( sliderVoiceVolume, REAL_TO_INT(pref->getSpeechVolume()) );
-	
+
 	// set the gamma slider
  	GadgetSliderSetPosition( sliderGamma, REAL_TO_INT(pref->getGammaValue()) );
 
@@ -1792,26 +2203,41 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	layout->hide( FALSE );
 
 	// set keyboard focus to main parent
-	AsciiString parentName( "OptionsMenu.wnd:OptionsMenuParent" );
-	NameKeyType parentID = TheNameKeyGenerator->nameToKey( parentName );
-	GameWindow *parent = TheWindowManager->winGetWindowFromId( NULL, parentID );
+	NameKeyType parentID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:OptionsMenuParent" );
+	GameWindow *parent = TheWindowManager->winGetWindowFromId( nullptr, parentID );
 	TheWindowManager->winSetFocus( parent );
-	
+
 	if( (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL) || TheGameSpyInfo )
 	{
 		// disable controls that you can't change the options for in game
 		comboBoxLANIP->winEnable(FALSE);
+
 		if (comboBoxOnlineIP)
 			comboBoxOnlineIP->winEnable(FALSE);
-		checkSendDelay->winEnable(FALSE);
+
 		buttonFirewallRefresh->winEnable(FALSE);
 
-		if (comboBoxDetail)
-			comboBoxDetail->winEnable(FALSE);
-
+		// Trees are placed and draw modules chosen as the map loads, so these wait for the next one
+		if (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL)
+		{
+			enableWindow( checkProps, FALSE );
+			enableWindow( checkExtraAnimations, FALSE );
+		}
 
 		if (comboBoxResolution)
 			comboBoxResolution->winEnable(FALSE);
+
+		enableWindow( checkBorderlessWindow, FALSE );
+
+		if (textEntryFirewallPortOverride)
+			textEntryFirewallPortOverride->winEnable(FALSE);
+
+		const GameMode mode = TheGameLogic->getGameMode();
+		if (mode == GAME_LAN || mode == GAME_INTERNET)
+		{
+			enableWindow( checkMaxCameraHeight, FALSE );
+			enableWindow( textEntryMaxCameraHeight, FALSE );
+		}
 
 //		if (checkAudioSurround)
 //			checkAudioSurround->winEnable(FALSE);
@@ -1823,7 +2249,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	TheWindowManager->winSetModal(parent);
 	ignoreSelected = FALSE;
-}  // end OptionsMenuInit
+}
 
 //-------------------------------------------------------------------------------------------------
 /** options menu shutdown method */
@@ -1835,10 +2261,10 @@ void OptionsMenuShutdown( WindowLayout *layout, void *userData )
 	{
 		pref->write();
 		delete pref;
-		pref = NULL;
+		pref = nullptr;
 	}
 
-	comboBoxIP = NULL;
+	comboBoxIP = nullptr;
 
 	// hide menu
 	layout->hide( TRUE );
@@ -1847,7 +2273,7 @@ void OptionsMenuShutdown( WindowLayout *layout, void *userData )
 	TheShell->shutdownComplete( layout );
 */
 
-}  // end OptionsMenuShutdown
+}
 
 //-------------------------------------------------------------------------------------------------
 /** options menu update method */
@@ -1855,7 +2281,7 @@ void OptionsMenuShutdown( WindowLayout *layout, void *userData )
 void OptionsMenuUpdate( WindowLayout *layout, void *userData )
 {
 
-}  // end OptionsMenuUpdate
+}
 
 //-------------------------------------------------------------------------------------------------
 /** Options menu input callback */
@@ -1864,7 +2290,7 @@ WindowMsgHandledType OptionsMenuInput( GameWindow *window, UnsignedInt msg,
 																			 WindowMsgData mData1, WindowMsgData mData2 )
 {
 
-	switch( msg ) 
+	switch( msg )
 	{
 
 		// --------------------------------------------------------------------------------------------
@@ -1879,41 +2305,46 @@ WindowMsgHandledType OptionsMenuInput( GameWindow *window, UnsignedInt msg,
 				// ----------------------------------------------------------------------------------------
 				case KEY_ESC:
 				{
-					
+
 					//
 					// send a simulated selected event to the parent window of the
 					// back/exit button
 					//
 					if( BitIsSet( state, KEY_STATE_UP ) )
 					{
-						AsciiString buttonName( "OptionsMenu.wnd:ButtonBack" );
-						NameKeyType buttonID = TheNameKeyGenerator->nameToKey( buttonName );
+						if (isGameOptionsOpen())
+						{
+							cancelGameOptions();
+							return MSG_HANDLED;
+						}
+
+						NameKeyType buttonID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonBack" );
 						GameWindow *button = TheWindowManager->winGetWindowFromId( window, buttonID );
 
-						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED, 
+						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
 																								(WindowMsgData)button, buttonID );
 
-					}  // end if
+					}
 
 					// don't let key fall through anywhere else
 					return MSG_HANDLED;
 
-				}  // end escape
+				}
 
-			}  // end switch( key )
+			}
 
-		}  // end char
+		}
 
-	}  // end switch( msg )
+	}
 
 	return MSG_IGNORED;
 
-}  // end OptionsMenuInput
+}
 
 //-------------------------------------------------------------------------------------------------
 /** options menu window system callback */
 //-------------------------------------------------------------------------------------------------
-WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg, 
+WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 																				WindowMsgData mData1, WindowMsgData mData2 )
 {
 	static NameKeyType buttonBack = NAMEKEY_INVALID;
@@ -1922,7 +2353,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 	static NameKeyType buttonReplayMenu = NAMEKEY_INVALID;
 	static NameKeyType buttonKeyboardOptionsMenu = NAMEKEY_INVALID;
 
-	switch( msg ) 
+	switch( msg )
 	{
 
 		// --------------------------------------------------------------------------------------------
@@ -1930,14 +2361,14 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 		{
 
 			// get ids for our children controls
-			buttonBack = TheNameKeyGenerator->nameToKey( AsciiString("OptionsMenu.wnd:ButtonBack") );
-			buttonDefaults = TheNameKeyGenerator->nameToKey( AsciiString("OptionsMenu.wnd:ButtonDefaults") );
-			buttonAccept = TheNameKeyGenerator->nameToKey( AsciiString("OptionsMenu.wnd:ButtonAccept") );
-			buttonKeyboardOptionsMenu = TheNameKeyGenerator->nameToKey( AsciiString( "OptionsMenu.wnd:ButtonKeyboardOptions" ) );
+			buttonBack = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonBack" );
+			buttonDefaults = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonDefaults" );
+			buttonAccept = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonAccept" );
+			buttonKeyboardOptionsMenu = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonKeyboardOptions" );
 
 			break;
 
-		}  // end create
+		}
 
 		//---------------------------------------------------------------------------------------------
 		case GWM_DESTROY:
@@ -1945,7 +2376,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 
 			break;
 
-		}  // end case
+		}
 
 		// --------------------------------------------------------------------------------------------
 		case GWM_INPUT_FOCUS:
@@ -1957,7 +2388,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 
 			return MSG_HANDLED;
 
-		}  // end input
+		}
 
 		//---------------------------------------------------------------------------------------------
 		case GCM_SELECTED:
@@ -1966,12 +2397,18 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 					break;
 				GameWindow *control = (GameWindow *)mData1;
 				Int controlID = control->winGetWindowId();
-		
+
+				if (controlID == comboBoxAntiAliasingID)
+				{
+					updateGameOptionsEnables();
+					break;
+				}
+
 				if (controlID == comboBoxDetailID)
 				{
 					Int index;
 					GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
-					if(index != CUSTOMDETAIL)
+					if(index != STATIC_GAME_LOD_CUSTOM)
 						break;
 
 					showAdvancedOptions();
@@ -1991,14 +2428,12 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				// go back one screen
 				//TheShell->pop();
-				if (pref)
-				{
-					delete pref;
-					pref = NULL;
-				}
 
-				comboBoxLANIP = NULL;
-				comboBoxOnlineIP = NULL;
+				delete pref;
+				pref = nullptr;
+
+				comboBoxLANIP = nullptr;
+				comboBoxOnlineIP = nullptr;
 
 				if(GameSpyIsOverlayOpen(GSOVERLAY_OPTIONS))
 					GameSpyCloseOverlay(GSOVERLAY_OPTIONS);
@@ -2007,7 +2442,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 					DestroyOptionsLayout();
 				}
 
-			}  // end if
+			}
 			else if (controlID == buttonAccept )
 			{
 				saveOptions();
@@ -2016,12 +2451,12 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 				{
 					pref->write();
 					delete pref;
-					pref = NULL;
+					pref = nullptr;
 				}
 
-				comboBoxLANIP = NULL;
-				comboBoxOnlineIP = NULL;
-				
+				comboBoxLANIP = nullptr;
+				comboBoxOnlineIP = nullptr;
+
 				if(!TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
 					destroyQuitMenu(); // if we're in a game, the change res then enter the same kind of game, we nee the quit menu to be gone.
 
@@ -2042,30 +2477,52 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				setDefaults();
 			}
+			else if (controlID == ButtonGameOptionsID )
+			{
+				showGameOptions();
+			}
+			else if (controlID == ButtonGameOptionsAcceptID )
+			{
+				acceptGameOptions();
+			}
+			else if (controlID == ButtonGameOptionsCancelID )
+			{
+				cancelGameOptions();
+			}
+			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID ||
+				controlID == checkDynamicLightsID )
+			{
+				updateGameOptionsEnables();
+			}
 			else if (controlID == ButtonAdvancedAcceptID )
 			{
 				acceptAdvancedOptions();
-				
+
 			}
 			else if (controlID == ButtonAdvancedCancelID )
-			{	
+			{
 				cancelAdvancedOptions();
 			}
 			else if ( controlID == buttonKeyboardOptionsMenu )
 			{
-				TheShell->push( AsciiString( "Menus/KeyboardOptionsMenu.wnd" ) );
+				TheShell->push( "Menus/KeyboardOptionsMenu.wnd" );
+			}
+			else if(controlID == checkMaxCameraHeightID )
+			{
+				const Bool useCustom = GadgetCheckBoxIsChecked( control );
+				showMaxCameraHeightEntry( useCustom, useCustom ? (Int)pref->getMaxCameraHeight() : (Int)TheGlobalData->m_defaultMaxCameraHeight );
 			}
 			else if(controlID == checkDrawAnchorID )
       {
         if( GadgetCheckBoxIsChecked( control ) )
         {
           	TheInGameUI->setDrawRMBScrollAnchor(true);
-          	(*pref)["DrawScrollAnchor"] = "Yes";
+          	(*pref)["DrawScrollAnchor"] = "yes";
         }
 				else
         {
           	TheInGameUI->setDrawRMBScrollAnchor(false);
-          	(*pref)["DrawScrollAnchor"] = "No";
+          	(*pref)["DrawScrollAnchor"] = "no";
         }
       }
 			else if(controlID == checkMoveAnchorID )
@@ -2073,12 +2530,12 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
         if( GadgetCheckBoxIsChecked( control ) )
         {
           	TheInGameUI->setMoveRMBScrollAnchor(true);
-          	(*pref)["MoveScrollAnchor"] = "Yes";
+          	(*pref)["MoveScrollAnchor"] = "yes";
         }
 				else
         {
           	TheInGameUI->setMoveRMBScrollAnchor(false);
-          	(*pref)["MoveScrollAnchor"] = "No";
+          	(*pref)["MoveScrollAnchor"] = "no";
         }
       }
 			else if(controlID == checkSaveCameraID )
@@ -2121,13 +2578,13 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			}
 			break;
 
-		}  // end selected
+		}
 
 		default:
 			return MSG_IGNORED;
 
-	}  // end switch
+	}
 
 	return MSG_HANDLED;
 
-}  // end OptionsMenuSystem
+}

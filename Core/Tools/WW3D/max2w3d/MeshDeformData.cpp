@@ -16,22 +16,22 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Commando / G 3D engine                                       * 
- *                                                                                             * 
- *                    File Name : MeshDeformData.cpp                                           * 
- *                                                                                             * 
- *                   Programmer : Patrick Smith                                                * 
- *                                                                                             * 
- *                   Start Date : 04/26/99                                                     * 
- *                                                                                             * 
- *                  Last Update : 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Commando / G 3D engine                                       *
+ *                                                                                             *
+ *                    File Name : MeshDeformData.cpp                                           *
+ *                                                                                             *
+ *                   Programmer : Patrick Smith                                                *
+ *                                                                                             *
+ *                   Start Date : 04/26/99                                                     *
+ *                                                                                             *
+ *                  Last Update :
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
@@ -45,10 +45,9 @@
 //	~MeshDeformModData
 //
 ///////////////////////////////////////////////////////////////////////////
-MeshDeformModData::~MeshDeformModData (void)
+MeshDeformModData::~MeshDeformModData ()
 {
 	Free_Sets_List ();
-	return ;
 }
 
 
@@ -77,8 +76,6 @@ MeshDeformModData::Record_Mesh_State (TriObject &tri_obj, float state, bool upda
 		m_SetsList[m_CurrentSet]->Set_State (state);
 		m_SetsList[m_CurrentSet]->Update_Mesh (tri_obj);
 	}
-
-	return ;
 }
 
 
@@ -88,7 +85,7 @@ MeshDeformModData::Record_Mesh_State (TriObject &tri_obj, float state, bool upda
 //
 ///////////////////////////////////////////////////////////////////////////
 void
-MeshDeformModData::Free_Sets_List (void)
+MeshDeformModData::Free_Sets_List ()
 {
 	//
 	//	Delete all the object pointers in the set list
@@ -100,7 +97,6 @@ MeshDeformModData::Free_Sets_List (void)
 
 	// Remove all the entries from the list
 	m_SetsList.Delete_All ();
-	return ;
 }
 
 
@@ -114,7 +110,7 @@ MeshDeformModData::Set_Max_Deform_Sets (int max)
 {
 	int current_max = m_SetsList.Count ();
 	if (max > current_max) {
-		
+
 		//
 		//	Add the new sets to the list
 		//
@@ -125,13 +121,13 @@ MeshDeformModData::Set_Max_Deform_Sets (int max)
 		}
 
 	} else if (max < current_max) {
-		
+
 		//
 		//	Remove the obsolete sets from the list
 		//
 		int sets_to_remove = current_max - max;
 		for (int index = 0; index < sets_to_remove; index ++) {
-			
+
 			// Restore the set before we delete it
 			Restore_Set (max);
 
@@ -141,8 +137,6 @@ MeshDeformModData::Set_Max_Deform_Sets (int max)
 			m_SetsList.Delete (max);
 		}
 	}
-
-	return ;
 }
 
 
@@ -159,13 +153,11 @@ MeshDeformModData::Restore_Set (int set_index)
 		// Restore ALL the set
 		for (int index = 0; index < m_SetsList.Count (); index ++) {
 			m_SetsList[index]->Restore_Members ();
-		}			
+		}
 
 	} else {
 		m_SetsList[set_index]->Restore_Members ();
 	}
-	
-	return ;
 }
 
 
@@ -186,7 +178,7 @@ MeshDeformModData::Save (ISave *save_obj)
 	DeformChunk info = { 0 };
 	info.SetCount = m_SetsList.Count ();
 	IOResult result = save_obj->Write (&info, sizeof (info), &bytes);
-	
+
 	save_obj->EndChunk ();
 
 	//
@@ -195,7 +187,7 @@ MeshDeformModData::Save (ISave *save_obj)
 	for (int index = 0; (index < m_SetsList.Count ()) && (result == IO_OK); index ++) {
 		result = m_SetsList[index]->Save (save_obj);
 	}
-	
+
 	// Return IO_OK on success IO_ERROR on failure
 	return result;
 }
@@ -222,7 +214,7 @@ MeshDeformModData::Load (ILoad *load_obj)
 		DeformChunk info = { 0 };
 		result = load_obj->Read (&info, sizeof (info), &bytes);
 		load_obj->CloseChunk ();
-		
+
 		//
 		//	Read the set information from the chunk
 		//
@@ -230,8 +222,8 @@ MeshDeformModData::Load (ILoad *load_obj)
 			MeshDeformSetClass *set = new MeshDeformSetClass;
 			m_SetsList.Add (set);
 			result = set->Load (load_obj);
-		}		
-	}	
+		}
+	}
 
 	// Return IO_OK on success IO_ERROR on failure
 	return result;

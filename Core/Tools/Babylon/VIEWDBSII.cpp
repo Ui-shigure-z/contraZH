@@ -23,7 +23,7 @@
 #include "Babylon.h"
 #include "VIEWDBSII.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -33,7 +33,7 @@ static char THIS_FILE[] = __FILE__;
 // VIEWDBSII dialog
 
 
-VIEWDBSII::VIEWDBSII(CWnd* pParent /*=NULL*/)
+VIEWDBSII::VIEWDBSII(CWnd* pParent /*=nullptr*/)
 	: CDialog(VIEWDBSII::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(VIEWDBSII)

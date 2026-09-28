@@ -32,7 +32,7 @@
 //
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
-#include "always.h"
+#include "WWLib/always.h"
 #include "GameClient/View.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/light.h"
@@ -42,7 +42,6 @@
 #include "WW3D2/meshmdl.h"
 #include "Lib/BaseType.h"
 #include "W3DDevice/GameClient/HeightMap.h"
-#include "d3dx8math.h"
 #include "Common/GlobalData.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
@@ -50,11 +49,14 @@
 #include "WW3D2/statistics.h"
 #include "Common/Debug.h"
 #include "Common/PerfTimer.h"
+#include "GameClient/Drawable.h"
+#include "GameClient/DrawableInfo.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
 
 #define SUN_DISTANCE_FROM_GROUND	10000.0f	//distance of sun (our only light source).
 
 // Global Variables and Functions /////////////////////////////////////////////
-W3DShadowManager *TheW3DShadowManager=NULL;
+W3DShadowManager *TheW3DShadowManager=nullptr;
 const FrustumClass *shadowCameraFrustum;
 
 Vector3 LightPosWorld[ MAX_SHADOW_LIGHTS ] =
@@ -62,6 +64,12 @@ Vector3 LightPosWorld[ MAX_SHADOW_LIGHTS ] =
 
 	Vector3( 94.0161f, 50.499f, 200.0f)
 };
+
+void PrepareShadows()
+{
+	if (TheW3DProjectedShadowManager)
+		TheW3DProjectedShadowManager->prepareShadows();
+}
 
 //DECLARE_PERF_TIMER(shadowsRender)
 void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
@@ -92,10 +100,73 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 		TheW3DShadowManager->queueShadows(FALSE);
 
 }
-	
+
+// Draw only the radius-decal list. Used to render radius decals AFTER the water pass so they
+// appear over water (see TheGlobalData->m_radiusDecalsAboveWater).
+// NOTE: does NOT gate on isShadowScene() - the stencil-shadow pass (DoShadows(...,true)) runs
+// before water and resets that flag to FALSE, so it is already false by the time we get here.
+void DoDecals(RenderInfoClass & rinfo)
+{
+	if (TheW3DProjectedShadowManager)
+		TheW3DProjectedShadowManager->renderDecals(rinfo, true);	//above-water subset
+}
+
+Bool IsShadowMapActive()
+{
+	return TheW3DShadowMap != nullptr && TheW3DShadowMap->hasDepth();
+}
+
+Bool IsShadowMapCaster(RenderObjClass *robj, Bool shadowEnabled)
+{
+	if (TheW3DShadowMap == nullptr)
+		return FALSE;
+
+	W3DShadowMap::CasterStats &stats = TheW3DShadowMap->getCasterStats();
+
+	if (!shadowEnabled || robj == nullptr)
+	{
+		++stats.disabled;
+		return FALSE;
+	}
+
+	if (!robj->Is_Not_Hidden_At_All())
+	{
+		++stats.hidden;
+		return FALSE;
+	}
+
+	// Same test the scene uses to hide drawables, so a unit under shroud or stealth
+	// casts no shadow that would give it away.
+	DrawableInfo *drawInfo = (DrawableInfo *)robj->Get_User_Data();
+	if (drawInfo != nullptr && drawInfo->m_drawable != nullptr)
+	{
+		Drawable *draw = drawInfo->m_drawable;
+		if (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud())
+		{
+			++stats.shrouded;
+			return FALSE;
+		}
+	}
+
+	if (!TheW3DShadowMap->isCasterInRange(robj->Get_Bounding_Sphere()))
+	{
+		++stats.outOfRange;
+		return FALSE;
+	}
+
+	if (!TheW3DShadowMap->isCasterShadowInView(robj->Get_Bounding_Sphere()))
+	{
+		++stats.outOfView;
+		return FALSE;
+	}
+
+	++stats.drawn;
+	return TRUE;
+}
+
 W3DShadowManager::W3DShadowManager( void )
 {
-	DEBUG_ASSERTCRASH(TheW3DVolumetricShadowManager == NULL && TheW3DProjectedShadowManager == NULL,
+	DEBUG_ASSERTCRASH(TheW3DVolumetricShadowManager == nullptr && TheW3DProjectedShadowManager == nullptr,
 		("Creating new shadow managers without deleting old ones"));
 
 	m_shadowColor = 0x7fa0a0a0;
@@ -112,17 +183,17 @@ W3DShadowManager::W3DShadowManager( void )
 	TheProjectedShadowManager = TheW3DProjectedShadowManager = NEW W3DProjectedShadowManager;
 }
 
-W3DShadowManager::~W3DShadowManager( void )
+W3DShadowManager::~W3DShadowManager()
 {
 	delete TheW3DVolumetricShadowManager;
-	TheW3DVolumetricShadowManager = NULL;
+	TheW3DVolumetricShadowManager = nullptr;
 	delete TheW3DProjectedShadowManager;
-	TheProjectedShadowManager = TheW3DProjectedShadowManager = NULL;
+	TheProjectedShadowManager = TheW3DProjectedShadowManager = nullptr;
 }
 
 /** Do one-time initilalization of shadow systems that need to be
 active for full duration of game*/
-Bool W3DShadowManager::init( void )
+Bool W3DShadowManager::init()
 {
 	Bool result=TRUE;
 
@@ -142,7 +213,7 @@ Bool W3DShadowManager::init( void )
 
 /** Do per-map reset.  This frees up shadows from all objects since
 they may not exist on the next map*/
-void W3DShadowManager::Reset( void )
+void W3DShadowManager::Reset()
 {
 
 	if (TheW3DVolumetricShadowManager)
@@ -163,7 +234,7 @@ Bool W3DShadowManager::ReAcquireResources()
 	return result;
 }
 
-void W3DShadowManager::ReleaseResources(void)
+void W3DShadowManager::ReleaseResources()
 {
 	if (TheW3DVolumetricShadowManager)
 		TheW3DVolumetricShadowManager->ReleaseResources();
@@ -190,10 +261,10 @@ Shadow *W3DShadowManager::addShadow( RenderObjClass *robj, Shadow::ShadowTypeInf
 				return (Shadow *)TheW3DProjectedShadowManager->addShadow(robj, shadowInfo, draw);
 			break;
 		default:
-			return NULL;
+			return nullptr;
 	}
-		
-	return NULL;
+
+	return nullptr;
 }
 
 void W3DShadowManager::removeShadow(Shadow *shadow)
@@ -201,7 +272,7 @@ void W3DShadowManager::removeShadow(Shadow *shadow)
 	shadow->release();
 }
 
-void W3DShadowManager::removeAllShadows(void)
+void W3DShadowManager::removeAllShadows()
 {
 	if (TheW3DVolumetricShadowManager)
 		TheW3DVolumetricShadowManager->removeAllShadows();
@@ -210,7 +281,7 @@ void W3DShadowManager::removeAllShadows(void)
 }
 
 /**Force update of all shadows even when light source and object have not moved*/
-void W3DShadowManager::invalidateCachedLightPositions(void)
+void W3DShadowManager::invalidateCachedLightPositions()
 {
 	if (TheW3DVolumetricShadowManager)
 		TheW3DVolumetricShadowManager->invalidateCachedLightPositions();

@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_RoadOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_)
-#define AFX_RoadOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // RoadOptions.h : header file
 //
 
@@ -37,9 +33,9 @@ class RoadOptions : public COptionsPanel
 {
 // Construction
 public:
-	RoadOptions(CWnd* pParent = NULL);   ///< standard constructor
+	RoadOptions(CWnd* pParent = nullptr);   ///< standard constructor
 
-	~RoadOptions(void);   ///< standard destructor
+	virtual ~RoadOptions() override;   ///< standard destructor
 	enum { NAME_MAX_LEN = 64 };
 // Dialog Data
 	//{{AFX_DATA(RoadOptions)
@@ -63,7 +59,7 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(RoadOptions)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnTightCurve();
 	afx_msg void OnAngled();
 	afx_msg void OnBroadCurve();
@@ -97,9 +93,9 @@ protected:
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
 	Bool findAndSelect(HTREEITEM parent, AsciiString label);
 	Bool setRoadTreeViewSelection(HTREEITEM parent, Int selection);
-	void updateLabel(void);
+	void updateLabel();
 	void ChangeRoadType(AsciiString newRoad);
-	void SelectConnected(void);
+	void SelectConnected();
 
 public:
 	static AsciiString getCurRoadName(void) {return m_currentRoadName;}
@@ -129,5 +125,3 @@ public:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_RoadOptions_H__D3FF66C5_711D_4DAC_8A29_5EAAB5C3A23E__INCLUDED_)

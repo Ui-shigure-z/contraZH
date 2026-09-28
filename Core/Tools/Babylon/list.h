@@ -16,10 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-#ifndef	__LIST_H
-#define	__LIST_H
-
+#pragma once
 
 const int LOWEST_PRIORITY = (int ) 0x80000000;
 const	int HIGHEST_PRIORITY = (int) 0x7fffffff;
@@ -37,20 +34,20 @@ class ListNode
 
 	public:
 
-							ListNode		( void );
+							ListNode		();
 	void				Append			( ListNode *node );
 	void				Prepend			( ListNode *node );
 	void				Link				( ListNode *node);
-	void				Remove			( void );
-	ListNode*		Next				( void );
-	ListNode*		Prev				( void );
-	ListNode*		NextLoop		( void );
-	ListNode*		PrevLoop		( void );
-	void*				Item				( void );
+	void				Remove			();
+	ListNode*		Next				();
+	ListNode*		Prev				();
+	ListNode*		NextLoop		();
+	ListNode*		PrevLoop		();
+	void*				Item				();
 	void				SetItem			( void *item );
-	int					InList			( void );
-	int					IsHead			( void );
-	int					Priority		( void );
+	int					InList			();
+	int					IsHead			();
+	int					Priority		();
 	void				SetPriority ( int new_pri );
 
 
@@ -60,17 +57,17 @@ class List: public ListNode
 {
 
 	public:
-	List ( void );
+	List ();
 	void				AddToTail ( ListNode *node );
 	void				AddToHead ( ListNode *node );
 	void				Add				( ListNode *node );
 	void				Merge			( List *list );
-	int					NumItems  ( void );
+	int					NumItems  ();
 	void*				Item			( int list_index );
-	ListNode*		FirstNode ( void );
-	ListNode*		LastNode	( void );
-	int					IsEmpty		( void );
-	void				Empty			( void );
+	ListNode*		FirstNode ();
+	ListNode*		LastNode	();
+	int					IsEmpty		();
+	void				Empty			();
 	ListNode*		Find			( void *item );
 
 };
@@ -82,14 +79,11 @@ class ListSearch
 
 	public:
 
-	ListNode*		Next ( void ) { if (node) { node = node->Next ();} return node;};
-	ListNode*		Prev ( void ) { if (node) { node = node->Prev ();} return node;};
-	ListNode*		FirstNode ( void ) { node = head; return Next (); };
-	ListNode*		LastNode ( void ) { node = head; return Prev (); };
+	ListNode*		Next () { if (node) { node = node->Next ();} return node;};
+	ListNode*		Prev () { if (node) { node = node->Prev ();} return node;};
+	ListNode*		FirstNode () { node = head; return Next (); };
+	ListNode*		LastNode () { node = head; return Prev (); };
 	ListNode*		FirstNode ( List *new_head ) { node = head = new_head; return Next (); };
 	ListNode*		LastNode ( List *new_head) { node = head = new_head; return Prev (); };
 
 };
-
-
-#endif	//	__LIST_H 

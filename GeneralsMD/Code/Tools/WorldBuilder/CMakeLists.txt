@@ -14,7 +14,6 @@ set(WORLDBUILDER_SRC
     "src/BuildListTool.cpp"
     "src/CameraOptions.cpp"
     "src/CButtonShowColor.cpp"
-    "src/CButtonShowColor.h"
     "src/CellWidth.cpp"
     "src/CFixTeamOwnerDialog.cpp"
     "src/ContourOptions.cpp"
@@ -170,6 +169,7 @@ set(WORLDBUILDER_SRC
     "include/BuildList.h"
     "include/BuildListTool.h"
     "include/CameraOptions.h"
+    "include/CButtonShowColor.h"
     "include/CellWidth.h"
     "include/CFixTeamOwnerDialog.h"
     "include/ContourOptions.h"
@@ -289,26 +289,29 @@ target_sources(z_worldbuilder PRIVATE ${WORLDBUILDER_SRC})
 add_dependencies(z_worldbuilder z_worldbuilder_buildstamp)
 
 target_include_directories(z_worldbuilder PRIVATE
-    .
+    ${CMAKE_CURRENT_SOURCE_DIR}
     "${CMAKE_SOURCE_DIR}/Core/Tools/WorldBuilderMcp"
     include
     res
     "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
+target_precompile_headers(z_worldbuilder PRIVATE
+    [["Precompiled/precompiled.h"]] # Must be first
+    [["WWLib/always.h"]]
+    [["Common/STLTypedefs.h"]]
+    [["StdAfx.h"]]
+    [["WWLib/WWCommon.h"]]
+)
+
 target_link_libraries(z_worldbuilder PRIVATE
     d3d8lib
-    dbghelplib
     imm32
     vfw32
     winmm
     core_browserdispatch
-    z_debug
     z_gameengine
     z_gameenginedevice
-    z_profile
-    zi_gameengine_include
-    zi_gameenginedevice_include
     zi_always
 )
 
@@ -336,12 +339,12 @@ if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
             OUTPUT_NAME_RELEASE WorldBuilderZH_Qt)
     else()
         set_target_properties(z_worldbuilder PROPERTIES
-            OUTPUT_NAME WorldBuilderZH
-            OUTPUT_NAME_DEBUG WorldBuilderZH_d
-            OUTPUT_NAME_RELEASE WorldBuilderZH_r)
+            OUTPUT_NAME "WorldBuilderZH${RTS_BUILD_OUTPUT_SUFFIX}"
+            OUTPUT_NAME_DEBUG "WorldBuilderZH_d${RTS_BUILD_OUTPUT_SUFFIX}"
+            OUTPUT_NAME_RELEASE "WorldBuilderZH_r${RTS_BUILD_OUTPUT_SUFFIX}")
     endif()
 else()
-    set_target_properties(z_worldbuilder PROPERTIES OUTPUT_NAME worldbuilderzh)
+    set_target_properties(z_worldbuilder PROPERTIES OUTPUT_NAME "worldbuilderzh${RTS_BUILD_OUTPUT_SUFFIX}")
 endif()
 
 # --- Experimental Qt coexistence (Phase 1 of MFC -> Qt migration) ----------------

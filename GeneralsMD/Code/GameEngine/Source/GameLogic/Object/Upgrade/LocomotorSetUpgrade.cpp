@@ -28,12 +28,53 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+
+#define DEFINE_LOCOMOTORSET_NAMES //Gain access to TheLocomotorSetNames[]
 
 #include "Common/Xfer.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Module/LocomotorSetUpgrade.h"
 #include "GameLogic/Module/AIUpdate.h"
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+LocomotorSetUpgradeModuleData::LocomotorSetUpgradeModuleData(void)
+{
+	m_setUpgraded = TRUE;
+	m_useLocomotorType = FALSE;
+	m_LocomotorType = LOCOMOTORSET_INVALID;
+	// m_needsParkedAircraft = FALSE;
+}
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+/*static*/ void LocomotorSetUpgradeModuleData::parseLocomotorType(INI* ini, void* instance, void* store, const void* /*userData*/)
+{
+	const char* token = ini->getNextToken();
+	if (stricmp(token, "None") != 0) {
+		LocomotorSetUpgradeModuleData* self = (LocomotorSetUpgradeModuleData*)instance;
+		self->m_useLocomotorType = true;
+		*(LocomotorSetType*)store = (LocomotorSetType)INI::scanIndexList(token, TheLocomotorSetNames);
+	}
+}
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void LocomotorSetUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p)
+{
+
+	UpgradeModuleData::buildFieldParse(p);
+
+	static const FieldParse dataFieldParse[] =
+	{
+		{ "EnableUpgrade", INI::parseBool, NULL, offsetof(LocomotorSetUpgradeModuleData, m_setUpgraded) },
+		{ "ExplicitLocomotorType", LocomotorSetUpgradeModuleData::parseLocomotorType, NULL, offsetof(LocomotorSetUpgradeModuleData, m_LocomotorType)},
+		//{ "NeedsParkedAircraft", INI::parseBool, NULL, offsetof(WeaponSetUpgradeModuleData, m_needsParkedAircraft) },
+		{ 0, 0, 0, 0 }
+	};
+
+	p.add(dataFieldParse);
+
+}  // end buildFieldParse
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -43,17 +84,25 @@ LocomotorSetUpgrade::LocomotorSetUpgrade( Thing *thing, const ModuleData* module
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-LocomotorSetUpgrade::~LocomotorSetUpgrade( void )
+LocomotorSetUpgrade::~LocomotorSetUpgrade()
 {
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void LocomotorSetUpgrade::upgradeImplementation( )
+void LocomotorSetUpgrade::upgradeImplementation()
 {
+	const LocomotorSetUpgradeModuleData* data = getLocomotorSetUpgradeModuleData();
 	AIUpdateInterface* ai = getObject()->getAIUpdateInterface();
-	if (ai)
-		ai->setLocomotorUpgrade(true);
+	if (ai) {
+		if (data->m_useLocomotorType && data->m_LocomotorType != LOCOMOTORSET_NORMAL_UPGRADED) {
+			ai->chooseLocomotorSet(data->m_LocomotorType);
+		}
+		else {
+			ai->setLocomotorUpgrade(data->m_setUpgraded);
+		}
+	}
+
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -65,7 +114,7 @@ void LocomotorSetUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -83,15 +132,15 @@ void LocomotorSetUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void LocomotorSetUpgrade::loadPostProcess( void )
+void LocomotorSetUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

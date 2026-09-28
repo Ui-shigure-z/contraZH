@@ -28,16 +28,13 @@
 
 #pragma once
 
-#ifndef _TURRETAI_H_
-#define _TURRETAI_H_
-
 #include "Common/StateMachine.h"
 #include "Common/GameMemory.h"
 
 const Real DEFAULT_TURN_RATE = 0.01f;
 const Real DEFAULT_PITCH_RATE = 0.01f;
 
-/** 
+/**
  * The TurretAI state IDs.
  * Each of these constants will be associated with an instance of a State class
  * in a given StateMachine.
@@ -60,7 +57,7 @@ class TurretAI;
 
 //-----------------------------------------------------------------------------------------------------------
 /**
- * The AI state machine.  This is used by AIUpdate to implement all of the 
+ * The AI state machine.  This is used by AIUpdate to implement all of the
  * commands in the AICommandInterface.
  */
 class TurretStateMachine : public StateMachine
@@ -68,32 +65,32 @@ class TurretStateMachine : public StateMachine
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( TurretStateMachine, "TurretStateMachine" );
 
 public:
-	/** 
+	/**
 	 * The implementation of this constructor defines the states
 	 * used by this machine.
 	 */
 	TurretStateMachine( TurretAI* tai, Object* owner, AsciiString name );
-	
+
 	TurretAI* getTurretAI() const { return m_turretAI; }
 
-	virtual void clear();
-	virtual StateReturnType resetToDefaultState();
-	virtual StateReturnType setState( StateID newStateID );
+	virtual void clear() override;
+	virtual StateReturnType resetToDefaultState() override;
+	virtual StateReturnType setState( StateID newStateID ) override;
 
 private:
 	TurretAI* m_turretAI;
 
 protected:
 	// snapshot interface
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 };
 
 //-----------------------------------------------------------------------------------------------------------
 class TurretState : public State
 {
-	MEMORY_POOL_GLUE_ABC(TurretState)		
+	MEMORY_POOL_GLUE_ABC(TurretState)
 protected:
 	TurretState( TurretStateMachine* machine, AsciiString name ) : State( machine, name) { }
 	TurretAI* getTurretAI() { return ((TurretStateMachine*)getMachine())->getTurretAI(); }
@@ -102,18 +99,18 @@ EMPTY_DTOR(TurretState)
 
 //-----------------------------------------------------------------------------------------------------------
 class TurretAIIdleState : public TurretState
-{	
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIIdleState, "TurretAIIdleState")		
+{
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIIdleState, "TurretAIIdleState")
 public:
 	TurretAIIdleState( TurretStateMachine* machine ) : TurretState( machine, "TurretAIIdleState"), m_nextIdleScan(0) { }
-	virtual StateReturnType onEnter();
-	virtual StateReturnType update();
+	virtual StateReturnType onEnter() override;
+	virtual StateReturnType update() override;
 
 protected:
 	// snapshot interface
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 private:
 	void resetIdleScan();
 	UnsignedInt m_nextIdleScan;
@@ -123,18 +120,18 @@ EMPTY_DTOR(TurretAIIdleState)
 //-----------------------------------------------------------------------------------------------------------
 class TurretAIIdleScanState : public TurretState
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIIdleScanState, "TurretAIIdleScanState")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIIdleScanState, "TurretAIIdleScanState")
 public:
 	TurretAIIdleScanState( TurretStateMachine* machine ) : TurretState( machine, "TurretAIIdleScanState"), m_desiredAngle(0) { }
-	virtual StateReturnType onEnter();
-	virtual void onExit( StateExitType status );
-	virtual StateReturnType update();
+	virtual StateReturnType onEnter() override;
+	virtual void onExit( StateExitType status ) override;
+	virtual StateReturnType update() override;
 
 protected:
 	// snapshot interface
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 private:
 	Real m_desiredAngle;
 };
@@ -146,24 +143,24 @@ EMPTY_DTOR(TurretAIIdleScanState)
  */
 class TurretAIAimTurretState : public TurretState
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIAimTurretState, "TurretAIAimTurretState")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIAimTurretState, "TurretAIAimTurretState")
 private:
 #ifdef INTER_TURRET_DELAY
 	UnsignedInt m_extraDelay;
 #endif
 public:
 	TurretAIAimTurretState( TurretStateMachine* machine ) : TurretState( machine, "TurretAIAimTurretState" )
-	{ 
-	
+	{
+
 	}
-	virtual StateReturnType onEnter();
-	virtual void onExit( StateExitType status );
-	virtual StateReturnType update();
+	virtual StateReturnType onEnter() override;
+	virtual void onExit( StateExitType status ) override;
+	virtual StateReturnType update() override;
 protected:
 	// snapshot interface	STUBBED - no member vars to save. jba.
-	virtual void crc( Xfer *xfer ){};
-	virtual void xfer( Xfer *xfer ){XferVersion cv = 1;	XferVersion v = cv; xfer->xferVersion( &v, cv );}
-	virtual void loadPostProcess(){};
+	virtual void crc( Xfer *xfer ) override {};
+	virtual void xfer( Xfer *xfer ) override {XferVersion cv = 1;	XferVersion v = cv; xfer->xferVersion( &v, cv );}
+	virtual void loadPostProcess() override {};
 };
 EMPTY_DTOR(TurretAIAimTurretState)
 
@@ -173,17 +170,17 @@ EMPTY_DTOR(TurretAIAimTurretState)
  */
 class TurretAIRecenterTurretState : public TurretState
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIRecenterTurretState, "TurretAIRecenterTurretState")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIRecenterTurretState, "TurretAIRecenterTurretState")
 public:
 	TurretAIRecenterTurretState( TurretStateMachine* machine ) : TurretState( machine, "TurretAIRecenterTurretState" ) { }
-	virtual StateReturnType onEnter();
-	virtual void onExit( StateExitType status );
-	virtual StateReturnType update();
+	virtual StateReturnType onEnter() override;
+	virtual void onExit( StateExitType status ) override;
+	virtual StateReturnType update() override;
 protected:
 	// snapshot interface	STUBBED - no member vars to save. jba.
-	virtual void crc( Xfer *xfer ){};
-	virtual void xfer( Xfer *xfer ){XferVersion cv = 1;	XferVersion v = cv; xfer->xferVersion( &v, cv );}
-	virtual void loadPostProcess(){};
+	virtual void crc( Xfer *xfer ) override {};
+	virtual void xfer( Xfer *xfer ) override {XferVersion cv = 1;	XferVersion v = cv; xfer->xferVersion( &v, cv );}
+	virtual void loadPostProcess() override {};
 };
 EMPTY_DTOR(TurretAIRecenterTurretState)
 
@@ -193,29 +190,29 @@ EMPTY_DTOR(TurretAIRecenterTurretState)
  */
 class TurretAIHoldTurretState : public TurretState
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIHoldTurretState, "TurretAIHoldTurretState")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIHoldTurretState, "TurretAIHoldTurretState")
 private:
 	UnsignedInt m_timestamp;										///< frame this state was last entered
 public:
-	TurretAIHoldTurretState( TurretStateMachine* machine ) : TurretState( machine , "AIHoldTurretState") 
+	TurretAIHoldTurretState( TurretStateMachine* machine ) : TurretState( machine , "AIHoldTurretState")
 	{
 		m_timestamp = 0;
 	}
-	virtual StateReturnType onEnter();
-	virtual void onExit( StateExitType status );
-	virtual StateReturnType update();
+	virtual StateReturnType onEnter() override;
+	virtual void onExit( StateExitType status ) override;
+	virtual StateReturnType update() override;
 protected:
 	// snapshot interface
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 };
 EMPTY_DTOR(TurretAIHoldTurretState)
 
 //-------------------------------------------------------------------------------------------------
 class TurretAIData : public MemoryPoolObject
 {
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIData, "TurretAIData")		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(TurretAIData, "TurretAIData")
 public:
 	Real						m_turnRate;
 	Real						m_pitchRate;
@@ -225,6 +222,7 @@ public:
 	Real						m_turretSweepSpeedModifier[WEAPONSLOT_COUNT];	///< While sweeping, change your speed by this
 	Real						m_firePitch;						///< if nonzero, I am on target at this fixed pitch, not when pointing at target
 	Real						m_minPitch;							///< dependent on allowspitch. defaults to 0 (horizontal). The lowest pitch allowed (negative to allow pointing down of a high turret)
+	Real						m_maxPitch;							///< dependent on allowspitch. defaults to 90 (vertical). The highest pitch allowed
 	Real						m_groundUnitPitch;			///< dependent on allowspitch. defaults to 0 (horizontal). The lowest pitch allowed when firing at ground units to give the weapon an arc.  jba
 	UnsignedInt			m_turretWeaponSlots;		///< which WeaponSlots are controlled by this turret
 #ifdef INTER_TURRET_DELAY
@@ -256,7 +254,7 @@ enum TurretTargetType CPP_11(: Int)
 };
 
 //-----------------------------------------------------------------------------------------------------
-/** 
+/**
  * Turret behavior implementation.
  */
 class TurretAI : public MemoryPoolObject, public Snapshot, public NotifyWeaponFiredInterface
@@ -270,6 +268,7 @@ public:
 	Real getTurretAngle() const { return m_angle; }
 	Real getTurretPitch() const { return m_pitch; }
 	Real getMinPitch() const { return m_data->m_minPitch; }
+	Real getMaxPitch() const { return m_data->m_maxPitch; }
 	Bool isAllowsPitch() const { return m_data->m_isAllowsPitch; }
 	Real getTurnRate() const { return m_data->m_turnRate; }
 	Real getNaturalTurretAngle() const { return m_data->m_naturalTurretAngle; }
@@ -289,7 +288,7 @@ public:
 
 	Bool isOwnersCurWeaponOnTurret() const;
 	Bool isWeaponSlotOnTurret(WeaponSlotType wslot) const;
-	Bool isAttackingObject() const { return m_target == TARGET_OBJECT; } 
+	virtual Bool isAttackingObject() const override { return m_target == TARGET_OBJECT; }
 	Bool isForceAttacking() const { return m_isForceAttacking; }
 
 	// this will cause the turret to continuously track the given victim.
@@ -310,10 +309,10 @@ public:
 
 	UpdateSleepTime updateTurretAI();			///< implement this module's behavior
 
-	virtual void notifyFired();
-	virtual void notifyNewVictimChosen(Object* victim);
-	virtual const Coord3D* getOriginalVictimPos() const { return NULL; }	// yes, we return NULL here
-	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const;
+	virtual void notifyFired() override;
+	virtual void notifyNewVictimChosen(Object* victim) override;
+	virtual const Coord3D* getOriginalVictimPos() const override { return nullptr; }	// yes, we return nullptr here
+	virtual Bool isWeaponSlotOkToFire(WeaponSlotType wslot) const override;
 
 	// these are only for use by the state machines... don't call them otherwise, please
 	Bool friend_turnTowardsAngle(Real desiredAngle, Real rateModifier, Real relThresh);
@@ -335,9 +334,9 @@ public:
 
 protected:
 	// snapshot interface
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
 private:
 
@@ -373,6 +372,3 @@ private:
 	mutable Bool						m_targetWasSetByIdleMood : 1;
 
 };
-
-#endif // end _TURRETAI_H_
-

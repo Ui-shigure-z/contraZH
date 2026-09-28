@@ -69,14 +69,14 @@ char *do_encrypt(char *String)
 	for (Cnt = 0; Cnt < MAX_ENCRYPTED_STRING; Cnt++)
 		Return_Buffer[Cnt] = Base_String[Temp_Buffer[Cnt] & 0x3F];
 
-	Return_Buffer[Cnt] = NULL;
+	Return_Buffer[Cnt] = '\0';
 	return (Return_Buffer);
 
 }
 
 
 #ifdef UNIT_TEST
-void main(void)
+void main()
 {
 	char Input_String[9];
 	char *new_string;

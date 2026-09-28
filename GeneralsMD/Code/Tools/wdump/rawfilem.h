@@ -16,49 +16,48 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Command & Conquer                                            * 
- *                                                                                             * 
- *                     $Archive:: /G/wdump/RAWFILEM.H                                         $* 
- *                                                                                             * 
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Command & Conquer                                            *
+ *                                                                                             *
+ *                     $Archive:: /G/wdump/RAWFILEM.h                                         $*
+ *                                                                                             *
  *                      $Author:: Eric_c                                                      $*
- *                                                                                             * 
+ *                                                                                             *
  *                     $Modtime:: 7/28/97 3:36p                                               $*
- *                                                                                             * 
+ *                                                                                             *
  *                    $Revision:: 3                                                           $*
  *                                                                                             *
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  *   RawFileMClass::File_Name -- Returns with the filename associate with the file object.      *
  *   RawFileMClass::RawFileMClass -- Default constructor for a file object.                      *
  *   RawFileMClass::~RawFileMClass -- Default deconstructor for a file object.                   *
  *   RawFileMClass::Is_Open -- Checks to see if the file is open or not.                        *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef RAWFILEM_Hx
-#define RAWFILEM_Hx
+#pragma once
 
 #include	<errno.h>
 #include	<limits.h>
 #include	<stddef.h>
 #include	<stdlib.h>
 
-#include	"win.h"
+#include	"WWLib/win.h"
 
 #define	NULL_HANDLE		INVALID_HANDLE_VALUE
 #define	HANDLE_TYPE		HANDLE
 
-#include	"wwfile.h"
+#include "WWLib/WWFILE.h"
 
 #ifdef NEVER
 	/*
 	**	This is a duplicate of the error numbers. The error handler for the RawFileMClass handles
 	**	these errors. If the error routine is overridden and additional errors are defined, then
 	**	use numbers starting with 100. Note that these errors here are listed in numerical order.
-	**	These errors are defined in the standard header file "ERRNO.H".
+	**	These errors are defined in the standard header file "ERRNO.h".
 	*/
 	EZERO,				// Non-error.
 	EINVFNC,				// Invalid function number.
@@ -141,31 +140,31 @@ class RawFileMClass : public FileClass
 		int Error_Number; // added by ehc to allow multithread library usage
 
 		RawFileMClass(char const *filename);
-		RawFileMClass(void);
+		RawFileMClass();
 		RawFileMClass (RawFileMClass const & f);
 		RawFileMClass & operator = (RawFileMClass const & f);
-		virtual ~RawFileMClass(void);
+		virtual ~RawFileMClass();
 
-		virtual char const * File_Name(void) const;
+		virtual char const * File_Name() const;
 		virtual char const * Set_Name(char const *filename);
-		virtual int Create(void);
-		virtual int Delete(void);
+		virtual int Create();
+		virtual int Delete();
 		virtual bool Is_Available(int forced=false);
-		virtual bool Is_Open(void) const;
+		virtual bool Is_Open() const;
 		virtual int Open(char const *filename, int rights=READ);
 		virtual int Open(int rights=READ);
 		virtual int Read(void *buffer, int size);
 		virtual int Seek(int pos, int dir=SEEK_CUR);
-		virtual int Size(void);
+		virtual int Size();
 		virtual int Write(void const *buffer, int size);
-		virtual void Close(void);
-		virtual unsigned long Get_Date_Time(void);
+		virtual void Close();
+		virtual unsigned long Get_Date_Time();
 		virtual bool Set_Date_Time(unsigned long datetime);
-		virtual void Error(int error, int canretry = false, char const * filename=NULL);
+		virtual void Error(int error, int canretry = false, char const * filename=nullptr);
 
 		void Bias(int start, int length=-1);
 
-		HANDLE_TYPE Get_File_Handle(void) { return (Handle); };
+		HANDLE_TYPE Get_File_Handle() { return (Handle); };
 
 		/*
 		**	These bias values enable a sub-portion of a file to appear as if it
@@ -181,7 +180,7 @@ class RawFileMClass : public FileClass
 		**	This function returns the largest size a low level DOS read or write may
 		**	perform. Larger file transfers are performed in chunks of this size or less.
 		*/
-		int Transfer_Block_Size(void) {return (int)((unsigned)UINT_MAX)-16L;};
+		int Transfer_Block_Size() {return (int)((unsigned)UINT_MAX)-16L;};
 
 		int Raw_Seek(int pos, int dir=SEEK_CUR);
 
@@ -227,11 +226,11 @@ class RawFileMClass : public FileClass
  * RawFileMClass::File_Name -- Returns with the filename associate with the file object.        *
  *                                                                                             *
  *    Use this routine to determine what filename is associated with this file object. If no   *
- *    filename has yet been assigned, then this routing will return NULL.                      *
+ *    filename has yet been assigned, then this routing will return null.                      *
  *                                                                                             *
  * INPUT:   none                                                                               *
  *                                                                                             *
- * OUTPUT:  Returns with a pointer to the file name associated with this file object or NULL   *
+ * OUTPUT:  Returns with a pointer to the file name associated with this file object or nullptr   *
  *          if one doesn't exist.                                                              *
  *                                                                                             *
  * WARNINGS:   none                                                                            *
@@ -239,7 +238,7 @@ class RawFileMClass : public FileClass
  * HISTORY:                                                                                    *
  *   10/18/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
-inline char const * RawFileMClass::File_Name(void) const
+inline char const * RawFileMClass::File_Name() const
 {
 	return(Filename);
 }
@@ -261,7 +260,7 @@ inline char const * RawFileMClass::File_Name(void) const
  * HISTORY:                                                                                    *
  *   10/18/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
-inline RawFileMClass::RawFileMClass(void) :
+inline RawFileMClass::RawFileMClass() :
 	Rights(READ),
 	BiasStart(0),
 	BiasLength(-1),
@@ -290,12 +289,12 @@ inline RawFileMClass::RawFileMClass(void) :
  * HISTORY:                                                                                    *
  *   10/18/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
-inline RawFileMClass::~RawFileMClass(void)
+inline RawFileMClass::~RawFileMClass()
 {
 	Close();
 	if (Allocated && Filename) {
 		free((char *)Filename);
-		Filename = NULL;
+		Filename = nullptr;
 		Allocated = false;
 	}
 }
@@ -316,9 +315,7 @@ inline RawFileMClass::~RawFileMClass(void)
  * HISTORY:                                                                                    *
  *   10/18/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
-inline bool RawFileMClass::Is_Open(void) const
+inline bool RawFileMClass::Is_Open() const
 {
 	return(Handle != INVALID_HANDLE_VALUE);
 }
-
-#endif

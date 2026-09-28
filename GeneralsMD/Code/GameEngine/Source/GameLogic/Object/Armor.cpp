@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 
 #include "Common/INI.h"
@@ -39,7 +39,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-ArmorStore* TheArmorStore = NULL;					///< the ArmorTemplate store definition
+ArmorStore* TheArmorStore = nullptr;					///< the ArmorTemplate store definition
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
@@ -63,19 +63,32 @@ void ArmorTemplate::clear()
 	}
 }
 
+void ArmorTemplate::copyFrom(const ArmorTemplate* other) {
+	for (int i = 0; i < DAMAGE_NUM_TYPES; i++)
+	{
+		m_damageCoefficient[i] = other->m_damageCoefficient[i];
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
-Real ArmorTemplate::adjustDamage(DamageType t, Real damage) const 
-{ 
+Real ArmorTemplate::adjustDamage(DamageType t, Real damage) const
+{
 	if (t == DAMAGE_UNRESISTABLE)
 		return damage;
 	if (t == DAMAGE_SUBDUAL_UNRESISTABLE)
+		return damage;
+	if (t == DAMAGE_CHRONO_UNRESISTABLE)
+		return damage;
+	if (t == DAMAGE_SUBDUAL_JAMMING_UNRESISTABLE)
+		return damage;
+	if (t == DAMAGE_SUBDUAL_FROZEN_UNRESISTABLE)
 		return damage;
 
 	damage *= m_damageCoefficient[t];
 
 	if (damage < 0.0f)
 		damage = 0.0f;
-	
+
 	return damage;
 }
 
@@ -96,8 +109,28 @@ Real ArmorTemplate::adjustDamage(DamageType t, Real damage) const
 		return;
 	}
 
-	DamageType dt = (DamageType)DamageTypeFlags::getSingleBitFromName(damageName);
+	DamageType dt = (DamageType)INI::scanIndexList(damageName, DamageTypeFlags::getBitNames());
 	self->m_damageCoefficient[dt] = pct;
+}
+
+void ArmorTemplate::parseArmorMultiplier(INI* ini, void* instance, void* /* store */, const void* userData)
+{
+	ArmorTemplate* self = (ArmorTemplate*)instance;
+
+	const char* damageName = ini->getNextToken();
+	Real mult = INI::scanPercentToReal(ini->getNextToken());
+
+	if (stricmp(damageName, "Default") == 0)
+	{
+		for (Int i = 0; i < DAMAGE_NUM_TYPES; i++)
+		{
+			self->m_damageCoefficient[i] = self->m_damageCoefficient[i] * mult;
+		}
+		return;
+	}
+
+	DamageType dt = (DamageType)DamageTypeFlags::getSingleBitFromName(damageName);
+	self->m_damageCoefficient[dt] = self->m_damageCoefficient[dt] * mult;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -116,13 +149,12 @@ ArmorStore::~ArmorStore()
 }
 
 //-------------------------------------------------------------------------------------------------
-const ArmorTemplate* ArmorStore::findArmorTemplate(AsciiString name) const
+const ArmorTemplate* ArmorStore::findArmorTemplate(NameKeyType namekey) const
 {
-	NameKeyType namekey = TheNameKeyGenerator->nameToKey(name);
-  ArmorTemplateMap::const_iterator it = m_armorTemplates.find(namekey);
-  if (it == m_armorTemplates.end()) 
+	ArmorTemplateMap::const_iterator it = m_armorTemplates.find(namekey);
+	if (it == m_armorTemplates.end())
 	{
-		return NULL;
+		return nullptr;
 	}
 	else
 	{
@@ -131,11 +163,44 @@ const ArmorTemplate* ArmorStore::findArmorTemplate(AsciiString name) const
 }
 
 //-------------------------------------------------------------------------------------------------
+const ArmorTemplate* ArmorStore::findArmorTemplate(const AsciiString& name) const
+{
+	return findArmorTemplate(TheNameKeyGenerator->nameToKey(name));
+}
+
+//-------------------------------------------------------------------------------------------------
+const ArmorTemplate* ArmorStore::findArmorTemplate(const char* name) const
+{
+	return findArmorTemplate(TheNameKeyGenerator->nameToKey(name));
+}
+
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+//-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Reverse of findArmorTemplate: the map is keyed by the name the armor was
+// defined under, so a linear walk is the only way back from a template pointer to that name. Only
+// the armor overlay cheat asks, and only for the objects on screen, so the cost never matters.
+//-------------------------------------------------------------------------------------------------
+AsciiString ArmorStore::getArmorTemplateName(const ArmorTemplate* tmpl) const
+{
+	if (tmpl == nullptr)
+		return AsciiString::TheEmptyString;
+
+	for (ArmorTemplateMap::const_iterator it = m_armorTemplates.begin(); it != m_armorTemplates.end(); ++it)
+	{
+		if (&it->second == tmpl)
+			return TheNameKeyGenerator->keyToName(it->first);
+	}
+
+	return AsciiString::TheEmptyString;
+}
+#endif
+
+//-------------------------------------------------------------------------------------------------
 /*static */ void ArmorStore::parseArmorDefinition(INI *ini)
 {
-	static const FieldParse myFieldParse[] = 
+	static const FieldParse myFieldParse[] =
 	{
-		{ "Armor", ArmorTemplate::parseArmorCoefficients, NULL, 0 }
+		{ "Armor", ArmorTemplate::parseArmorCoefficients, nullptr, 0 }
 	};
 
 	const char *c = ini->getNextToken();
@@ -146,8 +211,39 @@ const ArmorTemplate* ArmorStore::findArmorTemplate(AsciiString name) const
 }
 
 //-------------------------------------------------------------------------------------------------
+/*static */ void ArmorStore::parseArmorExtendDefinition(INI* ini)
+{
+	static const FieldParse myFieldParse[] =
+	{
+		{ "Armor", ArmorTemplate::parseArmorCoefficients, NULL, 0 },
+		{ "ArmorMult", ArmorTemplate::parseArmorMultiplier, NULL, 0 }
+	};
+
+	const char* new_armor_name = ini->getNextToken();
+
+	const char* parent = ini->getNextToken();
+	const ArmorTemplate* parentTemplate = TheArmorStore->findArmorTemplate(parent);
+	if (parentTemplate == NULL) {
+		DEBUG_CRASH(("ArmorExtend must extend a previously defined Armor (%s).\n", parent));
+		throw INI_INVALID_DATA;
+	}
+
+	NameKeyType key = TheNameKeyGenerator->nameToKey(new_armor_name);
+	ArmorTemplate& armorTmpl = TheArmorStore->m_armorTemplates[key];
+	armorTmpl.clear();
+	armorTmpl.copyFrom(parentTemplate);
+
+	ini->initFromINI(&armorTmpl, myFieldParse);
+}
+
+//-------------------------------------------------------------------------------------------------
 /*static*/ void INI::parseArmorDefinition(INI *ini)
 {
 	ArmorStore::parseArmorDefinition(ini);
 }
 
+//-------------------------------------------------------------------------------------------------
+/*static*/ void INI::parseArmorExtendDefinition(INI* ini)
+{
+	ArmorStore::parseArmorExtendDefinition(ini);
+}

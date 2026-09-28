@@ -31,7 +31,7 @@
 
 std::string intToString(int val)
 {
-	std::string s = "";
+	std::string s;
 	bool neg = (val < 0);
 	if (val < 0)
 	{
@@ -115,7 +115,7 @@ static KeyValueMap parseIntoKVPairs( std::string s, const std::string& delim )
 	return m;
 }
 
-KVPairClass::KVPairClass( void )
+KVPairClass::KVPairClass()
 {}
 
 KVPairClass::KVPairClass( const std::string& in, const std::string& delim )
@@ -134,7 +134,7 @@ void KVPairClass::readFromFile( const std::string& in, const std::string& delim 
 	FILE *fp = fopen(in.c_str(), "rb");
 	if (fp)
 	{
-		std::string s = "";
+		std::string s;
 		fseek(fp, 0, SEEK_END);
 		int len = ftell(fp);
 		fseek(fp, 0, SEEK_SET);

@@ -29,7 +29,7 @@
 const long BOUNDARY_PICK_DISTANCE = 5.0f;
 static Bool g_messagePopped = false;
 
-BorderTool::BorderTool() : Tool(ID_BORDERTOOL, IDC_POINTER), 
+BorderTool::BorderTool() : Tool(ID_BORDERTOOL, IDC_POINTER),
 													 m_mouseDown(false),
 													 m_addingNewBorder(false), 
 													 m_lastBoundaryPosValid(false), 
@@ -42,7 +42,7 @@ BorderTool::~BorderTool()
 
 }
 
-void BorderTool::setCursor(void)
+void BorderTool::setCursor()
 {
 
 }
@@ -140,15 +140,15 @@ void BorderTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 		switch (m_modificationType)
 		{
 			case MOD_TYPE_INVALID: m_modifyBorderNdx = -1; return;
-			case MOD_TYPE_UP:	
-				currentBorder.y = REAL_TO_INT((new3DPoint.y / MAP_XY_FACTOR) + 0.5f); 
+			case MOD_TYPE_UP:
+				currentBorder.y = REAL_TO_INT((new3DPoint.y / MAP_XY_FACTOR) + 0.5f);
 				break;
-			case MOD_TYPE_RIGHT: 
-				currentBorder.x = REAL_TO_INT((new3DPoint.x / MAP_XY_FACTOR) + 0.5f); 
+			case MOD_TYPE_RIGHT:
+				currentBorder.x = REAL_TO_INT((new3DPoint.x / MAP_XY_FACTOR) + 0.5f);
 				break;
-			case MOD_TYPE_FREE: 
-				currentBorder.x = REAL_TO_INT((new3DPoint.x / MAP_XY_FACTOR) + 0.5f); 
-				currentBorder.y = REAL_TO_INT((new3DPoint.y / MAP_XY_FACTOR) + 0.5f); 
+			case MOD_TYPE_FREE:
+				currentBorder.x = REAL_TO_INT((new3DPoint.x / MAP_XY_FACTOR) + 0.5f);
+				currentBorder.y = REAL_TO_INT((new3DPoint.y / MAP_XY_FACTOR) + 0.5f);
 				break;
 		}
 

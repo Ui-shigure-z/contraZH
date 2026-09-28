@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef _GLOBALDATA_H_
-#define _GLOBALDATA_H_
-
 #include "Common/GameCommon.h"	// ensure we get DUMP_PERF_STATS, or not
 #include "Common/AsciiString.h"
 #include "Common/GameType.h"
@@ -39,10 +36,12 @@
 #include "Common/SubsystemInterface.h"
 #include "GameClient/Color.h"
 #include "Common/STLTypedefs.h"
+#include "Common/Money.h"
 
 // FORWARD DECLARATIONS ///////////////////////////////////////////////////////////////////////////
 struct FieldParse;
 enum _TerrainLOD CPP_11(: Int);
+class CommandLine;
 class GlobalData;
 class INI;
 class WeaponBonusSet;
@@ -51,13 +50,32 @@ enum AIDebugOptions CPP_11(: Int);
 
 // PUBLIC /////////////////////////////////////////////////////////////////////////////////////////
 
-const Int MAX_GLOBAL_LIGHTS	= 3;
+constexpr const Int MAX_GLOBAL_LIGHTS = 3;
+constexpr const Int SIMULATE_REPLAYS_SEQUENTIAL = -1;
+
+//-------------------------------------------------------------------------------------------------
+// Command-line parsing state is stored here instead of in CommandLine because
+// the parsing result belongs to the GlobalData instance created during startup.
+class CommandLineData
+{
+	friend class CommandLine;
+	friend class GlobalData;
+
+	CommandLineData()
+		: m_hasParsedCommandLineForStartup(false)
+		, m_hasParsedCommandLineForEngineInit(false)
+	{}
+
+	Bool m_hasParsedCommandLineForStartup;
+	Bool m_hasParsedCommandLineForEngineInit;
+	BoolVector m_parsedArguments;
+};
 
 //-------------------------------------------------------------------------------------------------
 /** Global data container class
   *	Defines all global game data used by the system
 	* @todo Change this entire system. Otherwise this will end up a huge class containing tons of variables,
-	* and will cause re-compilation dependancies throughout the codebase. */
+	* and will cause re-compilation dependencies throughout the code base. */
 //-------------------------------------------------------------------------------------------------
 class GlobalData : public SubsystemInterface
 {
@@ -65,15 +83,16 @@ class GlobalData : public SubsystemInterface
 public:
 
 	GlobalData();
-	virtual ~GlobalData();
+	virtual ~GlobalData() override;
 
-	void init();
-	void reset();
-	void update() { }
+	virtual void init() override;
+	virtual void reset() override;
+	virtual void update() override { }
 
 	Bool setTimeOfDay( TimeOfDay tod );		///< Use this function to set the Time of day;
 
 	static void parseGameDataDefinition( INI* ini );
+	void parseCustomDefinition();
 
 	//-----------------------------------------------------------------------------------------------
 	struct TerrainLighting
@@ -87,15 +106,23 @@ public:
 	//-----------------------------------------------------------------------------------------------
 	//-----------------------------------------------------------------------------------------------
 
+	CommandLineData m_commandLineData;
+
 	AsciiString m_mapName;  ///< hack for now, this whole this is going away
 	AsciiString m_moveHintName;
 	Bool m_useTrees;
 	Bool m_useTreeSway;
 	Bool m_useDrawModuleLOD;
+	Bool m_useHeatEffects;
 	Bool m_useFpsLimit;
 	Bool m_dumpAssetUsage;
 	Int m_framesPerSecondLimit;
 	Int	m_chipSetType;	///<See W3DShaderManager::ChipsetType for options
+
+	// TheSuperHackers @feature helmutbuhler 11/04/2025
+	// Run game without graphics, input or audio.
+	Bool m_headless;
+
 	Bool m_windowed;
 	Int m_xResolution;
 	Int m_yResolution;
@@ -107,15 +134,19 @@ public:
 	Bool m_trilinearTerrainTex;
 	Bool m_multiPassTerrain;
 	Bool m_adjustCliffTextures;
-	Bool m_stretchTerrain;
-	Bool m_useHalfHeightMap;
+	Bool m_stretchTerrain; // TheSuperHackers @info Legacy, unused
+	Bool m_useHalfHeightMap; // TheSuperHackers @info Legacy, unused
 	Bool m_drawEntireTerrain;
 	_TerrainLOD m_terrainLOD;
 	Bool m_enableDynamicLOD;
 	Bool m_enableStaticLOD;
 	Int m_terrainLODTargetTimeMS;
 	Bool m_useAlternateMouse;
+	Bool m_useRightMouseScrollWithAlternateMouse; // TheSuperHackers @feature User option for RMB scroll in Alternate Mouse mode.
+	Bool m_clientRetaliationModeEnabled;
+	Bool m_doubleClickAttackMove;
 	Bool m_rightMouseAlwaysScrolls;
+	Int m_jpegQuality; // TheSuperHackers @feature Quality for JPEG screenshots.
 	Bool m_useWaterPlane;
 	Bool m_useCloudPlane;
 	Bool m_useShadowVolumes;
@@ -125,11 +156,12 @@ public:
 	Real m_waterPositionX;
 	Real m_waterPositionY;
 	Real m_waterPositionZ;
-	Real m_waterExtentX;	
+	Real m_waterExtentX;
 	Real m_waterExtentY;
 	Int	m_waterType;
 	Bool m_showSoftWaterEdge;
 	Bool m_usingWaterTrackEditor;
+	Bool m_isWorldBuilder;
 
 	Int m_featherWater;
 
@@ -154,10 +186,14 @@ public:
 	Real m_skyBoxPositionZ;
 	Real m_drawSkyBox;
 	Real m_skyBoxScale;
+	Real m_viewportHeightScale; // The height scale of the tactical view ranging 0..1. Used to hide the world behind the Control Bar.
 	Real m_cameraPitch;
 	Real m_cameraYaw;
+#if PRESERVE_RETAIL_SCRIPTED_CAMERA
 	Real m_cameraHeight;
+#endif
 	Real m_maxCameraHeight;
+	Real m_defaultMaxCameraHeight; ///< MaxCameraHeight as parsed from INI, before Options.ini overrides it
 	Real m_minCameraHeight;
 	Real m_terrainHeightAtEdgeOfMap;
 	Real m_unitDamagedThresh;
@@ -188,7 +224,7 @@ public:
 	Int m_maxTankTrackEdges;	///<maximum length of tank track
 	Int m_maxTankTrackOpaqueEdges;	///<maximum length of tank track before it starts fading.
 	Int m_maxTankTrackFadeDelay;	///<maximum amount of time a tank track segment remains visible.
-	
+
 	AsciiString m_levelGainAnimationName; ///< The animation to play when a level is gained.
 	Real m_levelGainAnimationDisplayTimeInSeconds;		///< time to play animation for
 	Real m_levelGainAnimationZRisePerSecond;					///< rise animation up while playing
@@ -243,6 +279,7 @@ public:
 
 	UnsignedInt m_noDraw;					///< Used to disable drawing, to profile game logic code.
 	AIDebugOptions m_debugAI;			///< Used to display AI debug information
+	Bool m_debugSupplyCenterPlacement; ///< Dumps to log everywhere it thinks about placing a supply center
 	Bool m_debugAIObstacles;			///< Used to display AI obstacle debug information
 	Bool m_showObjectHealth;			///< debug display object health
 	Bool m_scriptDebug;						///< Should we attempt to load the script debugger window (.DLL)
@@ -251,11 +288,13 @@ public:
 	Bool m_winCursors;						///< Should we force use of windows cursors?
 	Bool m_constantDebugUpdate;		///< should we update the debug stats constantly, vs every 2 seconds?
 	Bool m_showTeamDot;						///< Shows the little colored team dot representing which team you are controlling.
-	
+
 #ifdef DUMP_PERF_STATS
 	Bool m_dumpPerformanceStatistics;
+  Bool  m_dumpStatsAtInterval;///< should I automatically dump stats every N frames
+  Int   m_statsInterval;       ///< if so, how many is N?
 #endif
-	
+
 	Bool m_forceBenchmark;	///<forces running of CPU detection benchmark, even on known cpu's.
 
 	Int m_fixedSeed;							///< fixed random seed for game logic (less than 0 to disable)
@@ -289,7 +328,6 @@ public:
 
 	UnsignedInt m_defaultIP;			///< preferred IP address for LAN
 	UnsignedInt m_firewallBehavior;	///< Last detected firewall behavior
-	Bool m_firewallSendDelay;			///< Use send delay for firewall connection negotiations
 	UnsignedInt m_firewallPortOverride;	///< User-specified port to be used
 	Short m_firewallPortAllocationDelta; ///< the port allocation delta last detected.
 
@@ -309,13 +347,18 @@ public:
 	Int m_maxLineBuildObjects;				///< line style builds can be no longer than this
 	Int m_maxTunnelCapacity;					///< Max people in Player's tunnel network
 	Real m_horizontalScrollSpeedFactor;	///< Factor applied to the game screen scrolling speed.
-	Real m_verticalScrollSpeedFactor;		///< Seperated because of our aspect ratio
+	Real m_verticalScrollSpeedFactor;		///< Separated because of our aspect ratio
 	Real m_scrollAmountCutoff;				///< Scroll speed to not adjust camera height
 	Real m_cameraAdjustSpeed;					///< Rate at which we adjust camera height
-	Bool m_enforceMaxCameraHeight;		///< Enfoce max camera height while scrolling?
+	Bool m_enforceMaxCameraHeight;		///< Enforce max camera height while scrolling?
 	Bool m_buildMapCache;
-	AsciiString m_initialFile;				///< If this is specified, load a specific map/replay from the command-line
+	AsciiString m_initialFile;				///< If this is specified, load a specific map from the command-line
 	AsciiString m_pendingFile;				///< If this is specified, use this map at the next game start
+	AsciiString m_loadSaveGame;				///< If this is specified, load a save game file from the command-line
+	AsciiString m_loadReplayGame;			///< If this is specified, play a replay file from the command-line
+
+	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
+	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
 
 	Int m_maxParticleCount;						///< maximum number of particles that can exist
 	Int m_maxFieldParticleCount;			///< maximum number of field-type particles that can exist (roughly)
@@ -326,23 +369,19 @@ public:
 	AsciiString m_shellMapName;				///< Holds the shell map name
 	Bool m_shellMapOn;								///< User can set the shell map not to load
 	Bool m_playIntro;									///< Flag to say if we're to play the intro or not
-	Bool m_afterIntro;								///< we need to tell the game our intro is done
-	Bool m_allowExitOutOfMovies;			///< flag to allow exit out of movies only after the Intro has played
+	Bool m_playSizzle;								///< Flag to say whether we play the sizzle movie after the logo movie.
 
 	Bool m_loadScreenRender;						///< flag to disallow rendering of almost everything during a loadscreen
 
 	Real m_keyboardScrollFactor;			///< Factor applied to game scrolling speed via keyboard scrolling
 	Real m_keyboardDefaultScrollFactor;			///< Factor applied to game scrolling speed via keyboard scrolling
-	
-  Real m_musicVolumeFactor;         ///< Factor applied to loudness of music volume
-  Real m_SFXVolumeFactor;           ///< Factor applied to loudness of SFX volume
-  Real m_voiceVolumeFactor;         ///< Factor applied to loudness of voice volume
-  Bool m_3DSoundPref;               ///< Whether user wants to use 3DSound or not
+	Bool m_drawScrollAnchor;					///< Set that the scroll anchor should be enabled
+	Bool m_moveScrollAnchor;					///< set that the scroll anchor should move
 
 	Bool m_animateWindows;						///< Should we animate window transitions?
 
 	Bool m_incrementalAGPBuf;
-	
+
 	UnsignedInt m_iniCRC;							///< CRC of important INI files
 	UnsignedInt m_exeCRC;							///< CRC of the executable
 
@@ -357,19 +396,42 @@ public:
 	Bool m_selectionFlashHouseColor ;  /// skip the house color and just use white.
 
 	Real m_cameraAudibleRadius;				///< If the camera is being used as the position of audio, then how far can we hear?
-	Real m_groupMoveClickToGatherFactor; /** if you take all the selected units and calculate the smallest possible rectangle 
-																			 that contains them all, and click within that, all the selected units will break 
+	Real m_groupMoveClickToGatherFactor; /** if you take all the selected units and calculate the smallest possible rectangle
+																			 that contains them all, and click within that, all the selected units will break
 																			 formation and gather at the point the user clicked (if the value is 1.0). If it's 0.0,
-																			 units will always keep their formation. If it's <1.0, then the user must click a 
+																			 units will always keep their formation. If it's <1.0, then the user must click a
 																			 smaller area within the rectangle to order the gather. */
 
-	Int m_antiAliasBoxValue;          ///< value of selected antialias from combo box in options menu
+	UnsignedInt m_antiAliasLevel;          ///< value of selected antialias level in the game options
+	UnsignedInt m_textureFilteringMode;       ///< value related to TextureFilterClass::TextureFilterModeEnum
+	UnsignedInt m_textureAnisotropyLevel;     ///< value related to TextureFilterClass::AnisotropicFilterMode
+
 	Bool m_languageFilterPref;        ///< Bool if user wants to filter language
 	Bool m_loadScreenDemo;						///< Bool if true, run the loadscreen demo movie
 	Bool m_disableRender;							///< if true, no rendering!
 
 	Bool m_saveCameraInReplay;
 	Bool m_useCameraInReplay;
+
+	// TheSuperHackers @feature xezon 09/09/2025 Enable the shroud and everything related for observing individual players in any game mode.
+	// Enabling this does have a performance cost because the ghost object manager must keep track of all relevant objects for all players.
+	Bool m_enablePlayerObserver;
+
+	// TheSuperHackers @feature L3-M 05/09/2025 allow the network latency counter and render fps counter font size to be set, a size of zero disables them
+	Int m_networkLatencyFontSize;
+	Int m_renderFpsFontSize;
+	// TheSuperHackers @feature Mauller 21/06/2025 allow the system time and game time font size to be set, a size of zero disables them
+	Int m_systemTimeFontSize;
+	Int m_gameTimeFontSize;
+	// TheSuperHackers @feature L3-M 05/11/2025 allow the player info list font size to be set, a size of zero disables it
+	Int m_playerInfoListFontSize;
+
+	// TheSuperHackers @feature L3-M 21/08/2025 toggle the money per minute display, false shows only the original current money
+	Bool m_showMoneyPerMinute;
+	Bool m_allowMoneyPerMinuteForPlayer;
+
+	// TheSuperHackers @feature bobtista 28/06/2026 user-configurable speed multiplier for game window transitions
+	Real m_gameWindowTransitionSpeedMultiplier;
 
 	Real m_shakeSubtleIntensity;			///< Intensity for shaking a camera with SHAKE_SUBTLE
 	Real m_shakeNormalIntensity;			///< Intensity for shaking a camera with SHAKE_NORMAL
@@ -390,30 +452,33 @@ public:
 #endif
 
 	Color m_hotKeyTextColor;					///< standard color for all hotkeys.
-	
+
 	AsciiString m_specialPowerViewObjectName;	///< Created when certain special powers are fired so players can watch.
+
+	Real m_objectPlacementOpacity; ///< Sets the opacity of build preview objects.
+	Bool m_objectPlacementShadows; ///< Enables or disables shadows of build preview objects.
 
 	std::vector<AsciiString> m_standardPublicBones;
 
 	Real m_standardMinefieldDensity;
 	Real m_standardMinefieldDistance;
 
-	
-	Bool m_showMetrics;								///< whether or not to show the metrics.
-	Int m_defaultStartingCash;				///< The amount of cash a player starts with by default.
-	
+
+	Bool  m_showMetrics;								///< whether or not to show the metrics.
+	Money m_defaultStartingCash;				///< The amount of cash a player starts with by default.
+
 	Bool m_debugShowGraphicalFramerate;		///< Whether or not to show the graphical framerate bar.
 
-	Int m_powerBarBase;										///< Logrithmic base for the power bar scale
-	Real m_powerBarIntervals;							///< how many logrithmic intervals the width will be divided into
+	Int m_powerBarBase;										///< Logarithmic base for the power bar scale
+	Real m_powerBarIntervals;							///< how many logarithmic intervals the width will be divided into
 	Int m_powerBarYellowRange;						///< Red if consumption exceeds production, yellow if consumption this close but under, green if further under
 	Real m_displayGamma;									///<display gamma that's adjusted with "brightness" control on options screen.
 
 	UnsignedInt m_unlookPersistDuration;	///< How long after unlook until the sighting info executes the undo
 
 	Bool m_shouldUpdateTGAToDDS;					///< Should we attempt to update old TGAs to DDS stuff on loadup?
-	
-	UnsignedInt m_doubleClickTimeMS;	///< What is the maximum amount of time that can seperate two clicks in order
+
+	UnsignedInt m_doubleClickTimeMS;	///< What is the maximum amount of time that can separate two clicks in order
 																		///< for us to generate a double click message?
 
 	RGBColor m_shroudColor;						///< What color should the shroud be?  Remember, this is a lighting multiply, not an add
@@ -429,18 +494,95 @@ public:
 	UnsignedInt m_networkRunAheadSlack;					///< The amount of slack in the run ahead value.  This is the percentage of the calculated run ahead that is added.
 	UnsignedInt m_networkKeepAliveDelay;				///< The number of seconds between when the connections to each player send a keep-alive packet.
 	UnsignedInt m_networkDisconnectTime;				///< The number of milliseconds between when the game gets stuck on a frame for a network stall and when the disconnect dialog comes up.
-	UnsignedInt m_networkPlayerTimeoutTime;			///< The number of milliseconds between when a player's last keep alive command was recieved and when they are considered disconnected from the game.
+	UnsignedInt m_networkPlayerTimeoutTime;			///< The number of milliseconds between when a player's last keep alive command was received and when they are considered disconnected from the game.
 	UnsignedInt	m_networkDisconnectScreenNotifyTime; ///< The number of milliseconds between when the disconnect screen comes up and when the other players are notified that we are on the disconnect screen.
-	
+
 	Real				m_keyboardCameraRotateSpeed;    ///< How fast the camera rotates when rotated via keyboard controls.
   Int					m_playStats;									///< Int whether we want to log play stats or not, if <= 0 then we don't log
 
-#if defined(_DEBUG) || defined(_INTERNAL)
+  Bool m_TiVOFastMode;            ///< When true, the client speeds up the framerate... set by HOTKEY!
+  Bool m_queueReorder;            ///< Ctrl+click moves a build queue entry one position earlier; off unless GameData enables it
+  Bool m_batchParticles;          ///< draws same-looking particle systems in one batch; off unless GameData enables it
+  Bool m_skipTranslucencySort;    ///< skips the per-triangle translucency sorter; off unless GameData or the LOD level enables it
+  Bool m_backToFront;             ///< with the sorter off, draws whole particle systems far to near; off unless GameData enables it
+  Bool m_useBloom;                ///< Options.ini Bloom: glow around additive particles
+  Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
+  Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
+  Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Bool m_useDynamicLights;        ///< Options.ini DynamicLights: explosions, muzzle flashes and lasers light their surroundings
+  Bool m_useSoftParticles;        ///< Options.ini SoftParticles: smoke and fire fade where they meet the ground and buildings
+  Bool m_useFlameShaders;         ///< Options.ini FlameShaders: flame weapon fire flickers and glows white-hot at its core
+  Bool m_useElectricShaders;      ///< Options.ini ElectricShaders: electric sparks and flares crackle with arcs
+  Bool m_useLaserShaders;         ///< Options.ini LaserShaders: laser beams get a white-hot core and pulses running along them
+  Real m_softParticleDistance;    ///< how far in front of a surface a particle starts to fade, 0 for hard edges
+  Real m_flameWarp;               ///< flame shading and heat haze defaults, see FlameShaderTuning
+  Real m_flameHeat;
+  Real m_flameFlicker;
+  Real m_flameBreakup;
+  Real m_flameNoiseSize;
+  Real m_flameRise;
+  Real m_hazeBend;
+  Real m_hazeSize;
+  Real m_hazeLift;
+  Real m_hazeNoiseSize;
+  Real m_hazeRise;
+  Real m_hazeMask;
+  std::vector<AsciiString> m_electricParticleTextures;  ///< particle textures that get the electric shader when their system is Auto
+  Real m_electricArcs;            ///< electric shader settings
+  Real m_electricArcSharpness;
+  Real m_electricNoiseSize;
+  Real m_electricJitter;
+  Real m_electricFlicker;
+  Real m_electricRate;
+  std::vector<AsciiString> m_laserParticleTextures;  ///< streak textures that get the laser shader when their system is Auto
+  Real m_laserCore;               ///< laser shader settings
+  Real m_laserCoreWidth;
+  Real m_laserShimmer;
+  Real m_laserPulse;
+  Real m_laserPulseSize;
+  Real m_laserPulseSpeed;
+  Bool m_laserDebug;              ///< shaded beams darken the scene instead of lighting it, to show the shader's shape
+  Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
+  Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
+  Bool m_ambientOcclusionDebug;   ///< Options.ini AmbientOcclusionDebug: show only the occlusion, in grey
+  Real m_ambientOcclusionRadius;  ///< how far, in world units, geometry darkens what is near it
+  Real m_ambientOcclusionStrength; ///< how dark the occlusion gets, 0 for none
+  Real m_groundNoiseStrength;     ///< the noise that stands in for the light map, see W3DGroundNoise
+  Real m_groundNoiseSize;
+  Real m_groundNoiseTint;
+  Real m_groundNoiseBrightness;
+  Real m_terrainHeightBlendStrength; ///< how far the taller texture pushes into the other's side of a blend
+  Real m_terrainHeightBlendSharpness; ///< how narrow the blend's edge is, 1 as wide as the legacy blend
+  Int m_terrainAtlasBorder;       ///< texels copied around each texture in the terrain atlas
+  Int m_vsync;                    ///< Options.ini VSync: 1 on, 0 off, -1 on in fullscreen and off in a window
+  Bool m_lowLatency;              ///< Options.ini LowLatency: at most one frame queued ahead of the GPU
+  Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn
+  Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
+  Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
+  Real m_laserGlowRadius;         ///< GameData LaserGroundGlowRadius: how far the light reaches from the beam, 0 derives it from the beam width
+  Real m_laserGlowFalloff;        ///< GameData LaserGroundGlowFalloff: power the light fades by with distance, Direct3D 9 only
+  Real m_laserGlowWrap;           ///< GameData LaserGroundGlowWrap: how much ground facing away from the beam still lights, Direct3D 9 only
+  Bool m_laserGlowDebug;          ///< GameData LaserGroundGlowDebug: the glow darkens the ground instead of lighting it, Direct3D 9 only
+
+	// TheSuperHackers @feature Outline the radar blips and the shoreline, at double radar
+	// resolution. Client side only; the radar never feeds game logic.
+	Bool m_newRadar;
+	Bool m_smartSelection;
+	Bool m_smartSelectionUseMouse;
+	Bool m_smartCommandGroup;
+	// TheSuperHackers @feature How big the NewRadar object blips draw.
+	// Holds a RadarBlipSize; stored as Int to avoid pulling OptionPreferences.h in here.
+	Int m_radarBlipSize;
+
+#if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
+	Bool m_shroudOn;
+#endif
+
+#if defined(RTS_DEBUG)
 	Bool m_wireframe;
 	Bool m_stateMachineDebug;
 	Bool m_useCameraConstraints;
 	Bool m_specialPowerUsesDelay;
-	Bool m_shroudOn;
 	Bool m_fogOfWarOn;
 	Bool m_jabberOn;
 	Bool m_munkeeOn;
@@ -470,6 +612,7 @@ public:
 	Int m_debugProjectileTileDuration;		///< How long should these tiles stay around, in frames?
 	RGBColor m_debugProjectileTileColor;	///< What color should these tiles be?
 	Bool m_showCollisionExtents;	///< Used to display collision extents
+  Bool m_showAudioLocations;    ///< Used to display audio markers and ambient sound radii
 	Bool m_saveStats;
 	Bool m_saveAllStats;
 	Bool m_useLocalMOTD;
@@ -480,6 +623,7 @@ public:
 	Int m_latencyPeriod;					///< Period of sinusoidal modulation of latency
 	Int m_latencyNoise;						///< Max amplitude of jitter to throw in
 	Int m_packetLoss;							///< Percent of packets to drop
+	Bool m_extraLogging;					///< More expensive debug logging to catch crashes.
 #endif
 
 #ifdef DEBUG_CRASHING
@@ -492,7 +636,7 @@ public:
 
 	Bool				m_isBreakableMovie;							///< if we enter a breakable movie, set this flag
 	Bool				m_breakTheMovie;								///< The user has hit escape!
-	
+
 	AsciiString m_modDir;
 	AsciiString m_modBIG;
 
@@ -501,19 +645,22 @@ public:
 
 private:
 
+	static UnsignedInt generateExeCRC();
+
 	static const FieldParse s_GlobalDataFieldParseTable[];
 
 	// this is private, since we read the info from Windows and cache it for
 	// future use. No one is allowed to change it, ever. (srj)
 	AsciiString m_userDataDir;
-	
+
 	// just the "leaf name", read from INI. private because no one is ever allowed
 	// to look at it directly; they must go thru getPath_UserData(). (srj)
 	AsciiString m_userDataLeafName;
+	static AsciiString BuildUserDataPathFromIni();
 
 	static GlobalData *m_theOriginal;		///< the original global data instance (no overrides)
 	GlobalData *m_next;									///< next instance (for overrides)
-	GlobalData *newOverride( void );		/** create a new override, copy data from previous
+	virtual GlobalData *newOverride();		/** create a new override, copy data from previous
 																			override, and return it */
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
@@ -529,6 +676,9 @@ private:
 // singleton
 extern GlobalData* TheWritableGlobalData;
 
+// use TheGlobalData for all read-only accesses
+#if __cplusplus >= 201703L
+inline const GlobalData* const& TheGlobalData = TheWritableGlobalData;
+#else
 #define TheGlobalData ((const GlobalData*)TheWritableGlobalData)
-
 #endif

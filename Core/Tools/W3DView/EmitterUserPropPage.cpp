@@ -19,14 +19,14 @@
 // EmitterUserPropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "EmitterUserPropPage.h"
-#include "W3D_File.H"
-#include "Part_Emt.H"
-#include "EmitterInstanceList.H"
+#include "WW3D2/w3d_file.h"
+#include "WW3D2/part_emt.h"
+#include "EmitterInstanceList.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -42,7 +42,7 @@ IMPLEMENT_DYNCREATE(EmitterUserPropPageClass, CPropertyPage)
 //  EmitterUserPropPageClass
 //
 EmitterUserPropPageClass::EmitterUserPropPageClass (EmitterInstanceListClass *pemitter)
-	: m_pEmitterList (NULL),
+	: m_pEmitterList (nullptr),
 	  m_bValid (true),
 	  m_iType (EMITTER_TYPEID_DEFAULT),
 	  CPropertyPage(EmitterUserPropPageClass::IDD)
@@ -51,7 +51,6 @@ EmitterUserPropPageClass::EmitterUserPropPageClass (EmitterInstanceListClass *pe
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
 	Initialize ();
-	return ;
 }
 
 
@@ -59,9 +58,8 @@ EmitterUserPropPageClass::EmitterUserPropPageClass (EmitterInstanceListClass *pe
 //
 //  ~EmitterUserPropPageClass
 //
-EmitterUserPropPageClass::~EmitterUserPropPageClass (void)
+EmitterUserPropPageClass::~EmitterUserPropPageClass ()
 {
-	return;
 }
 
 
@@ -77,7 +75,6 @@ EmitterUserPropPageClass::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(EmitterUserPropPageClass)
 	DDX_Control(pDX, IDC_TYPE_COMBO, m_TypeCombo);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -94,16 +91,14 @@ END_MESSAGE_MAP()
 //  Initialize
 //
 void
-EmitterUserPropPageClass::Initialize (void)
+EmitterUserPropPageClass::Initialize ()
 {
-	if (m_pEmitterList != NULL) {
-		
+	if (m_pEmitterList != nullptr) {
+
 		// Record the user information from the emitter (if it exists)
 		m_iType			= m_pEmitterList->Get_User_Type ();
 		m_UserString	= m_pEmitterList->Get_User_String ();
 	}
-
-	return ;
 }
 
 
@@ -112,7 +107,7 @@ EmitterUserPropPageClass::Initialize (void)
 //  OnInitDialog
 //
 BOOL
-EmitterUserPropPageClass::OnInitDialog (void) 
+EmitterUserPropPageClass::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CPropertyPage::OnInitDialog ();
@@ -124,7 +119,7 @@ EmitterUserPropPageClass::OnInitDialog (void)
 
 	// Select the correct entry in the combobox
 	m_TypeCombo.SetCurSel (m_iType);
-		
+
 	// Fill in the user-box
 	SetDlgItemText (IDC_PROGRAMMER_SETTINGS_EDIT, m_UserString);
 	return TRUE;
@@ -136,7 +131,7 @@ EmitterUserPropPageClass::OnInitDialog (void)
 //  OnApply
 //
 BOOL
-EmitterUserPropPageClass::OnApply (void)
+EmitterUserPropPageClass::OnApply ()
 {
 	// Get the settings from the controls
 	m_iType = m_TypeCombo.GetCurSel ();
@@ -158,10 +153,9 @@ EmitterUserPropPageClass::OnApply (void)
 //  OnChangeProgrammerSettingsEdit
 //
 void
-EmitterUserPropPageClass::OnChangeProgrammerSettingsEdit (void)
+EmitterUserPropPageClass::OnChangeProgrammerSettingsEdit ()
 {
 	SetModified ();
-	return ;
 }
 
 
@@ -170,8 +164,7 @@ EmitterUserPropPageClass::OnChangeProgrammerSettingsEdit (void)
 //  OnSelchangeTypeCombo
 //
 void
-EmitterUserPropPageClass::OnSelchangeTypeCombo (void)
+EmitterUserPropPageClass::OnSelchangeTypeCombo ()
 {
 	SetModified ();
-	return ;
 }

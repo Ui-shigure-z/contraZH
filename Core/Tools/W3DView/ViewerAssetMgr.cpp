@@ -37,10 +37,10 @@
 
 #include "StdAfx.h"
 
-#include "ViewerAssetMgr.H"
-#include "texture.h"
-#include "ww3d.h"
-#include "Utils.H"
+#include "ViewerAssetMgr.h"
+#include "WW3D2/texture.h"
+#include "WW3D2/ww3d.h"
+#include "Utils.h"
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -56,7 +56,7 @@ ViewerAssetMgrClass::Load_3D_Assets (FileClass &w3dfile)
 	//
 	bool retval = WW3DAssetManager::Load_3D_Assets (w3dfile);
 	if (retval) {
-		
+
 	}
 
 	return retval;
@@ -73,11 +73,11 @@ ViewerAssetMgrClass::Get_Texture (const char * tga_filename, MipCountType mip_le
 {
 	//
 	// See if the texture has already been loaded.
-	//	
+	//
 
 	StringClass lower_case_name(tga_filename,true);
 	_strlwr(lower_case_name.Peek_Buffer());
-	TextureClass* tex = TextureHash.Get(lower_case_name);	
+	TextureClass* tex = TextureHash.Get(lower_case_name);
 
 	//
 	//	Check to see if this texture is "missing"
@@ -102,7 +102,6 @@ ViewerAssetMgrClass::Get_Texture (const char * tga_filename, MipCountType mip_le
 void
 ViewerAssetMgrClass::Open_Texture_File_Cache (const char * /*prefix*/)
 {
-	return ;
 }
 
 
@@ -112,7 +111,6 @@ ViewerAssetMgrClass::Open_Texture_File_Cache (const char * /*prefix*/)
 //
 ////////////////////////////////////////////////////////////////////////
 void
-ViewerAssetMgrClass::Close_Texture_File_Cache (void)
+ViewerAssetMgrClass::Close_Texture_File_Cache ()
 {
-	return ;
 }

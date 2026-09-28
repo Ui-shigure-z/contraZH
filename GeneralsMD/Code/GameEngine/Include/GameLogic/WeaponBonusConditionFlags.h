@@ -27,9 +27,8 @@
 // JKMCD Aug 2002
 
 #pragma once
-#ifndef __WEAPONBONUSCONDITIONFLAGS_H__
-#define __WEAPONBONUSCONDITIONFLAGS_H__
 
-typedef UnsignedInt WeaponBonusConditionFlags;
+#include "GameLogic/WeaponBonusConditionType.h"
 
-#endif /* __WEAPONBONUSCONDITIONFLAGS_H__ */
+// Updated by AW, Mar 2026: changed into BitFlags
+typedef BitFlags<WEAPONBONUSCONDITION_COUNT, struct WeaponBonusConditionFlagsTag> WeaponBonusConditionFlags;

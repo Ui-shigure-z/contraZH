@@ -16,17 +16,13 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_EMITTERROTATIONPROPPAGE_H__35F8A2F6_C91C_4750_BF06_100433C1ECBB__INCLUDED_)
-#define AFX_EMITTERROTATIONPROPPAGE_H__35F8A2F6_C91C_4750_BF06_100433C1ECBB__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // EmitterRotationPropPage.h : header file
 //
 
-#include "ColorBar.H"
-#include "Part_Emt.H"
+#include "ColorBar.h"
+#include "WW3D2/part_emt.h"
 
 // Forward delcarations
 class EmitterInstanceListClass;
@@ -56,16 +52,16 @@ public:
 	// ClassWizard generate virtual function overrides
 	//{{AFX_VIRTUAL(EmitterRotationPropPageClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
-	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
 	// Generated message map functions
 	//{{AFX_MSG(EmitterRotationPropPageClass)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -80,9 +76,9 @@ public:
 	//
 	//	Inline accessors
 	//
-	EmitterInstanceListClass *	Get_Emitter (void) const { return m_pEmitterList; }
+	EmitterInstanceListClass *	Get_Emitter () const { return m_pEmitterList; }
 	void								Set_Emitter (EmitterInstanceListClass *pemitter_list) { m_pEmitterList = pemitter_list; Initialize (); }
-	bool								Is_Data_Valid (void) const { return m_bValid; }
+	bool								Is_Data_Valid () const { return m_bValid; }
 
 	void								Get_Rotation_Keyframes (ParticlePropertyStruct<float> &rotations)		{ rotations = m_Rotations; }
 	void								On_Lifetime_Changed (float lifetime);
@@ -92,9 +88,9 @@ protected:
 	/////////////////////////////////////////////////////////
 	//
 	//	Protected methods
-	//		
-	void								Initialize (void);
-	void								Update_Rotations (void);
+	//
+	void								Initialize ();
+	void								Update_Rotations ();
 
 private:
 
@@ -105,11 +101,11 @@ private:
 	/////////////////////////////////////////////////////////
 	//
 	//	Private member data
-	//		
+	//
 	EmitterInstanceListClass *			m_pEmitterList;
 	bool										m_bValid;
 	ColorBarClass *						m_RotationBar;
-	
+
 	ParticlePropertyStruct<float>		m_Rotations;
 
 	float										m_Lifetime;
@@ -139,5 +135,3 @@ inline float EmitterRotationPropPageClass::Denormalize_Rotation(float normalized
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_EMITTERROTATIONPROPPAGE_H__35F8A2F6_C91C_4750_BF06_100433C1ECBB__INCLUDED_)

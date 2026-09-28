@@ -24,12 +24,12 @@
 
 // FILE: ArmorUpgrade.cpp /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	May 2002
@@ -37,8 +37,8 @@
 //	Filename: 	ArmorUpgrade.cpp
 //
 //	author:		Chris Brue
-//	
-//	purpose:	
+//
+//	purpose:
 //
 //-----------------------------------------------------------------------------
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,7 +50,7 @@
 //-----------------------------------------------------------------------------
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Xfer.h"
 #include "Common/Player.h"
@@ -58,17 +58,33 @@
 #include "GameLogic/Object.h"
 #include "GameLogic/Module/ArmorUpgrade.h"
 #include "GameLogic/Module/BodyModule.h"
-//-----------------------------------------------------------------------------
-// DEFINES ////////////////////////////////////////////////////////////////////
-//-----------------------------------------------------------------------------
 
-//-----------------------------------------------------------------------------
-// PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////
-//-----------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+ArmorUpgradeModuleData::ArmorUpgradeModuleData(void)
+{
+	m_armorSetFlag = ARMORSET_PLAYER_UPGRADE;
+	//m_needsParkedAircraft = FALSE;
+}
 
-//-----------------------------------------------------------------------------
-// PRIVATE FUNCTIONS //////////////////////////////////////////////////////////
-//-----------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void ArmorUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p)
+{
+
+	UpgradeModuleData::buildFieldParse(p);
+
+	static const FieldParse dataFieldParse[] =
+	{
+		{ "ArmorSetFlag", INI::parseIndexList,	ArmorSetFlags::getBitNames(),offsetof(ArmorUpgradeModuleData, m_armorSetFlag) },
+		{ "ArmorSetFlagsToClear", ArmorSetFlags::parseFromINI, NULL, offsetof(ArmorUpgradeModuleData, m_armorSetFlagsToClear) },
+		//{ "NeedsParkedAircraft", INI::parseBool, NULL, offsetof(ArmorUpgradeModuleData, m_needsParkedAircraft) },
+		{ 0, 0, 0, 0 }
+	};
+
+	p.add(dataFieldParse);
+
+}  // end buildFieldParse
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -78,29 +94,65 @@ ArmorUpgrade::ArmorUpgrade( Thing *thing, const ModuleData* moduleData ) : Upgra
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ArmorUpgrade::~ArmorUpgrade( void )
+ArmorUpgrade::~ArmorUpgrade()
 {
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Bool ArmorUpgrade::attemptUpgrade(UpgradeMaskType keyMask)
+{
+	if (isTriggeredBy("Upgrade_AmericaChemicalSuits"))
+	{
+		Drawable* draw = getObject()->getDrawable();
+		if (!draw) {
+			return false;
+		}
+	}
+
+	return UpgradeMux::attemptUpgrade(keyMask);
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void ArmorUpgrade::upgradeImplementation( )
+void ArmorUpgrade::upgradeImplementation()
 {
-	// Very simple; just need to flag the Object as having the player upgrade, and the WeaponSet chooser 
+	// Very simple; just need to flag the Object as having the player upgrade, and the WeaponSet chooser
 	// will do the work of picking the right one from ini.  This comment is as long as the code.
-	// STILL IN PROGRESS
+	
+	const ArmorUpgradeModuleData* data = getArmorUpgradeModuleData();
+
 	Object *obj = getObject();
 	if( !obj )
 		return;
 
 	BodyModuleInterface* body = obj->getBodyModule();
-	if ( body )
-		body->setArmorSetFlag( ARMORSET_PLAYER_UPGRADE );
+	if (body) {
+		body->setArmorSetFlag(data->m_armorSetFlag);
+
+		if (data->m_armorSetFlagsToClear.any()) {
+			// We loop over each armorset type and see if we have it set.
+			// Andi: Not sure if this is cleaner solution than storing an array of flags.
+			for (int i = 0; i < ARMORSET_COUNT; i++) {
+				ArmorSetType type = (ArmorSetType)i;
+				if (data->m_armorSetFlagsToClear.test(type)) {
+					body->clearArmorSetFlag(type);
+					// obj->clearWeaponSetFlag(type);
+				}
+			}
+		}
+	}
 
 	// Unique case for AMERICA to test for upgrade to set flag
 	if(isTriggeredBy("Upgrade_AmericaChemicalSuits"))
 	{
-		obj->getDrawable()->setTerrainDecal(TERRAIN_DECAL_CHEMSUIT);
+		Drawable* draw = obj->getDrawable();
+		if (draw) {
+			draw->setTerrainDecal(TERRAIN_DECAL_CHEMSUIT);
+		}
+		/*else {
+			DEBUG_LOG(("ArmorUpgrade::upgradeImplementation 3b - no draw?.\n"));
+		}*/
 	}
 }
 
@@ -113,7 +165,7 @@ void ArmorUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -131,15 +183,15 @@ void ArmorUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void ArmorUpgrade::loadPostProcess( void )
+void ArmorUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

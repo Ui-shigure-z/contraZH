@@ -25,16 +25,13 @@
 // FILE: ThingTemplate.h //////////////////////////////////////////////////////////////////////////
 // Author: Colin Day, April 2001
 // Desc:	 Thing templates are a 'roadmap' to creating things
-///////////////////////////////////////////////////////////////////////////////////////////////////	
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
 
-#ifndef __THINGTEMPLATE_H_
-#define __THINGTEMPLATE_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
- 
+
 #include "Common/AudioEventRTS.h"
 #include "Common/FileSystem.h"
 #include "Common/GameCommon.h"
@@ -82,14 +79,14 @@ typedef std::map<AsciiString, const FXList*> PerUnitFXMap;
 //	INV_IMAGE_HILITE,
 //	INV_IMAGE_PUSHED,
 //
-//	INV_IMAGE_NUM_IMAGES  // keep this last
+//	INV_IMAGE_NUM_IMAGES
 //
 //};
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 enum
 {
-	MAX_UPGRADE_CAMEO_UPGRADES = 5
+	MAX_UPGRADE_CAMEO_UPGRADES = 9
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -120,14 +117,14 @@ enum ThingTemplateAudioType CPP_11(: Int)
 	TTAUDIO_soundStealthOff,          ///< Sound when unit destealths
 	TTAUDIO_soundCreated,							///< Sound when unit is created
 	TTAUDIO_soundOnDamaged,           ///< Sound when unit enters damaged state
-	TTAUDIO_soundOnReallyDamaged,     ///< Sound when unit enters reallyd damaged state
+	TTAUDIO_soundOnReallyDamaged,     ///< Sound when unit enters really damaged state
 	TTAUDIO_soundEnter,								///< Sound when another unit enters me.
 	TTAUDIO_soundExit,								///< Sound when another unit exits me.
 	TTAUDIO_soundPromotedVeteran,			///< Sound when unit gets promoted to Veteran level
 	TTAUDIO_soundPromotedElite,				///< Sound when unit gets promoted to Elite level
 	TTAUDIO_soundPromotedHero,				///< Sound when unit gets promoted to Hero level
 	TTAUDIO_voiceGarrison,						///< Unit is ordered to enter a garrisonable building
-	TTAUDIO_soundFalling,							///< This sound is actually called on a unit when it is exiting another. 
+	TTAUDIO_soundFalling,							///< This sound is actually called on a unit when it is exiting another.
 																		///< However, there is a soundExit which refers to the container, and this is only used for bombs falling from planes.
 #ifdef ALLOW_SURRENDER
 	TTAUDIO_voiceSurrender,						///< Unit surrenders
@@ -136,36 +133,29 @@ enum ThingTemplateAudioType CPP_11(: Int)
 	TTAUDIO_voiceAttackSpecial,				///< Unit is ordered to use a special attack
 	TTAUDIO_voiceAttackAir,						///< Unit is ordered to attack an airborne unit
 	TTAUDIO_voiceGuard,								///< Unit is ordered to guard an area
+	TTAUDIO_soundReverseMoveLoop,			///< Sound when unit is moving in reverse
+	TTAUDIO_soundReverseMoveLoopDamaged,///< Sound when unit is moving in reverse and is damaged
 
-	TTAUDIO_COUNT   // keep last!
+	TTAUDIO_COUNT
 };
 
 class AudioArray
 {
 public:
-	DynamicAudioEventRTS* m_audio[TTAUDIO_COUNT];
+	RefCountPtr<DynamicAudioEventRTS> m_audio[TTAUDIO_COUNT];
 
-	AudioArray()
-	{
-		for (Int i = 0; i < TTAUDIO_COUNT; ++i)
-			m_audio[i] = NULL;
-	}
+	AudioArray() {}
 
-	~AudioArray()
-	{
-		for (Int i = 0; i < TTAUDIO_COUNT; ++i)
-			if (m_audio[i])
-				m_audio[i]->deleteInstance();
-	}
+	~AudioArray() {}
 
 	AudioArray(const AudioArray& that)
 	{
 		for (Int i = 0; i < TTAUDIO_COUNT; ++i)
 		{
 			if (that.m_audio[i])
-				m_audio[i] = newInstance(DynamicAudioEventRTS)(*that.m_audio[i]);
+				m_audio[i].Assign_No_Add_Ref(newInstance(DynamicAudioEventRTS)(*that.m_audio[i]));
 			else
-				m_audio[i] = NULL;
+				m_audio[i] = nullptr;
 		}
 	}
 
@@ -180,11 +170,11 @@ public:
 					if (m_audio[i])
 						*m_audio[i] = *that.m_audio[i];
 					else
-						m_audio[i] = newInstance(DynamicAudioEventRTS)(*that.m_audio[i]);
+						m_audio[i].Assign_No_Add_Ref(newInstance(DynamicAudioEventRTS)(*that.m_audio[i]));
 				}
 				else
 				{
-					m_audio[i] = NULL;
+					m_audio[i] = nullptr;
 				}
 			}
 		}
@@ -201,17 +191,18 @@ enum BuildCompletionType CPP_11(: Int)
 	BC_APPEARS_AT_RALLY_POINT,	///< unit appears at rally point of its #1 prereq
 	BC_PLACED_BY_PLAYER,				///< unit must be manually placed by player
 
-	BC_NUM_TYPES								// leave this last
+	BC_NUM_TYPES
 };
 #ifdef DEFINE_BUILD_COMPLETION_NAMES
-static const char *BuildCompletionNames[] = 
+static const char *const BuildCompletionNames[] =
 {
 	"INVALID",
 	"APPEARS_AT_RALLY_POINT",
 	"PLACED_BY_PLAYER",
 
-	NULL
+	nullptr
 };
+static_assert(ARRAY_SIZE(BuildCompletionNames) == BC_NUM_TYPES + 1, "Incorrect array size");
 #endif  // end DEFINE_BUILD_COMPLETION_NAMES
 
 enum BuildableStatus CPP_11(: Int)
@@ -222,19 +213,63 @@ enum BuildableStatus CPP_11(: Int)
 	BSTATUS_NO,
 	BSTATUS_ONLY_BY_AI,
 
-	BSTATUS_NUM_TYPES	// leave this last
+	BSTATUS_NUM_TYPES
 };
 
 #ifdef DEFINE_BUILDABLE_STATUS_NAMES
-static const char *BuildableStatusNames[] = 
+static const char *const BuildableStatusNames[] =
 {
 	"Yes",
 	"Ignore_Prerequisites",
 	"No",
 	"Only_By_AI",
+	nullptr
+};
+static_assert(ARRAY_SIZE(BuildableStatusNames) == BSTATUS_NUM_TYPES + 1, "Incorrect array size");
+#endif	// end DEFINE_BUILDABLE_STATUS_NAMES
+
+enum AmmoPipsStyle CPP_11(: Int)
+{
+		AMMO_PIPS_DEFAULT = 0,  ///< Default style, showing each shot in clip
+		AMMO_PIPS_BAR,	///< Show percentage bar
+		AMMO_PIPS_SINGLE,  ///< like default, but show a single pip only (full or empty)
+		AMMO_PIPS_THIN,  ///< like default, but half width
+	
+		AMMO_PIPS_NUM_TYPES								// leave this last
+};
+#ifdef DEFINE_AMMO_PIPS_STYLE_NAMES
+static const char* AmmoPipsStyleNames[] =
+{
+	"DEFAULT",
+	"PERCENTAGE_BAR",
+	"SINGLE",
+	"THIN",
+
 	NULL
 };
-#endif	// end DEFINE_BUILDABLE_STATUS_NAMES
+#endif  // end DEFINE_AMMO_PIPS_STYLE_NAMES
+
+// ---
+//enum ProgressBarStyle CPP_11(: Int)
+//{
+//	  PROGRESS_BAR_NONE = 0,  ///< Default. No progress bar
+//		PROGRESS_BAR_SHIELD,	///< large white bar
+//		PROGRESS_BAR_SHIELD,  ///< like default, but show a single pip only (full or empty)
+//		AMMO_PIPS_THIN,  ///< like default, but half width
+//
+//		AMMO_PIPS_NUM_TYPES								// leave this last
+//};
+//#ifdef DEFINE_PROGRESS_BAR_STYLE_NAMES
+//static const char* ProgressBarStyleNames[] =
+//{
+//	"DEFAULT",
+//	"PERCENTAGE_BAR",
+//	"SINGLE",
+//	"THIN",
+//
+//	NULL
+//};
+//#endif  // end DEFINE_PROGRESS_BAR_STYLE_NAMES
 
 //-------------------------------------------------------------------------------------------------
 enum ModuleParseMode CPP_11(: Int)
@@ -260,15 +295,15 @@ private:
 		Bool inheritable;
     Bool overrideableByLikeKind;
 
-		Nugget(const AsciiString& n, const AsciiString& moduleTag, const ModuleData* d, Int i, Bool inh, Bool oblk) 
-		: first(n), 
-			m_moduleTag(moduleTag), 
-			second(d), 
-			interfaceMask(i), 
-			copiedFromDefault(false), 
+		Nugget(const AsciiString& n, const AsciiString& moduleTag, const ModuleData* d, Int i, Bool inh, Bool oblk)
+		: first(n),
+			m_moduleTag(moduleTag),
+			second(d),
+			interfaceMask(i),
+			copiedFromDefault(false),
 			inheritable(inh),
       overrideableByLikeKind(oblk)
-		{ 
+		{
 		}
 
 	};
@@ -281,16 +316,16 @@ public:
 	void addModuleInfo( ThingTemplate *thingTemplate, const AsciiString& name, const AsciiString& moduleTag, const ModuleData* data, Int interfaceMask, Bool inheritable, Bool overrideableByLikeKind = FALSE );
 	const ModuleInfo::Nugget *getNuggetWithTag( const AsciiString& tag ) const;
 
-	Int getCount() const 
-	{ 
-		return m_info.size(); 
+	Int getCount() const
+	{
+		return m_info.size();
 	}
-	
-#if defined(_DEBUG) || defined(_INTERNAL)
+
+#if defined(RTS_DEBUG)
 	Bool containsPartialName(const char* n) const
 	{
 		for (size_t i = 0; i < m_info.size(); i++)
-			if (strstr(m_info[i].first.str(), n) != NULL)
+			if (strstr(m_info[i].first.str(), n) != nullptr)
 				return true;
 		return false;
 	}
@@ -320,15 +355,15 @@ public:
 		{
 			return m_info[i].second;
 		}
-		return NULL;
+		return nullptr;
 	}
 
 	// for use only by ThingTemplate::friend_getAIModuleInfo
 	ModuleData* friend_getNthData(Int i);
 
-	void clear() 
-	{ 
-		m_info.clear(); 
+	void clear()
+	{
+		m_info.clear();
 	}
 
 	void setCopiedFromDefault(Bool v)
@@ -348,14 +383,14 @@ public:
 class ThingTemplate : public Overridable
 {
 
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ThingTemplate, "ThingTemplatePool" )		
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ThingTemplate, "ThingTemplatePool" )
 
 private:
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
-	ThingTemplate(const ThingTemplate& that) : m_geometryInfo(that.m_geometryInfo) 
-	{ 
-		DEBUG_CRASH(("This should never be called\n")); 
+	ThingTemplate(const ThingTemplate& that) : m_geometryInfo(that.m_geometryInfo)
+	{
+		DEBUG_CRASH(("This should never be called"));
 	}
 #else
 	ThingTemplate(const ThingTemplate& that) = delete;
@@ -365,7 +400,7 @@ public:
 
 
 	ThingTemplate();
-	
+
 	// copy the guts of that into this, but preserve this' name, id, and list-links.
 	void copyFrom(const ThingTemplate* that);
 
@@ -377,10 +412,10 @@ public:
 	inline AsciiString getLTAName() const { return m_LTAName; }
 #endif
 
-	/** 
+	/**
 		return a unique identifier suitable for identifying this ThingTemplate on machines playing
 		across the net. this should be considered a Magic Cookie and used only for net traffic or
-		similar sorts of things. To convert an id back to a ThingTemplate, use ThingFactory::findByID(). 
+		similar sorts of things. To convert an id back to a ThingTemplate, use ThingFactory::findByID().
 		Note that 0 is always an invalid id.  NOTE that we are not referencing m_override here
 		because even though we actually have multiple templates here representing overrides,
 		we still only conceptually have one template and want to always use one single
@@ -393,33 +428,36 @@ public:
 	// note that m_override is not used here, see getTemplateID(), for it is the same reasons
 	const AsciiString& getName() const { return m_nameString; }  ///< return the name of this template
 
-	/// get the display color (used for the editor)	
+	/// get the display color (used for the editor)
 	Color getDisplayColor() const { return m_displayColor; }
 
-	/// get the editor sorting 
+	/// get the editor sorting
 	EditorSortingType getEditorSorting() const { return (EditorSortingType)m_editorSorting; }
 
 	/// return true iff the template has the specified kindOf flag set.
-	inline Bool isKindOf(KindOfType t) const 
-	{ 
-		return TEST_KINDOFMASK(m_kindof, t); 
+	Bool isKindOf(KindOfType t) const
+	{
+		return TEST_KINDOFMASK(m_kindof, t);
 	}
 
 	/// convenience for doing multiple kindof testing at once.
-	inline Bool isKindOfMulti(const KindOfMaskType& mustBeSet, const KindOfMaskType& mustBeClear) const 
-	{ 		
+	Bool isKindOfMulti(const KindOfMaskType& mustBeSet, const KindOfMaskType& mustBeClear) const
+	{
 		return TEST_KINDOFMASK_MULTI(m_kindof, mustBeSet, mustBeClear);
 	}
 
-	inline Bool isAnyKindOf( const KindOfMaskType& anyKindOf ) const
+	Bool isAnyKindOf( const KindOfMaskType& anyKindOf ) const
 	{
 		return TEST_KINDOFMASK_ANY(m_kindof, anyKindOf);
 	}
-	
+
 	/// set the display name
 	const UnicodeString& getDisplayName() const { return m_displayName; }  ///< return display name
 
 	RadarPriorityType getDefaultRadarPriority() const { return (RadarPriorityType)m_radarPriority; }  ///< return radar priority from INI
+
+	AmmoPipsStyle getAmmoPipsStyle() const { return (AmmoPipsStyle)m_ammoPipsStyle; }  ///< return ammo pips style from ini
+
 
 	// note, you should not call this directly; rather, call Object::getTransportSlotCount().
 	Int getRawTransportSlotCount() const { return m_transportSlotCount; }
@@ -429,32 +467,47 @@ public:
 	Real getFenceXOffset() const { return m_fenceXOffset; }  // return fence offset
 
 	Bool isBridge() const { return m_isBridge; }  // return fence offset
+	Bool isBridgeLike() const { return isBridge() || isKindOf(KINDOF_WALK_ON_TOP_OF_WALL); }
 
 	// Only Object can ask this.  Everyone else should ask the Object.  In fact, you really should ask the Object everything.
 	Real friend_calcVisionRange() const { return m_visionRange; }  ///< get vision range
 	Real friend_calcShroudClearingRange() const { return m_shroudClearingRange; }  ///< get vision range for Shroud ONLY (Design requested split)
-	
+
 	//This one is okay to check directly... because it doesn't get effected by bonuses.
 	Real getShroudRevealToAllRange() const { return m_shroudRevealToAllRange; }
-	
+
 	// This function is only for use by the AIUpdateModuleData::parseLocomotorSet function.
-	AIUpdateModuleData *friend_getAIModuleInfo(void);
+	AIUpdateModuleData *friend_getAIModuleInfo();
 
 	ShadowType getShadowType() const { return (ShadowType)m_shadowType; }
 	Real getShadowSizeX() const { return m_shadowSizeX; }
 	Real getShadowSizeY() const { return m_shadowSizeY; }
 	Real getShadowOffsetX() const { return m_shadowOffsetX; }
 	Real getShadowOffsetY() const { return m_shadowOffsetY; }
+	Bool hasDynamicShadowLength() const { return m_shadowHasDynamicLength; }
 
-	const AsciiString& getShadowTextureName( void ) const { return m_shadowTextureName; }
-	UnsignedInt getOcclusionDelay(void) const { return m_occlusionDelay;}
-	
+	const AsciiString& getShadowTextureName() const { return m_shadowTextureName; }
+
+	// TheSuperHackers @feature Display decal, drawn under the object independently of its shadow.
+	Bool displaysDecal() const { return m_displayDecal; }
+	Bool hidesDecalWhenDisabled() const { return m_decalHideWhenDisabled; }
+	ShadowType getDecalStyle() const { return (ShadowType)m_decalStyle; }
+	Real getDecalSizeX() const { return m_decalSizeX; }
+	Real getDecalSizeY() const { return m_decalSizeY; }
+	Real getDecalOffsetX() const { return m_decalOffsetX; }
+	Real getDecalOffsetY() const { return m_decalOffsetY; }
+	Real getDecalOpacity() const { return m_decalOpacity; }
+	Color getDecalColor() const { return m_decalColor; }
+	const AsciiString& getDecalTextureName() const { return m_decalTextureName; }
+
+	UnsignedInt getOcclusionDelay() const { return m_occlusionDelay;}
+
 	const ModuleInfo& getBehaviorModuleInfo() const { return m_behaviorModuleInfo; }
 	const ModuleInfo& getDrawModuleInfo() const { return m_drawModuleInfo; }
 	const ModuleInfo& getClientUpdateModuleInfo() const { return m_clientUpdateModuleInfo; }
 
-	const Image *getSelectedPortraitImage( void ) const { return m_selectedPortraitImage; }
-	const Image *getButtonImage( void ) const { return m_buttonImage; }
+	const Image *getSelectedPortraitImage() const { return m_selectedPortraitImage; }
+	const Image *getButtonImage() const { return m_buttonImage; }
 
 	//Code renderer handles these states now.
 	//const AsciiString& getInventoryImageName( InventoryImageType type ) const { return m_inventoryImage[ type ]; }
@@ -463,6 +516,7 @@ public:
 
 	Int getExperienceValue(Int level) const { return m_experienceValues[level]; }
 	Int getExperienceRequired(Int level) const {return m_experienceRequired[level]; }
+	VeterancyLevel getMaxVeterancyLevel() const { return m_maxVeterancyLevel; }
 	Bool isTrainable() const{return m_isTrainable; }
 	Bool isEnterGuard() const{return m_enterGuard; }
 	Bool isHijackGuard() const{return m_hijackGuard; }
@@ -491,6 +545,8 @@ public:
 	const AudioEventRTS *getSoundMoveStartDamaged() const			{ return getAudio(TTAUDIO_soundMoveStartDamaged); }
 	const AudioEventRTS *getSoundMoveLoop() const							{ return getAudio(TTAUDIO_soundMoveLoop); }
 	const AudioEventRTS *getSoundMoveLoopDamaged() const			{ return getAudio(TTAUDIO_soundMoveLoopDamaged); }
+	const AudioEventRTS *getSoundReverseMoveLoop() const			{ return getAudio(TTAUDIO_soundReverseMoveLoop); }
+	const AudioEventRTS *getSoundReverseMoveLoopDamaged() const	{ return getAudio(TTAUDIO_soundReverseMoveLoopDamaged); }
 	const AudioEventRTS *getSoundAmbient() const							{ return getAudio(TTAUDIO_soundAmbient); }
 	const AudioEventRTS *getSoundAmbientDamaged() const				{ return getAudio(TTAUDIO_soundAmbientDamaged); }
 	const AudioEventRTS *getSoundAmbientReallyDamaged() const	{ return getAudio(TTAUDIO_soundAmbientReallyDamaged); }
@@ -513,10 +569,10 @@ public:
 	const FXList* getPerUnitFX(const AsciiString& fxName) const;
 
 	UnsignedInt getThreatValue() const								{ return m_threatValue; }
-	
+
   //-------------------------------------------------------------------------------------------------
   /** If this is not NAMEKEY_INVALID, it indicates that all the templates which return the same name key
-    * should be counted as the same "type" when looking at getMaxSimultaneousOfType(). For instance, 
+    * should be counted as the same "type" when looking at getMaxSimultaneousOfType(). For instance,
     * a Scud Storm and a Scud Storm rebuild hole will return the same value, so that the player
     * can't build another Scud Storm while waiting for the rebuild hole to start rebuilding */
   //-------------------------------------------------------------------------------------------------
@@ -526,7 +582,7 @@ public:
 	void validate();
 
 // The version that does not take an Object argument is labeled friend for use by WorldBuilder.  All game requests
-// for CommandSet must use Object::getCommandSetString, as we have two different sources for dynamic answers. 
+// for CommandSet must use Object::getCommandSetString, as we have two different sources for dynamic answers.
 	const AsciiString& friend_getCommandSetString() const { return m_commandSetString; }
 
 	const std::vector<AsciiString>& getBuildVariations() const { return m_buildVariations; }
@@ -546,30 +602,30 @@ public:
 	// these are intended ONLY for the private use of ThingFactory and do not use
 	// the m_override pointer, it deals only with templates at the "top" level
 	//
-	inline void friend_setTemplateName( const AsciiString& name ) { m_nameString = name; }
-	inline ThingTemplate *friend_getNextTemplate() const { return m_nextThingTemplate; }
-	inline void friend_setNextTemplate(ThingTemplate *tmplate) { m_nextThingTemplate = tmplate; }
-	inline void friend_setTemplateID(UnsignedShort id) { m_templateID = id; }
+	void friend_setTemplateName( const AsciiString& name ) { m_nameString = name; }
+	ThingTemplate *friend_getNextTemplate() const { return m_nextThingTemplate; }
+	void friend_setNextTemplate(ThingTemplate *tmplate) { m_nextThingTemplate = tmplate; }
+	void friend_setTemplateID(UnsignedShort id) { m_templateID = id; }
 
 	Int getEnergyProduction() const { return m_energyProduction; }
 	Int getEnergyBonus() const { return m_energyBonus; }
 
-	// these are NOT publicly available; you should call calcCostToBuild() or calcTimeToBuild() 
+	// these are NOT publicly available; you should call calcCostToBuild() or calcTimeToBuild()
 	// instead, because they will take player handicaps into account.
 	// Int getBuildCost() const { return m_buildCost; }
-	
+
 	Int getRefundValue() const { return m_refundValue; }
 
 	BuildCompletionType getBuildCompletion() const { return (BuildCompletionType)m_buildCompletion; }
 
 	BuildableStatus getBuildable() const;
-	
+
 	Int getPrereqCount() const { return m_prereqInfo.size(); }
 	const ProductionPrerequisite *getNthPrereq(Int i) const { return &m_prereqInfo[i]; }
 
-	/** 
-		return the BuildFacilityTemplate, if any. 
-		
+	/**
+		return the BuildFacilityTemplate, if any.
+
 		if this template needs no build facility, null is returned.
 
 		if the template needs a build facility but the given player doesn't have any in existence,
@@ -579,7 +635,7 @@ public:
 	*/
 	const ThingTemplate *getBuildFacilityTemplate( const Player *player ) const;
 
-	Bool isBuildableItem(void) const;
+	Bool isBuildableItem() const;
 
 	/// calculate how long (in logic frames) it will take the given player to build this unit
 	Int calcTimeToBuild( const Player* player) const;
@@ -597,14 +653,18 @@ public:
 	const FieldParse* getReskinFieldParse() const { return s_objectReskinFieldParseTable; }
 
 	Bool isBuildFacility() const { return m_isBuildFacility; }
-	Real getPlacementViewAngle( void ) const { return m_placementViewAngle; }
+	Real getPlacementViewAngle() const { return m_placementViewAngle; }
 
 	Real getFactoryExitWidth() const { return m_factoryExitWidth; }
 	Real getFactoryExtraBibWidth() const { return m_factoryExtraBibWidth; }
 
 	void setCopiedFromDefault();
 
-	void setReskinnedFrom(const ThingTemplate* tt) { DEBUG_ASSERTCRASH(m_reskinnedFrom == NULL, ("should be null")); m_reskinnedFrom = tt; }
+	// Only set non removable modules as copied when using ObjectExtend
+	void setCopiedFromDefaultExtended();
+
+	void setReskinnedFrom(const ThingTemplate* tt) { DEBUG_ASSERTCRASH(m_reskinnedFrom == nullptr, ("should be null")); m_reskinnedFrom = tt; }
+	const ThingTemplate* getReskinRoot() const;
 
 	Bool isPrerequisite() const { return m_isPrerequisite; }
 
@@ -619,23 +679,27 @@ public:
 
 	UnsignedByte getCrushableLevel() const { return m_crushableLevel; }
 	UnsignedByte getCrusherLevel() const { return m_crusherLevel; }
-	
+
 	AsciiString getUpgradeCameoName( Int n)const{ return m_upgradeCameoUpgradeNames[n];	}
 
-	const WeaponTemplateSetVector& getWeaponTemplateSets(void) const {return m_weaponTemplateSets;}
+	const WeaponTemplateSetVector& getWeaponTemplateSets() const {return m_weaponTemplateSets;}
+
+	Int getMaxPathFindingCellRadius(void) const { return static_cast<Int>(m_maxPathfindingCellRadius); };
+
+	Byte getRequiredBridgeHeight(void) const { return m_requiredBridgeHeight; };
 
 protected:
 
 	//
-	// these are NOT publicly available; you should call calcCostToBuild() or calcTimeToBuild() 
+	// these are NOT publicly available; you should call calcCostToBuild() or calcTimeToBuild()
 	// instead, because they will take player handicaps into account.
 	//
 	Int getBuildCost() const { return m_buildCost; }
 	Real getBuildTime() const { return m_buildTime; }
-	const PerUnitSoundMap* getAllPerUnitSounds( void ) const { return &m_perUnitSounds; }
+	const PerUnitSoundMap* getAllPerUnitSounds() const { return &m_perUnitSounds; }
 	void validateAudio();
-	const AudioEventRTS* getAudio(ThingTemplateAudioType t) const { return m_audioarray.m_audio[t] ? &m_audioarray.m_audio[t]->m_event : &s_audioEventNoSound; }
-  Bool hasAudio(ThingTemplateAudioType t) const { return m_audioarray.m_audio[t] != NULL; }
+	const AudioEventRTS* getAudio(ThingTemplateAudioType t) const { return m_audioarray.m_audio[t] ? m_audioarray.m_audio[t].Peek() : &s_audioEventNoSound; }
+  Bool hasAudio(ThingTemplateAudioType t) const { return m_audioarray.m_audio[t] != nullptr; }
 
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	/** Table for parsing the object fields */
@@ -646,17 +710,22 @@ protected:
 	static void parsePrerequisites( INI* ini, void *instance, void * /*store*/, const void* /*userData*/ );
 	static void parseModuleName(INI* ini, void *instance, void* /*store*/, const void* userData);
 	static void parseIntList(INI* ini, void *instance, void* store, const void* userData);
+	static void parseExperienceValueList(INI* ini, void *instance, void* store, const void* userData);
+	static void parseExperienceRequiredList(INI* ini, void *instance, void* store, const void* userData);
+	static void parseSkillPointValueList(INI* ini, void *instance, void* store, const void* userData);
 
 	static void parsePerUnitSounds(INI* ini, void *instance, void* store, const void* userData);
 	static void parsePerUnitFX(INI* ini, void *instance, void* store, const void* userData);
 
 	static void parseAddModule(INI *ini, void *instance, void *store, const void *userData);
 	static void parseRemoveModule(INI *ini, void *instance, void *store, const void *userData);
-	static void parseReplaceModule(INI *ini, void *instance, void *store, const void *userData);	
-	static void parseInheritableModule(INI *ini, void *instance, void *store, const void *userData);	
+	static void parseReplaceModule(INI *ini, void *instance, void *store, const void *userData);
+	static void parseInheritableModule(INI *ini, void *instance, void *store, const void *userData);
   static void OverrideableByLikeKind(INI *ini, void *instance, void *store, const void *userData);
 
   static void parseMaxSimultaneous(INI *ini, void *instance, void *store, const void *userData);
+
+	static void parseRequiredBridgeHeight(INI* ini, void* instance, void* store, const void* userData);
 
 	Bool removeModuleInfo(const AsciiString& moduleToRemove, AsciiString& clearedModuleNameOut);
 
@@ -676,6 +745,7 @@ private:
 	AsciiString				m_buttonImageName;
 	AsciiString				m_upgradeCameoUpgradeNames[MAX_UPGRADE_CAMEO_UPGRADES];	///< Use these to find the upgrade images to display on the control bar
 	AsciiString				m_shadowTextureName;					///< name of texture to use for shadow decal
+	AsciiString				m_decalTextureName;						///< name of texture to use for the display decal
 	AsciiString				m_moduleBeingReplacedName;		///< used only during map.ini loading... name (not tag) of Module being replaced, or empty if not inside ReplaceModule block
 	AsciiString				m_moduleBeingReplacedTag;			///< used only during map.ini loading... tag (not name) of Module being replaced, or empty if not inside ReplaceModule block
 #ifdef LOAD_TEST_ASSETS
@@ -694,9 +764,15 @@ private:
 	Int											m_skillPointValues[LEVEL_COUNT];
 	Int											m_experienceValues[LEVEL_COUNT];		///< How much I am worth at each experience level
 	Int											m_experienceRequired[LEVEL_COUNT];	///< How many experience points I need for each level
-	
+	VeterancyLevel					m_maxVeterancyLevel;								///< highest veterancy level this object may ever reach
+
 	//Code renderer handles these states now.
 	//AsciiString							m_inventoryImage[ INV_IMAGE_NUM_IMAGES ];  ///< portrait inventory pictures
+
+	// TheSuperHackers @bugfix Caball009/xezon 06/07/2025 No longer copy SparseMatchFinder to prevent copied instances linking to unrelated data.
+	// This avoids mismatching in certain maps, for example those that spawn units with veterancy.
+	typedef SparseMatchFinder<WeaponTemplateSet, WeaponSetFlags, SparseMatchFinderFlags_NoCopy> WeaponTemplateSetFinder;
+	typedef SparseMatchFinder<ArmorTemplateSet, ArmorSetFlags, SparseMatchFinderFlags_NoCopy> ArmorTemplateSetFinder;
 
 	// ---- STL-sized things
 	std::vector<ProductionPrerequisite>	m_prereqInfo;				///< the unit Prereqs for this tech
@@ -711,9 +787,9 @@ private:
 
 	// ---- Pointer-sized things
 	ThingTemplate*				m_nextThingTemplate;
-	const ThingTemplate*	m_reskinnedFrom;									///< non NULL if we were generated via a reskin
+	const ThingTemplate*	m_reskinnedFrom;									///< non nullptr if we were generated via a reskin
 	const Image *					m_selectedPortraitImage;		/// portrait image when selected (to display in GUI)
-	const Image	*					m_buttonImage;			
+	const Image	*					m_buttonImage;
 
 	// ---- Real-sized things
 	Real					m_fenceWidth;								///< Fence width for fence type objects.
@@ -726,13 +802,22 @@ private:
 	Real					m_factoryExtraBibWidth;					///< when placing buildings this will be the width of the reserved exit area on the right side.
 	Real					m_buildTime;									///< Seconds to build
 	Real					m_assetScale;
-	Real					m_instanceScaleFuzziness; ///< scale randomization tolerance to init for each Drawable instance, 
+	Real					m_instanceScaleFuzziness; ///< scale randomization tolerance to init for each Drawable instance,
 	Real					m_shadowSizeX;				///< world-space extent of decal shadow texture
 	Real					m_shadowSizeY;				///< world-space extent of decal shadow texture
 	Real					m_shadowOffsetX;			///< world-space offset of decal shadow texture
 	Real					m_shadowOffsetY;			///< world-space offset of decal shadow texture
+	Bool					m_shadowHasDynamicLength;  ///< dynamic shadow angle scaling based on object height
+	Real					m_decalSizeX;					///< world-space extent of the display decal texture
+	Real					m_decalSizeY;					///< world-space extent of the display decal texture
+	Real					m_decalOffsetX;				///< world-space offset of the display decal texture
+	Real					m_decalOffsetY;				///< world-space offset of the display decal texture
+	Real					m_decalOpacity;				///< 0..1, fades the display decal
+	Bool					m_displayDecal;				///< draw a display decal under this object, independent of its shadow
+	Bool					m_decalHideWhenDisabled;	///< stop drawing the display decal while the object is disabled
 
 	// ---- Int-sized things
+	Color					m_decalColor;					///< ARGB tint for the display decal; alpha comes from DecalOpacity
 	Int						m_energyProduction;						///< how much Energy this takes (negative values produce Energy, rather than consuming it)
 	Int						m_energyBonus;								///< how much extra Energy this produces due to the upgrade
 	Color					m_displayColor;								///< for the editor display color
@@ -766,20 +851,19 @@ private:
 	Byte					m_editorSorting;						///< editor sorting type, see EditorSortingType enum
 	Byte					m_structureRubbleHeight;
 	Byte					m_shadowType;								///< settings which determine the type of shadow rendered
+	Byte					m_decalStyle;								///< blend style of the display decal, kept apart so Shadow keeps all 8 bits
 	Byte					m_moduleParsingMode;
 	UnsignedByte	m_crusherLevel;							///< crusher > crushable level to actually crush
 	UnsignedByte	m_crushableLevel;						///< Specifies the level of crushability (must be hit by a crusher greater than this to crush me).
-
-
+	Byte					m_ammoPipsStyle;                ///< How ammo pips are displayed for this thing
+	UnsignedByte  m_maxPathfindingCellRadius;  ///< Limit cells radius for pathfinding, defaults to 2, can be increased for large units
+	Byte					m_requiredBridgeHeight;      ///< simplified height required to fit under bridge, range: -1 to 15, -1 will use Geometry height, other values to override
 };
 
 //-----------------------------------------------------------------------------
-//           Inlining                                                       
+//           Inlining
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
-//           Externals                                                     
+//           Externals
 //-----------------------------------------------------------------------------
-
-#endif // __THINGTEMPLATE_H_
-

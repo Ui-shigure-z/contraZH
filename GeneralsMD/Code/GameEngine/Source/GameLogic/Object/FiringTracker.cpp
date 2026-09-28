@@ -27,7 +27,7 @@
 // Desc:   Keeps track of shots fired and people targeted for weapons that want a history of such a thing
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/AudioHandleSpecialValues.h"
 #include "Common/GameType.h"
@@ -39,14 +39,10 @@
 #include "GameLogic/FiringTracker.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/ObjectHelper.h"
+#include "GameLogic/Module/SpecialPowerModule.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Weapon.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
 FiringTracker::FiringTracker(Thing* thing, const ModuleData *modData) : UpdateModule( thing, modData )
@@ -56,6 +52,7 @@ FiringTracker::FiringTracker(Thing* thing, const ModuleData *modData) : UpdateMo
 	m_frameToStartCooldown = 0;
  	m_frameToForceReload = 0;
 	m_frameToStopLoopingSound = 0;
+	m_specialPowerWaiting = FALSE;
 	m_audioHandle = AHSV_NoSound;
 	setWakeFrame(getObject(), UPDATE_SLEEP_FOREVER);
 }
@@ -71,7 +68,7 @@ FiringTracker::~FiringTracker()
 //-------------------------------------------------------------------------------------------------
 Int FiringTracker::getNumConsecutiveShotsAtVictim( const Object *victim ) const
 {
-	if( victim == NULL )
+	if( victim == nullptr )
 		return 0;// safety, this function is for asking about shots at a victim
 
 	if( victim->getID() != m_victimID )
@@ -87,6 +84,7 @@ void FiringTracker::shotFired(const Weapon* weaponFired, ObjectID victimID)
 	Object *me = getObject();
 	const Object *victim = TheGameLogic->findObjectByID(victimID); // May be null for ground shot
 
+	// Old Target Designator Logic
 	if( victim && victim->testStatus(OBJECT_STATUS_FAERIE_FIRE) )
 	{
 		if( !me->testWeaponBonusCondition(WEAPONBONUSCONDITION_TARGET_FAERIE_FIRE) )
@@ -102,6 +100,26 @@ void FiringTracker::shotFired(const Weapon* weaponFired, ObjectID victimID)
 		{
 			me->clearWeaponBonusCondition(WEAPONBONUSCONDITION_TARGET_FAERIE_FIRE);
 		}
+	}
+
+	// New Buff based 'WeaponBonusAgainst' Logic
+	{
+		WeaponBonusConditionFlags targetBonusFlags = 0;  // if we attack the ground, this stays empty
+		if (victim)
+			targetBonusFlags = victim->getWeaponBonusConditionAgainst();
+
+		// If new bonus is different from previous, remove it.
+		if (targetBonusFlags != m_prevTargetWeaponBonus) {
+			me->removeWeaponBonusConditionFlags(m_prevTargetWeaponBonus);
+		}
+
+		// If we have a new bonus, apply it
+		if (targetBonusFlags != 0) {
+			me->applyWeaponBonusConditionFlags(targetBonusFlags);
+		}
+
+		m_prevTargetWeaponBonus = targetBonusFlags;
+
 	}
 
 	if( victimID == m_victimID )
@@ -162,12 +180,20 @@ void FiringTracker::shotFired(const Weapon* weaponFired, ObjectID victimID)
 	UnsignedInt fireSoundLoopTime = weaponFired->getFireSoundLoopTime();
 	if (fireSoundLoopTime != 0)
 	{
-		// If the sound has stopped playing, then we need to re-add it.
-		if (m_frameToStopLoopingSound == 0 || !TheAudio->isCurrentlyPlaying(m_audioHandle))
+		AudioEventRTS audio = weaponFired->getFireSound();
+
+		// Re-add the looping sound if it has stopped playing, or if the weapon (and thus
+		// the fire sound) has switched to a different sound while we keep firing.
+		Bool fireSoundChanged = (audio.getEventName() != m_currentFireSoundName);
+		if (m_frameToStopLoopingSound == 0 || !TheAudio->isCurrentlyPlaying(m_audioHandle) || fireSoundChanged)
 		{
-			AudioEventRTS audio = weaponFired->getFireSound();
+			// Stop the previous looping sound (e.g. weapon switched to one with a different fire sound).
+			TheAudio->removeAudioEvent( m_audioHandle );
+			m_audioHandle = AHSV_NoSound;
+
 			audio.setObjectID(getObject()->getID());
 			m_audioHandle = TheAudio->addAudioEvent( &audio );
+			m_currentFireSoundName = audio.getEventName();
 		}
 		m_frameToStopLoopingSound = now + fireSoundLoopTime;
 	}
@@ -176,11 +202,73 @@ void FiringTracker::shotFired(const Weapon* weaponFired, ObjectID victimID)
 		AudioEventRTS fireAndForgetSound = weaponFired->getFireSound();
 		fireAndForgetSound.setObjectID(getObject()->getID());
 		TheAudio->addAudioEvent(&fireAndForgetSound);
-		m_frameToStopLoopingSound = 0;
+		// m_frameToStopLoopingSound = 0;
 	}
 
 
+	notifySpecialPowersOfShot();
+
 	setWakeFrame(me, calcTimeToSleep());
+}
+
+//-------------------------------------------------------------------------------------------------
+/** TheSuperHackers @feature Report a shot to the special powers waiting on one. */
+//-------------------------------------------------------------------------------------------------
+void FiringTracker::notifySpecialPowersOfShot()
+{
+	// The flag is what every shot and every sleep decision reads, so the module list is only
+	// walked while one of ours is actually waiting -- which is almost never.
+	if( !m_specialPowerWaiting )
+	{
+		return;
+	}
+
+	for( BehaviorModule **b = getObject()->getBehaviorModules(); *b; ++b )
+	{
+		SpecialPowerModuleInterface *sp = (*b)->getSpecialPower();
+		if( sp != nullptr && sp->isWaitingForShots() )
+		{
+			// a shot only ever turns a wait into a burst, so nothing stops waiting here
+			sp->onShotFired();
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** TheSuperHackers @feature Tick the powers waiting on their shots. This is what lets one end
+	* its wait, so the flag is recomputed from what is still waiting afterwards. */
+//-------------------------------------------------------------------------------------------------
+void FiringTracker::updateWaitingSpecialPowers()
+{
+	if( !m_specialPowerWaiting )
+	{
+		return;
+	}
+
+	Bool stillWaiting = FALSE;
+	for( BehaviorModule **b = getObject()->getBehaviorModules(); *b; ++b )
+	{
+		SpecialPowerModuleInterface *sp = (*b)->getSpecialPower();
+		if( sp == nullptr || !sp->isWaitingForShots() )
+		{
+			continue;
+		}
+		sp->updatePendingShots();
+		if( sp->isWaitingForShots() )
+		{
+			stillWaiting = TRUE;
+		}
+	}
+	m_specialPowerWaiting = stillWaiting;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** A special power just started waiting on its shots, so we cannot stay asleep. */
+//-------------------------------------------------------------------------------------------------
+void FiringTracker::notifySpecialPowerWaiting()
+{
+	m_specialPowerWaiting = TRUE;
+	setWakeFrame( getObject(), UPDATE_SLEEP_NONE );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -196,7 +284,7 @@ UpdateSleepTime FiringTracker::update()
  		getObject()->reloadAllAmmo(TRUE);
  		m_frameToForceReload = 0;
  	}
- 
+
 	// If it has been too long since I fired.  I have to start over.
 	// (don't call if we don't need to cool down... it's expensive!)
 
@@ -206,15 +294,21 @@ UpdateSleepTime FiringTracker::update()
 		{
 			TheAudio->removeAudioEvent( m_audioHandle );
 			m_audioHandle = AHSV_NoSound;
+			m_currentFireSoundName.clear();
 			m_frameToStopLoopingSound = 0;
 		}
 	}
+
+	// before the cooldown branch below, which returns a one second sleep of its own
+	updateWaitingSpecialPowers();
 
 	if( m_frameToStartCooldown != 0 && now > m_frameToStartCooldown )
 	{
 		m_frameToStartCooldown = now + LOGICFRAMES_PER_SECOND;
 		coolDown();// if this is the coolest call to cooldown, it will set m_frameToStartCooldown to zero
-		return UPDATE_SLEEP(LOGICFRAMES_PER_SECOND);
+		// a power waiting on its shots is ticked by us, so it decides the sleep instead
+		if( !m_specialPowerWaiting )
+			return UPDATE_SLEEP(LOGICFRAMES_PER_SECOND);
 	}
 
 	UpdateSleepTime sleepTime = calcTimeToSleep();
@@ -226,11 +320,15 @@ UpdateSleepTime FiringTracker::update()
 UpdateSleepTime FiringTracker::calcTimeToSleep()
 {
  	// Figure out the longest amount of time we can sleep as unneeded
- 
+
+ 	// A special power waiting on its shots is ticked by us, so staying asleep would strand it.
+ 	if( m_specialPowerWaiting )
+ 		return UPDATE_SLEEP_NONE;
+
  	// If all the timers are off, then we aren't needed at all
  	if (m_frameToStopLoopingSound == 0 && m_frameToStartCooldown == 0 && m_frameToForceReload == 0)
    		return UPDATE_SLEEP_FOREVER;
-   
+
  	// Otherwise, we need to wake up to service the shortest timer
    	UnsignedInt now = TheGameLogic->getFrame();
  	UnsignedInt sleepTime = UPDATE_SLEEP_FOREVER;
@@ -255,7 +353,7 @@ UpdateSleepTime FiringTracker::calcTimeToSleep()
  		else if( (m_frameToForceReload - now) < sleepTime )
  			sleepTime = m_frameToForceReload - now;
  	}
- 
+
  	return UPDATE_SLEEP(sleepTime);
 }
 
@@ -264,7 +362,7 @@ void FiringTracker::speedUp()
 {
 	ModelConditionFlags clr, set;
 	Object *self = getObject();
-	
+
 	if( self->testWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_FAST ) )
 	{
 		//self->clearWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_MEAN );
@@ -289,7 +387,7 @@ void FiringTracker::speedUp()
 
 
 	}
-	else 
+	else
 	{
 
 		self->setWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_MEAN );
@@ -311,13 +409,13 @@ void FiringTracker::coolDown()
 {
 	ModelConditionFlags clr, set;
 
-	if( getObject()->testWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_FAST ) 
+	if( getObject()->testWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_FAST )
 	 || getObject()->testWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_MEAN ))
 	{
 
 		// Straight to zero from wherever it is
 		set.set(MODELCONDITION_CONTINUOUS_FIRE_SLOW);
-		
+
 		getObject()->clearWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_FAST );
 		getObject()->clearWeaponBonusCondition( WEAPONBONUSCONDITION_CONTINUOUS_FIRE_MEAN );
 		clr.set(MODELCONDITION_CONTINUOUS_FIRE_FAST);
@@ -354,7 +452,7 @@ void FiringTracker::crc( Xfer *xfer )
 	// object helper base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -381,15 +479,18 @@ void FiringTracker::xfer( Xfer *xfer )
 	// frame to start cooldown
 	xfer->xferUnsignedInt( &m_frameToStartCooldown );
 
+	// currenly applied weaponBonus against the prev target
+	m_prevTargetWeaponBonus.xfer(xfer);
+
 }  // end xfer
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void FiringTracker::loadPostProcess( void )
+void FiringTracker::loadPostProcess()
 {
 
 	// object helper back class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

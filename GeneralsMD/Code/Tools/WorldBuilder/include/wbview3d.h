@@ -29,13 +29,13 @@
 
 #if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // wbview3d.h : header file
 //
 
 #include "Lib/BaseType.h"
-#include "rendobj.h"
-#include "robjlist.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/robjlist.h"
 #include "wbview.h"
 #include "Common/GameType.h"
 #include "Common/GlobalData.h"
@@ -47,7 +47,7 @@
 #include <map>
 
 //#include "GameLogic/Module/BodyModule.h" -- Yikes... not necessary to include this! (KM)
-enum BodyDamageType; //Ahhhh much better!
+enum BodyDamageType CPP_11(: Int); //Ahhhh much better!
 
 class WorldHeightMap;
 class LayerClass;
@@ -88,8 +88,8 @@ protected:
 public:
 
 	// DX8_CleanupHook methods
-	virtual void ReleaseResources(void);	///< Release all dx8 resources so the device can be reset.
-	virtual void ReAcquireResources(void);  ///< Reacquire all resources after device reset.
+	virtual void ReleaseResources() override;	///< Release all dx8 resources so the device can be reset.
+	virtual void ReAcquireResources() override;  ///< Reacquire all resources after device reset.
 
 // Operations
 public:
@@ -98,15 +98,15 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(WbView3d)
 	protected:
-	virtual void OnDraw(CDC* pDC);      // overridden to draw this view
+	virtual void OnDraw(CDC* pDC) override;      // overridden to draw this view
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
-	virtual ~WbView3d();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+	virtual ~WbView3d() override;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 	// Generated message map functions
@@ -559,7 +559,7 @@ protected:
 	void killTheTimer();
 	void render();
 	void setupCamera();
-	void updateHysteresis(void);
+	void updateHysteresis();
 	void updateLights();
 	void updateScorches();
 	void updateTrees();
@@ -589,10 +589,10 @@ public:
 	virtual Bool viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain=true);
 	virtual Bool docToViewCoords(Coord3D curPt, CPoint* newPt);
 
-	virtual void updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const IRegion2D &partialRange);
+	virtual void updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const IRegion2D &partialRange) override;
 
-	/// Invalidates an object. Pass NULL to inval all objects.
-	virtual void invalObjectInView(MapObject *pObj);
+	/// Invalidates an object. Pass null to inval all objects.
+	virtual void invalObjectInView(MapObject *pObj) override;
 
 	// find the best model for an object
 	AsciiString getBestModelName(const ThingTemplate* tt, const ModelConditionFlags& c);
@@ -604,22 +604,22 @@ public:
 	void invalBuildListItemInView(BuildListInfo *pBuild);
 
 	/// Invalidates the area of one height map cell in the 2d view.
-	virtual void invalidateCellInView(int xIndex, int yIndex);
+	virtual void invalidateCellInView(int xIndex, int yIndex) override;
 
 	/// Scrolls the window by this amount.
-	virtual void scrollInView(Real x, Real y, Bool end);
+	virtual void scrollInView(Real x, Real y, Bool end) override;
 
-	virtual void setDefaultCamera();
-	virtual void rotateCamera(Real delta);	 
-	virtual void pitchCamera(Real delta);
+	virtual void setDefaultCamera() override;
+	virtual void rotateCamera(Real delta) override;
+	virtual void pitchCamera(Real delta) override;
 	void setCameraPitch(Real absolutePitch);
-	Real getCameraPitch(void);
-	Real getCurrentZoom(void); //WST 10/17/2002
-	Real getHeightAboveGround(void) { return m_actualHeightAboveGround; }
-	Vector3 getCameraSource(void) { return m_cameraSource; }
-	Vector3 getCameraTarget(void) { return m_cameraTarget; }
-	Real getCameraAngle(void) { return m_cameraAngle; }
-	CPoint getActualWinSize(void) {return m_actualWinSize;}
+	Real getCameraPitch();
+	Real getCurrentZoom(); //WST 10/17/2002
+	Real getHeightAboveGround() { return m_actualHeightAboveGround; }
+	Vector3 getCameraSource() { return m_cameraSource; }
+	Vector3 getCameraTarget() { return m_cameraTarget; }
+	Real getCameraAngle() { return m_cameraAngle; }
+	CPoint getActualWinSize() {return m_actualWinSize;}
 
 	/// Fill corners[4] with the world-space ground-plane points of the view frustum
 	/// (the 4 viewport corners cast to the ground), for drawing a minimap view box.
@@ -703,12 +703,12 @@ public:
 	/// one instead of the stale cache. Costs a full asset reload, so only for that case.
 	void freeCachedModelsOnNextReset(void) { m_freeAssetsOnNextReset = true; }
 
-	void stepTimeOfDay(void);
+	void stepTimeOfDay();
 
 	void reset3dEngineDisplaySize(Int width, Int height); ///< Closes & reinitializes w3d.
 	void setLighting(const GlobalData::TerrainLighting *tl, Int whichLighting, Int whichLight=0);
 
-	DrawObject *getDrawObject(void) {return m_drawObject;};
+	DrawObject *getDrawObject() {return m_drawObject;};
 
 	AsciiString getModelNameAndScale(MapObject *pMapObj, Real *scale, BodyDamageType curDamageState,
 		ModelConditionFlags *stateOut = NULL);
@@ -720,14 +720,14 @@ public:
 	/// draw module, so it resolves one per module).
 	void applySubObjectHideList(RenderObjClass *renderObj, const struct ModelConditionInfo *info);
 
-	virtual Int getPickPixels(void) {return m_pickPixels;}
-	virtual Bool viewToDocCoordZ(CPoint curPt, Coord3D *newPt, Real Z); 
+	virtual Int getPickPixels() override {return m_pickPixels;}
+	virtual Bool viewToDocCoordZ(CPoint curPt, Coord3D *newPt, Real Z) override;
 public:
 
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
 
-	virtual void setCenterInView(Real x, Real y);
+	virtual void setCenterInView(Real x, Real y) override;
 
 	// Like setCenterInView, but does NOT render synchronously. Updates the camera
 	// center and invalidates the view so its own paint loop renders. Safe to call
@@ -752,8 +752,8 @@ public:
 	void setObjTracking(MapObject *pMapObj, Coord3D pos, Real angle, Bool show);
 	void setViewLayersList(Bool showLayersList) { m_showLayersList = showLayersList; }
 
-	Bool getShowMapBoundaryFeedback(void) const { return m_showMapBoundaries; }
-	Bool getShowAmbientSoundsFeedback(void) const { return m_showAmbientSounds; }
+	Bool getShowMapBoundaryFeedback() const { return m_showMapBoundaries; }
+	Bool getShowAmbientSoundsFeedback() const { return m_showAmbientSounds; }
 
 	/// View > Listen To Map. Stopping and (re)starting the map's ambient sounds; call
 	/// restartListenSounds() whenever the set of ambient sounds may have changed (map opened,
@@ -781,15 +781,15 @@ public:
 	void togglePitchAndRotation( void ) { m_doPitch = !m_doPitch; }
 	virtual Bool isDoingPitch( void ) { return m_doPitch; }
 	void setShowBoundingBoxes(Bool toggle) {m_showBoundingBoxes = toggle;}
-	Bool getShowBoundingBoxes(void) { return m_showBoundingBoxes;}
+	Bool getShowBoundingBoxes() { return m_showBoundingBoxes;}
 	void setShowSightRanges(Bool toggle) {m_showSightRanges = toggle;}
-	Bool getShowSightRanges(void) { return m_showSightRanges;}
+	Bool getShowSightRanges() { return m_showSightRanges;}
 	void setShowWeaponRanges(Bool toggle) {m_showWeaponRanges = toggle;}
-	Bool getShowWeaponRanges(void) { return m_showWeaponRanges;}
+	Bool getShowWeaponRanges() { return m_showWeaponRanges;}
 	void setHighlightTestArt(Bool toggle) {m_highlightTestArt = toggle;}
-	Bool getHighlightTestArt(void) { return m_highlightTestArt;}
+	Bool getHighlightTestArt() { return m_highlightTestArt;}
 	void setShowLetterbox(Bool toggle) {m_showLetterbox = toggle;}
-	Bool getShowLetterbox(void) { return m_showLetterbox;}
+	Bool getShowLetterbox() { return m_showLetterbox;}
 };
 
 inline UINT WbView3d::getLastDrawTime() { return m_time; }
@@ -800,5 +800,3 @@ inline Bool WbView3d::getShowWireframe() { return m_showWireframe; }
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_WBVIEW3D_H__832D8241_87F6_11D5_8CE0_00010297BBAC__INCLUDED_)

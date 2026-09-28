@@ -21,8 +21,7 @@ TCP                   Neal Kettler        neal@westwood.com
 
 \****************************************************************************/
 
-#ifndef TCP_HEADER
-#define TCP_HEADER
+#pragma once
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +30,7 @@ TCP                   Neal Kettler        neal@westwood.com
 #include <string.h>
 #include <assert.h>
 
-#ifdef _WINDOWS
+#ifdef _WIN32
 
 #include <winsock.h>
 #include <io.h>
@@ -83,14 +82,14 @@ private:
 
 
   sint32      inputDelay;         // default delay for semi-blocking reads
-  sint32      outputDelay;        // default delay for semi-blocking writes 
+  sint32      outputDelay;        // default delay for semi-blocking writes
 
   enum ConnectionState
   {
      CLOSED,
      CONNECTING,
      CONNECTED
-  }           connectionState;     // What state is client FD in 
+  }           connectionState;     // What state is client FD in
 
 public:
 
@@ -137,7 +136,7 @@ public:
   bit8    Bind(uint32 IP,uint16 port,bit8 reuseAddr=FALSE);
   bit8    Bind(char *Host,uint16 port,bit8 reuseAddr=FALSE);
 
-  sint32  GetMaxFD(void);
+  sint32  GetMaxFD();
 
   bit8    Connect(uint32 IP,uint16 port);
   bit8    Connect(char *Host,uint16 port);
@@ -146,14 +145,14 @@ public:
 
   bit8    IsConnected(sint32 whichFD=0);
 
-  sint32  GetFD(void);
-  sint32  GetClientCount(void) { return(clientCount); }
+  sint32  GetFD();
+  sint32  GetClientCount() { return(clientCount); }
 
   // Get IP or Port of a connected endpoint
   uint32  GetRemoteIP(sint32 whichFD=0);
   uint16  GetRemotePort(sint32 whichFD=0);
 
-  sint32  GetConnection(void);
+  sint32  GetConnection();
   sint32  GetConnection(struct sockaddr *clientAddr);
   void    WaitWrite(sint32 whichFD=0);
   bit8    CanWrite(sint32 whichFD=0);
@@ -174,16 +173,16 @@ public:
   int     Wait(sint32 sec,sint32 usec,fd_set &returnSet,sint32 whichFD=0);
   int     Wait(sint32 sec,sint32 usec,fd_set &inputSet,fd_set &returnSet);
 
-  int     GetStatus(void);
-  void    ClearStatus(void);
+  int     GetStatus();
+  void    ClearStatus();
 
   //sint32  GetSockStatus(sint32 whichFD=0);
 
   // give up ownership of the socket without closing it
-  void    DisownSocket(void);
+  void    DisownSocket();
 
   sint32  Close(sint32 whichFD=0);
-  sint32  CloseAll(void);   // close all sockets (same as close for client)
+  sint32  CloseAll();   // close all sockets (same as close for client)
 
   sint32  SetBlocking(bit8 block,sint32 whichFD=0);
 
@@ -195,5 +194,3 @@ public:
   bit8    SetOutputDelay(sint32 delay) { outputDelay=delay; return(TRUE); };
 
 };
-
-#endif

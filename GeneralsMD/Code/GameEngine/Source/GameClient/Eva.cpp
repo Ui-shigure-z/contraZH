@@ -24,21 +24,18 @@
 
 // GameClient/Eva.cpp /////////////////////////////////////////////////////////////////////////////
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#include "GameClient/ControlBar.h"
 #include "GameClient/Eva.h"
 
+#include "Common/GameUtility.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "GameLogic/GameLogic.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
-const char *TheEvaMessageNames[] = 
+const char *const TheEvaMessageNames[] =
 {
 	"LOWPOWER",
 	"INSUFFICIENTFUNDS",
@@ -93,16 +90,157 @@ const char *TheEvaMessageNames[] =
   "SUPERWEAPONLAUNCHED_OWN_SNEAK_ATTACK",
   "SUPERWEAPONLAUNCHED_ALLY_SNEAK_ATTACK",
   "SUPERWEAPONLAUNCHED_ENEMY_SNEAK_ATTACK",
-	
+
+  // New constants added by OFS
+
+	"SUPERWEAPONDETECTED_OWN_ION_CANNON",
+	"SUPERWEAPONDETECTED_ALLY_ION_CANNON",
+	"SUPERWEAPONDETECTED_ENEMY_ION_CANNON",
+	"SUPERWEAPONLAUNCHED_OWN_ION_CANNON",
+	"SUPERWEAPONLAUNCHED_ALLY_ION_CANNON",
+	"SUPERWEAPONLAUNCHED_ENEMY_ION_CANNON",
+	"SUPERWEAPONREADY_OWN_ION_CANNON",
+	"SUPERWEAPONREADY_ALLY_ION_CANNON",
+	"SUPERWEAPONREADY_ENEMY_ION_CANNON",
+
+	"SUPERWEAPONDETECTED_OWN_CLUSTER_MISSILE",
+	"SUPERWEAPONDETECTED_ALLY_CLUSTER_MISSILE",
+	"SUPERWEAPONDETECTED_ENEMY_CLUSTER_MISSILE",
+	"SUPERWEAPONLAUNCHED_OWN_CLUSTER_MISSILE",
+	"SUPERWEAPONLAUNCHED_ALLY_CLUSTER_MISSILE",
+	"SUPERWEAPONLAUNCHED_ENEMY_CLUSTER_MISSILE",
+	"SUPERWEAPONREADY_OWN_CLUSTER_MISSILE",
+	"SUPERWEAPONREADY_ALLY_CLUSTER_MISSILE",
+	"SUPERWEAPONREADY_ENEMY_CLUSTER_MISSILE",
+
+	"SUPERWEAPONDETECTED_OWN_SUNSTORM_MISSILE",
+	"SUPERWEAPONDETECTED_ALLY_SUNSTORM_MISSILE",
+	"SUPERWEAPONDETECTED_ENEMY_SUNSTORM_MISSILE",
+	"SUPERWEAPONLAUNCHED_OWN_SUNSTORM_MISSILE",
+	"SUPERWEAPONLAUNCHED_ALLY_SUNSTORM_MISSILE",
+	"SUPERWEAPONLAUNCHED_ENEMY_SUNSTORM_MISSILE",
+	"SUPERWEAPONREADY_OWN_SUNSTORM_MISSILE",
+	"SUPERWEAPONREADY_ALLY_SUNSTORM_MISSILE",
+	"SUPERWEAPONREADY_ENEMY_SUNSTORM_MISSILE",
+
+	"SUPERWEAPONDETECTED_OWN_METEOR_STRIKE",
+	"SUPERWEAPONDETECTED_ALLY_METEOR_STRIKE",
+	"SUPERWEAPONDETECTED_ENEMY_METEOR_STRIKE",
+	"SUPERWEAPONLAUNCHED_OWN_METEOR_STRIKE",
+	"SUPERWEAPONLAUNCHED_ALLY_METEOR_STRIKE",
+	"SUPERWEAPONLAUNCHED_ENEMY_METEOR_STRIKE",
+	"SUPERWEAPONREADY_OWN_METEOR_STRIKE",
+	"SUPERWEAPONREADY_ALLY_METEOR_STRIKE",
+	"SUPERWEAPONREADY_ENEMY_METEOR_STRIKE",
+
+	"SUPERWEAPONDETECTED_OWN_PUNISHER_CANNON",
+	"SUPERWEAPONDETECTED_ALLY_PUNISHER_CANNON",
+	"SUPERWEAPONDETECTED_ENEMY_PUNISHER_CANNON",
+	"SUPERWEAPONLAUNCHED_OWN_PUNISHER_CANNON",
+	"SUPERWEAPONLAUNCHED_ALLY_PUNISHER_CANNON",
+	"SUPERWEAPONLAUNCHED_ENEMY_PUNISHER_CANNON",
+	"SUPERWEAPONREADY_OWN_PUNISHER_CANNON",
+	"SUPERWEAPONREADY_ALLY_PUNISHER_CANNON",
+	"SUPERWEAPONREADY_ENEMY_PUNISHER_CANNON",
+
+	"SUPERWEAPONDETECTED_OWN_CHEMICAL_MISSILE",
+	"SUPERWEAPONDETECTED_ALLY_CHEMICAL_MISSILE",
+	"SUPERWEAPONDETECTED_ENEMY_CHEMICAL_MISSILE",
+	"SUPERWEAPONLAUNCHED_OWN_CHEMICAL_MISSILE",
+	"SUPERWEAPONLAUNCHED_ALLY_CHEMICAL_MISSILE",
+	"SUPERWEAPONLAUNCHED_ENEMY_CHEMICAL_MISSILE",
+	"SUPERWEAPONREADY_OWN_CHEMICAL_MISSILE",
+	"SUPERWEAPONREADY_ALLY_CHEMICAL_MISSILE",
+	"SUPERWEAPONREADY_ENEMY_CHEMICAL_MISSILE",
+
+	"SUPERWEAPONDETECTED_OWN_CHRONOSPHERE",
+	"SUPERWEAPONDETECTED_ALLY_CHRONOSPHERE",
+	"SUPERWEAPONDETECTED_ENEMY_CHRONOSPHERE",
+	"SUPERWEAPONLAUNCHED_OWN_CHRONOSPHERE",
+	"SUPERWEAPONLAUNCHED_ALLY_CHRONOSPHERE",
+	"SUPERWEAPONLAUNCHED_ENEMY_CHRONOSPHERE",
+	"SUPERWEAPONREADY_OWN_CHRONOSPHERE",
+	"SUPERWEAPONREADY_ALLY_CHRONOSPHERE",
+	"SUPERWEAPONREADY_ENEMY_CHRONOSPHERE",
+
+	"SUPERWEAPONDETECTED_OWN_NUCLEAR_STORM",
+	"SUPERWEAPONDETECTED_ALLY_NUCLEAR_STORM",
+	"SUPERWEAPONDETECTED_ENEMY_NUCLEAR_STORM",
+	"SUPERWEAPONLAUNCHED_OWN_NUCLEAR_STORM",
+	"SUPERWEAPONLAUNCHED_ALLY_NUCLEAR_STORM",
+	"SUPERWEAPONLAUNCHED_ENEMY_NUCLEAR_STORM",
+	"SUPERWEAPONREADY_OWN_NUCLEAR_STORM",
+	"SUPERWEAPONREADY_ALLY_NUCLEAR_STORM",
+	"SUPERWEAPONREADY_ENEMY_NUCLEAR_STORM",
+
+	"SUPERWEAPONDETECTED_OWN_WEATHER_CONTROL",
+	"SUPERWEAPONDETECTED_ALLY_WEATHER_CONTROL",
+	"SUPERWEAPONDETECTED_ENEMY_WEATHER_CONTROL",
+	"SUPERWEAPONLAUNCHED_OWN_WEATHER_CONTROL",
+	"SUPERWEAPONLAUNCHED_ALLY_WEATHER_CONTROL",
+	"SUPERWEAPONLAUNCHED_ENEMY_WEATHER_CONTROL",
+	"SUPERWEAPONREADY_OWN_WEATHER_CONTROL",
+	"SUPERWEAPONREADY_ALLY_WEATHER_CONTROL",
+	"SUPERWEAPONREADY_ENEMY_WEATHER_CONTROL",
+
+	"SUPERWEAPONDETECTED_OWN_HATF_MISSILE",
+	"SUPERWEAPONDETECTED_ALLY_HATF_MISSILE",
+	"SUPERWEAPONDETECTED_ENEMY_HATF_MISSILE",
+	"SUPERWEAPONLAUNCHED_OWN_HATF_MISSILE",
+	"SUPERWEAPONLAUNCHED_ALLY_HATF_MISSILE",
+	"SUPERWEAPONLAUNCHED_ENEMY_HATF_MISSILE",
+	"SUPERWEAPONREADY_OWN_HATF_MISSILE",
+	"SUPERWEAPONREADY_ALLY_HATF_MISSILE",
+	"SUPERWEAPONREADY_ENEMY_HATF_MISSILE",
+
+	"SUPERWEAPONDETECTED_OWN_COMMAND_UPLINK",
+	"SUPERWEAPONDETECTED_ALLY_COMMAND_UPLINK",
+	"SUPERWEAPONDETECTED_ENEMY_COMMAND_UPLINK",
+	"SUPERWEAPONLAUNCHED_OWN_COMMAND_UPLINK",
+	"SUPERWEAPONLAUNCHED_ALLY_COMMAND_UPLINK",
+	"SUPERWEAPONLAUNCHED_ENEMY_COMMAND_UPLINK",
+	"SUPERWEAPONREADY_OWN_COMMAND_UPLINK",
+	"SUPERWEAPONREADY_ALLY_COMMAND_UPLINK",
+	"SUPERWEAPONREADY_ENEMY_COMMAND_UPLINK",
+
+	"SUPERWEAPONDETECTED_OWN_ATMOSPHERIC_LENS",
+	"SUPERWEAPONDETECTED_ALLY_ATMOSPHERIC_LENS",
+	"SUPERWEAPONDETECTED_ENEMY_ATMOSPHERIC_LENS",
+	"SUPERWEAPONLAUNCHED_OWN_ATMOSPHERIC_LENS",
+	"SUPERWEAPONLAUNCHED_ALLY_ATMOSPHERIC_LENS",
+	"SUPERWEAPONLAUNCHED_ENEMY_ATMOSPHERIC_LENS",
+	"SUPERWEAPONREADY_OWN_ATMOSPHERIC_LENS",
+	"SUPERWEAPONREADY_ALLY_ATMOSPHERIC_LENS",
+	"SUPERWEAPONREADY_ENEMY_ATMOSPHERIC_LENS",
+
+	"SUPERWEAPONDETECTED_OWN_ICBM",
+	"SUPERWEAPONDETECTED_ALLY_ICBM",
+	"SUPERWEAPONDETECTED_ENEMY_ICBM",
+	"SUPERWEAPONLAUNCHED_OWN_ICBM",
+	"SUPERWEAPONLAUNCHED_ALLY_ICBM",
+	"SUPERWEAPONLAUNCHED_ENEMY_ICBM",
+	"SUPERWEAPONREADY_OWN_ICBM",
+	"SUPERWEAPONREADY_ALLY_ICBM",
+	"SUPERWEAPONREADY_ENEMY_ICBM",
+
+	"SUPERWEAPONDETECTED_OWN_TOMAHAWK_STORM",
+	"SUPERWEAPONDETECTED_ALLY_TOMAHAWK_STORM",
+	"SUPERWEAPONDETECTED_ENEMY_TOMAHAWK_STORM",
+	"SUPERWEAPONLAUNCHED_OWN_TOMAHAWK_STORM",
+	"SUPERWEAPONLAUNCHED_ALLY_TOMAHAWK_STORM",
+	"SUPERWEAPONLAUNCHED_ENEMY_TOMAHAWK_STORM",
+	"SUPERWEAPONREADY_OWN_TOMAHAWK_STORM",
+	"SUPERWEAPONREADY_ALLY_TOMAHAWK_STORM",
+	"SUPERWEAPONREADY_ENEMY_TOMAHAWK_STORM",
+
 	//****************************************************************************
 	//Kris: Don't forget to add another handler below -- it's ghey-ly implemented.
 	//****************************************************************************
-
-	"EVA_INVALID",
 };
+static_assert(ARRAY_SIZE(TheEvaMessageNames) == EVA_COUNT, "Incorrect array size");
 
 //-------------------------------------------------------------------------------------------------
-const ShouldPlayFunc Eva::s_shouldPlayFuncs[] = 
+const ShouldPlayFunc Eva::s_shouldPlayFuncs[] =
 {
 	Eva::shouldPlayLowPower,
 	Eva::shouldPlayGenericHandler,
@@ -121,9 +259,9 @@ const ShouldPlayFunc Eva::s_shouldPlayFuncs[] =
 	Eva::shouldPlayGenericHandler,
 	Eva::shouldPlayGenericHandler,
 	Eva::shouldPlayGenericHandler,
-	Eva::shouldPlayGenericHandler,	
-	Eva::shouldPlayGenericHandler,	
-	Eva::shouldPlayGenericHandler,	
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
   Eva::shouldPlayGenericHandler,
   Eva::shouldPlayGenericHandler,
   Eva::shouldPlayGenericHandler,
@@ -157,7 +295,139 @@ const ShouldPlayFunc Eva::s_shouldPlayFuncs[] =
   Eva::shouldPlayGenericHandler,
   Eva::shouldPlayGenericHandler,
   Eva::shouldPlayGenericHandler,
-	NULL,
+  Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+	Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
+  Eva::shouldPlayGenericHandler,
 };
 
 
@@ -168,8 +438,8 @@ void INI::parseEvaEvent( INI* ini )
 
 	// read the name
 	const char* c = ini->getNextToken();
-	name.set( c );	
-	
+	name.set( c );
+
 	EvaCheckInfo *check = TheEva->newEvaCheckInfo( name );
 	if (!check) {
 		// could be null because it already exists.
@@ -195,46 +465,46 @@ static void parseSideSoundsList( INI *ini, void *instance, void *store, const vo
 //----------------------------------------------------------------------------------- EvaSideSounds
 const FieldParse EvaSideSounds::s_evaSideSounds[] =
 {
-	{ "Side",									INI::parseAsciiString,					NULL,			offsetof( EvaSideSounds, m_side) },
-	{ "Sounds",								INI::parseSoundsList,						NULL,			offsetof( EvaSideSounds, m_soundNames) },
-	{ 0, 0, 0, 0 },
+	{ "Side",									INI::parseAsciiString,					nullptr,			offsetof( EvaSideSounds, m_side) },
+	{ "Sounds",								INI::parseSoundsList,						nullptr,			offsetof( EvaSideSounds, m_soundNames) },
+	{ nullptr, nullptr, nullptr, 0 },
 };
 
 //------------------------------------------------------------------------------------ EvaCheckInfo
 EvaCheckInfo::EvaCheckInfo() :
 	m_message(EVA_COUNT),
 	m_priority(1), // lowest of all priorities
-	m_framesBetweenChecks(900),	// 30 seconds at 30 fps
+	m_framesBetweenChecks(30 * LOGICFRAMES_PER_SECOND),	// 30 seconds
 	m_framesToExpire(150) // 5 seconds at 30 fps
 {
 
-	
+
 }
 
 //-------------------------------------------------------------------------------------------------
-const FieldParse EvaCheckInfo::s_evaEventInfo[] = 
+const FieldParse EvaCheckInfo::s_evaEventInfo[] =
 {
-	{ "Priority",							INI::parseUnsignedInt,					NULL,			offsetof( EvaCheckInfo, m_priority ) },
-	{ "TimeBetweenChecksMS",	INI::parseDurationUnsignedInt,	NULL,			offsetof( EvaCheckInfo, m_framesBetweenChecks ) },
-	{ "ExpirationTimeMS",			INI::parseDurationUnsignedInt,	NULL,			offsetof( EvaCheckInfo, m_framesToExpire) },
-	{ "SideSounds",						parseSideSoundsList,						NULL,			offsetof( EvaCheckInfo, m_evaSideSounds ) },
-	{ 0, 0, 0, 0 },
+	{ "Priority",							INI::parseUnsignedInt,					nullptr,			offsetof( EvaCheckInfo, m_priority ) },
+	{ "TimeBetweenChecksMS",	INI::parseDurationUnsignedInt,	nullptr,			offsetof( EvaCheckInfo, m_framesBetweenChecks ) },
+	{ "ExpirationTimeMS",			INI::parseDurationUnsignedInt,	nullptr,			offsetof( EvaCheckInfo, m_framesToExpire) },
+	{ "SideSounds",						parseSideSoundsList,						nullptr,			offsetof( EvaCheckInfo, m_evaSideSounds ) },
+	{ nullptr, nullptr, nullptr, 0 },
 
 };
 
 //-------------------------------------------------------------------------------------------------
-EvaCheck::EvaCheck() : 
-	m_evaInfo(NULL), 
+EvaCheck::EvaCheck() :
+	m_evaInfo(nullptr),
 	m_triggeredOnFrame(TRIGGEREDON_NOT),
-	m_timeForNextCheck(NEXT_CHECK_NOW), 
+	m_timeForNextCheck(NEXT_CHECK_NOW),
 	m_alreadyPlayed(FALSE)
 {
 
 }
 
 //-------------------------------------------------------------------------------------------------
-Eva::Eva() : 
-	m_localPlayer(NULL),
+Eva::Eva() :
+	m_localPlayer(nullptr),
 	m_previousBuildingCount(0),
 	m_previousUnitCount(0),
 	m_enabled(TRUE)
@@ -250,8 +520,7 @@ Eva::~Eva()
 {
 	EvaCheckInfoPtrVecIt it;
 	for (it = m_allCheckInfos.begin(); it != m_allCheckInfos.end(); ++it) {
-		if (*it)
-			(*it)->deleteInstance();
+		deleteInstance(*it);
 	}
 }
 
@@ -260,7 +529,7 @@ void Eva::init()
 {
 	// parse the INI here, etc.
 	INI ini;
-	ini.load( AsciiString( "Data\\INI\\Eva.ini" ), INI_LOAD_OVERWRITE, NULL);
+	ini.loadFileDirectory( "Data\\INI\\Eva", INI_LOAD_OVERWRITE, nullptr);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -278,7 +547,7 @@ void Eva::reset()
 	// remove all things flagged as "need to play"
 	for (Int i = 0; i < EVA_COUNT; ++i) {
 		m_shouldPlay[i] = FALSE;
-	}	
+	}
 
 	// If we were previously disabled, re-enable ourselves.
 	m_enabled = TRUE;
@@ -291,7 +560,7 @@ void Eva::update()
 		return;
 	}
 
-	m_localPlayer = ThePlayerList->getLocalPlayer();
+	m_localPlayer = rts::getObservedOrLocalPlayer();
 	UnsignedInt frame = TheGameLogic->getFrame();
 
 	// Don't update for the first few frames. This way, we don't have to deal with our initial power
@@ -308,8 +577,8 @@ void Eva::update()
 		}
 	}
 
-	processPlayingMessages(frame);	
-	m_localPlayer = NULL;
+	processPlayingMessages(frame);
+	m_localPlayer = nullptr;
 
 	// Reset all of the flags that have been set to true that haven't actually been probed, because
 	// they will need to trigger again to be valid messages.
@@ -321,10 +590,6 @@ void Eva::update()
 //-------------------------------------------------------------------------------------------------
 EvaMessage Eva::nameToMessage(const AsciiString& name)
 {
-  DEBUG_ASSERTCRASH( ELEMENTS_OF( TheEvaMessageNames ) == EVA_COUNT + 1, ("TheEvaMessageNames out of sync" ) );
-  DEBUG_ASSERTCRASH( stricmp( TheEvaMessageNames[ EVA_COUNT ], "EVA_INVALID" ) == 0, ("TheEvaMessageNames out of sync" ) );
-  DEBUG_ASSERTCRASH( stricmp( TheEvaMessageNames[ EVA_COUNT - 1], "EVA_INVALID" ) != 0, ("TheEvaMessageNames out of sync" ) );
-
 	for (Int i = EVA_FIRST; i < EVA_COUNT; ++i) {
 		if (name.compareNoCase(TheEvaMessageNames[i]) == 0) {
 			return (EvaMessage) i;
@@ -338,10 +603,6 @@ EvaMessage Eva::nameToMessage(const AsciiString& name)
 //-------------------------------------------------------------------------------------------------
 AsciiString Eva::messageToName(EvaMessage message)
 {
-  DEBUG_ASSERTCRASH( ELEMENTS_OF( TheEvaMessageNames ) == EVA_COUNT + 1, ("TheEvaMessageNames out of sync" ) );
-  DEBUG_ASSERTCRASH( stricmp( TheEvaMessageNames[ EVA_COUNT ], "EVA_INVALID" ) == 0, ("TheEvaMessageNames out of sync" ) );
-  DEBUG_ASSERTCRASH( stricmp( TheEvaMessageNames[ EVA_COUNT - 1], "EVA_INVALID" ) != 0, ("TheEvaMessageNames out of sync" ) );
-
   if (message >= EVA_FIRST && message < EVA_COUNT)
 		return TheEvaMessageNames[message];
 
@@ -358,7 +619,7 @@ EvaCheckInfo *Eva::newEvaCheckInfo(AsciiString name)
 	EvaCheckInfoPtrVecIt it;
 	for (it = m_allCheckInfos.begin(); it != m_allCheckInfos.end(); ++it) {
 		if (*it && (*it)->m_message == mesg)
-			return NULL;
+			return nullptr;
 	}
 
 	EvaCheckInfo *checkInfo = newInstance(EvaCheckInfo);
@@ -379,15 +640,15 @@ const EvaCheckInfo *Eva::getEvaCheckInfo(AsciiString name)
 			return *it;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 //-------------------------------------------------------------------------------------------------
 void Eva::setShouldPlay(EvaMessage messageToPlay)
 {
 	m_shouldPlay[messageToPlay] = TRUE;
-  
-  // DEBUG_LOG( ( "Eva message %s play requested\n", messageToName( messageToPlay).str() ) );
+
+  // DEBUG_LOG( ( "Eva message %s play requested", messageToName( messageToPlay).str() ) );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -397,7 +658,7 @@ void Eva::setEvaEnabled(Bool enabled)
 	for (Int i = EVA_FIRST; i < EVA_COUNT; ++i) {
 		m_shouldPlay[i] = FALSE;
 	}
-	m_enabled = enabled; 
+	m_enabled = enabled;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -416,13 +677,11 @@ Bool Eva::isTimeForCheck(EvaMessage messageToTest, UnsignedInt currentFrame) con
 //-------------------------------------------------------------------------------------------------
 Bool Eva::messageShouldPlay(EvaMessage messageToTest, UnsignedInt currentFrame) const
 {
-	if (m_localPlayer == NULL) {
+	if (m_localPlayer == nullptr) {
 		return FALSE;
 	}
 
-  DEBUG_ASSERTCRASH( ELEMENTS_OF( s_shouldPlayFuncs ) == EVA_COUNT + 1, ("Eva::s_shouldPlayFuncs out of sync" ) );
-  DEBUG_ASSERTCRASH( s_shouldPlayFuncs[ EVA_COUNT ] == NULL, ("Eva::s_shouldPlayFuncs out of sync" ) );
-  DEBUG_ASSERTCRASH( s_shouldPlayFuncs[ EVA_COUNT - 1] != NULL, ("Eva::s_shouldPlayFuncs out of sync" ) );
+	static_assert(ARRAY_SIZE(s_shouldPlayFuncs) == EVA_COUNT, "Incorrect array size");
 
 	m_messageBeingTested = messageToTest;
 	return s_shouldPlayFuncs[messageToTest](m_localPlayer);
@@ -520,7 +779,7 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
 	}
 
 	// We've got a winner!
-	AsciiString side = ThePlayerList->getLocalPlayer()->getSide();
+	AsciiString side = rts::getObservedOrLocalPlayer()->getSide();
 	Int numSides = storedIt->m_evaInfo->m_evaSideSounds.size();
 
   // clear it. If we can't find the side we want, don't play anything
@@ -529,7 +788,7 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
 	for (Int i = 0; i < numSides; ++i) {
 		if (side.compareNoCase(storedIt->m_evaInfo->m_evaSideSounds[i].m_side) == 0) {
 			// Its this one.
-			if (storedIt->m_evaInfo->m_evaSideSounds[i].m_soundNames.size() > 0) {
+			if (!storedIt->m_evaInfo->m_evaSideSounds[i].m_soundNames.empty()) {
 				Int soundToPlay = GameClientRandomValue(0, storedIt->m_evaInfo->m_evaSideSounds[i].m_soundNames.size() - 1);
 				m_evaSpeech.setEventName(storedIt->m_evaInfo->m_evaSideSounds[i].m_soundNames[soundToPlay]);
 			}
@@ -540,7 +799,7 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
 	// Update the entry
 	storedIt->m_alreadyPlayed = true;
 	storedIt->m_timeForNextCheck = currentFrame + storedIt->m_evaInfo->m_framesBetweenChecks;
-	
+
 	// Now that we correctly filter messages, we need to set the player index for who should hear the
 	// sound to the local player.
 	m_evaSpeech.setPlayerIndex(m_localPlayer->getPlayerIndex());
@@ -554,7 +813,7 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
 /*static*/void Eva::parseEvaMessageFromIni( INI * ini, void *instance, void *store, const void* userData )
 {
   const char *token = ini->getNextToken();
-   
+
   EvaMessage message = nameToMessage( token );
   if ( message == EVA_Invalid )
   {
@@ -566,5 +825,5 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
 }
 
 //-------------------------------------------------------------------------------------------------
-Eva *TheEva = NULL;
+Eva *TheEva = nullptr;
 

@@ -47,7 +47,7 @@ DeletionUpdate::DeletionUpdate( Thing *thing, const ModuleData* moduleData ) : U
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-DeletionUpdate::~DeletionUpdate( void )
+DeletionUpdate::~DeletionUpdate()
 {
 }
 
@@ -58,8 +58,8 @@ DeletionUpdate::~DeletionUpdate( void )
 //-------------------------------------------------------------------------------------------------
 void DeletionUpdate::setLifetimeRange( UnsignedInt minFrames, UnsignedInt maxFrames )
 {
-	
-#if defined _DEBUG && defined CRISS_CROSS_GEOMETRY
+
+#if defined RTS_DEBUG && defined CRISS_CROSS_GEOMETRY
 	setWakeFrame(getObject(), UPDATE_SLEEP(2));
 #else
 	UnsignedInt delay = calcSleepDelay(minFrames, maxFrames);
@@ -67,22 +67,39 @@ void DeletionUpdate::setLifetimeRange( UnsignedInt minFrames, UnsignedInt maxFra
 #endif
 }
 
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+//-------------------------------------------------------------------------------------------------
+void DeletionUpdate::restartLifetime()
+{
+	const DeletionUpdateModuleData *d = getDeletionUpdateModuleData();
+	setLifetimeRange( d->m_minFrames, d->m_maxFrames );
+}
+#endif
+
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 UnsignedInt DeletionUpdate::calcSleepDelay(UnsignedInt minFrames, UnsignedInt maxFrames)
 {
 	UnsignedInt delay = GameLogicRandomValue( minFrames, maxFrames );
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	// A one frame lifetime at 60 Hz can expire before the client ever draws the object.
+	if (delay <= 1)
+	{
+		delay = 2;
+	}
+#else
 	if (delay < 1) delay = 1;
+#endif
 	m_dieFrame = TheGameLogic->getFrame() + delay;
 	return delay;
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-UpdateSleepTime DeletionUpdate::update( void )
+UpdateSleepTime DeletionUpdate::update()
 {
 	// Destroy (NOT kill) if time is up
-#if defined _DEBUG  && defined CRISS_CROSS_GEOMETRY
+#if defined RTS_DEBUG  && defined CRISS_CROSS_GEOMETRY
 	Object *obj = getObject();
 	if (obj)
 	{
@@ -115,7 +132,7 @@ void DeletionUpdate::crc( Xfer *xfer )
 	// extend base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -136,15 +153,15 @@ void DeletionUpdate::xfer( Xfer *xfer )
 	// die frame
 	xfer->xferUnsignedInt( &m_dieFrame );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void DeletionUpdate::loadPostProcess( void )
+void DeletionUpdate::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

@@ -22,17 +22,14 @@
 
 #pragma once
 
-#ifndef AUTOEDGEOUTTOOL_H
-#define AUTOEDGEOUTTOOL_H
-
 #include "Tool.h"
 class WorldHeightMapEdit;
 /*************************************************************************/
 /**                             AutoEdgeOutTool
-	 Does the BlendEdgesOut tool operation. 
+	 Does the BlendEdgesOut tool operation.
 ***************************************************************************/
 ///  Blend edges out tool.
-class AutoEdgeOutTool : public Tool 
+class AutoEdgeOutTool : public Tool
 {
 protected:
 	static Bool m_autoEdgeToolActive;
@@ -42,8 +39,8 @@ protected:
     static Bool m_mirrorDiag; // diagonal only (XY corner)
 
 public:
-	AutoEdgeOutTool(void);
-	~AutoEdgeOutTool(void);
+	AutoEdgeOutTool();
+	virtual ~AutoEdgeOutTool() override;
 
 	static void toggleMirror() { m_enableMirror = !m_enableMirror; }
 	static void toggleMirrorX() { m_mirrorX = !m_mirrorX; }
@@ -69,6 +66,3 @@ public:
 
 	static Bool isActive(void) {return m_autoEdgeToolActive; }
 };
-
-
-#endif //TOOL_H

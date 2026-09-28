@@ -34,16 +34,11 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if defined(_MSC_VER)
 #pragma once
-#endif
-
-#ifndef W3DMTL_H
-#define W3DMTL_H
 
 #include "always.h"
 #include "w3d_file.h"
-#include "Vector.H"
+#include "Vector.h"
 
 class GameMtl;
 class Mtl;
@@ -51,19 +46,19 @@ class ChunkSaveClass;
 
 
 /*
-** W3dMapClass.  
+** W3dMapClass.
 ** This class simply ties together the map info and the map filename
 */
 class W3dMapClass
 {
 public:
-	W3dMapClass(void) : Filename(NULL), AnimInfo(NULL) {};
+	W3dMapClass() : Filename(nullptr), AnimInfo(nullptr) {};
 	W3dMapClass(const W3dMapClass & that);
-	~W3dMapClass(void);
-	
+	~W3dMapClass();
+
 	W3dMapClass & operator = (const W3dMapClass & that);
 
-	void Reset(void);
+	void Reset();
 	void Set_Filename(const char * name);
 	void Set_Anim_Info(const W3dTextureInfoStruct * info);
 	void Set_Anim_Info(int framecount,float framerate);
@@ -74,7 +69,7 @@ public:
 
 
 /*
-** W3dMaterialClass. 
+** W3dMaterialClass.
 ** This class ties together w3d structures for up to 'MAX_PASSES' material passes.
 ** It is typically plugged into the next class (W3dMaterialDescClass) so that
 ** duplicate members can detected and shared.
@@ -83,18 +78,18 @@ class W3dMaterialClass
 {
 public:
 
-	W3dMaterialClass(void);
-	~W3dMaterialClass(void);
+	W3dMaterialClass();
+	~W3dMaterialClass();
 
 	enum { MAX_PASSES = 4, MAX_STAGES = 2 };
 
-	void								Reset(void);
+	void								Reset();
 
 	/*
 	** Construction from Max materials
 	*/
-	void								Init(Mtl * mtl, char *materialColorTexture=NULL);
-	void								Init(GameMtl * gamemtl, char *materialColorTexture=NULL);
+	void								Init(Mtl * mtl, char *materialColorTexture=nullptr);
+	void								Init(GameMtl * gamemtl, char *materialColorTexture=nullptr);
 
 	/*
 	** Manual Construction
@@ -111,25 +106,25 @@ public:
 	/*
 	** Inspection
 	*/
-	unsigned int					Get_Surface_Type(void) const;
-	int								Get_Sort_Level(void) const;
-	int								Get_Pass_Count(void) const;
+	unsigned int					Get_Surface_Type() const;
+	int								Get_Sort_Level() const;
+	int								Get_Pass_Count() const;
 	W3dVertexMaterialStruct *	Get_Vertex_Material(int pass = 0) const;
 	const char *					Get_Mapper_Args(int pass /*= 0*/, int stage /*= 0*/) const;
 	W3dShaderStruct				Get_Shader(int pass = 0) const;
 	W3dMapClass *					Get_Texture(int pass = 0,int stage = 0) const;
 	int								Get_Map_Channel(int pass = 0,int stage = 0) const;
 
-	bool								Is_Multi_Pass_Transparent(void) const;
+	bool								Is_Multi_Pass_Transparent() const;
 
 protected:
-	
-	void								Free(void);	
-	
+
+	void								Free();
+
 	unsigned int					SurfaceType;
 	int								SortLevel;
-	int								PassCount;	
-	
+	int								PassCount;
+
 	W3dShaderStruct				Shaders[MAX_PASSES];
 	W3dVertexMaterialStruct *	Materials[MAX_PASSES];
 	char *							MapperArgs[MAX_PASSES][MAX_STAGES];
@@ -157,29 +152,29 @@ public:
 		INCONSISTENT_SORT_LEVEL,	// material doesn't have the same sort level!
 	};
 
-	W3dMaterialDescClass(void);
-	~W3dMaterialDescClass(void);
-	
-	void								Reset(void);
+	W3dMaterialDescClass();
+	~W3dMaterialDescClass();
+
+	void								Reset();
 
 	/*
-	** Interface for adding a material description.  The material will be assigned 
-	** an index based on the order at which they are added.  Add your materials in 
-	** order, then use their indices to find the remapped vertex materials, textures, 
+	** Interface for adding a material description.  The material will be assigned
+	** an index based on the order at which they are added.  Add your materials in
+	** order, then use their indices to find the remapped vertex materials, textures,
 	** and shaders...
 	*/
-	ErrorType						Add_Material(const W3dMaterialClass & mat,const char * name = NULL);
-	
+	ErrorType						Add_Material(const W3dMaterialClass & mat,const char * name = nullptr);
+
 	/*
 	** Global Information.  These methods give access to all of the unique vertex materials,
 	** shaders, and textures being used.
 	*/
-	int								Material_Count(void);
-	int								Pass_Count(void);
-	int								Vertex_Material_Count(void);
-	int								Shader_Count(void);
-	int								Texture_Count(void);
-	int								Get_Sort_Level(void);
+	int								Material_Count();
+	int								Pass_Count();
+	int								Vertex_Material_Count();
+	int								Shader_Count();
+	int								Texture_Count();
+	int								Get_Sort_Level();
 
 	W3dVertexMaterialStruct *	Get_Vertex_Material(int vmat_index);
 	const char *					Get_Mapper_Args(int vmat_index, int stage);
@@ -229,7 +224,7 @@ private:
 	class MaterialRemapClass
 	{
 	public:
-		MaterialRemapClass(void);
+		MaterialRemapClass();
 
 		bool operator != (const MaterialRemapClass & that);
 		bool operator == (const MaterialRemapClass & that);
@@ -243,7 +238,7 @@ private:
 
 	/*
 	** VertMatClass
-	** This class encapsulates a vertex material structure and makes it extendable for 
+	** This class encapsulates a vertex material structure and makes it extendable for
 	** any purposes needed by the plugin code.  For example, the pass index is stored
 	** so that we can prevent "welding" of vertex materials in different passes (since
 	** this may not be desireable...)
@@ -251,8 +246,8 @@ private:
 	class VertMatClass
 	{
 	public:
-		VertMatClass(void);
-		~VertMatClass(void);
+		VertMatClass();
+		~VertMatClass();
 
 		VertMatClass & operator = (const VertMatClass & that);
 		bool operator != (const VertMatClass & that);
@@ -282,7 +277,7 @@ private:
 		W3dShaderStruct				Shader;
 		int								Crc;
 	};
-	
+
 	/*
 	** TexClass
 	** Simply here to allow extra info to be stored with each texture, as needed by this
@@ -298,7 +293,7 @@ private:
 		W3dMapClass						Map;
 		int								Crc;
 	};
-	
+
 	int																PassCount;
 	int																SortLevel;
 	DynamicVectorClass < MaterialRemapClass >				MaterialRemaps;
@@ -307,7 +302,3 @@ private:
 	DynamicVectorClass < TexClass >							Textures;
 
 };
-
-
-
-#endif

@@ -30,16 +30,11 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if defined(_MSC_VER)
 #pragma once
-#endif
 
-#ifndef __EMITTER_INSTANCE_LIST_H
-#define __EMITTER_INSTANCE_LIST_H
-
-#include "Vector.H"
-#include "Part_Ldr.H"
-#include "Part_Emt.H"
+#include "WWLib/Vector.h"
+#include "WW3D2/part_ldr.h"
+#include "WW3D2/part_emt.h"
 
 
 /////////////////////////////////////////////////////////////////////
@@ -50,26 +45,26 @@
 class EmitterInstanceListClass : public ParticleEmitterDefClass
 {
 	public:
-		
+
 		///////////////////////////////////////////////////////
 		// Public constructors/destructors
 		///////////////////////////////////////////////////////
-		EmitterInstanceListClass (void)		{ }
+		EmitterInstanceListClass ()		{ }
 		EmitterInstanceListClass (const EmitterInstanceListClass &src)
 			: ParticleEmitterDefClass (src)	{ }
 
-		virtual ~EmitterInstanceListClass (void);
+		virtual ~EmitterInstanceListClass ();
 
 		///////////////////////////////////////////////////////
 		// Public methods
-		///////////////////////////////////////////////////////		
+		///////////////////////////////////////////////////////
 		virtual void			Add_Emitter (ParticleEmitterClass *emitter);
-		virtual void			Free_List (void);
-		
+		virtual void			Free_List ();
+
 		///////////////////////////////////////////////////////
 		// Derived overrides
 		///////////////////////////////////////////////////////
-		
+
 		//
 		//	Note:  The following are settings that can be changed on
 		//		the fly.  All other settings are simply cached in the
@@ -81,7 +76,7 @@ class EmitterInstanceListClass : public ParticleEmitterDefClass
 		virtual void			Set_Burst_Size (unsigned int count);
 		virtual void			Set_Outward_Vel (float value);
 		virtual void			Set_Vel_Inherit (float value);
-		
+
 		//
 		//	Randomizer accessors
 		//
@@ -96,19 +91,17 @@ class EmitterInstanceListClass : public ParticleEmitterDefClass
 		virtual void			Set_Rotation_Keyframes (ParticlePropertyStruct<float> &keyframes, float orient_rnd);
 		virtual void			Set_Frame_Keyframes (ParticlePropertyStruct<float> &keyframes);
 		virtual void			Set_Blur_Time_Keyframes (ParticlePropertyStruct<float> &keyframes);
-	
+
 		virtual void			Get_Color_Keyframes (ParticlePropertyStruct<Vector3> &keyframes) const;
 		virtual void			Get_Opacity_Keyframes (ParticlePropertyStruct<float> &keyframes) const;
 		virtual void			Get_Size_Keyframes (ParticlePropertyStruct<float> &keyframes) const;
 
-			
+
 	private:
-		
+
 		///////////////////////////////////////////////////////
 		// Private member data
 		///////////////////////////////////////////////////////
 
 		DynamicVectorClass<ParticleEmitterClass *>	m_List;
 };
-
-#endif //__EMITTER_INSTANCE_LIST_H

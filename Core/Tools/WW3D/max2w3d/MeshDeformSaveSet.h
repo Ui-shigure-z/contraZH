@@ -17,29 +17,28 @@
 */
 
 /* $Header: /Commando/Code/Tools/max2w3d/MeshDeformSaveSet.h 2     6/16/99 6:56p Patrick $ */
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Commando / G 3D engine                                       * 
- *                                                                                             * 
- *                    File Name : MeshDeformSaveSet.H                                              
- *                                                                                             * 
- *                   Programmer : Patrick Smith                                                * 
- *                                                                                             * 
- *                   Start Date : 05/28/99                                                     * 
- *                                                                                             * 
- *                  Last Update : 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Commando / G 3D engine                                       *
+ *                                                                                             *
+ *                    File Name : MeshDeformSaveSet.h
+ *                                                                                             *
+ *                   Programmer : Patrick Smith                                                *
+ *                                                                                             *
+ *                   Start Date : 05/28/99                                                     *
+ *                                                                                             *
+ *                  Last Update :
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef __MESH_DEFORM_SAVE_SET_H
-#define __MESH_DEFORM_SAVE_SET_H
+#pragma once
 
 #include <max.h>
-#include "Vector.H"
+#include "Vector.h"
 
 // Forward declarations
 class ChunkSaveClass;
@@ -93,34 +92,34 @@ public:
 		//////////////////////////////////////////////////////////////////////
 		//	Public constructors/destructors
 		//////////////////////////////////////////////////////////////////////
-		MeshDeformSaveSetClass (void)
+		MeshDeformSaveSetClass ()
 			:	m_Flags (0),
-				m_CurrentKeyFrame (NULL)	{ }
-		~MeshDeformSaveSetClass (void)	{ Reset (); }
+				m_CurrentKeyFrame (nullptr)	{ }
+		~MeshDeformSaveSetClass ()	{ Reset (); }
 
 		//////////////////////////////////////////////////////////////////////
 		//	Public methods
 		//////////////////////////////////////////////////////////////////////
-		
-		// Keyframe managment
+
+		// Keyframe management
 		void					Begin_Keyframe (float state);
-		void					End_Keyframe (void);
-		
-		// Vertex managment
+		void					End_Keyframe ();
+
+		// Vertex management
 		void					Add_Vert (UINT vert_index, const Point3 &position, const VertColor &color);
 
 		// Misc
-		void					Reset (void);
-		bool					Is_Empty (void) const	{ return m_DeformData.Count () == 0; }
+		void					Reset ();
+		bool					Is_Empty () const	{ return m_DeformData.Count () == 0; }
 
 		// Flag support
 		bool					Get_Flag (unsigned int flag) const				{ return (m_Flags & flag) == flag; }
 		void					Set_Flag (unsigned int flag, bool value)		{ if (value) (m_Flags |= flag); else (m_Flags &= ~flag); }
-		unsigned int		Get_Flags (void) const								{ return m_Flags; }
+		unsigned int		Get_Flags () const								{ return m_Flags; }
 
 		// Enumeration
 		float					Get_Deform_State (int key_frame) const			{ return m_DeformData[key_frame]->state; }
-		int					Get_Keyframe_Count (void) const					{ return m_DeformData.Count (); }
+		int					Get_Keyframe_Count () const					{ return m_DeformData.Count (); }
 		int					Get_Deform_Data_Count (int key_frame) const	{ return m_DeformData[key_frame]->deform_list.Count (); }
 		DEFORM_DATA &		Get_Deform_Data (int key_frame, int index)	{ return m_DeformData[key_frame]->deform_list[index]; }
 		void					Replace_Deform_Data (int keyframe_index, DynamicVectorClass<DEFORM_DATA> &list);
@@ -134,5 +133,3 @@ public:
 		KEYFRAME *									m_CurrentKeyFrame;
 		unsigned int								m_Flags;
 };
-
-#endif //__MESH_DEFORM_SAVE_SET_H

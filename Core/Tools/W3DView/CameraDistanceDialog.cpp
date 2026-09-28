@@ -19,14 +19,14 @@
 // CameraDistanceDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
-#include "cameradistancedialog.h"
-#include "utils.h"
-#include "graphicview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "CameraDistanceDialog.h"
+#include "Utils.h"
+#include "GraphicView.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -38,13 +38,12 @@ static char THIS_FILE[] = __FILE__;
 // CameraDistanceDialogClass
 //
 /////////////////////////////////////////////////////////////////////////////
-CameraDistanceDialogClass::CameraDistanceDialogClass(CWnd* pParent /*=NULL*/)
+CameraDistanceDialogClass::CameraDistanceDialogClass(CWnd* pParent /*=nullptr*/)
 	: CDialog(CameraDistanceDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CameraDistanceDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -60,7 +59,6 @@ CameraDistanceDialogClass::DoDataExchange (CDataExchange *pDX)
 	//{{AFX_DATA_MAP(CameraDistanceDialogClass)
 	DDX_Control(pDX, IDC_DISTANCE_SPIN, m_DistanceSpinCtrl);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -76,7 +74,7 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-CameraDistanceDialogClass::OnInitDialog (void) 
+CameraDistanceDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
@@ -94,14 +92,13 @@ CameraDistanceDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-CameraDistanceDialogClass::OnOK (void)
+CameraDistanceDialogClass::OnOK ()
 {
 	CDialog::OnOK ();
 
 	float distance = ::GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT);
 	CGraphicView *graphic_view = ::Get_Graphic_View ();
 	graphic_view->Set_Camera_Distance (distance);
-	return ;
 }
 
 
@@ -116,17 +113,17 @@ CameraDistanceDialogClass::OnNotify
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
-	
+
 	// Allow the base class to process this message
 	return CDialog::OnNotify (wParam, lParam, pResult);
 }

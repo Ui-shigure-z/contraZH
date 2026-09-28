@@ -16,17 +16,13 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_COLORPICKERDIALOGCLASS_H__C943A7F1_CAA3_11D2_8DDF_00104B6FD9E3__INCLUDED_)
-#define AFX_COLORPICKERDIALOGCLASS_H__C943A7F1_CAA3_11D2_8DDF_00104B6FD9E3__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // ColorPickerDialogClass.h : header file
 //
 
 #include "resource.h"
-#include "colorutils.h"
+#include "ColorUtils.h"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -43,7 +39,7 @@ class ColorPickerDialogClass : public CDialog
 {
 // Construction
 public:
-	ColorPickerDialogClass (int red, int green, int blue, CWnd* pParent = NULL, UINT res_id = ColorPickerDialogClass::IDD);
+	ColorPickerDialogClass (int red, int green, int blue, CWnd* pParent = nullptr, UINT res_id = ColorPickerDialogClass::IDD);
 
 // Dialog Data
 	//{{AFX_DATA(ColorPickerDialogClass)
@@ -58,11 +54,11 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(ColorPickerDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
-	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
-	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
-	virtual void PostNcDestroy();
+	virtual void DoDataExchange(CDataExchange* pDX)  override;    // DDX/DDV support
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override;
+	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
+	virtual void PostNcDestroy() override;
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -70,7 +66,7 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(ColorPickerDialogClass)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnReset();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
@@ -80,30 +76,30 @@ protected:
 		/////////////////////////////////////////////////////////////
 		//	Public methods
 		/////////////////////////////////////////////////////////////
-		int					Get_Red (void) const { return (int)m_CurrentRed; }
-		int					Get_Green (void) const { return (int)m_CurrentGreen; }
-		int					Get_Blue (void) const { return (int)m_CurrentBlue; }
+		int					Get_Red () const { return (int)m_CurrentRed; }
+		int					Get_Green () const { return (int)m_CurrentGreen; }
+		int					Get_Blue () const { return (int)m_CurrentBlue; }
 		void					Set_Color (int r, int g, int b)
 									{ Update_Color((float)r, (float)g, (float)b); }
 		void					Set_Original_Color (int r, int g, int b);
 		void					Create_Form (CWnd *parent);
 		void					Set_Update_Callback (WWCTRL_COLORCALLBACK callme, void *arg)
 									{ m_UpdateCallback = callme; m_CallArg = arg; }
-		
+
 	protected:
 
 		/////////////////////////////////////////////////////////////
 		//	Protected methods
 		/////////////////////////////////////////////////////////////
-		void					Update_Red_Bar (void);
-		void					Update_Green_Bar (void);
-		void					Update_Blue_Bar (void);
-		void					Update_Current_Color_Bar (void);
-		void					Update_Whiteness_Bar (void);
+		void					Update_Red_Bar ();
+		void					Update_Green_Bar ();
+		void					Update_Blue_Bar ();
+		void					Update_Current_Color_Bar ();
+		void					Update_Whiteness_Bar ();
 		void					Update_Color (float red, float green, float blue, DWORD flags = 0xFFFFFFFF);
 
 	private:
-		
+
 		/////////////////////////////////////////////////////////////
 		//	Private member data
 		/////////////////////////////////////////////////////////////
@@ -132,5 +128,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_COLORPICKERDIALOGCLASS_H__C943A7F1_CAA3_11D2_8DDF_00104B6FD9E3__INCLUDED_)

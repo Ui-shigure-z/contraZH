@@ -16,13 +16,14 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// TheSuperHackers @compile feliwir 15/04/2025 Simple debug implementation useful for tools
-#include "wwdebug.h"
+// TheSuperHackers @build feliwir 15/04/2025 Simple debug implementation useful for tools
+
+#include "WWDebug/wwdebug.h"
 #include <stdarg.h>
 #include <stdlib.h>
-#include <stdio.h>
+#include <Utility/stdio_adapter.h>
 
-char* TheCurrentIgnoreCrashPtr = NULL;
+char* TheCurrentIgnoreCrashPtr = nullptr;
 
 
 #ifdef DEBUG_LOGGING
@@ -35,6 +36,16 @@ void DebugLog(const char *format, ...)
 	va_start(arg, format);
 	vprintf(format, arg);
 	va_end(arg);
+	printf("\n");
+}
+
+void DebugRenderLog(const char *format, ...)
+{
+	va_list arg;
+	va_start(arg, format);
+	vprintf(format, arg);
+	va_end(arg);
+	printf("\n");
 }
 
 #endif
@@ -49,6 +60,7 @@ void DebugCrash(const char *format, ...)
 	va_start(arg, format);
 	vprintf(format, arg);
 	va_end(arg);
+	printf("\n");
 
 	// No exit in this stub
 }

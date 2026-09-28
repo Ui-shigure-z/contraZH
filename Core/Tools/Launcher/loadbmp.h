@@ -16,8 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef LOADBMP_HEADER
-#define LOADBMP_HEADER
+#pragma once
 
 #include<stdlib.h>
 #include<stdio.h>
@@ -34,13 +33,10 @@ class LoadBmp
                   LoadBmp();
                  ~LoadBmp();
    bit8           init(const char *filename,HWND hwnd);  // must call before the drawBmp
-   bit8           drawBmp(void);  // call this from your WM_PAINT message
+   bit8           drawBmp();  // call this from your WM_PAINT message
 
  private:
    HBITMAP        BitmapHandle_;
    HPALETTE       PalHandle_;
    HWND           WindowHandle_;
 };
-
-
-#endif

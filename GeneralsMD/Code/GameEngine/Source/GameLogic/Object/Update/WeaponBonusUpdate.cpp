@@ -24,12 +24,12 @@
 
 // FILE: WeaponBonusUpdate.cpp /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002-2003 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002-2003 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	July 2003
@@ -37,8 +37,8 @@
 //	Filename: 	WeaponBonusUpdate.cpp
 //
 //	author:		Graham Smallwood
-//	
-//	purpose:	Like healing in that it can affect just me or people around, 
+//
+//	purpose:	Like healing in that it can affect just me or people around,
 //						except this gives a Weapon Bonus instead of health
 //
 //-----------------------------------------------------------------------------
@@ -51,7 +51,7 @@
 //-----------------------------------------------------------------------------
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "GameLogic/Module/WeaponBonusUpdate.h"
 
@@ -61,31 +61,38 @@
 #include "GameLogic/Object.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/Weapon.h"
+#include "GameClient/TintStatus.h"
 
 //-----------------------------------------------------------------------------
 WeaponBonusUpdateModuleData::WeaponBonusUpdateModuleData()
 {
 	m_requiredAffectKindOf.clear();
 	m_forbiddenAffectKindOf.clear();
+	m_targetsMask = WEAPON_AFFECTS_ALLIES;
+	m_isAffectAirborne = true;
 	m_bonusDuration = 0;
 	m_bonusDelay = 0;
 	m_bonusRange = 0;
 	m_bonusConditionType = WEAPONBONUSCONDITION_INVALID;
+	m_tintStatus = TINT_STATUS_FRENZY;
 }
 
 //-----------------------------------------------------------------------------
-void WeaponBonusUpdateModuleData::buildFieldParse(MultiIniFieldParse& p) 
+void WeaponBonusUpdateModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
   UpdateModuleData::buildFieldParse(p);
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "RequiredAffectKindOf",		KindOfMaskType::parseFromINI,		NULL, offsetof( WeaponBonusUpdateModuleData, m_requiredAffectKindOf ) },		
+		{ "RequiredAffectKindOf",		KindOfMaskType::parseFromINI,		NULL, offsetof( WeaponBonusUpdateModuleData, m_requiredAffectKindOf ) },
 		{ "ForbiddenAffectKindOf",	KindOfMaskType::parseFromINI,		NULL, offsetof( WeaponBonusUpdateModuleData, m_forbiddenAffectKindOf ) },
+		{ "AffectsTargets", INI::parseBitString32,	TheWeaponAffectsMaskNames, offsetof(WeaponBonusUpdateModuleData, m_targetsMask) },
+		{ "AffectAirborne", INI::parseBool, NULL, offsetof(WeaponBonusUpdateModuleData, m_isAffectAirborne) },
 		{ "BonusDuration",					INI::parseDurationUnsignedInt,	NULL, offsetof( WeaponBonusUpdateModuleData, m_bonusDuration ) },
 		{ "BonusDelay",							INI::parseDurationUnsignedInt,	NULL, offsetof( WeaponBonusUpdateModuleData, m_bonusDelay ) },
 		{ "BonusRange",							INI::parseReal,									NULL, offsetof( WeaponBonusUpdateModuleData, m_bonusRange ) },
-		{ "BonusConditionType",			INI::parseIndexList,	TheWeaponBonusNames, offsetof( WeaponBonusUpdateModuleData, m_bonusConditionType ) },
-		{ 0, 0, 0, 0 }
+		{ "BonusConditionType",			INI::parseIndexList,	WeaponBonusConditionFlags::getBitNames(), offsetof( WeaponBonusUpdateModuleData, m_bonusConditionType ) },
+		{ "TintStatusType",			TintStatusFlags::parseSingleBitFromINI,	NULL, offsetof( WeaponBonusUpdateModuleData, m_tintStatus ) },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
 }
@@ -99,7 +106,7 @@ WeaponBonusUpdate::WeaponBonusUpdate( Thing *thing, const ModuleData* moduleData
 }
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-WeaponBonusUpdate::~WeaponBonusUpdate( void )
+WeaponBonusUpdate::~WeaponBonusUpdate()
 {
 
 }
@@ -112,35 +119,45 @@ struct tempWeaponBonusData // Hey Steven, bite me!  hahahaha  _Lowercase_ since 
 	UnsignedInt m_duration;
 	KindOfMaskType m_requiredMask;
 	KindOfMaskType m_forbiddenMask;
+	TintStatus m_tintStatus;
+	Bool m_isAffectAirborne;
 };
 void containIteratingDoTempWeaponBonus( Object *passenger, void *voidData)
 {
 	tempWeaponBonusData *data = (tempWeaponBonusData *)voidData;
 
-	if( passenger->isKindOfMulti(data->m_requiredMask, data->m_forbiddenMask) )
-		passenger->doTempWeaponBonus(data->m_type, data->m_duration);
+	if (passenger->isKindOfMulti(data->m_requiredMask, data->m_forbiddenMask)) {
+		if (data->m_isAffectAirborne || !passenger->isAirborneTarget()) {
+			passenger->doTempWeaponBonus(data->m_type, data->m_duration, data->m_tintStatus);
+		}
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-UpdateSleepTime WeaponBonusUpdate::update( void )
+UpdateSleepTime WeaponBonusUpdate::update()
 {
 	const WeaponBonusUpdateModuleData * data = getWeaponBonusUpdateModuleData();
 	Object *me = getObject();
 
-	PartitionFilterRelationship relationship( me, PartitionFilterRelationship::ALLOW_ALLIES );
+	Int targetFlags = 0;
+	if (data->m_targetsMask & WEAPON_AFFECTS_ALLIES) targetFlags |= PartitionFilterRelationship::ALLOW_ALLIES;
+	if (data->m_targetsMask & WEAPON_AFFECTS_ENEMIES) targetFlags |= PartitionFilterRelationship::ALLOW_ENEMIES;
+	if (data->m_targetsMask & WEAPON_AFFECTS_NEUTRALS) targetFlags |= PartitionFilterRelationship::ALLOW_NEUTRAL;
+
+	PartitionFilterRelationship relationship(me, targetFlags);
 	PartitionFilterSameMapStatus filterMapStatus(me);
 	PartitionFilterAlive filterAlive;
 
 	// Leaving this here commented out to show that I need to reach valid contents of invalid transports.
 	// So these checks are on an individual basis, not in the Partition query
 //	PartitionFilterAcceptByKindOf filterKindof(data->m_requiredAffectKindOf,data->m_forbiddenAffectKindOf);
-	PartitionFilter *filters[] = { &relationship, &filterAlive, &filterMapStatus, NULL };
+	PartitionFilter *filters[] = { &relationship, &filterAlive, &filterMapStatus, nullptr };
 
 	// scan objects in our region
-	ObjectIterator *iter = ThePartitionManager->iterateObjectsInRange( me->getPosition(), 
-																																			data->m_bonusRange, 
-																																			FROM_CENTER_2D, 
+	ObjectIterator *iter = ThePartitionManager->iterateObjectsInRange( me->getPosition(),
+																																			data->m_bonusRange,
+																																			FROM_CENTER_2D,
 																																			filters );
 	MemoryPoolObjectHolder hold( iter );
 	tempWeaponBonusData weaponBonusData;
@@ -148,12 +165,16 @@ UpdateSleepTime WeaponBonusUpdate::update( void )
 	weaponBonusData.m_duration = data->m_bonusDuration;
 	weaponBonusData.m_requiredMask = data->m_requiredAffectKindOf;
 	weaponBonusData.m_forbiddenMask = data->m_forbiddenAffectKindOf;
-	
-	for( Object *currentObj = iter->first(); currentObj != NULL; currentObj = iter->next() )
+	weaponBonusData.m_tintStatus = data->m_tintStatus;
+	weaponBonusData.m_isAffectAirborne = data->m_isAffectAirborne;
+
+	for( Object *currentObj = iter->first(); currentObj != nullptr; currentObj = iter->next() )
 	{
 		if( currentObj->isKindOfMulti(data->m_requiredAffectKindOf, data->m_forbiddenAffectKindOf) )
 		{
-			currentObj->doTempWeaponBonus(data->m_bonusConditionType, data->m_bonusDuration);
+			if (data->m_isAffectAirborne || !currentObj->isAirborneTarget()) {
+				currentObj->doTempWeaponBonus(data->m_bonusConditionType, data->m_bonusDuration, data->m_tintStatus);
+			}
 		}
 
 		if( currentObj->getContain() )
@@ -174,7 +195,7 @@ void WeaponBonusUpdate::crc( Xfer *xfer )
 	// extend base class
 	UpdateModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -192,15 +213,15 @@ void WeaponBonusUpdate::xfer( Xfer *xfer )
 	// extend base class
 	UpdateModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void WeaponBonusUpdate::loadPostProcess( void )
+void WeaponBonusUpdate::loadPostProcess()
 {
 
 	// extend base class
 	UpdateModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

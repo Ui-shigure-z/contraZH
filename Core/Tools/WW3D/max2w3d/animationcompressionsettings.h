@@ -36,9 +36,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#ifndef __ANIMATION_COMPRESSION_SETTINGS_H
-#define __ANIMATION_COMPRESSION_SETTINGS_H
+#pragma once
 
 #include <windows.h>
 #include <max.h>
@@ -57,16 +55,16 @@ public:
 	//////////////////////////////////////////////////////////////////
 	//	Public constructors/destructors
 	//////////////////////////////////////////////////////////////////
-	AnimationCompressionSettingsDialogClass (Interface *maxinterface, HWND parent_wnd = NULL);
-	~AnimationCompressionSettingsDialogClass (void);
+	AnimationCompressionSettingsDialogClass (Interface *maxinterface, HWND parent_wnd = nullptr);
+	~AnimationCompressionSettingsDialogClass ();
 
 
 	//////////////////////////////////////////////////////////////////
 	//	Public methods
-	//////////////////////////////////////////////////////////////////		
-	
+	//////////////////////////////////////////////////////////////////
+
 	void			Set_Options (W3dExportOptionsStruct *options)	{ Options = options; }
-	int			Do_Modal (void);
+	int			Do_Modal ();
 
 private:
 
@@ -74,13 +72,13 @@ private:
 	//	Static methods
 	//////////////////////////////////////////////////////////////////
 	static BOOL CALLBACK	Real_Message_Proc (HWND wnd, UINT message, WPARAM wparam, LPARAM lparam);
-	
+
 	//////////////////////////////////////////////////////////////////
 	//	Private methods
 	//////////////////////////////////////////////////////////////////
 	BOOL			Message_Proc (UINT message, WPARAM wparam, LPARAM lparam);
-	void			Initialize_Controls (void);
-	void			Save_Settings (void);
+	void			Initialize_Controls ();
+	void			Save_Settings ();
 
 	//////////////////////////////////////////////////////////////////
 	//	Private member data
@@ -90,7 +88,3 @@ private:
 	HWND								Wnd;
 	HWND								ParentWnd;
 };
-
-
-#endif //__ANIMATION_COMPRESSION_SETTINGS_H
-

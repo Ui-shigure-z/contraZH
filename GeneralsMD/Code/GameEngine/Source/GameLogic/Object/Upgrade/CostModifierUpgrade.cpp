@@ -24,12 +24,12 @@
 
 // FILE: CostModifierUpgrade.cpp /////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Electronic Arts Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2002 - All Rights Reserved                  
-//                                                                          
+//
+//                       Electronic Arts Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2002 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 //	created:	Aug 2002
@@ -37,7 +37,7 @@
 //	Filename: 	CostModifierUpgrade.cpp
 //
 //	author:		Chris Huybregts
-//	
+//
 //	purpose:	Upgrade that modifies the cost by a certain percentage
 //
 //-----------------------------------------------------------------------------
@@ -50,9 +50,10 @@
 //-----------------------------------------------------------------------------
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Player.h"
+#include "Common/ThingTemplate.h"
 #include "Common/Xfer.h"
 #include "GameLogic/Module/CostModifierUpgrade.h"
 #include "GameLogic/Object.h"
@@ -72,13 +73,15 @@
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-CostModifierUpgradeModuleData::CostModifierUpgradeModuleData( void )
+CostModifierUpgradeModuleData::CostModifierUpgradeModuleData()
 {
 
 	m_kindOf = KINDOFMASK_NONE;
 	m_percentage = 0;
+	m_isOneShot = FALSE;
+	m_stackingType = NO_STACKING;
 
-}  // end CostModifierUpgradeModuleData
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -86,15 +89,18 @@ CostModifierUpgradeModuleData::CostModifierUpgradeModuleData( void )
 {
 	UpgradeModuleData::buildFieldParse( p );
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
 		{ "EffectKindOf",		KindOfMaskType::parseFromINI, NULL, offsetof( CostModifierUpgradeModuleData, m_kindOf ) },
 		{ "Percentage",			INI::parsePercentToReal, NULL, offsetof( CostModifierUpgradeModuleData, m_percentage ) },
-		{ 0, 0, 0, 0 } 
+		{ "IsOneShotUpgrade",		INI::parseBool, NULL, offsetof( CostModifierUpgradeModuleData, m_isOneShot) },
+		{ "BonusStacksWith",		INI::parseIndexList, TheBonusStackingTypeNames, offsetof( CostModifierUpgradeModuleData, m_stackingType) },
+		
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 	p.add(dataFieldParse);
 
-}  // end buildFieldParse
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,75 +108,103 @@ CostModifierUpgradeModuleData::CostModifierUpgradeModuleData( void )
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-CostModifierUpgrade::CostModifierUpgrade( Thing *thing, const ModuleData* moduleData ) : 
+CostModifierUpgrade::CostModifierUpgrade( Thing *thing, const ModuleData* moduleData ) :
 							UpgradeModule( thing, moduleData )
 {
 
-}  // end CostModifierUpgrade
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-CostModifierUpgrade::~CostModifierUpgrade( void )
+CostModifierUpgrade::~CostModifierUpgrade()
 {
 
-}  // end ~CostModifierUpgrade
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void CostModifierUpgrade::onDelete( void )
+void CostModifierUpgrade::onDelete()
 {
+	const CostModifierUpgradeModuleData* d = getCostModifierUpgradeModuleData();
+	
+	// This is a global one time upgrade. Don't remove it.
+	if (d->m_isOneShot)
+		return;
 
 	// if we haven't been upgraded there is nothing to clean up
 	if( isAlreadyUpgraded() == FALSE )
 		return;
 
-	// remove the radar from the player
+	Bool stackWithAny = d->m_stackingType == SAME_TYPE;
+	Bool stackUniqueType = d->m_stackingType == OTHER_TYPE;
+
+	// remove the bonus from the player
 	Player *player = getObject()->getControllingPlayer();
-	if( player )
-		player->removeKindOfProductionCostChange(getCostModifierUpgradeModuleData()->m_kindOf,getCostModifierUpgradeModuleData()->m_percentage );
+	if (player) {
+		player->removeKindOfProductionCostChange(d->m_kindOf, d->m_percentage,
+			getObject()->getTemplate()->getTemplateID(), stackUniqueType, stackWithAny);
+	}
 
 	// this upgrade module is now "not upgraded"
 	setUpgradeExecuted(FALSE);
 
-}  // end onDelete
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void CostModifierUpgrade::onCapture( Player *oldOwner, Player *newOwner )
 {
+	const CostModifierUpgradeModuleData* d = getCostModifierUpgradeModuleData();
+
+	// This is a global one time upgrade. Don't remove or transfer it.
+	if (d->m_isOneShot)
+		return;
 
 	// do nothing if we haven't upgraded yet
 	if( isAlreadyUpgraded() == FALSE )
 		return;
 
-	// remove radar from old player and add to new player
+	// remove bonus from old player and add to new player
+	Bool stackUniqueType = d->m_stackingType == OTHER_TYPE;
+	Bool stackWithAny = d->m_stackingType == SAME_TYPE;
+
+
 	if( oldOwner )
 	{
+		oldOwner->removeKindOfProductionCostChange(d->m_kindOf, d->m_percentage,
+			getObject()->getTemplate()->getTemplateID(), stackUniqueType, stackWithAny);
 
-		oldOwner->removeKindOfProductionCostChange(getCostModifierUpgradeModuleData()->m_kindOf,getCostModifierUpgradeModuleData()->m_percentage );
 		setUpgradeExecuted(FALSE);
 
-	}  // end if
+	}
 	if( newOwner )
 	{
+		newOwner->addKindOfProductionCostChange(d->m_kindOf, d->m_percentage,
+			getObject()->getTemplate()->getTemplateID(), stackUniqueType, stackWithAny);
 
-		newOwner->addKindOfProductionCostChange(getCostModifierUpgradeModuleData()->m_kindOf,getCostModifierUpgradeModuleData()->m_percentage );
 		setUpgradeExecuted(TRUE);
 
-	}  // end if
+	}
 
-}  // end onCapture
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void CostModifierUpgrade::upgradeImplementation( void )
+void CostModifierUpgrade::upgradeImplementation()
 {
+	const CostModifierUpgradeModuleData * d = getCostModifierUpgradeModuleData();
+
 	Player *player = getObject()->getControllingPlayer();
 
 	// update the player with another TypeOfProductionCostChange
-	player->addKindOfProductionCostChange(getCostModifierUpgradeModuleData()->m_kindOf,getCostModifierUpgradeModuleData()->m_percentage );
 
-}  // end upgradeImplementation
+	Bool stackWithAny = d->m_stackingType == SAME_TYPE;
+	Bool stackUniqueType = d->m_stackingType == OTHER_TYPE;
+
+	player->addKindOfProductionCostChange(d->m_kindOf, d->m_percentage,
+		getObject()->getTemplate()->getTemplateID(), stackUniqueType, stackWithAny);
+
+}
 
 // ------------------------------------------------------------------------------------------------
 /** CRC */
@@ -181,7 +215,7 @@ void CostModifierUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -199,15 +233,15 @@ void CostModifierUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void CostModifierUpgrade::loadPostProcess( void )
+void CostModifierUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

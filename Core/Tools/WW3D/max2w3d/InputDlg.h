@@ -34,10 +34,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-
-#ifndef INPUTDLG_H
-#define INPUTDLG_H
+#pragma once
 
 #include "dllmain.h"
 #include "resource.h"
@@ -53,10 +50,10 @@ class InputDlg
 public:
 
 	// Construction
-	InputDlg (HWND hWndParent=NULL);
+	InputDlg (HWND hWndParent=nullptr);
 
 	// Methods
-	int DoModal (void);		// returns IDOK or IDCANCEL
+	int DoModal ();		// returns IDOK or IDCANCEL
 
 	void SetCaption (const char *caption);
 	void SetLabel (const char *label);
@@ -79,8 +76,5 @@ protected:
 
 	// Message Handlers
 	LRESULT OnInitDialog (WPARAM wParam, LPARAM lParam);
-	BOOL OnOK (void);
+	BOOL OnOK ();
 };
-
-
-#endif

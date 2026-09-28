@@ -16,26 +16,25 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Command & Conquer                                            * 
- *                                                                                             * 
- *                     $Archive:: /Commando/Library/HSV.H                                     $* 
- *                                                                                             * 
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Command & Conquer                                            *
+ *                                                                                             *
+ *                     $Archive:: /Commando/Library/HSV.h                                     $*
+ *                                                                                             *
  *                      $Author:: Greg_h                                                      $*
- *                                                                                             * 
+ *                                                                                             *
  *                     $Modtime:: 7/22/97 11:37a                                              $*
- *                                                                                             * 
+ *                                                                                             *
  *                    $Revision:: 1                                                           $*
  *                                                                                             *
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef HSV_H
-#define HSV_H
+#pragma once
 
 class RGBClass;
 class HSVClass;
@@ -51,13 +50,13 @@ class HSVClass
 		static HSVClass const BlackColor;
 
 	public:
-		HSVClass(void) : Hue(0), Saturation(0), Value(0) {};
+		HSVClass() : Hue(0), Saturation(0), Value(0) {};
 		HSVClass(unsigned char hue, unsigned char saturation, unsigned char value) :
 				Hue(hue),
 				Saturation(saturation),
 				Value(value)
 			{};
-		operator RGBClass (void) const;
+		operator RGBClass () const;
 
 		enum {
 			MAX_VALUE=255
@@ -65,9 +64,9 @@ class HSVClass
 
 		void Adjust(int ratio, HSVClass const & hsv);
 		int Difference(HSVClass const & hsv) const;
-		int Get_Hue(void) const {return(Hue);};
-		int Get_Saturation(void) const {return(Saturation);};
-		int Get_Value(void) const {return(Value);};
+		int Get_Hue() const {return(Hue);};
+		int Get_Saturation() const {return(Saturation);};
+		int Get_Value() const {return(Value);};
 		void Set_Hue(unsigned char value) {Hue = value;}
 		void Set_Saturation(unsigned char value) {Saturation = value;}
 		void Set_Value(unsigned char value) {Value = value;}
@@ -77,5 +76,3 @@ class HSVClass
 		unsigned char Saturation;
 		unsigned char Value;
 };
-
-#endif

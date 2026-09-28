@@ -19,22 +19,22 @@
 // AnimatedSoundOptionsDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
-#include "globals.h"
-#include "animatedsoundoptionsdialog.h"
-#include "ffactory.h"
-#include "animatedsoundmgr.h"
-#include "wwsaveload.h"
-#include "definitionmgr.h"
-#include "wwfile.h"
-#include "chunkio.h"
-#include "wwdebug.h"
-#include "restrictedfiledialog.h"
-#include "utils.h"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "Globals.h"
+#include "AnimatedSoundOptionsDialog.h"
+#include "WWLib/ffactory.h"
+#include "WW3D2/animatedsoundmgr.h"
+#include "WWSaveLoad/wwsaveload.h"
+#include "WWSaveLoad/definitionmgr.h"
+#include "WWLib/WWFILE.h"
+#include "WWLib/chunkio.h"
+#include "WWDebug/wwdebug.h"
+#include "RestrictedFileDialog.h"
+#include "Utils.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -44,7 +44,7 @@ static char THIS_FILE[] = __FILE__;
 // AnimatedSoundOptionsDialogClass dialog
 
 
-AnimatedSoundOptionsDialogClass::AnimatedSoundOptionsDialogClass(CWnd* pParent /*=NULL*/)
+AnimatedSoundOptionsDialogClass::AnimatedSoundOptionsDialogClass(CWnd* pParent /*=nullptr*/)
 	: CDialog(AnimatedSoundOptionsDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(AnimatedSoundOptionsDialogClass)
@@ -77,7 +77,7 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-AnimatedSoundOptionsDialogClass::OnSoundDefinitionLibraryBrowseButton (void)
+AnimatedSoundOptionsDialogClass::OnSoundDefinitionLibraryBrowseButton ()
 {
 	CFileDialog dialog (	TRUE,
 								".ddb",
@@ -92,8 +92,6 @@ AnimatedSoundOptionsDialogClass::OnSoundDefinitionLibraryBrowseButton (void)
 	if (dialog.DoModal () == IDOK) {
 		SetDlgItemText (IDC_SOUND_DEFINITION_LIBRARY_EDIT, dialog.GetPathName ());
 	}
-
-	return ;
 }
 
 
@@ -103,7 +101,7 @@ AnimatedSoundOptionsDialogClass::OnSoundDefinitionLibraryBrowseButton (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-AnimatedSoundOptionsDialogClass::OnSoundIniBrowseButton (void) 
+AnimatedSoundOptionsDialogClass::OnSoundIniBrowseButton ()
 {
 	CFileDialog dialog (	TRUE,
 								".ini",
@@ -118,8 +116,6 @@ AnimatedSoundOptionsDialogClass::OnSoundIniBrowseButton (void)
 	if (dialog.DoModal () == IDOK) {
 		SetDlgItemText (IDC_SOUND_INI_EDIT, dialog.GetPathName ());
 	}
-
-	return ;
 }
 
 
@@ -129,7 +125,7 @@ AnimatedSoundOptionsDialogClass::OnSoundIniBrowseButton (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-AnimatedSoundOptionsDialogClass::OnOK (void)
+AnimatedSoundOptionsDialogClass::OnOK ()
 {
 	CDialog::OnOK ();
 
@@ -151,7 +147,6 @@ AnimatedSoundOptionsDialogClass::OnOK (void)
 	theApp.WriteProfileString ("Config", "AnimSoundDataPath", sound_data_path);
 
 	Load_Animated_Sound_Settings ();
-	return ;
 }
 
 
@@ -161,7 +156,7 @@ AnimatedSoundOptionsDialogClass::OnOK (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-AnimatedSoundOptionsDialogClass::OnInitDialog (void)
+AnimatedSoundOptionsDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
@@ -174,7 +169,7 @@ AnimatedSoundOptionsDialogClass::OnInitDialog (void)
 	//
 	SetDlgItemText (IDC_SOUND_DEFINITION_LIBRARY_EDIT, sound_def_lib_path);
 	SetDlgItemText (IDC_SOUND_INI_EDIT, sound_ini_path);
-	SetDlgItemText (IDC_SOUND_FILE_PATH_EDIT, sound_data_path);	
+	SetDlgItemText (IDC_SOUND_FILE_PATH_EDIT, sound_data_path);
 
 	return TRUE;
 }
@@ -186,7 +181,7 @@ AnimatedSoundOptionsDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-AnimatedSoundOptionsDialogClass::Load_Animated_Sound_Settings (void)
+AnimatedSoundOptionsDialogClass::Load_Animated_Sound_Settings ()
 {
 	//
 	//	Start fresh
@@ -204,14 +199,14 @@ AnimatedSoundOptionsDialogClass::Load_Animated_Sound_Settings (void)
 	//	Try to load the definitions into the definition mgr
 	//
 	FileClass *file = _TheFileFactory->Get_File (sound_def_lib_path);
-	if (file != NULL) {
+	if (file != nullptr) {
 		file->Open (FileClass::READ);
 		ChunkLoadClass cload (file);
 		SaveLoadSystemClass::Load (cload);
 		file->Close ();
 		_TheFileFactory->Return_File (file);
 	} else {
-		WWDEBUG_SAY (("Failed to load file %s\n", sound_def_lib_path.Peek_Buffer ()));
+		WWDEBUG_SAY (("Failed to load file %s", sound_def_lib_path.str ()));
 	}
 
 	//
@@ -224,7 +219,6 @@ AnimatedSoundOptionsDialogClass::Load_Animated_Sound_Settings (void)
 	//	Add a sub-directory to the file factory for audio use
 	//
 	_TheSimpleFileFactory->Append_Sub_Directory (sound_data_path);
-	return ;
 }
 
 
@@ -234,7 +228,7 @@ AnimatedSoundOptionsDialogClass::Load_Animated_Sound_Settings (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-AnimatedSoundOptionsDialogClass::OnSoundPathBrowseButton (void) 
+AnimatedSoundOptionsDialogClass::OnSoundPathBrowseButton ()
 {
 	RestrictedFileDialogClass dialog (	TRUE,
 													".wav",
@@ -249,10 +243,8 @@ AnimatedSoundOptionsDialogClass::OnSoundPathBrowseButton (void)
 	//	Prompt the user
 	//
 	if (dialog.DoModal () == IDOK) {
-		
+
 		CString path = ::Strip_Filename_From_Path (dialog.GetPathName ());
 		SetDlgItemText (IDC_SOUND_FILE_PATH_EDIT, path);
 	}
-
-	return ;
 }

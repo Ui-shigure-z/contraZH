@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_BACKGROUNDCOLORDIALOG_H__AF3CDE8C_61EC_11D2_9FC7_00104B791122__INCLUDED_)
-#define AFX_BACKGROUNDCOLORDIALOG_H__AF3CDE8C_61EC_11D2_9FC7_00104B791122__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // BackgroundColorDialog.h : header file
 //
 
@@ -32,7 +28,7 @@ class CBackgroundColorDialog : public CDialog
 {
 // Construction
 public:
-	CBackgroundColorDialog(CWnd* pParent = NULL);   // standard constructor
+	CBackgroundColorDialog(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CBackgroundColorDialog)
@@ -47,8 +43,8 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBackgroundColorDialog)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -56,10 +52,10 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CBackgroundColorDialog)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnGrayscaleCheck();
-	virtual void OnCancel();
+	virtual void OnCancel() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -71,5 +67,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_BACKGROUNDCOLORDIALOG_H__AF3CDE8C_61EC_11D2_9FC7_00104B791122__INCLUDED_)

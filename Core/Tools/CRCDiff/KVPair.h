@@ -23,8 +23,7 @@
 // Description: Key/Value Pair class
 // ---------------------------------------------------------------------------
 
-#ifndef __KVPAIR_H__
-#define __KVPAIR_H__
+#pragma once
 
 #include <map>
 #include <string>
@@ -34,7 +33,7 @@ typedef std::map<std::string, std::string> KeyValueMap;
 class KVPairClass
 {
 public:
-	KVPairClass( void );
+	KVPairClass();
 	KVPairClass( const std::string& in, const std::string& delim );
 	void set( const std::string& in, const std::string& delim );
 	void readFromFile( const std::string& in, const std::string& delim );
@@ -48,6 +47,3 @@ public:
 protected:
 	KeyValueMap m_map;
 };
-
-#endif // __KVPAIR_H__
-

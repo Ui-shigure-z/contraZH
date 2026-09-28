@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_PICKUNITDIALOG_H__B4C16E7D_FEED_472B_95FC_496D4C9006F5__INCLUDED_)
-#define AFX_PICKUNITDIALOG_H__B4C16E7D_FEED_472B_95FC_496D4C9006F5__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // PickUnitDialog.h : header file
 //
 
@@ -55,9 +51,9 @@ protected:
 
 // Construction
 public:
-	PickUnitDialog(CWnd* pParent = NULL);   // standard constructor
-	PickUnitDialog(UINT id, CWnd* pParent = NULL);   // standard constructor
-	~PickUnitDialog(void);   ///< standard destructor
+	PickUnitDialog(CWnd* pParent = nullptr);   // standard constructor
+	PickUnitDialog(UINT id, CWnd* pParent = nullptr);   // standard constructor
+	virtual ~PickUnitDialog() override;   ///< standard destructor
 
 // Dialog Data
 	//{{AFX_DATA(PickUnitDialog)
@@ -70,8 +66,8 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(PickUnitDialog)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -92,10 +88,10 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 public:
-	AsciiString getPickedUnit(void);
+	AsciiString getPickedUnit();
 	Bool IsAllowableType(EditorSortingType sort, Bool isBuildable);
 	void SetAllowableType(EditorSortingType sort);
-	const ThingTemplate* getPickedThing(void);
+	const ThingTemplate* getPickedThing();
 	void SetFactionOnly(Bool faction) {m_factionOnly = faction;}
 	void SetupAsPanel(void);
 	static void ResetWindowPosition();
@@ -104,7 +100,7 @@ public:
 class ReplaceUnitDialog : public PickUnitDialog
 {
 public:
-	ReplaceUnitDialog(CWnd* pParent = NULL);   // standard constructor
+	ReplaceUnitDialog(CWnd* pParent = nullptr);   // standard constructor
 
 	void setMissing(AsciiString name) {m_missingName = name;};
 
@@ -128,5 +124,3 @@ private:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_PICKUNITDIALOG_H__B4C16E7D_FEED_472B_95FC_496D4C9006F5__INCLUDED_)

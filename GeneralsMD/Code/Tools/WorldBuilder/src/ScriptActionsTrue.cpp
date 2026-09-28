@@ -24,7 +24,7 @@
 #include "ScriptActionsTrue.h"
 #include "ScriptActionsFalse.h"
 #include "GameLogic/Scripts.h"
-#include "EditAction.h"	
+#include "EditAction.h"
 #include "ScriptDialog.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -74,7 +74,7 @@ END_MESSAGE_MAP()
 /////////////////////////////////////////////////////////////////////////////
 // ScriptActionsTrue message handlers
 
-BOOL ScriptActionsTrue::OnInitDialog() 
+BOOL ScriptActionsTrue::OnInitDialog()
 {
 	CPropertyPage::OnInitDialog();
 	CWnd *pWnd = GetDlgItem(IDC_EDIT_COMMENT);
@@ -104,7 +104,7 @@ BOOL ScriptActionsTrue::OnSetActive()
 
 void ScriptActionsTrue::loadList(void)
 {
-	m_action = NULL;
+	m_action = nullptr;
 	ScriptDialog::updateScriptWarning(m_script);
 	CListBox *pList = (CListBox *)GetDlgItem(IDC_ACTION_LIST);
 	Int count = 0;
@@ -126,7 +126,7 @@ void ScriptActionsTrue::loadList(void)
 		}
 		pList->SetCurSel(m_index);
 		OnSelchangeActionList();
-	}	
+	}
 }
 
 void ScriptActionsTrue::OnMoveToFalse() {
@@ -158,28 +158,30 @@ void ScriptActionsTrue::OnMoveToFalse() {
 
 
 
-void ScriptActionsTrue::OnEditAction() 
+void ScriptActionsTrue::OnEditAction()
 {
 	CListBox *pList = (CListBox *)GetDlgItem(IDC_ACTION_LIST);
-	if (m_action == NULL) {
+	if (m_action == nullptr) {
 		return;
 	}
 	EditAction cDlg;
 	cDlg.setAction(m_action);
-	cDlg.DoModal();
-	ScriptDialog::updateScriptWarning(m_script);
-	pList->DeleteString(m_index);
-	pList->InsertString(m_index, m_action->getUiText().str());
-	pList->SetCurSel(m_index);
+	if (cDlg.DoModal() == IDOK)
+	{
+		ScriptDialog::updateScriptWarning(m_script);
+		pList->DeleteString(m_index);
+		pList->InsertString(m_index, m_action->getUiText().str());
+		pList->SetCurSel(m_index);
+	}
 }
 
-void ScriptActionsTrue::enableUI() 
+void ScriptActionsTrue::enableUI()
 {
 	CWnd *pWnd = GetDlgItem(IDC_EDIT);
-	pWnd->EnableWindow(m_action!=NULL);
-	
+	pWnd->EnableWindow(m_action!=nullptr);
+
 	pWnd = GetDlgItem(IDC_COPY);
-	pWnd->EnableWindow(m_action!=NULL);
+	pWnd->EnableWindow(m_action!=nullptr);
 
 	pWnd = GetDlgItem(IDC_DELETE);
 	pWnd->EnableWindow(m_action!=NULL);
@@ -192,12 +194,12 @@ void ScriptActionsTrue::enableUI()
 
 	pWnd = GetDlgItem(IDC_MOVE_UP);
 	pWnd->EnableWindow(m_action && m_index>0);
-	
+
 }
 
-void ScriptActionsTrue::OnSelchangeActionList() 
+void ScriptActionsTrue::OnSelchangeActionList()
 {
-	m_action = NULL;
+	m_action = nullptr;
 	CListBox *pList = (CListBox *)GetDlgItem(IDC_ACTION_LIST);
 	if (pList) {
 		Int count = pList->GetCurSel();
@@ -216,18 +218,18 @@ void ScriptActionsTrue::OnSelchangeActionList()
 			}
 			m_action = m_action->getNext();
 		}
-	}	
+	}
 	enableUI(); // Enable buttons based on selection.
 }
 
-void ScriptActionsTrue::OnDblclkActionList() 
+void ScriptActionsTrue::OnDblclkActionList()
 {
 	OnEditAction();
 }
 
 
 
-void ScriptActionsTrue::OnNew() 
+void ScriptActionsTrue::OnNew()
 {
 	ScriptAction *pAct = newInstance( ScriptAction)(ScriptAction::DEBUG_MESSAGE_BOX);
 	EditAction aDlg;
@@ -239,15 +241,15 @@ void ScriptActionsTrue::OnNew()
 		} else {
 			pAct->setNextAction(m_script->getAction());
 			m_script->setAction(pAct);
-		} 
+		}
 		m_index++;
 		loadList();
 	} else {
-		pAct->deleteInstance();
+		deleteInstance(pAct);
 	}
 }
 
-void ScriptActionsTrue::OnDelete() 
+void ScriptActionsTrue::OnDelete()
 {
 	if (m_action) {
 		m_script->deleteAction(m_action);
@@ -350,7 +352,7 @@ Bool ScriptActionsTrue::doMoveDown()
 	if (m_action && m_action->getNext()) {
 		ScriptAction *pNext = m_action->getNext();
 		ScriptAction *pCur = m_script->getAction();
-		ScriptAction *pPrev = NULL;
+		ScriptAction *pPrev = nullptr;
 		while (pCur != m_action) {
 			pPrev = pCur;
 			pCur = pCur->getNext();
@@ -372,7 +374,7 @@ Bool ScriptActionsTrue::doMoveDown()
 	return false;
 }
 
-void ScriptActionsTrue::OnMoveDown() 
+void ScriptActionsTrue::OnMoveDown()
 {
 	if (doMoveDown()) {
 		m_index++;
@@ -380,7 +382,7 @@ void ScriptActionsTrue::OnMoveDown()
 	}
 }
 
-void ScriptActionsTrue::OnMoveUp() 
+void ScriptActionsTrue::OnMoveUp()
 {
 	if (m_action && m_index>0) {
 //		ScriptAction *pNext = m_action;
@@ -398,7 +400,7 @@ void ScriptActionsTrue::OnMoveUp()
 	}
 }
 
-void ScriptActionsTrue::OnChangeEditComment() 
+void ScriptActionsTrue::OnChangeEditComment()
 {
 	CWnd *pWnd = GetDlgItem(IDC_EDIT_COMMENT);
 	CString comment;

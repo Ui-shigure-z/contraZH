@@ -24,12 +24,12 @@
 
 // FILE: Energy.h ////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Westwood Studios Pacific.                          
-//                                                                          
-//                       Confidential Information					         
-//                Copyright (C) 2001 - All Rights Reserved                  
-//                                                                          
+//
+//                       Westwood Studios Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2001 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 // Project:    RTS3
@@ -44,10 +44,7 @@
 
 #pragma once
 
-#ifndef _ENERGY_H_
-#define _ENERGY_H_
-
-// INLCUDES /////////////////////////////////////////////////////////////////////////////////////
+// INCLUDES /////////////////////////////////////////////////////////////////////////////////////
 #include "Common/Snapshot.h"
 
 // ----------------------------------------------------------------------------------------------
@@ -65,7 +62,7 @@ class Energy : public Snapshot
 {
 
 public:
-	
+
 	Energy();
 
 	// reset energy information to base values.
@@ -73,6 +70,8 @@ public:
 	{
 		m_energyProduction = 0;
 		m_energyConsumption = 0;
+		m_powerSabotagedTillFrame = 0;
+		m_infinitePower = FALSE;
 		m_owner = owner;
 	}
 
@@ -82,8 +81,8 @@ public:
 	/// return current energy consumption in kilowatts
 	Int getConsumption() const { return m_energyConsumption; }
 
-	Bool hasSufficientPower(void) const;
-	
+	Bool hasSufficientPower() const;
+
 	// If adding is false, we're supposed to be removing this.
 	void adjustPower(Int powerDelta, Bool adding);
 
@@ -100,6 +99,10 @@ public:
 	void setPowerSabotagedTillFrame( UnsignedInt frame ) { m_powerSabotagedTillFrame = frame; }
 	UnsignedInt getPowerSabotagedTillFrame() const { return m_powerSabotagedTillFrame; }
 
+	/// when set, the player always has sufficient power (overrides production/consumption and sabotage).
+	void setInfinitePower( Bool enable ) { m_infinitePower = enable; }
+	Bool hasInfinitePower() const { return m_infinitePower; }
+
 	/**
 		return the percentage of energy needed that we actually produce, as a 0.0 ... 1.0 fraction.
 	*/
@@ -108,9 +111,9 @@ public:
 protected:
 
 	// snapshot methods
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess( void );
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
 	void addProduction(Int amt);
 	void addConsumption(Int amt);
@@ -120,8 +123,6 @@ private:
 	Int		m_energyProduction;		///< level of energy production, in kw
 	Int		m_energyConsumption;	///< level of energy consumption, in kw
 	UnsignedInt m_powerSabotagedTillFrame; ///< If power is sabotaged, the frame will be greater than now.
+	Bool	m_infinitePower;			///< cheat: always have sufficient power
 	Player *m_owner;						///< Tight pointer to the Player I am intrinsic to.
 };
-
-#endif // _ENERGY_H_
-

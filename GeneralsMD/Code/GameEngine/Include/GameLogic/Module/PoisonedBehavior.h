@@ -29,25 +29,52 @@
 
 #pragma once
 
-#ifndef __Poisoned_Behavior_H_
-#define __Poisoned_Behavior_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/BehaviorModule.h"
 #include "GameLogic/Module/DamageModule.h"
 #include "GameLogic/Module/UpdateModule.h"
 
+class Player;
+class UpgradeTemplate;
+
+// Ordered by strength: a running tier is only replaced by an equal or higher one
+enum PoisonTier
+{
+	POISON_TIER_PLAIN = 0,
+	POISON_TIER_BETA = 1,
+	POISON_TIER_GAMMA = 2,
+
+	POISON_TIER_COUNT
+};
+
+//-------------------------------------------------------------------------------------------------
+struct PoisonTierData
+{
+	UnsignedInt m_damageIntervalData;	// How often I retake poison damage dealt me
+	UnsignedInt m_durationData;					// And how long after the last poison dose I am poisoned
+	Real m_damageBonus;
+	AsciiString m_triggeredBy;
+	mutable const UpgradeTemplate *m_upgrade;
+};
 
 //-------------------------------------------------------------------------------------------------
 class PoisonedBehaviorModuleData : public UpdateModuleData
 {
 public:
-	UnsignedInt m_poisonDamageIntervalData; // How often I retake poison damage dealt me
-	UnsignedInt m_poisonDurationData;				// And how long after the last poison dose I am poisoned
+	PoisonTierData m_tier[POISON_TIER_COUNT];
+	mutable Bool m_upgradesResolved;
+	mutable Bool m_hasAnyTierUpgrade;
 
 	PoisonedBehaviorModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
+
+	// A tier interval or duration of 0 falls back to the plain value
+	UnsignedInt getDamageInterval( PoisonTier tier ) const;
+	UnsignedInt getDuration( PoisonTier tier ) const;
+	Real getDamageBonus( PoisonTier tier ) const;
+	// Upgrade.ini is not parsed yet when this module data is, so resolve on first use
+	void resolveUpgrades() const;
 
 private:
 
@@ -55,7 +82,7 @@ private:
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-class PoisonedBehavior : public UpdateModule, 
+class PoisonedBehavior : public UpdateModule,
 												 public DamageModuleInterface
 {
 
@@ -70,31 +97,33 @@ public:
 	static Int getInterfaceMask() { return UpdateModule::getInterfaceMask() | (MODULEINTERFACE_DAMAGE); }
 
 	// BehaviorModule
-	virtual DamageModuleInterface* getDamage() { return this; }
+	virtual DamageModuleInterface* getDamage() override { return this; }
 
 	// DamageModuleInterface
-	virtual void onDamage( DamageInfo *damageInfo );
-	virtual void onHealing( DamageInfo *damageInfo );
-	virtual void onBodyDamageStateChange(const DamageInfo* damageInfo, BodyDamageType oldState, BodyDamageType newState) { }
+	virtual void onDamage( DamageInfo *damageInfo ) override;
+	virtual void onHealing( DamageInfo *damageInfo ) override;
+	virtual void onBodyDamageStateChange(const DamageInfo* damageInfo, BodyDamageType oldState, BodyDamageType newState) override { }
 
 	// UpdateInterface
-	virtual UpdateSleepTime update();
+	virtual UpdateSleepTime update() override;
 	// Disabled conditions to process (we should still poison disabled things)
-	virtual DisabledMaskType getDisabledTypesToProcess() const { return DISABLEDMASK_ALL; }
+	virtual DisabledMaskType getDisabledTypesToProcess() const override { return DISABLEDMASK_ALL; }
 
 protected:
 
 	void startPoisonedEffects( const DamageInfo *damageInfo );
 	void stopPoisonedEffects();
 	UpdateSleepTime calcSleepTime();
+	PoisonTier resolveTier( const DamageInfo *damageInfo ) const;
+	static Bool attackerHasUpgrade( const UpgradeTemplate *upgrade, const Player *player, const Object *attacker );
 
 private:
 	UnsignedInt		m_poisonDamageFrame;
 	UnsignedInt		m_poisonOverallStopFrame;
 	Real					m_poisonDamageAmount;
+	ObjectID			m_poisonSource;
 	DeathType			m_deathType;
+	PoisonTier		m_activeTier;
+	Bool					m_applyingTickDamage;	// guards against our own poison ticks retriggering us
 
 };
-
-#endif // __Poisoned_Behavior_H_
-

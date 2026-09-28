@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_CAMERAOPTIONS_H__4EF4F775_1290_47AE_817F_9340BA3A898C__INCLUDED_)
-#define AFX_CAMERAOPTIONS_H__4EF4F775_1290_47AE_817F_9340BA3A898C__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // CameraOptions.h : header file
 //
 
@@ -36,7 +32,7 @@ class CameraOptions : public CDialog, public PopupSliderOwner
 {
 // Construction
 public:
-	CameraOptions(CWnd* pParent = NULL);   // standard constructor
+	CameraOptions(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CameraOptions)
@@ -49,7 +45,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CameraOptions)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -61,7 +57,7 @@ protected:
 	afx_msg void OnDropWaypointButton();
 	afx_msg void OnCenterOnSelectedButton();
 	afx_msg void OnMove(int x, int y);
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnChangePitchEdit();
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	//}}AFX_MSG
@@ -72,7 +68,7 @@ protected:
 	void	putReal( Int ctrlID, Real val );
 	void	putAsciiString( Int ctrlID, AsciiString val );
 	BOOL	getReal( Int ctrlID, Real *rVal );
-	void	stuffValuesIntoFields( void );
+	void	stuffValuesIntoFields();
 	void	applyCameraPitch( Real pitch );
 
 	WBPopupSliderButton m_pitchPopup;
@@ -80,12 +76,12 @@ protected:
 
 public: // popup slider interface.
 
-	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial);
-	virtual void PopSliderChanged(const long sliderID, long theVal);
-	virtual void PopSliderFinished(const long sliderID, long theVal);
+	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
+	virtual void PopSliderChanged(const long sliderID, long theVal) override;
+	virtual void PopSliderFinished(const long sliderID, long theVal) override;
 
 public:
-	void update( void );
+	void update();
 
 #ifdef RTS_HAS_QT
 	// Qt front-end support (WBQtCameraBridge). The MFC dialog stays created + hidden (a
@@ -107,5 +103,3 @@ public:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_CAMERAOPTIONS_H__4EF4F775_1290_47AE_817F_9340BA3A898C__INCLUDED_)

@@ -32,7 +32,7 @@ class WorldHeightMapEdit;
 /*************************************************************************
 **                             TileTool
 ***************************************************************************/
-class TileTool : public Tool 
+class TileTool : public Tool
 {
 protected:
 
@@ -62,8 +62,8 @@ protected:
 	CPoint							m_prevViewPt;
 
 public:
-	TileTool(void);
-	~TileTool(void);
+	TileTool();
+	virtual ~TileTool() override;
 
 public:
 	// struct TBlendTileInfo;   // forward declare the blend tile info struct
@@ -96,7 +96,7 @@ public:
 /*************************************************************************
 **                             BigTileTool
 ***************************************************************************/
-class BigTileTool : public TileTool 
+class BigTileTool : public TileTool
 {
 
 protected:
@@ -112,10 +112,10 @@ protected:
 	static Bool m_enableNoMixing; // if true, don't allow blending of different texture classes when auto-blending.
 
 public:
- 	virtual void activate(); ///< Become the current tool.
+	virtual void activate() override; ///< Become the current tool.
 
 public:
-	BigTileTool(void);
+	BigTileTool();
 
 	static void setWidth(Int width) ;
 	virtual Int getWidth(void) {return m_currentWidth;};
@@ -153,4 +153,3 @@ public:
 		::AfxGetApp()->WriteProfileInt(TILE_OPTION_PANEL, "TileToolWidth", width);
 	}
 };
-#endif //TOOL_H

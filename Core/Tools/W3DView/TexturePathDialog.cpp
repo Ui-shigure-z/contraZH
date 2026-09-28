@@ -19,14 +19,14 @@
 // TexturePathDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
-#include "w3dviewdoc.h"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "W3DViewDoc.h"
 #include "TexturePathDialog.h"
-#include "utils.h"
-#include "directorydialog.h"
+#include "Utils.h"
+#include "DirectoryDialog.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -38,13 +38,12 @@ static char THIS_FILE[] = __FILE__;
 // TexturePathDialogClass
 //
 /////////////////////////////////////////////////////////////////////////////
-TexturePathDialogClass::TexturePathDialogClass(CWnd* pParent /*=NULL*/)
+TexturePathDialogClass::TexturePathDialogClass(CWnd* pParent /*=nullptr*/)
 	: CDialog(TexturePathDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(TexturePathDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -60,7 +59,6 @@ TexturePathDialogClass::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(TexturePathDialogClass)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -78,12 +76,12 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-TexturePathDialogClass::OnInitDialog (void) 
+TexturePathDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
-	
+
 	CW3DViewDoc *doc = ::GetCurrentDocument ();
-		
+
 	SetDlgItemText (IDC_PATH1, doc->Get_Texture_Path1 ());
 	SetDlgItemText (IDC_PATH2, doc->Get_Texture_Path2 ());
 	return TRUE;
@@ -96,29 +94,28 @@ TexturePathDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-TexturePathDialogClass::OnOK (void)
+TexturePathDialogClass::OnOK ()
 {
 	CString path1;
 	CString path2;
 	GetDlgItemText (IDC_PATH1, path1);
-	GetDlgItemText (IDC_PATH2, path2);	
+	GetDlgItemText (IDC_PATH2, path2);
 
 	CW3DViewDoc *doc = ::GetCurrentDocument ();
 	doc->Set_Texture_Path1 (path1);
 	doc->Set_Texture_Path2 (path2);
 
 	CDialog::OnOK ();
-	return ;
 }
 
- 
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // OnBrowse1
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-TexturePathDialogClass::OnBrowse1 (void)
+TexturePathDialogClass::OnBrowse1 ()
 {
 	CString initial_path;
 	GetDlgItemText (IDC_PATH1, initial_path);
@@ -127,8 +124,6 @@ TexturePathDialogClass::OnBrowse1 (void)
 	if (::Browse_For_Folder (m_hWnd, initial_path, path)) {
 		SetDlgItemText (IDC_PATH1, path);
 	}
-
-	return ;
 }
 
 
@@ -138,7 +133,7 @@ TexturePathDialogClass::OnBrowse1 (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-TexturePathDialogClass::OnBrowse2 (void) 
+TexturePathDialogClass::OnBrowse2 ()
 {
 	CString initial_path;
 	GetDlgItemText (IDC_PATH2, initial_path);
@@ -147,7 +142,5 @@ TexturePathDialogClass::OnBrowse2 (void)
 	if (::Browse_For_Folder (m_hWnd, initial_path, path)) {
 		SetDlgItemText (IDC_PATH2, path);
 	}
-
-	return ;
 }
 

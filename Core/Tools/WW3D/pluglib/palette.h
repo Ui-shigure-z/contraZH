@@ -16,29 +16,25 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Command & Conquer                                            * 
- *                                                                                             * 
- *                     $Archive:: /G/wwlib/PALETTE.H                                          $* 
- *                                                                                             * 
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Command & Conquer                                            *
+ *                                                                                             *
+ *                     $Archive:: /G/wwlib/PALETTE.h                                          $*
+ *                                                                                             *
  *                      $Author:: Eric_c                                                      $*
- *                                                                                             * 
+ *                                                                                             *
  *                     $Modtime:: 4/02/99 12:00p                                              $*
- *                                                                                             * 
+ *                                                                                             *
  *                    $Revision:: 2                                                           $*
  *                                                                                             *
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-#if _MSC_VER >= 1000
-#pragma once
-#endif // _MSC_VER >= 1000
 
-#ifndef PALETTE_H
-#define PALETTE_H
+#pragma once
 
 #include	"rgb.h"
 
@@ -53,7 +49,7 @@ class PaletteClass
 			COLOR_COUNT=256			// Number of color indices on the palette.
 		};
 
-		PaletteClass(void) {};
+		PaletteClass() {};
 		PaletteClass(RGBClass const & rgb);
 		PaletteClass(unsigned char *binary_palette);
 
@@ -64,8 +60,8 @@ class PaletteClass
 		int operator == (PaletteClass const & palette) const;
 		int operator != (PaletteClass const & palette) const {return(!(operator ==(palette)));};
 		PaletteClass & operator = (PaletteClass const & palette);
-		operator const unsigned char * (void) const {return((const unsigned char *)&Palette[0]);};
-		operator unsigned char * (void) {return((unsigned char *)&Palette[0]);};
+		operator const unsigned char * () const {return((const unsigned char *)&Palette[0]);};
+		operator unsigned char * () {return((unsigned char *)&Palette[0]);};
 
 		void Adjust(int ratio);
 		void Adjust(int ratio, PaletteClass const & palette);
@@ -76,6 +72,3 @@ class PaletteClass
 	protected:
 		RGBClass Palette[COLOR_COUNT];
 };
-
-
-#endif

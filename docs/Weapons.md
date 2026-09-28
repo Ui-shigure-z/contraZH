@@ -1,0 +1,130 @@
+# Weapon.ini
+
+## Scatter Target Improvements
+Added new weapon parameters to tweak ScatterTargets
+
+* `ScatterTargetAligned = No` - (Aligns target pattern with the firing unit. Default = No)
+
+* `ScatterTargetRandomOrder = Yes` - (Use target points random or linear order. Default = Yes)
+
+* `ScatterTargetRandomAngle = No` - (Use a random angle for the target pattern. Default = No)
+
+* `ScatterTargetMinScalar = 0` - (if > 0, the target scalar will be linearly scaled between min and max weapon range; ScatterTargetMinScalar defines the scalar at minimum range, while ScatterTargetScalar defines the value at maxium range.)
+
+* `ScatterTargetCenteredAtShooter = No` - (Scatter target coordinates will be used relative to the shooter's position instead of the target, i.e. the firing unit is considered to be at 0/0)
+
+* `ScatterTargetResetTime = 0` (Duration in msec; Scatter targets will be reset after the unit is not firing for this amount of time)
+
+* `ScatterTargetResetRecenter = No` - When scatter targets are reset, with only a portion of the clip remaining, chose targets in the center of the list of ScatterTargets. This is recommended for "sweeping" targets that form a line in both sides of the main target.
+
+These features can be used to e.g. fire a laser in a line, or create strafing runs for aircraft, by using a linear pattern with ScatterTargetAligned=Yes and ScatterTargetRandomOrder=No
+
+## Pre Attack FX
+Added new weapon parameters to define FXList that is played on PreAttack
+
+* `PreAttackFX = <FXListEntry>` - (FXList entry; played when PRE_ATTACK starts. Default = None)
+* `VeterancyPreAttackFX = [VETERAN | ELITE | HEROIC] <FXListEntry>` - (Veterancy level and FXList entry. played when PRE_ATTACK starts. Default = None)
+* `PreAttackFXDelay` = 200 - (Minimal delay in ms when PreAttack FX can be played again. In some situations, e.g. when following a moving target, PreAttack state can be entered repeatedly and this avoids spamming the FX. Default = 200)
+
+Notes:
+- FXList will be aligned to the object's FireFX bone.
+- BulletTracer used in the FX will be aligned to the target.
+- TODO: Add flag to spawn FX at object's origin position instead.
+
+## Laser Improvements
+Added improvements for lasers.
+### Continuous Laser
+* `ContinuousLaserLoopTime = 0` - (time in ms. If this is > 0, the laser object will be kept and moved with the next shot, instead of creating a new laser object. Default = 0)
+
+Note: This is can be used for continous laser weapons along with the new fade in/out and grow/shrink parameters in LaserUpdate
+
+### Detonation FX and OCL
+
+* `ProjectileDetonationFX` and `ProjectileDetonationOCL` are now supported for lasers. FX and OCL will be created at the target location.
+
+### Laser Target Height Offsets
+Laser weapons are hardcoded to hit with an offset of 10.0 above the target unit's height. This can now be configured
+
+* `LaserGroundUnitTargetHeight = 10.0` - Lasers will hit this high above a ground target unit's origin.
+
+* `LaserGroundTargetHeight = 0.0` - Lasers will hit this high above the ground when attacking the ground (e.g. force fire).
+
+## Damage Variance
+
+`PrimaryDamage` and `SecondaryDamage` now accept an optional random range instead of a single fixed value.
+
+* `PrimaryDamage = 100` - fixed damage (vanilla behavior)
+* `PrimaryDamage = Min:50 Max:100` - each shot rolls a random damage value between Min and Max
+* `SecondaryDamage = Min:10 Max:30` - same for secondary (splash) damage
+
+Notes:
+- Backwards compatible: a plain number works as before (no variance).
+- The value is rolled once per shot. The weapon bonus damage scalar (e.g. veterancy) is applied to both the nominal value and the variance.
+
+## Damage Taper Off
+
+Scale damage down towards the edge of the blast radius, so the center hits harder than the rim.
+
+* `PrimaryDamageTaperOff = 1.0` - (Factor of primary damage applied at the edge of the `PrimaryDamageRadius`. `1.0` = no taper (default, full damage across the whole radius); `0.5` = half damage at the edge, full at the center.)
+* `SecondaryDamageTaperOff = 1.0` - (Same, for the secondary damage radius.)
+
+## Damage / Radius Scaling by Engagement Distance
+
+Scale a weapon's damage and radii based on how far the target is, interpolated from point-blank to the weapon's attack range. Useful e.g. for artillery/naval guns that are stronger up close or at long range.
+
+* `DamageFactorAtMaxRange = 1.0` - (Damage multiplier reached at maximum attack range. `1.0` = no scaling (default). At point-blank the factor is `1.0`, interpolating to this value at max range.)
+* `RadiusFactorAtMaxRange = 1.0` - (Same, applied to the damage radii. Also affects the radius used to align the detonation FX.)
+* `ScatterRadiusFactorAtMaxRange = 1.0` - (Same, applied to the weapon's `ScatterRadius`, so shots scatter more/less depending on distance.)
+
+## Gradual Clip Reload
+
+Refill a clip one round at a time instead of all at once, so a weapon that fired only part of its clip is back
+in action sooner. `AutoReloadsClip` accepts a new value for this; the retail values are unchanged.
+
+* `AutoReloadsClip = YES` - (Retail values: `YES` refills the whole clip in `ClipReloadTime` once it runs empty;
+`NO` never refills it; `RETURN_TO_BASE` refills only after landing at an airfield. New: `GRADUAL` loads a single
+round every `ClipReloadTime / ClipSize`, up to a full clip.)
+* `ClipReloadDelay = 0` - (`GRADUAL` only. Quiet time owed after the last shot before any round starts loading.
+Defaults to 0, which still waits out one shot cycle. Ignored by the other reload types.)
+
+With `GRADUAL`, rounds only load while the weapon is not attacking: a round cannot even begin until the weapon has
+been quiet for `ClipReloadDelay`, so a weapon working through a target gains nothing between its shots however slow
+its rate of fire, and the clip only refills once the firing stops. `ClipReloadDelay` never falls below one shot
+cycle, so leaving it out still keeps a burst from feeding itself. When the clip runs empty the weapon waits for one
+round and then fires again, rather than waiting out the whole clip, and it keeps waiting one round at a time for as
+long as it keeps shooting. There is no return-to-base prerequisite, so aircraft with a `GRADUAL` weapon do not fly
+home to rearm. Rate-of-fire bonuses scale the round the same way they scale `ClipReloadTime`, and a bonus that
+changes mid-round carries the progress across instead of restarting it.
+
+Notes:
+- `AutoReloadWhenIdle` is ignored on a `GRADUAL` weapon. The clip already refills on its own, so a forced idle
+reload would only cut the round timer short.
+- `ClipSize = 0` means an unlimited clip and has no rounds to count, so `GRADUAL` behaves exactly like `YES`.
+- `ClipReloadTime / ClipSize` is the time per round once loading starts, so a clip empties in `ClipSize` shots
+whatever the rate of fire, and tops back up in about `ClipReloadDelay` plus `ClipReloadTime` of quiet.
+- While the clip is empty and waiting for its first round the weapon reports no ammo, so the reload animation and
+the command button clock run for that one round. A partly filled clip shows its real count on the ammo pips.
+- `WeaponClipShared` is not supported with `GRADUAL`: a shared clip is decremented from another weapon slot, which
+has no firing object to scale the round with.
+- `WeaponReloadSharedAcrossSets` carries the round timer only when both weapon sets use `GRADUAL`; mixing it with a
+non-gradual weapon drops the timer, and it restarts on the next shot.
+- Modules that derive a shot index from the clip (`FireWeaponAdvancedUpdate`, `KodiakUpdate` scatter patterns)
+assume a clip that only drains, so their sequence restarts as rounds come back.
+
+# WeaponExtend
+
+Added support to create WeaponExtend definitions, which will inherit all parameters from the parent Weapon.
+All parameters from Weapons can be used to override values from the parent weapon. It is possible to extend an extended weapon.
+
+- `WeaponExtend <ExtendedWeapon> <ParentWeapon>`
+
+Example
+
+```
+WeaponExtend Chem_HindRocketPodWeapon HindRocketPodWeapon
+  ProjectileDetonationOCL = Chem_OCL_PoisonFieldSmall
+End
+```
+This defines a new weapon Chem_HindRocketPodWeapon, using all parameters from HindRocketPodWeapon, overriding or adding the ProjectileDetonationOCL param
+
+Note: The extended weapon needs to be defined below the parent weapon in the ini file. (or alphabetically in a later order if defined in a different ini file)

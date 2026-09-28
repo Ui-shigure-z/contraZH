@@ -36,13 +36,12 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef GEOMETRYEXPORTTASK_H
-#define GEOMETRYEXPORTTASK_H
+#pragma once
 
 #include <string.h>
 #include <max.h>
 #include "w3d_file.h"
-#include "Vector.H"
+#include "Vector.h"
 
 
 class GeometryExportContextClass;
@@ -52,7 +51,7 @@ class GeometryExportContextClass;
 ** GeometryExportTaskClass
 ** This abstract base class defines the interface for a geometry export task.
 ** Derived classes will encapsulate the job of exporting meshes, collision
-** boxes, dazzles, etc.  The factory function Create_Task will create the 
+** boxes, dazzles, etc.  The factory function Create_Task will create the
 ** appropriate task for a given INode.
 */
 class GeometryExportTaskClass
@@ -61,20 +60,20 @@ public:
 
 	GeometryExportTaskClass(INode * node,GeometryExportContextClass & context);
 	GeometryExportTaskClass(const GeometryExportTaskClass & that);
-	virtual ~GeometryExportTaskClass(void);
+	virtual ~GeometryExportTaskClass();
 
 	virtual void							Export_Geometry(GeometryExportContextClass & context) = 0;
 
 	/*
 	** Accessors
 	*/
-	char *									Get_Name(void)								{ return Name; }
-	char *									Get_Container_Name(void)				{ return ContainerName; }
+	char *									Get_Name()								{ return Name; }
+	char *									Get_Container_Name()				{ return ContainerName; }
 	void										Get_Full_Name(char * buffer,int size);
 
-	int										Get_Bone_Index(void)						{ return BoneIndex; }
-	INode *									Get_Object_Node(void)					{ return Node; }
-	Matrix3									Get_Export_Transform(void)				{ return ExportSpace; }
+	int										Get_Bone_Index()						{ return BoneIndex; }
+	INode *									Get_Object_Node()					{ return Node; }
+	Matrix3									Get_Export_Transform()				{ return ExportSpace; }
 
 	void										Set_Name(char * name)					{ strncpy(Name,name,sizeof(Name)); }
 	void										Set_Container_Name(char * name)		{ strncpy(ContainerName,name,sizeof(ContainerName)); }
@@ -95,19 +94,19 @@ public:
 
 	/*
 	** Aggregate Model Detection.  An "aggregate" is an external W3D model that we are requesting
-	** to be attached to a bone in the model being exported.  In order for our LOD system to work 
+	** to be attached to a bone in the model being exported.  In order for our LOD system to work
 	** properly, some special handling of aggregates is required (they must be added into the model
 	** as "additional models" rather than being placed in the normal LOD arrays).  This virtual
 	** can be used to detect "aggregate" models.
 	*/
-	virtual bool							Is_Aggregate(void)						{ return false; }
-	
+	virtual bool							Is_Aggregate()						{ return false; }
+
 	/*
 	** Proxy Detection. A "proxy" is a reference (by name) to an external game object that should
 	** be instantiated at the specified transform.  Like the aggregates, these had to unfortunately
 	** be handled with special cases and therefore have this virtual function devoted solely to them.
 	*/
-	virtual bool							Is_Proxy(void)								{ return false; }
+	virtual bool							Is_Proxy()								{ return false; }
 
 	/*
 	** Virtual Constructor
@@ -127,7 +126,7 @@ protected:
 	/*
 	** Internal RTTI
 	*/
-	enum 
+	enum
 	{
 		MESH							= 0,
 		COLLISIONBOX,
@@ -136,20 +135,15 @@ protected:
 		AGGREGATE,
 		PROXY,
 	};
-	virtual int	Get_Geometry_Type(void) = 0;
-			
+	virtual int	Get_Geometry_Type() = 0;
+
 protected:
-	
+
 	char					Name[W3D_NAME_LEN];
 	char					ContainerName[W3D_NAME_LEN];
 	int					BoneIndex;
-	
+
 	Matrix3				ExportSpace;
 	TimeValue			CurTime;
 	INode *				Node;
 };
-
-
-
-#endif //GEOMETRYEXPORTTASK_H
-

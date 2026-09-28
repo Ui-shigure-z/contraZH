@@ -20,7 +20,7 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "GroveTool.h"
@@ -77,7 +77,7 @@ Bool localIsUnderwater( Real x, Real y)
 		if (pTrig->pointInTrigger(iLoc)) {
 			Real wZ = pTrig->getPoint(0)->z;
 			// See if the ground height is less than the water level.
-			Real curHeight = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+			Real curHeight = TheTerrainRenderObject->getHeightMapHeight(x, y, nullptr);
 			return (curHeight<wZ);
 		}
 	}
@@ -121,7 +121,7 @@ void GroveTool::plantTree( Coord3D *pos )
 	int totalValue = TheGroveOptions->getTotalTreePerc();
 	int randVal = GameLogicRandomValue(0, totalValue - 1);
 
-	
+
 	int runningCum = 0;
 	for (int i = 1; i <= 11; ++i) {
 		runningCum +=  TheGroveOptions->getNumType(i);
@@ -138,7 +138,7 @@ void GroveTool::plantTree( Coord3D *pos )
 	addObj(pos, treeName);
 }
 
-void GroveTool::activate() 
+void GroveTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_GROVE_OPTIONS);
 	DrawObject::setDoBrushFeedback(false);
@@ -184,7 +184,7 @@ void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView,  CWorldBui
 
 		tlVec = tlVec + trVec;
 		tlVec = tlVec + blVec;
-		
+
 		Coord3D position;
 
 		position.x = tlVec.X;
@@ -312,9 +312,9 @@ void GroveTool::plantGrove( Coord3D pos, Coord3D prevDir, Real baseHeight, Int l
 				// tree must be on map
 				// tree must not be in the water
 				if (dir.x * prevDir.x + dir.y * prevDir.y >= 0.0f &&
-						normal.z > flatTolerance && 
+						normal.z > flatTolerance &&
 						fabs(childPos.z - baseHeight) < heightTolerance &&
-						childPos.x > 0 && childPos.y > 0 && 
+						childPos.x > 0 && childPos.y > 0 &&
 						childPos.x < bounds.x && childPos.y < bounds.y &&
 						(!localIsUnderwater(childPos.x, childPos.y)))
 					break;
@@ -331,22 +331,20 @@ void GroveTool::plantGrove( Coord3D pos, Coord3D prevDir, Real baseHeight, Int l
 // GroveTool class.
 //
 /// Constructor
-GroveTool::GroveTool(void) :
-	Tool(ID_GROVE_TOOL, IDC_GROVE) 
+GroveTool::GroveTool() :
+	Tool(ID_GROVE_TOOL, IDC_GROVE)
 {
-		m_headMapObj = NULL;
+		m_headMapObj = nullptr;
 }
-	
+
 /// Destructor
-GroveTool::~GroveTool(void) 
+GroveTool::~GroveTool()
 {
-	if (m_headMapObj) {
-		m_headMapObj->deleteInstance();
-	}
+	deleteInstance(m_headMapObj);
 }
 
 /** Execute the tool on mouse down - Place an object. */
-void GroveTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void GroveTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 	m_downPt = viewPt;
@@ -407,7 +405,7 @@ void GroveTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 
 
 /** Execute the tool on mouse up - Place an object. */
-void GroveTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void GroveTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 
@@ -429,7 +427,7 @@ void GroveTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBui
 		AddObjectUndoable *pUndo = new AddObjectUndoable(pDoc, m_headMapObj);
 		pDoc->AddAndDoUndoable(pUndo);
 		REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
-		m_headMapObj = NULL; // undoable owns it now.
+		m_headMapObj = nullptr; // undoable owns it now.
 	}
 }
 
@@ -465,10 +463,10 @@ void GroveTool::addObj(Coord3D *pos, AsciiString name)
 	Coord3D theLoc = *pos;
 	theLoc.z = 0;
 	Real angle = GameLogicRandomValueReal( 0.0f, 2.0f * PI );
-	MapObject *pNew = newInstance( MapObject)(theLoc, pCur->getName(), angle, 0, NULL, pCur->getThingTemplate() );
+	MapObject *pNew = newInstance( MapObject)(theLoc, pCur->getName(), angle, 0, nullptr, pCur->getThingTemplate() );
 	pNew->getProperties()->setAsciiString(TheKey_originalOwner, NEUTRAL_TEAM_INTERNAL_STR);
 	pNew->setNextMap(m_headMapObj);
-	m_headMapObj = pNew;	
+	m_headMapObj = pNew;
 }
 
 

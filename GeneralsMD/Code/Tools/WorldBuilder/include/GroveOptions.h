@@ -16,9 +16,6 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef GROVEOPTIONS_H
-#define GROVEOPTIONS_H
-
 #pragma once
 
 #include <map>
@@ -42,25 +39,25 @@ UnicodeString GetDisplayNameFromPair(const PairNameDisplayName *pNamePair);
 class GroveOptions : public COptionsPanel
 {
 	protected:
-		std::vector<std::pair<Int, Int> >	mVecGroup;
+		std::vector<std::pair<Int, Int>/**/>	mVecGroup;
 		VecPairNameDisplayName mVecDisplayNames;
 		VecPairNameDisplayName mVecDisplayNames_PropsOnly;
 		ObjectPreview			m_objectPreview;
 
 		Int	mNumTrees;
-	
-	public:
-		GroveOptions(CWnd* pParent = NULL);
-		~GroveOptions();
-		void makeMain(void);
 
-		virtual BOOL OnInitDialog();
-		int getNumTrees(void);
+	public:
+		GroveOptions(CWnd* pParent = nullptr);
+		virtual ~GroveOptions() override;
+		void makeMain();
+
+		virtual BOOL OnInitDialog() override;
+		int getNumTrees();
 		int getNumType(int type);
 		AsciiString getTypeName(int type);
-		int getTotalTreePerc(void);
-		Bool getCanPlaceInWater(void);
-		Bool getCanPlaceOnCliffs(void);
+		int getTotalTreePerc();
+		Bool getCanPlaceInWater();
+		Bool getCanPlaceOnCliffs();
 
 	protected:
 		void _setTreesToLists(void);
@@ -121,5 +118,3 @@ class GroveOptions : public COptionsPanel
 };
 
 extern GroveOptions *TheGroveOptions;
-
-#endif

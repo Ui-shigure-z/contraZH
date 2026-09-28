@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Xfer.h"
 #include "GameLogic/Object.h"
@@ -37,43 +37,53 @@
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ExperienceScalarUpgradeModuleData::ExperienceScalarUpgradeModuleData( void )
+ExperienceScalarUpgradeModuleData::ExperienceScalarUpgradeModuleData()
 {
+	m_initiallyActive = false;
 	m_addXPScalar = 0.0f;
+	m_addXPValueScalar = 0.0f;
+	m_setMaxVeterancyLevel = LEVEL_INVALID;	// don't change the cap unless specified
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void ExperienceScalarUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p) 
+void ExperienceScalarUpgradeModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
 
   UpgradeModuleData::buildFieldParse( p );
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
+		{ "StartsActive",	INI::parseBool, NULL, offsetof(ExperienceScalarUpgradeModuleData, m_initiallyActive) },
 		{ "AddXPScalar",	INI::parseReal,		NULL, offsetof( ExperienceScalarUpgradeModuleData, m_addXPScalar ) },
-		{ 0, 0, 0, 0 }
+		{ "AddXPValueScalar",	INI::parseReal,		NULL, offsetof( ExperienceScalarUpgradeModuleData, m_addXPValueScalar ) },
+		{ "SetMaxVeterancyLevel",	INI::parseIndexList, TheVeterancyNames, offsetof( ExperienceScalarUpgradeModuleData, m_setMaxVeterancyLevel ) },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 
   p.add(dataFieldParse);
 
-}  // end buildFieldParse
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 ExperienceScalarUpgrade::ExperienceScalarUpgrade( Thing *thing, const ModuleData* moduleData ) : UpgradeModule( thing, moduleData )
 {
+	if (getExperienceScalarUpgradeModuleData()->m_initiallyActive)
+	{
+		giveSelfUpgrade();
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ExperienceScalarUpgrade::~ExperienceScalarUpgrade( void )
+ExperienceScalarUpgrade::~ExperienceScalarUpgrade()
 {
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void ExperienceScalarUpgrade::upgradeImplementation( )
+void ExperienceScalarUpgrade::upgradeImplementation()
 {
 	const ExperienceScalarUpgradeModuleData *data = getExperienceScalarUpgradeModuleData();
 
@@ -83,7 +93,12 @@ void ExperienceScalarUpgrade::upgradeImplementation( )
 	if( xpTracker )
 	{
 		xpTracker->setExperienceScalar( xpTracker->getExperienceScalar() + data->m_addXPScalar );
+		xpTracker->setExperienceValueScalar( xpTracker->getExperienceValueScalar() + data->m_addXPValueScalar );
 	}
+
+	// Optionally raise/lower the object's veterancy cap.
+	if( data->m_setMaxVeterancyLevel != LEVEL_INVALID )
+		obj->setMaxVeterancyLevel( data->m_setMaxVeterancyLevel );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -95,7 +110,7 @@ void ExperienceScalarUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -113,15 +128,15 @@ void ExperienceScalarUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void ExperienceScalarUpgrade::loadPostProcess( void )
+void ExperienceScalarUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

@@ -19,38 +19,38 @@
 // W3DView.cpp : Defines the class behaviors for the application.
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 
-#include "mainfrm.h"
-#include "w3dviewdoc.h"
-#include "w3dviewview.h"
-#include "utils.h"
-#include "colorutils.h"
-#include "verchk.h"
-#include "wwmath.h"
-#include "wwaudio.h"
-#include "viewerassetmgr.h"
-#include "globals.h"
-#include "animatedsoundoptionsdialog.h"
-#include "animatedsoundmgr.h"
+#include "MainFrm.h"
+#include "W3DViewDoc.h"
+#include "W3DViewView.h"
+#include "Utils.h"
+#include "ColorUtils.h"
+#include "WWLib/verchk.h"
+#include "WWMath/wwmath.h"
+#include "WWAudio/WWAudio.h"
+#include "ViewerAssetMgr.h"
+#include "Globals.h"
+#include "AnimatedSoundOptionsDialog.h"
+#include "WW3D2/animatedsoundmgr.h"
 
 
 #undef STRICT
-#include "ww3d.h"
-#include "AssetMgr.H"
+#include "WW3D2/ww3d.h"
+#include "WW3D2/assetmgr.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
 
 
-HINSTANCE ApplicationHInstance = NULL;  ///< our application instance
+HINSTANCE ApplicationHInstance = nullptr;  ///< our application instance
 
 /// just to satisfy the game libraries we link to
-HWND ApplicationHWnd = NULL;
+HWND ApplicationHWnd = nullptr;
 
 const char *gAppPrefix = "w3_";
 
@@ -84,7 +84,7 @@ END_MESSAGE_MAP()
 //
 // CW3DViewApp construction
 //
-CW3DViewApp::CW3DViewApp (void)
+CW3DViewApp::CW3DViewApp ()
 	: m_bInitialized (false)
 {
 	// TODO: add construction code here,
@@ -110,10 +110,10 @@ WinMain
 {
 	int retcode = 0;
 
-#ifndef _DEBUG
+#ifndef RTS_DEBUG
 	try
 	{
-#endif //_DEBUG
+#endif //RTS_DEBUG
 
 		//::AfxWinInit (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
 		//::AfxInitialize (FALSE, _MFC_VER);
@@ -127,14 +127,14 @@ WinMain
 
 		retcode = ::AfxWinMain (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
 
-#ifndef _DEBUG
+#ifndef RTS_DEBUG
 	}
 	catch (...)
 	{
 
-		::MessageBox (NULL, "Internal Application Error", "Unrecoverable Error", MB_ICONERROR | MB_OK);
+		::MessageBox (nullptr, "Internal Application Error", "Unrecoverable Error", MB_ICONERROR | MB_OK);
 	}
-#endif //_DEBUG
+#endif //RTS_DEBUG
 
 	return retcode;
 }
@@ -146,10 +146,10 @@ WinMain
 //
 ////////////////////////////////////////////////////////////
 void
-Do_Version_Check (void)
-{	
+Do_Version_Check ()
+{
 	char curr_filename[MAX_PATH];
-	::GetModuleFileName (NULL, curr_filename, MAX_PATH);
+	::GetModuleFileName (nullptr, curr_filename, MAX_PATH);
 
 	CString filename = "\\\\cabal\\mis\\r&d\\w3d\\w3dview\\";
 	filename += ::Get_Filename_From_Path (curr_filename);
@@ -159,10 +159,8 @@ Do_Version_Check (void)
 	// against the version we are running.
 	//
 	if (Compare_EXE_Version ((int)::AfxGetInstanceHandle (), filename) < 0) {
-		::MessageBox (NULL, "There is a newer version of the W3DViewer, please run W3DUpdate to upgrade your local copy.", "Version Info", MB_ICONEXCLAMATION | MB_OK | MB_SETFOREGROUND | MB_SYSTEMMODAL);
+		::MessageBox (nullptr, "There is a newer version of the W3DViewer, please run W3DUpdate to upgrade your local copy.", "Version Info", MB_ICONEXCLAMATION | MB_OK | MB_SETFOREGROUND | MB_SYSTEMMODAL);
 	}
-
-	return ;
 }
 
 
@@ -170,7 +168,7 @@ Do_Version_Check (void)
 //
 // InitInstance
 //
-BOOL CW3DViewApp::InitInstance (void)
+BOOL CW3DViewApp::InitInstance ()
 {
 	// Standard initialization
 	// If you are not using these features and wish to reduce the size
@@ -189,15 +187,15 @@ BOOL CW3DViewApp::InitInstance (void)
 	RegisterColorBar (::AfxGetInstanceHandle ());
 
 	// Is there already an instance of the viewer running?
-	HWND hprev_instance = NULL;
+	HWND hprev_instance = nullptr;
 	::EnumWindows (fnTopLevelWindowSearch, (LPARAM)&hprev_instance);
-	if (hprev_instance == NULL) {
+	if (hprev_instance == nullptr) {
 
 		// Change the registry key under which our settings are stored.
 		// You should modify this string to be something appropriate
 		// such as the name of your company or organization.
 		SetRegistryKey(_T("Westwood Studios"));
-		
+
 		//
 		// Load standard INI file options (including MRU)
 		//
@@ -258,7 +256,7 @@ BOOL CW3DViewApp::InitInstance (void)
 		::SetForegroundWindow (hprev_instance);
 	}
 
-	return (hprev_instance == NULL);
+	return (hprev_instance == nullptr);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -316,9 +314,9 @@ void CW3DViewApp::OnAppAbout()
 /*
 **
 */
-void Debug_Refs(void)
+void Debug_Refs()
 {
-#ifndef NDEBUG
+#ifdef RTS_DEBUG
 	TRACE("Detecting Active Refs...\r\n");
    //ODS("At time %s", cMiscUtil::Get_Text_Time());
 	RefCountNodeClass * first = RefCountClass::ActiveRefList.First();
@@ -344,10 +342,10 @@ void Debug_Refs(void)
 			ActiveRefStruct * search_ref = &(search_obj->ActiveRefInfo);
 
 			if ( ref->File && search_ref->File &&
-				  !strcmp(search_ref->File, ref->File) &&
+				  strcmp(search_ref->File, ref->File) == 0 &&
 				  (search_ref->Line == ref->Line) ) {
 				count++;
-			} else if ( (ref->File == NULL) &&  (search_ref->File == NULL) ) {
+			} else if ( (ref->File == nullptr) &&  (search_ref->File == nullptr) ) {
 				count++;
 			}
 
@@ -368,7 +366,7 @@ void Debug_Refs(void)
 	}
 	TRACE("Done.\r\n");
    //ODS("At time %s", cMiscUtil::Get_Text_Time());
-#endif
+#endif // RTS_DEBUG
 }
 
 
@@ -377,7 +375,7 @@ void Debug_Refs(void)
 // CW3DViewApp
 //
 int
-CW3DViewApp::ExitInstance() 
+CW3DViewApp::ExitInstance()
 {
 	//
 	// Free any resources the WW3D engine allocated
@@ -405,7 +403,7 @@ CW3DViewApp::ExitInstance()
 		//	Free the asset manager
 		//
 		delete _TheAssetMgr;
-		_TheAssetMgr = NULL;
+		_TheAssetMgr = nullptr;
 	}
 
 	Debug_Refs ();
@@ -427,7 +425,7 @@ fnTopLevelWindowSearch
 	BOOL bcontinue = TRUE;
 
 	// Is this a viewer window?
-	if (::GetProp (hwnd, "WW3DVIEWER") != 0) {
+	if (::GetProp (hwnd, "WW3DVIEWER") != nullptr) {
 		bcontinue = false;
 		(*((HWND *)lParam)) = hwnd;
 	}
@@ -442,7 +440,7 @@ fnTopLevelWindowSearch
 //	OnInitDialog
 //
 BOOL
-CAboutDlg::OnInitDialog (void)
+CAboutDlg::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CDialog::OnInitDialog ();
@@ -453,7 +451,7 @@ CAboutDlg::OnInitDialog (void)
 
 	// Get the name and path of the currently executing application
 	TCHAR filename[MAX_PATH];
-	::GetModuleFileName (NULL, filename, sizeof (filename));
+	::GetModuleFileName (nullptr, filename, sizeof (filename));
 
 	// Get the version information for this file
 	DWORD dummy_var = 0;
@@ -466,15 +464,15 @@ CAboutDlg::OnInitDialog (void)
 
 			// Query the block for the file version information
 			UINT version_len = 0;
-			VS_FIXEDFILEINFO *pversion_info = NULL;
+			VS_FIXEDFILEINFO *pversion_info = nullptr;
 			if (::VerQueryValue (pblock, "\\", (LPVOID *)&pversion_info, &version_len)) {
 				version_major = pversion_info->dwFileVersionMS;
 				version_minor = pversion_info->dwFileVersionLS;
 			}
 		}
-		SAFE_DELETE (pblock);
+		SAFE_DELETE_ARRAY(pblock);
 	}
-	
+
 	// Put the version string into the dialog
 	CString version_string;
 	version_string.Format (IDS_VERSION, (version_major >> 16), (version_major & 0xFFFF));

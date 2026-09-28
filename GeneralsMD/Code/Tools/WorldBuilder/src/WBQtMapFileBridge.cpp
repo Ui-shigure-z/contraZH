@@ -35,12 +35,9 @@ static void copyOut(const char *str, char *buf, int cap)
 
 extern "C" int WBQtMapFileData_RadiosVisible(void)
 {
-	// == the MFC pages hiding System/User outside debug/internal builds.
-#if defined(_DEBUG) || defined(_INTERNAL)
+	// The MFC pages used to hide System/User outside debug/internal builds; the internal
+	// build is what ships, so the radios are always visible.
 	return 1;
-#else
-	return 0;
-#endif
 }
 
 // ================= Open Map (hidden-dialog driven) =================
@@ -105,9 +102,7 @@ void OpenMap::qtClose(void)
 void OpenMap::qtMPopulateMain(Bool systemMaps)
 {
 	m_usingSystemDir = systemMaps;
-#if defined(_DEBUG) || defined(_INTERNAL)
 	::AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
-#endif
 
 	HANDLE hFindFile = 0;
 	WIN32_FIND_DATA findData;
@@ -1065,21 +1060,15 @@ static CStringArray s_qtSaveMaps;
 
 extern "C" int WBQtSaveMapData_GetUseSystemDir(void)
 {
-	// == the SaveMap ctor's profile read (FALSE outside debug/internal).
-#if defined(_DEBUG) || defined(_INTERNAL)
+	// == the SaveMap ctor's profile read.
 	return ::AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE) ? 1 : 0;
-#else
-	return 0;
-#endif
 }
 
 extern "C" int WBQtSaveMapData_Enumerate(int systemMaps)
 {
 	// == SaveMap::populateMapListbox's folder walk (a map counts when
 	// Maps\<name>\<name>.map exists), including the profile write.
-#if defined(_DEBUG) || defined(_INTERNAL)
 	::AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", systemMaps ? TRUE : FALSE);
-#endif
 	s_qtSaveMaps.RemoveAll();
 
 	HANDLE hFindFile = 0;

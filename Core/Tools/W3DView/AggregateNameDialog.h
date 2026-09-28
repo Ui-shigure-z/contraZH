@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_AGGREGATENAMEDIALOG_H__3F618448_CDEA_11D2_9FFC_00104B791122__INCLUDED_)
-#define AFX_AGGREGATENAMEDIALOG_H__3F618448_CDEA_11D2_9FFC_00104B791122__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // AggregateNameDialog.h : header file
 //
 
@@ -32,8 +28,8 @@ class AggregateNameDialogClass : public CDialog
 {
 // Construction
 public:
-	AggregateNameDialogClass(CWnd* pParent = NULL);
-	AggregateNameDialogClass(UINT resource_id, const CString &def_name, CWnd* pParent = NULL);
+	AggregateNameDialogClass(CWnd* pParent = nullptr);
+	AggregateNameDialogClass(UINT resource_id, const CString &def_name, CWnd* pParent = nullptr);
 
 // Dialog Data
 	//{{AFX_DATA(AggregateNameDialogClass)
@@ -46,7 +42,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(AggregateNameDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -54,30 +50,28 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(AggregateNameDialogClass)
-	virtual void OnOK();
-	virtual BOOL OnInitDialog();
+	virtual void OnOK() override;
+	virtual BOOL OnInitDialog() override;
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
 	public:
-		
+
 		////////////////////////////////////////////////////////////////
 		//
 		//	Public methods
 		//
-		const CString &			Get_Name (void) const				{ return m_Name; }
+		const CString &			Get_Name () const				{ return m_Name; }
 		void							Set_Name (const CString &name)	{ m_Name = name; }
 
 	private:
-		
+
 		////////////////////////////////////////////////////////////////
 		//
 		//	Private member data
-		//		
+		//
 		CString						m_Name;
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_AGGREGATENAMEDIALOG_H__3F618448_CDEA_11D2_9FFC_00104B791122__INCLUDED_)

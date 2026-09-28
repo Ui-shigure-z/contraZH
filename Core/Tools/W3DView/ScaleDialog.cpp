@@ -19,11 +19,11 @@
 // ScaleDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "ScaleDialog.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -44,7 +44,6 @@ ScaleDialogClass::ScaleDialogClass (float scale, CWnd* pParent,
 	//{{AFX_DATA_INIT(ScaleDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -60,7 +59,6 @@ ScaleDialogClass::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(ScaleDialogClass)
 	DDX_Control(pDX, IDC_SIZE_SPIN, m_ScaleSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -77,7 +75,7 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-ScaleDialogClass::OnInitDialog (void)
+ScaleDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog();
 
@@ -98,12 +96,12 @@ ScaleDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-ScaleDialogClass::OnOK (void)
+ScaleDialogClass::OnOK ()
 {
 	int pos = m_ScaleSpin.GetPos();
 	if (pos & 0xffff0000) {
 		// Error condition. Most likely the value is out of range.
-		MessageBox("Invalid scale value. Please enter a number between 1 and 10,000", 
+		MessageBox("Invalid scale value. Please enter a number between 1 and 10,000",
 			"Invalid Scale", MB_OK | MB_ICONINFORMATION);
 		return;
 	}
@@ -117,7 +115,6 @@ ScaleDialogClass::OnOK (void)
 	}
 
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -128,18 +125,18 @@ ScaleDialogClass::OnOK (void)
 /////////////////////////////////////////////////////////////////////////////
 BOOL
 ScaleDialogClass::OnNotify
-(	
+(
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *header = (NMHDR *)lParam;
-	if ((header != NULL) && (header->code == UDN_DELTAPOS)) {
-		//LPNMUPDOWN updown = (LPNMUPDOWN)lParam;		
+	if ((header != nullptr) && (header->code == UDN_DELTAPOS)) {
+		//LPNMUPDOWN updown = (LPNMUPDOWN)lParam;
 		//::Update_Spinner_Buddy (header->hwndFrom, updown->iDelta);
 	}
 

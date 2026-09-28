@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_CAMERASETTINGSDIALOG_H__7E43F424_8191_11D3_A064_00104B791122__INCLUDED_)
-#define AFX_CAMERASETTINGSDIALOG_H__7E43F424_8191_11D3_A064_00104B791122__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // CameraSettingsDialog.h : header file
 //
 
@@ -32,7 +28,7 @@ class CameraSettingsDialogClass : public CDialog
 {
 // Construction
 public:
-	CameraSettingsDialogClass(CWnd* pParent = NULL);   // standard constructor
+	CameraSettingsDialogClass(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CameraSettingsDialogClass)
@@ -49,9 +45,9 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CameraSettingsDialogClass)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
-	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -59,8 +55,8 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CameraSettingsDialogClass)
-	virtual BOOL OnInitDialog();
-	virtual void OnOK();
+	virtual BOOL OnInitDialog() override;
+	virtual void OnOK() override;
 	afx_msg void OnFovCheck();
 	afx_msg void OnClipPlaneCheck();
 	afx_msg void OnReset();
@@ -68,15 +64,13 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 protected:
-	
+
 	///////////////////////////////////////////////////////////////////
 	//	Protected methods
 	///////////////////////////////////////////////////////////////////
-	void			Update_Camera_Lens (void);
-	void			Update_FOV (void);
+	void			Update_Camera_Lens ();
+	void			Update_FOV ();
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_CAMERASETTINGSDIALOG_H__7E43F424_8191_11D3_A064_00104B791122__INCLUDED_)

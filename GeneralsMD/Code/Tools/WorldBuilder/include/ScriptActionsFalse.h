@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_SCRIPTACTIONSFALSE_H__227F217F_458B_4020_B6E9_6EB25E228FD5__INCLUDED_)
-#define AFX_SCRIPTACTIONSFALSE_H__227F217F_458B_4020_B6E9_6EB25E228FD5__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // ScriptActionsFalse.h : header file
 //
 class Script;
@@ -37,7 +33,7 @@ class ScriptActionsFalse : public CPropertyPage
 // Construction
 public:
 	ScriptActionsFalse();
-	~ScriptActionsFalse();
+	virtual ~ScriptActionsFalse() override;
 
 // Dialog Data
 	//{{AFX_DATA(ScriptActionsFalse)
@@ -51,7 +47,7 @@ public:
 	// ClassWizard generate virtual function overrides
 	//{{AFX_VIRTUAL(ScriptActionsFalse)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -74,7 +70,7 @@ protected:
 protected:
 	// Generated message map functions
 	//{{AFX_MSG(ScriptActionsFalse)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnEditAction();
 	afx_msg void OnSelchangeActionList();
 	afx_msg void OnDblclkActionList();
@@ -94,5 +90,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_SCRIPTACTIONSFALSE_H__227F217F_458B_4020_B6E9_6EB25E228FD5__INCLUDED_)

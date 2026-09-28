@@ -20,9 +20,6 @@
 // Westwood Online DLL/COM/ initialization/teardown
 // Author: Matthew D. Campbell, December 2001
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
 #include <snmp.h>
 #include <winreg.h>
 
@@ -66,7 +63,7 @@ char g_generalsSerial[1024];
 #define DLL_REG_KEY_BOTTOM DLL_REG_KEY_PATH "\\"											///< WOLAPI registry key with trailing backslashes
 #define DLL_REG_KEY_LOCATION ""																		///< Version registry key
 
-void getPathsFromRegistry( void )
+void getPathsFromRegistry()
 {
 	HKEY handle;
 	unsigned long type;
@@ -78,7 +75,7 @@ void getPathsFromRegistry( void )
 
 	if (RegOpenKeyEx( HKEY_LOCAL_MACHINE, GENERALS_REG_KEY_PATH, 0, KEY_ALL_ACCESS, &handle ) == ERROR_SUCCESS) {
 
-		returnValue = RegQueryValueEx(handle, GENERALS_REG_KEY_INSTALLPATH, NULL, &type, (unsigned char *) &g_generalsFilename, &size);
+		returnValue = RegQueryValueEx(handle, GENERALS_REG_KEY_INSTALLPATH, nullptr, &type, (unsigned char *) &g_generalsFilename, &size);
 
 		if (returnValue != ERROR_SUCCESS)
 		{
@@ -93,7 +90,7 @@ void getPathsFromRegistry( void )
 
 	if (RegOpenKeyEx( HKEY_LOCAL_MACHINE, GENERALS_REG_KEY_PATH, 0, KEY_ALL_ACCESS, &handle ) == ERROR_SUCCESS) {
 
-		returnValue = RegQueryValueEx(handle, GENERALS_REG_KEY_SERIAL, NULL, &type, (unsigned char *) &g_generalsSerial, &size);
+		returnValue = RegQueryValueEx(handle, GENERALS_REG_KEY_SERIAL, nullptr, &type, (unsigned char *) &g_generalsSerial, &size);
 
 		if (returnValue != ERROR_SUCCESS)
 		{
@@ -109,7 +106,7 @@ void getPathsFromRegistry( void )
 
 	if (RegOpenKeyEx( HKEY_LOCAL_MACHINE, WOLAPI_REG_KEY_PATH, 0, KEY_ALL_ACCESS, &handle ) == ERROR_SUCCESS) {
 
-		returnValue = RegQueryValueEx(handle, WOLAPI_REG_KEY_INSTALLPATH, NULL, &type, (unsigned char *) &g_wolapiRegFilename, &size);
+		returnValue = RegQueryValueEx(handle, WOLAPI_REG_KEY_INSTALLPATH, nullptr, &type, (unsigned char *) &g_wolapiRegFilename, &size);
 
 		if (returnValue != ERROR_SUCCESS)
 		{
@@ -125,7 +122,7 @@ void getPathsFromRegistry( void )
 
 	if (RegOpenKeyEx( HKEY_CLASSES_ROOT, DLL_REG_KEY_PATH, 0, KEY_ALL_ACCESS, &handle ) == ERROR_SUCCESS) {
 
-		returnValue = RegQueryValueEx(handle, DLL_REG_KEY_LOCATION, NULL, &type, (unsigned char *) &g_wolapiRealFilename, &size);
+		returnValue = RegQueryValueEx(handle, DLL_REG_KEY_LOCATION, nullptr, &type, (unsigned char *) &g_wolapiRealFilename, &size);
 
 		if (returnValue != ERROR_SUCCESS)
 		{
@@ -145,7 +142,7 @@ void setupGenerals( const char *genPath, const char *genSerial )
 	int size;
 	char lpClass[] = "REG_NONE";
 
-	if (RegCreateKeyEx( HKEY_LOCAL_MACHINE, GENERALS_REG_KEY_PATH, 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &handle, NULL ) == ERROR_SUCCESS) {
+	if (RegCreateKeyEx( HKEY_LOCAL_MACHINE, GENERALS_REG_KEY_PATH, 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &handle, nullptr ) == ERROR_SUCCESS) {
 
 		type = REG_SZ;
 		size = strlen(genPath)+1;
@@ -177,25 +174,25 @@ void setupGenerals( const char *genPath, const char *genSerial )
 class OLEInitializer
 {
  public:
-          OLEInitializer() { OleInitialize(NULL); }
+          OLEInitializer() { OleInitialize(nullptr); }
          ~OLEInitializer() { OleUninitialize(); }
 };
 OLEInitializer g_OLEInitializer;
 CComModule _Module;
 
-IChat *g_pChat = NULL;
+IChat *g_pChat = nullptr;
 
 /**
 	* checkInstalledWolapiVersion inits WOLAPI if possible and gets its version
 	* number.  It also saves off its install path from the registry.
 	*/
-void checkInstalledWolapiVersion( void )
+void checkInstalledWolapiVersion()
 {
 	// Initialize this instance
-	_Module.Init(NULL, g_hInst);
+	_Module.Init(nullptr, g_hInst);
 
 	// Create the WOLAPI instance
-	CoCreateInstance(CLSID_Chat, NULL, CLSCTX_INPROC_SERVER, \
+	CoCreateInstance(CLSID_Chat, nullptr, CLSCTX_INPROC_SERVER, \
 					 IID_IChat, (void**)&g_pChat);
 
 	if (g_pChat)
@@ -213,7 +210,5 @@ void checkInstalledWolapiVersion( void )
 
 	// Grab path info from registry
 	getPathsFromRegistry();
-
-	return;
 }
 

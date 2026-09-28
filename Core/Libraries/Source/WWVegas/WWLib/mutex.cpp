@@ -17,19 +17,19 @@
 */
 
 #include "mutex.h"
-#include "wwdebug.h"
+#include "WWDebug/wwdebug.h"
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
 // ----------------------------------------------------------------------------
 
-MutexClass::MutexClass(const char* name) : handle(NULL), locked(false)
+MutexClass::MutexClass(const char* name) : handle(nullptr), locked(false)
 {
 	#ifdef _UNIX
 		//assert(0);
 	#else
-		handle=CreateMutex(NULL,false,name);
+		handle=CreateMutex(nullptr,false,name);
 		WWASSERT(handle);
 	#endif
 }
@@ -90,7 +90,7 @@ MutexClass::LockClass::~LockClass()
 
 // ----------------------------------------------------------------------------
 
-CriticalSectionClass::CriticalSectionClass() : handle(NULL), locked(false)
+CriticalSectionClass::CriticalSectionClass() : handle(nullptr), locked(false)
 {
 	#ifdef _UNIX
 		//assert(0);

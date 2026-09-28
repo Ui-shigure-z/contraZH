@@ -20,12 +20,7 @@
 //
 /////////////////////////////////////////////////////////////////////////////
 
-#if !defined(AFX_MAINFRM_H__41C157EB_5631_11D1_8CDB_006097C6A583__INCLUDED_)
-#define AFX_MAINFRM_H__41C157EB_5631_11D1_8CDB_006097C6A583__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
 
 class CMainFrame : public CFrameWnd
 {
@@ -45,16 +40,16 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CMainFrame)
 	public:
-	virtual BOOL OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext);
-	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+	virtual BOOL OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext) override;
+	virtual BOOL PreCreateWindow(CREATESTRUCT& cs) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
 public:
 	virtual ~CMainFrame();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 protected:  // control bar embedded members
@@ -75,5 +70,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_MAINFRM_H__41C157EB_5631_11D1_8CDB_006097C6A583__INCLUDED_)

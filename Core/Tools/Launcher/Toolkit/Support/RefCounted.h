@@ -37,8 +37,7 @@
 *
 ******************************************************************************/
 
-#ifndef REFCOUNTED_H
-#define REFCOUNTED_H
+#pragma once
 
 #include <assert.h>
 
@@ -67,14 +66,14 @@ class RefCounted
 			{return false;}
 
 		// Add reference
-		inline void AddReference(void)
+		inline void AddReference()
 			{++mRefCount;}
 
 		// Release reference
-		inline virtual void Release(void)
+		inline virtual void Release()
 			{if (--mRefCount == 0) delete this;}
 
-		inline int ReferenceCount(void) const
+		inline int ReferenceCount() const
 			{return mRefCount;}
 
 	private:
@@ -82,5 +81,3 @@ class RefCounted
 
 		unsigned int mRefCount;
 	};
-
-#endif // REFCOUNTED_H

@@ -19,15 +19,15 @@
 // BackgroundObjectDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "BackgroundObjectDialog.h"
-#include "AssetMgr.H"
-#include "Utils.H"
-#include "W3DViewDoc.H"
+#include "WW3D2/assetmgr.h"
+#include "Utils.h"
+#include "W3DViewDoc.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -38,13 +38,12 @@ static char THIS_FILE[] = __FILE__;
 //
 //  CBackgroundObjectDialog
 //
-CBackgroundObjectDialog::CBackgroundObjectDialog (CWnd* pParent /*=NULL*/)
+CBackgroundObjectDialog::CBackgroundObjectDialog (CWnd* pParent /*=nullptr*/)
 	: CDialog(CBackgroundObjectDialog::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CBackgroundObjectDialog)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -58,7 +57,6 @@ CBackgroundObjectDialog::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CBackgroundObjectDialog)
 	DDX_Control(pDX, IDC_HIERARCHY_LIST, m_heirarchyListCtrl);
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -77,11 +75,11 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CBackgroundObjectDialog::OnInitDialog (void)
+CBackgroundObjectDialog::OnInitDialog ()
 {
     // Allow the base class to process this message
 	CDialog::OnInitDialog ();
-	
+
     // Center the dialog around the data tree view instead
     // of the direct center of the screen
     ::CenterDialogAroundTreeView (m_hWnd);
@@ -114,7 +112,7 @@ CBackgroundObjectDialog::OnInitDialog (void)
 
         // Free the enumerator object we created earlier
         delete pObjEnum;
-        pObjEnum = NULL;
+        pObjEnum = nullptr;
     }
 
     // Get a pointer to the doc
@@ -123,7 +121,7 @@ CBackgroundObjectDialog::OnInitDialog (void)
     {
         // Get the name of the current background object
         CString stringCurrObject = pCDoc->GetBackgroundObjectName ();
-        
+
         LV_FINDINFO findInfo = { 0 };
         findInfo.flags = LVFI_STRING;
         findInfo.psz = (LPCTSTR)stringCurrObject;
@@ -142,7 +140,7 @@ CBackgroundObjectDialog::OnInitDialog (void)
             m_heirarchyListCtrl.SetItemState (0, LVNI_SELECTED, LVNI_SELECTED);
             SetDlgItemText (IDC_CURR_OBJ, m_heirarchyListCtrl.GetItemText (0, 0));
         }
-    }    
+    }
 
     // Size the columns so they are large enough to display their contents
     m_heirarchyListCtrl.SetColumnWidth (0, LVSCW_AUTOSIZE);
@@ -155,7 +153,7 @@ CBackgroundObjectDialog::OnInitDialog (void)
 //  OnInitDialog
 //
 void
-CBackgroundObjectDialog::OnOK (void)
+CBackgroundObjectDialog::OnOK ()
 {
     // Get a pointer to the doc
     CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
@@ -174,14 +172,12 @@ CBackgroundObjectDialog::OnOK (void)
         else
         {
             // Ask the doc to clear the background object
-            pCDoc->SetBackgroundObject (NULL);
+            pCDoc->SetBackgroundObject (nullptr);
         }
 
 	    // Allow the base class to process this message
         CDialog::OnOK ();
     }
-
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -216,9 +212,8 @@ CBackgroundObjectDialog::OnItemChangedHierarchyList
             SetDlgItemText (IDC_CURR_OBJ, m_heirarchyListCtrl.GetItemText (pNMListView->iItem, 0));
         }
     }
-	
+
 	*pResult = 0;
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -226,7 +221,7 @@ CBackgroundObjectDialog::OnItemChangedHierarchyList
 //  OnClear
 //
 void
-CBackgroundObjectDialog::OnClear (void) 
+CBackgroundObjectDialog::OnClear ()
 {
     // Get the current selection (if any)
     int iIndex = m_heirarchyListCtrl.GetNextItem (-1, LVNI_ALL | LVNI_SELECTED);
@@ -235,6 +230,4 @@ CBackgroundObjectDialog::OnClear (void)
         // Clear the selection state from this entry
         m_heirarchyListCtrl.SetItemState (iIndex, 0, LVIS_SELECTED);
     }
-
-	return ;
 }

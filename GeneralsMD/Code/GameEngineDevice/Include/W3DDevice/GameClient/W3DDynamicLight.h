@@ -28,9 +28,6 @@
 
 #pragma once
 
-#ifndef W3D_DYNAMIC_LIGHT_H
-#define W3D_DYNAMIC_LIGHT_H
-
 #include "WW3D2/light.h"
 #include "Lib/BaseType.h"
 class HeightMapRenderObjClass;
@@ -46,12 +43,17 @@ protected:
 	/// Values used by HeightMapRenderObjClass to update the height map.
 	Bool		m_priorEnable;
 	Bool		m_processMe;
-	
+
 
 	Int			m_prevMinX, m_prevMinY, m_prevMaxX, m_prevMaxY;
 	Int			m_minX, m_minY, m_maxX, m_maxY;
 
 	Bool		m_enabled;
+	Bool		m_terrainOnly;
+	Bool		m_pixelLit;			///< the terrain shader draws it this frame, so the terrain's vertex lighting leaves it out
+	Bool		m_bakedLastFrame;	///< the terrain's vertex lighting holds it, so it must be taken out when it leaves
+	Int			m_pixelIndex;		///< where it sits among this frame's per-pixel lights, or -1
+	const void *m_owner;
 
 	Bool		m_decayRange;
 	Bool		m_decayColor;
@@ -66,23 +68,32 @@ protected:
 
 public:
 	W3DDynamicLight();
-	~W3DDynamicLight(void);
+	virtual ~W3DDynamicLight() override;
 
 public:
-	virtual void					On_Frame_Update(void); 
+	virtual void					On_Frame_Update() override;
 
-	void setEnabled(Bool enabled) { m_enabled = enabled; m_decayRange = false; m_decayFrameCount = 0; m_decayColor = false; m_increaseFrameCount = 0;};
-	Bool isEnabled(void) {return m_enabled;};
+	void setEnabled(Bool enabled) { m_enabled = enabled; m_decayRange = false; m_decayFrameCount = 0; m_decayColor = false; m_increaseFrameCount = 0; m_terrainOnly = false; m_owner = nullptr;};
+	Bool isEnabled() {return m_enabled;};
+
+	/// lights the terrain only, objects ignore it
+	void setTerrainOnly(Bool terrainOnly) { m_terrainOnly = terrainOnly; }
+	Bool isTerrainOnly() const { return m_terrainOnly; }
+
+	/// set once a frame for every light, before the terrain updates its vertex lighting
+	void setPixelIndex(Int index) { m_pixelIndex = index; }
+	Int getPixelIndex() const { return m_pixelIndex; }
+	Bool isPixelLit() const { return m_pixelLit; }
+
+	/// whoever holds the light across frames, cleared when the pool hands it out again
+	void setOwner(const void *owner) { m_owner = owner; }
+	Bool isOwnedBy(const void *owner) const { return m_enabled && m_owner == owner; }
 
 
 	/// 0 frameIncreaseTime means it starts out full size/intensity, 0 decay time means it lasts forever.
 	void setFrameFade(UnsignedInt frameIncreaseTime, UnsignedInt decayFrameTime);
-	void setDecayRange(void) {m_decayRange = true;};
-	void setDecayColor(void) {m_decayColor = true;};
+	void setDecayRange() {m_decayRange = true;};
+	void setDecayColor() {m_decayColor = true;};
 	// Cull returns true if the terrain vertex at x,y is outside of the light's influence.
 	Bool cull(Int x, Int y ) {return (x<m_minX||y<m_minY||x>m_maxX||y>m_maxY);}
 };
-
-
-
-#endif //TEXTURE_H

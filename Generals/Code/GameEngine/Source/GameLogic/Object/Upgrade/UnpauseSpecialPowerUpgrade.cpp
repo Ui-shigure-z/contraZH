@@ -24,7 +24,7 @@
 
 // FILE: UnpauseSpecialPowerUpgrade.cpp ///////////////////////////////////////////////////////////////////////////
 // Author: Graham Smallwood, August 2002
-// Desc:	 An upgrade that starts the timer on a Special Power module, so you can have them 
+// Desc:	 An upgrade that starts the timer on a Special Power module, so you can have them
 // dependent on upgrades on the logic side, like NEED_UPGRADE does on the client side by disabling
 // the button.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -33,16 +33,17 @@
 #include "PreRTS.h"
 #include "Common/SpecialPower.h"
 #include "Common/Xfer.h"
+#include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Module/SpecialPowerModule.h"
 #include "GameLogic/Module/UnpauseSpecialPowerUpgrade.h"
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-UnpauseSpecialPowerUpgradeModuleData::UnpauseSpecialPowerUpgradeModuleData( void )
+UnpauseSpecialPowerUpgradeModuleData::UnpauseSpecialPowerUpgradeModuleData()
 {
-	m_specialPower = NULL;
-} 
+	m_specialPower = nullptr;
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -50,14 +51,14 @@ UnpauseSpecialPowerUpgradeModuleData::UnpauseSpecialPowerUpgradeModuleData( void
 {
 	UpgradeModuleData::buildFieldParse( p );
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "SpecialPowerTemplate", INI::parseSpecialPowerTemplate, NULL, offsetof( UnpauseSpecialPowerUpgradeModuleData, m_specialPower ) },
-		{ 0, 0, 0, 0 } 
+		{ "SpecialPowerTemplate", INI::parseSpecialPowerTemplate, nullptr, offsetof( UnpauseSpecialPowerUpgradeModuleData, m_specialPower ) },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
 	p.add(dataFieldParse);
 
-}  // end buildFieldParse
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -65,22 +66,22 @@ UnpauseSpecialPowerUpgradeModuleData::UnpauseSpecialPowerUpgradeModuleData( void
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-UnpauseSpecialPowerUpgrade::UnpauseSpecialPowerUpgrade( Thing *thing, const ModuleData* moduleData ) : 
+UnpauseSpecialPowerUpgrade::UnpauseSpecialPowerUpgrade( Thing *thing, const ModuleData* moduleData ) :
 							UpgradeModule( thing, moduleData )
 {
 
-}  
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-UnpauseSpecialPowerUpgrade::~UnpauseSpecialPowerUpgrade( void )
+UnpauseSpecialPowerUpgrade::~UnpauseSpecialPowerUpgrade()
 {
 
-} 
+}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void UnpauseSpecialPowerUpgrade::upgradeImplementation( void )
+void UnpauseSpecialPowerUpgrade::upgradeImplementation()
 {
 	for (BehaviorModule** m = getObject()->getBehaviorModules(); *m; ++m)
 	{
@@ -89,7 +90,15 @@ void UnpauseSpecialPowerUpgrade::upgradeImplementation( void )
 			continue;
 
 		if( sp->getSpecialPowerTemplate() == getUnpauseSpecialPowerUpgradeModuleData()->m_specialPower )
+		{
 			sp->pauseCountdown( FALSE );
+
+			if (sp->startsReady())
+			{
+				UnsignedInt now = TheGameLogic->getFrame();
+				sp->setReadyFrame(now);
+			}
+		}
 	}
 }
 
@@ -102,7 +111,7 @@ void UnpauseSpecialPowerUpgrade::crc( Xfer *xfer )
 	// extend base class
 	UpgradeModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -120,15 +129,15 @@ void UnpauseSpecialPowerUpgrade::xfer( Xfer *xfer )
 	// extend base class
 	UpgradeModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void UnpauseSpecialPowerUpgrade::loadPostProcess( void )
+void UnpauseSpecialPowerUpgrade::loadPostProcess()
 {
 
 	// extend base class
 	UpgradeModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

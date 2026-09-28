@@ -22,8 +22,7 @@
 gimex.h - Graphics IMport EXport (GIMEX) v2.26
 @ */
 
-#ifndef __GIMEX_H
-#define __GIMEX_H 1
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -210,7 +209,7 @@ typedef struct
 
 /* Example Information Functions */
 
-GABOUT * GCALL aboutbmp(void);
+GABOUT * GCALL aboutbmp();
 int      GCALL isbmp(GSTREAM *g);
 
 /* Example Import Functions */
@@ -299,9 +298,4 @@ unsigned long bswap(unsigned long val);
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* __GIMEX_H */
 /* END ABSTRACT */
-
-
-

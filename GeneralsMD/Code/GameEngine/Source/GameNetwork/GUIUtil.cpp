@@ -25,7 +25,7 @@
 // FILE: GUIUtil.cpp //////////////////////////////////////////////////////
 // Author: Matthew D. Campbell, Sept 2002
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "GameNetwork/GUIUtil.h"
 #include "GameNetwork/NetworkDefs.h"
@@ -46,11 +46,6 @@
 #include "GameNetwork/LANAPICallbacks.h" // for acceptTrueColor, etc
 #include "GameClient/ChallengeGenerals.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 // -----------------------------------------------------------------------------
 
@@ -61,7 +56,7 @@ void EnableSlotListUpdates( Bool val )
 	winInitialized = val;
 }
 
-Bool AreSlotListUpdatesEnabled( void )
+Bool AreSlotListUpdatesEnabled()
 {
 	return winInitialized;
 }
@@ -78,7 +73,7 @@ void EnableAcceptControls(Bool Enabled, GameInfo *myGame, GameWindow *comboPlaye
 
 	Bool isObserver = myGame->getConstSlot(slotNum)->getPlayerTemplate() == PLAYERTEMPLATE_OBSERVER;
 
-	if( !myGame->amIHost() && (buttonStart != NULL) )
+	if( !myGame->amIHost() && (buttonStart != nullptr) )
 		buttonStart->winEnable(Enabled);
 	if(comboColor[slotNum])
 	{
@@ -139,10 +134,10 @@ void ShowUnderlyingGUIElements( Bool show, const char *layoutFilename, const cha
 	AsciiString parentNameStr;
 	parentNameStr.format("%s:%s", layoutFilename, parentName);
 	NameKeyType parentID = NAMEKEY(parentNameStr);
-	GameWindow *parent = TheWindowManager->winGetWindowFromId( NULL, parentID );
+	GameWindow *parent = TheWindowManager->winGetWindowFromId( nullptr, parentID );
 	if (!parent)
 	{
-		DEBUG_CRASH(("Window %s not found\n", parentNameStr.str()));
+		DEBUG_CRASH(("Window %s not found", parentNameStr.str()));
 		return;
 	}
 
@@ -198,7 +193,7 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
-		GameSlot *slot = myGame->getSlot(i);	
+		GameSlot *slot = myGame->getSlot(i);
 		if( slot && (i != comboBox) && (slot->getColor() >= 0 )&& (slot->getColor() < numColors))
 		{
 			DEBUG_ASSERTCRASH(slot->getColor() >= 0,("We've tried to access array %d and that ain't good",slot->getColor()));
@@ -226,7 +221,17 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 		if (!def || availableColors[c] == false)
 			continue;
 
+#if defined(GENERALS_ONLINE)
+		Bool bFoundColorName = FALSE;
+		colorName = TheGameText->fetch(def->getTooltipName().str(), &bFoundColorName);
+
+		if (!bFoundColorName) // use raw instead
+		{
+			colorName.format(L"%hs", def->getTooltipName().str());
+		}
+#else
 		colorName = TheGameText->fetch(def->getTooltipName().str());
+#endif
 		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], colorName, def->getColor());
 		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)c);
 	}
@@ -235,6 +240,36 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 }
 
 // -----------------------------------------------------------------------------
+
+// Same gates as the random pick in GameLogic.cpp and the preference load in UserPreferences.cpp
+static Bool isSelectablePlayerTemplate(const PlayerTemplate *fac, const GameInfo *myGame)
+{
+	if (!fac)
+	{
+		return FALSE;
+	}
+
+	if (fac->getStartingBuilding().isEmpty())
+	{
+		return FALSE;
+	}
+
+	if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )
+	{
+		return FALSE;
+	}
+
+	// @todo: unlock these when something rad happens
+	Bool disallowLockedGenerals = TRUE;
+	const GeneralPersona *general = TheChallengeGenerals->getGeneralByTemplateName(fac->getName());
+	Bool startsLocked = general ? !general->isStartingEnabled() : FALSE;
+	if (disallowLockedGenerals && startsLocked)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
 
 void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGame, Bool allowObservers)
 {
@@ -248,27 +283,37 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 	GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)PLAYERTEMPLATE_RANDOM);
 
 	std::set<AsciiString> seenSides;
+	std::set<AsciiString> selectableBaseSides;
 
 	for (Int c=0; c<numPlayerTemplates; ++c)
 	{
 		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
-		if (!fac)
-			continue;
+		if (isSelectablePlayerTemplate(fac, myGame))
+		{
+			selectableBaseSides.insert(fac->getBaseSide());
+		}
+	}
 
-		if (fac->getStartingBuilding().isEmpty())
+	const Int baseSideCount = GetRandomBaseSideCount();
+	for (Int n = 0; n < baseSideCount; ++n)
+	{
+		if (selectableBaseSides.find(GetRandomBaseSide(n)) == selectableBaseSides.end())
+		{
 			continue;
+		}
 
-		if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )
-		  continue;
+		Int randomSide = PLAYERTEMPLATE_RANDOM_SIDE_FIRST - n;
+		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], GetRandomPlayerTemplateDisplayName(randomSide), def->getColor());
+		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)randomSide);
+	}
 
-		// Prevent players from selecting the disabled Generals for use.
-		// This is also enforced at game loading (GameLogic.cpp and UserPreferences.cpp).
-		// @todo: unlock these when something rad happens
-		Bool disallowLockedGenerals = TRUE;
-		const GeneralPersona *general = TheChallengeGenerals->getGeneralByTemplateName(fac->getName());
-		Bool startsLocked = general ? !general->isStartingEnabled() : FALSE;
-		if (disallowLockedGenerals && startsLocked)
+	for (Int c=0; c<numPlayerTemplates; ++c)
+	{
+		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
+		if (!isSelectablePlayerTemplate(fac, myGame))
+		{
 			continue;
+		}
 
 
 		AsciiString side;
@@ -296,6 +341,30 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 
 // -----------------------------------------------------------------------------
 
+#if defined(GENERALS_ONLINE)
+// team colors for UI (team combo + minimap start positions).
+UnsignedInt GetTeamUiColor(Int teamNumber)
+{
+	switch (teamNumber)
+	{
+		case 0:
+			return GameMakeColor(255, 60, 60, 255);   // Red
+
+		case 1:
+			return GameMakeColor(60, 255, 60, 255);   // Green
+
+		case 2:
+			return GameMakeColor(60, 120, 255, 255);  // Blue
+
+		case 3:
+			return GameMakeColor(255, 220, 60, 255);  // Yellow
+	}
+
+	// Default: white (none)
+	return GameMakeColor(255, 255, 255, 255);
+}
+#endif
+
 void PopulateTeamComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGame, Bool isObserver)
 {
 	Int numTeams = MAX_SLOTS/2;
@@ -318,10 +387,17 @@ void PopulateTeamComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGa
 		AsciiString teamStr;
 		teamStr.format("Team:%d", c + 1);
 		teamName = TheGameText->fetch(teamStr.str());
+#if defined(GENERALS_ONLINE)
+		UnsignedInt teamColor = GetTeamUiColor(c);
+		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], teamName, teamColor);
+#else
 		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], teamName, def->getColor());
+#endif
 		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)c);
 	}
+#if !defined(GENERALS_ONLINE)
 	GadgetComboBoxSetSelectedPos(comboArray[comboBox], 0);
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -336,13 +412,12 @@ void PopulateStartingCashComboBox(GameWindow *comboBox, GameInfo *myGame)
 {
   GadgetComboBoxReset(comboBox);
 
-  const MultiplayerStartingMoneyList & startingCashMap = TheMultiplayerSettings->getStartingMoneyList(); 
+  const MultiplayerStartingMoneyList & startingCashMap = TheMultiplayerSettings->getStartingMoneyList();
   Int currentSelectionIndex = -1;
 
-  MultiplayerStartingMoneyList::const_iterator it = startingCashMap.begin();
-  for ( ; it != startingCashMap.end(); it++ )
+  for (MultiplayerStartingMoneyList::const_iterator it = startingCashMap.begin(); it != startingCashMap.end(); it++ )
   {
-    Int newIndex = GadgetComboBoxAddEntry(comboBox, formatMoneyForStartingCashComboBox( *it ), 
+    Int newIndex = GadgetComboBoxAddEntry(comboBox, formatMoneyForStartingCashComboBox( *it ),
                                           comboBox->winGetEnabled() ? comboBox->winGetEnabledTextColor() : comboBox->winGetDisabledTextColor());
     GadgetComboBoxSetItemData(comboBox, newIndex, (void *)it->countMoney());
 
@@ -352,12 +427,21 @@ void PopulateStartingCashComboBox(GameWindow *comboBox, GameInfo *myGame)
     }
   }
 
+#if defined(GENERALS_ONLINE)
+  // NGMP: safety
+  // TODO_NGMP: Why can we get in here with no data during lobby creation? async?
+  if (myGame->getStartingCash().countMoney() == 0)
+  {
+	  currentSelectionIndex = 0;
+  }
+#endif
+
   if ( currentSelectionIndex == -1 )
   {
     DEBUG_CRASH( ("Current selection for starting cash not found in list") );
-    currentSelectionIndex = GadgetComboBoxAddEntry(comboBox, formatMoneyForStartingCashComboBox( myGame->getStartingCash() ), 
+    currentSelectionIndex = GadgetComboBoxAddEntry(comboBox, formatMoneyForStartingCashComboBox( myGame->getStartingCash() ),
                                           comboBox->winGetEnabled() ? comboBox->winGetEnabledTextColor() : comboBox->winGetDisabledTextColor());
-    GadgetComboBoxSetItemData(comboBox, currentSelectionIndex, (void *)it->countMoney() );
+    GadgetComboBoxSetItemData(comboBox, currentSelectionIndex, (void *)myGame->getStartingCash().countMoney() );
   }
 
   GadgetComboBoxSetSelectedPos(comboBox, currentSelectionIndex);
@@ -370,7 +454,7 @@ void PopulateStartingCashComboBox(GameWindow *comboBox, GameInfo *myGame)
 //-------------------------------------------------------------------------------------------------
 void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 										GameWindow *comboColor[], GameWindow *comboPlayerTemplate[],
-										GameWindow *comboTeam[], GameWindow *buttonAccept[], 
+										GameWindow *comboTeam[], GameWindow *buttonAccept[],
 										GameWindow *buttonStart, GameWindow *buttonMapStartPosition[] )
 {
 	if(!AreSlotListUpdatesEnabled())
@@ -393,13 +477,14 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 		for( int i =0; i < MAX_SLOTS; i++ )
 		{
 			GameSlot * slot = myGame->getSlot(i);
+
 			// if i'm host, enable the controls for AI
-			if(myGame->amIHost() && slot && slot->isAI())
+			if(myGame->amIHost() && slot->isAI())
 			{
 				EnableAcceptControls(TRUE, myGame, comboPlayer, comboColor, comboPlayerTemplate,
 					comboTeam, buttonAccept, buttonStart, buttonMapStartPosition, i);
 			}
-			else if (slot && myGame->getLocalSlotNum() == i)
+			else if (myGame->getLocalSlotNum() == i)
 			{
 				if(slot->isAccepted() && !myGame->amIHost())
 				{
@@ -418,14 +503,14 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 							comboTeam, buttonAccept, buttonStart, buttonMapStartPosition);
 					}
 				}
-				
+
 			}
 			else if(myGame->amIHost())
 			{
 				EnableAcceptControls(FALSE, myGame, comboPlayer, comboColor, comboPlayerTemplate,
 					comboTeam, buttonAccept, buttonStart, buttonMapStartPosition, i);
 			}
-			if(slot && slot->isHuman())
+			if(slot->isHuman())
 			{
 				UnicodeString newName = slot->getName();
 				UnicodeString oldName = GadgetComboBoxGetText(comboPlayer[i]);
@@ -454,10 +539,15 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 				}
 			}
 			else
-			{				
+			{
 				GadgetComboBoxSetSelectedPos(comboPlayer[i], slot->getState(), TRUE);
         if( buttonAccept &&  buttonAccept[i] )
 				  buttonAccept[i]->winHide(TRUE);
+
+#if defined(GENERALS_ONLINE)
+				// NGMP: Support host migration, names can change for non-human occupied slots during migration
+				GadgetComboBoxSetText(comboPlayer[i], slot->getName());
+#endif
 			}
 /*
 			if (myGame->getLocalSlotNum() == i && i!=0)
@@ -471,10 +561,10 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 					comboPlayer[i]->winEnable( FALSE );
 			}
 			//if( i == myGame->getLocalSlotNum())
-      if((comboColor[i] != NULL) && BitIsSet(comboColor[i]->winGetStatus(), WIN_STATUS_ENABLED))
+      if((comboColor[i] != nullptr) && BitIsSet(comboColor[i]->winGetStatus(), WIN_STATUS_ENABLED))
 				PopulateColorComboBox(i, comboColor, myGame, myGame->getConstSlot(i)->getPlayerTemplate() == PLAYERTEMPLATE_OBSERVER);
 			Int max, idx;
-			if (comboColor[i] != NULL) {
+			if (comboColor[i] != nullptr) {
 				max = GadgetComboBoxGetLength(comboColor[i]);
 				for (idx=0; idx<max; ++idx)
 				{
@@ -487,7 +577,7 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 				}
 			}
 
-			if (comboTeam[i] != NULL) {
+			if (comboTeam[i] != nullptr) {
 				max = GadgetComboBoxGetLength(comboTeam[i]);
 				for (idx=0; idx<max; ++idx)
 				{
@@ -500,7 +590,7 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 				}
 			}
 
-			if (comboPlayerTemplate[i] != NULL) {
+			if (comboPlayerTemplate[i] != nullptr) {
 				max = GadgetComboBoxGetLength(comboPlayerTemplate[i]);
 				for (idx=0; idx<max; ++idx)
 				{

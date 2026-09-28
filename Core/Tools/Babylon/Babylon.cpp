@@ -28,18 +28,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
 
 char AppTitle[200];
-CBabylonDlg *MainDLG = NULL;
+CBabylonDlg *MainDLG = nullptr;
 
 static const char *AppName = "Babylon:";
-static int AlreadyRunning( void );
-static HWND FoundWindow = NULL;
+static int AlreadyRunning();
+static HWND FoundWindow = nullptr;
 /////////////////////////////////////////////////////////////////////////////
 // CBabylonApp
 
@@ -62,8 +62,8 @@ CBabylonApp::CBabylonApp()
 // The one and only CBabylonApp object
 
 CBabylonApp theApp;
-TransDB				*BabylonstrDB = NULL;
-TransDB				*MainDB = NULL;
+TransDB				*BabylonstrDB = nullptr;
+TransDB				*MainDB = nullptr;
 char		BabylonstrFilename[_MAX_PATH];
 char		MainXLSFilename[_MAX_PATH];
 char		DialogPath[_MAX_PATH];
@@ -158,10 +158,10 @@ BOOL CBabylonApp::InitInstance()
 	return FALSE;
 }
 
-//DEL void CBabylonApp::OnDropFiles(HDROP hDropInfo) 
+//DEL void CBabylonApp::OnDropFiles(HDROP hDropInfo)
 //DEL {
 //DEL 	// TODO: Add your message handler code here and/or call default
-//DEL 	
+//DEL
 //DEL 	CWinApp::OnDropFiles(hDropInfo);
 //DEL }
 
@@ -169,27 +169,27 @@ static BOOL CALLBACK EnumAllWindowsProc(HWND hWnd, LPARAM lParam);
 static BOOL CALLBACK EnumAllWindowsProcExact(HWND hWnd, LPARAM lParam);
 static const char *szSearchTitle;
 
-static int AlreadyRunning( void )
+static int AlreadyRunning()
 {
 	BOOL found = FALSE;
-	
+
 	szSearchTitle = AppName;
-	
+
 	EnumWindows((WNDENUMPROC) EnumAllWindowsProcExact, (LPARAM) &found);
-	
+
 	return found;
 }
 
 //--------------------------------------------------------------------------------
 
-int ExcelRunning( void )
+int ExcelRunning()
 {
 	BOOL found = FALSE;
-	
+
 	szSearchTitle = "Microsoft Excel";
-	
+
 	EnumWindows((WNDENUMPROC) EnumAllWindowsProc, (LPARAM) &found);
-	
+
 	return found;
 }
 
@@ -200,7 +200,7 @@ BOOL CALLBACK EnumAllWindowsProc(HWND hWnd, LPARAM lParam)
 	char szText[256];
 
 	GetWindowText(hWnd, szText, sizeof(szText));
-	
+
 	if ( strstr(szText, szSearchTitle))
 	{
 		* (BOOL *) lParam = TRUE;
@@ -208,7 +208,7 @@ BOOL CALLBACK EnumAllWindowsProc(HWND hWnd, LPARAM lParam)
 		 return FALSE;
 	}
 
-	FoundWindow = NULL;
+	FoundWindow = nullptr;
 	return TRUE;
 }
 
@@ -219,15 +219,15 @@ BOOL CALLBACK EnumAllWindowsProcExact(HWND hWnd, LPARAM lParam)
 	char szText[256];
 
 	GetWindowText(hWnd, szText, sizeof(szText));
-	
-	if ( !strncmp (szText, szSearchTitle, strlen ( szSearchTitle)))
+
+	if ( strncmp (szText, szSearchTitle, strlen ( szSearchTitle)) == 0)
 	{
 		* (BOOL *) lParam = TRUE;
 		 FoundWindow = hWnd;
 		 return FALSE;
 	}
 
-	FoundWindow = NULL;
+	FoundWindow = nullptr;
 	return TRUE;
 }
 

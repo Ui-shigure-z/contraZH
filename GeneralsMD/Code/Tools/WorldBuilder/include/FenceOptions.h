@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_FenceOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_)
-#define AFX_FenceOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // FenceOptions.h : header file
 //
 
@@ -38,9 +34,9 @@ class FenceOptions : public COptionsPanel
 {
 // Construction
 public:
-	FenceOptions(CWnd* pParent = NULL);   ///< standard constructor
+	FenceOptions(CWnd* pParent = nullptr);   ///< standard constructor
 
-	~FenceOptions(void);   ///< standard destructor
+	virtual ~FenceOptions() override;   ///< standard destructor
 	enum { NAME_MAX_LEN = 64 };
 // Dialog Data
 	//{{AFX_DATA(FenceOptions)
@@ -66,7 +62,7 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(FenceOptions)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnChangeFenceSpacingEdit();
 	afx_msg void OnSearch();
 	afx_msg void OnReset();
@@ -89,7 +85,7 @@ protected:
 	Bool m_showAllObjectTypes;
 
 protected:
-	void addObject( MapObject *mapObject, const char *pPath, const char *name, 
+	void addObject( MapObject *mapObject, const char *pPath, const char *name,
 									Int objectNdx, HTREEITEM parent );
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
 	Bool setObjectTreeViewSelection(HTREEITEM parent, Int selection);
@@ -118,5 +114,3 @@ public:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_FenceOptions_H__D3FF66C5_711D_4DAC_8A29_5EAAB5C3A23E__INCLUDED_)

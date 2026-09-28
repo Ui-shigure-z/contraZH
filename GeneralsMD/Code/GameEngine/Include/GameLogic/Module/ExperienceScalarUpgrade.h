@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef __EXPERIENCE_SCALAR_UPGRADE_H_
-#define __EXPERIENCE_SCALAR_UPGRADE_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/UpgradeModule.h"
 
@@ -45,11 +42,14 @@ class ExperienceScalarUpgradeModuleData: public UpgradeModuleData
 
 public:
 
-	ExperienceScalarUpgradeModuleData( void );
+	ExperienceScalarUpgradeModuleData();
 
 	static void buildFieldParse(MultiIniFieldParse& p);
 
-	Real m_addXPScalar;
+	Bool m_initiallyActive;   // Apply upgrade immediately
+	Real m_addXPScalar;   ///< Additive bonus to scalar for XP this unit gains
+	Real m_addXPValueScalar;  ///< Additive bonus to scalar for XP this unit gives when killed
+	VeterancyLevel m_setMaxVeterancyLevel;  ///< if not LEVEL_INVALID, override the object's max veterancy cap
 
 };
 
@@ -68,11 +68,7 @@ public:
 
 protected:
 
-	virtual void upgradeImplementation( ); ///< Here's the actual work of Upgrading
-	virtual Bool isSubObjectsUpgrade() { return false; }
+	virtual void upgradeImplementation() override; ///< Here's the actual work of Upgrading
+	virtual Bool isSubObjectsUpgrade() override { return false; }
 
 };
-
-
-#endif // __DEFAULTDIE_H_
-

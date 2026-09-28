@@ -28,24 +28,48 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/FramePacer.h"
 #include "Common/GameEngine.h"
+#include "Common/ReplaySimulation.h"
 
 
 /**
  * This is the entry point for the game system.
  */
-void GameMain( int argc, char *argv[] )
+Int GameMain()
 {
+	int exitcode = 0;
 	// initialize the game engine using factory function
+	TheFramePacer = new FramePacer();
+	TheFramePacer->enableFramesPerSecondLimit(TRUE);
 	TheGameEngine = CreateGameEngine();
-	TheGameEngine->init(argc, argv);
+	TheGameEngine->init();
 
-	// run it
-	TheGameEngine->execute();
+#if defined(GENERALS_ONLINE)
+	if (TheGlobalData->m_exportStats && (!TheGlobalData->m_headless || TheGlobalData->m_simulateReplays.empty()))
+	{
+		printf("ERROR: -exportStats requires headless replay mode (-headless -replay <file>).\n");
+		fflush(stdout);
+		exitcode = 1;
+	}
+	else
+#endif
+	if (!TheGlobalData->m_simulateReplays.empty())
+	{
+		exitcode = ReplaySimulation::simulateReplays(TheGlobalData->m_simulateReplays, TheGlobalData->m_simulateReplayJobs);
+	}
+	else
+	{
+		// run it
+		TheGameEngine->execute();
+	}
 
 	// since execute() returned, we are exiting the game
+	delete TheFramePacer;
+	TheFramePacer = nullptr;
 	delete TheGameEngine;
-	TheGameEngine = NULL;
+	TheGameEngine = nullptr;
 
+	return exitcode;
 }
 

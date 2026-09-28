@@ -17,26 +17,25 @@
 */
 
 /* $Header: /Commando/Code/Tools/max2w3d/hiersave.h 29    10/26/00 5:59p Greg_h $ */
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Commando / G 3D Engine                                       * 
- *                                                                                             * 
- *                     $Archive:: /Commando/Code/Tools/max2w3d/hiersave.h                     $* 
- *                                                                                             * 
- *                      $Author:: Greg_h                                                      $* 
- *                                                                                             * 
- *                     $Modtime:: 10/26/00 5:09p                                              $* 
- *                                                                                             * 
- *                    $Revision:: 29                                                          $* 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Commando / G 3D Engine                                       *
+ *                                                                                             *
+ *                     $Archive:: /Commando/Code/Tools/max2w3d/hiersave.h                     $*
+ *                                                                                             *
+ *                      $Author:: Greg_h                                                      $*
+ *                                                                                             *
+ *                     $Modtime:: 10/26/00 5:09p                                              $*
+ *                                                                                             *
+ *                    $Revision:: 29                                                          $*
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#ifndef HIERSAVE_H
-#define HIERSAVE_H
+#pragma once
 
 #include "always.h"
 
@@ -48,7 +47,7 @@
 #endif
 
 #ifndef PROGRESS_H
-#include "PROGRESS.H"
+#include "PROGRESS.h"
 #endif
 
 #ifndef CHUNKIO_H
@@ -60,7 +59,7 @@
 #endif
 
 #ifndef VECTOR_H
-#include "Vector.H"
+#include "Vector.h"
 #endif
 
 
@@ -88,14 +87,14 @@ public:
 	};
 
 	HierarchySaveClass();
-	
+
 	HierarchySaveClass(
 					INode *						root,
 					TimeValue					time,
 					Progress_Meter_Class &	treemeter,
 					char *						hname,
 					int							fixup_type = MATRIX_FIXUP_NONE,
-					HierarchySaveClass *		fixuptree = NULL);
+					HierarchySaveClass *		fixuptree = nullptr);
 
 	HierarchySaveClass(
 					INodeListClass *			rootlist,
@@ -103,17 +102,17 @@ public:
 					Progress_Meter_Class &	treemeter,
 					char *						hname,
 					int							fixup_type = MATRIX_FIXUP_NONE,
-					HierarchySaveClass *		fixuptree = NULL,
+					HierarchySaveClass *		fixuptree = nullptr,
 					const Matrix3 &			origin_offset = Matrix3(1));
 
 	~HierarchySaveClass();
 
 	bool				Save(ChunkSaveClass & csave);
 	bool				Load(ChunkLoadClass & cload);
-	int				Num_Nodes(void) const { return CurNode; }
-	const char *	Get_Name(void) const;
+	int				Num_Nodes() const { return CurNode; }
+	const char *	Get_Name() const;
 	const char *	Get_Node_Name(int node) const;
-	
+
 	// get ahold of the max inode
 	INode *			Get_Node(int node) const;
 
@@ -141,7 +140,7 @@ private:
 
 	enum { MAX_PIVOTS = 4096, DEFAULT_NODE_ARRAY_SIZE = 512, NODE_ARRAY_GROWTH_SIZE = 32 };
 
-	TimeValue				CurTime;									
+	TimeValue				CurTime;
 	W3dHierarchyStruct	HierarchyHeader;
 	DynamicVectorClass<HierarchyNodeStruct> Node;
 	int						CurNode;
@@ -164,7 +163,5 @@ private:
 
 	Matrix3	get_relative_transform(int nodeidx) const;
 	Matrix3	fixup_matrix(const Matrix3 & src) const;
-	void	 	Free(void);
+	void	 	Free();
 };
-
-#endif /*HIERSAVE_H*/

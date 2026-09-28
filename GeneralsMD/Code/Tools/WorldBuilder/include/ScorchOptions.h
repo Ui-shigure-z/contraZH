@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_SCORCHOPTIONS_H__33FD4D9A_2C39_4494_A4EF_A20CEC76A95D__INCLUDED_)
-#define AFX_SCORCHOPTIONS_H__33FD4D9A_2C39_4494_A4EF_A20CEC76A95D__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // ScorchOptions.h : header file
 //
 
@@ -38,7 +34,7 @@ class ScorchOptions : public COptionsPanel, public PopupSliderOwner
 {
 // Construction
 public:
-	ScorchOptions(CWnd* pParent = NULL);   // standard constructor
+	ScorchOptions(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(ScorchOptions)
@@ -51,9 +47,9 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(ScorchOptions)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
-	virtual void OnOK(){return;};  //!< Modeless dialogs don't OK, so eat this for modeless.
-	virtual void OnCancel(){return;}; //!< Modeless dialogs don't close on ESC, so eat this for modeless.
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
+	virtual void OnOK() override {return;};  //!< Modeless dialogs don't OK, so eat this for modeless.
+	virtual void OnCancel() override {return;}; //!< Modeless dialogs don't close on ESC, so eat this for modeless.
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -69,8 +65,8 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 private:
-	static MapObject *getSingleSelectedScorch(void);
-	void updateTheUI(void);
+	static MapObject *getSingleSelectedScorch();
+	void updateTheUI();
 	WBPopupSliderButton m_radiusPopup;
 	std::vector<Dict*> m_allSelectedDicts;
 	Bool		m_updating; ///<true if the ui is updating itself.
@@ -78,9 +74,10 @@ private:
 	static Scorches	m_scorchtype;
 	static Real		m_scorchsize;
 	static ScorchOptions* m_staticThis;
-	void changeSize(void);
-	void changeScorch(void);
-	void getAllSelectedDicts(void);
+	void changeSize();
+	void changeScorch();
+	void getAllSelectedDicts();
+	Dict** getAllSelectedDictsData();
 
 public:
 	static void update(void);
@@ -97,12 +94,10 @@ public:
 	static void qtSetScorchSize(double size);
 #endif
 
-	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial);
-	virtual void PopSliderChanged(const long sliderID, long theVal);
-	virtual void PopSliderFinished(const long sliderID, long theVal);
+	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
+	virtual void PopSliderChanged(const long sliderID, long theVal) override;
+	virtual void PopSliderFinished(const long sliderID, long theVal) override;
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_SCORCHOPTIONS_H__33FD4D9A_2C39_4494_A4EF_A20CEC76A95D__INCLUDED_)

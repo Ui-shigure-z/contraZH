@@ -1,4 +1,3 @@
-# Set source files
 set(WORLDBUILDER_SRC
     "src/addplayerdialog.cpp"
     "src/AutoEdgeOutTool.cpp"
@@ -12,7 +11,6 @@ set(WORLDBUILDER_SRC
     "src/BuildListTool.cpp"
     "src/CameraOptions.cpp"
     "src/CButtonShowColor.cpp"
-    "src/CButtonShowColor.h"
     "src/CellWidth.cpp"
     "src/CFixTeamOwnerDialog.cpp"
     "src/ContourOptions.cpp"
@@ -24,7 +22,6 @@ set(WORLDBUILDER_SRC
     "src/EditGroup.cpp"
     "src/EditObjectParameter.cpp"
     "src/EditParameter.cpp"
-    "src/EulaDialog.cpp"
     "src/ExportScriptsOptions.cpp"
     "src/EyedropperTool.cpp"
     "src/FeatherOptions.cpp"
@@ -109,6 +106,7 @@ set(WORLDBUILDER_SRC
     "include/BuildList.h"
     "include/BuildListTool.h"
     "include/CameraOptions.h"
+    "include/CButtonShowColor.h"
     "include/CellWidth.h"
     "include/CFixTeamOwnerDialog.h"
     "include/ContourOptions.h"
@@ -120,7 +118,6 @@ set(WORLDBUILDER_SRC
     "include/EditGroup.h"
     "include/EditObjectParameter.h"
     "include/EditParameter.h"
-    "include/euladialog.h"
     "include/ExportScriptsOptions.h"
     "include/EyedropperTool.h"
     "include/FeatherOptions.h"
@@ -195,25 +192,29 @@ set(WORLDBUILDER_SRC
     "include/WorldBuilderView.h"
 )
 
-# Targets to build.
 add_executable(g_worldbuilder WIN32)
 
 target_include_directories(g_worldbuilder PRIVATE
-    .
+    ${CMAKE_CURRENT_SOURCE_DIR}
     include
     res
 )
 
 target_compile_definitions(g_worldbuilder PRIVATE _AFXDLL)
 
+target_precompile_headers(g_worldbuilder PRIVATE
+    [["Precompiled/precompiled.h"]] # Must be first
+    [["WWLib/always.h"]]
+    [["Common/STLTypedefs.h"]]
+    [["StdAfx.h"]]
+    [["WWLib/WWCommon.h"]]
+)
+
 target_link_libraries(g_worldbuilder PRIVATE
     d3d8lib
-    dbghelplib
     core_browserdispatch
     g_gameengine
     g_gameenginedevice
-    gi_gameengine_include
-    gi_gameenginedevice_include
     gi_always
     imm32
     vfw32
@@ -224,9 +225,9 @@ if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
     target_link_options(g_worldbuilder PRIVATE /NODEFAULTLIB:libci.lib /NODEFAULTLIB:libc.lib)
 
     target_sources(g_worldbuilder PRIVATE res/WorldBuilder.rc)
-    set_target_properties(g_worldbuilder PROPERTIES OUTPUT_NAME WorldBuilderV)
+    set_target_properties(g_worldbuilder PROPERTIES OUTPUT_NAME "WorldBuilderV${RTS_BUILD_OUTPUT_SUFFIX}")
 else()
-    set_target_properties(g_worldbuilder PROPERTIES OUTPUT_NAME worldbuilderv)
+    set_target_properties(g_worldbuilder PROPERTIES OUTPUT_NAME "worldbuilderv${RTS_BUILD_OUTPUT_SUFFIX}")
 endif()
 
 target_sources(g_worldbuilder PRIVATE ${WORLDBUILDER_SRC})

@@ -19,11 +19,11 @@
 // AssetPropertySheet.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "AssetPropertySheet.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -50,10 +50,9 @@ CAssetPropertySheet::CAssetPropertySheet
     ASSERT (m_pCPropertyPage);
 
     m_psh.dwFlags |= PSH_NOAPPLYNOW;
-    
+
     // Add this page to the property sheet
     AddPage (m_pCPropertyPage);
-    return ;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -62,7 +61,6 @@ CAssetPropertySheet::CAssetPropertySheet
 //
 CAssetPropertySheet::~CAssetPropertySheet ()
 {
-    return ;
 }
 
 

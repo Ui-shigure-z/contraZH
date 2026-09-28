@@ -34,19 +34,14 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-#if !defined(AFX_TEXTUREMGRDIALOG_H__3F61844D_CDEA_11D2_9FFC_00104B791122__INCLUDED_)
-#define AFX_TEXTUREMGRDIALOG_H__3F61844D_CDEA_11D2_9FFC_00104B791122__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
 
-#include "Vector.H"
-#include "RendObj.H"
-#include "Utils.H"
-#include "Resource.H"
-#include "DialogToolbar.H"
-#include "texture.h"
+#include "WWLib/Vector.h"
+#include "WW3D2/rendobj.h"
+#include "Utils.h"
+#include "Resource.h"
+#include "DialogToolbar.h"
+#include "WW3D2/texture.h"
 
 // Forward declarations
 class MeshClass;
@@ -76,29 +71,29 @@ class TextureListNodeClass
 			TYPE_MESH		= 0,
 			TYPE_TEXTURE,
 			TYPE_COUNT
-		} NODE_TYPE;	
+		} NODE_TYPE;
 
 		////////////////////////////////////////////////////////////
 		//
 		//	Public constructors/destructors
 		//
-		TextureListNodeClass (LPCTSTR name = NULL)
-			: m_pTexture (NULL),
+		TextureListNodeClass (LPCTSTR name = nullptr)
+			: m_pTexture (nullptr),
 			  m_Type (TYPE_MESH),
-			  m_pParent (NULL),
+			  m_pParent (nullptr),
 			  m_Name (name),
 			  m_TextureIndex (0),
 			  m_IconIndex (ICON_MESH) {}
 
-		TextureListNodeClass (TextureClass *ptexture, LPCTSTR name = NULL)
-			: m_pTexture (NULL),
+		TextureListNodeClass (TextureClass *ptexture, LPCTSTR name = nullptr)
+			: m_pTexture (nullptr),
 			  m_Type (TYPE_TEXTURE),
-			  m_pParent (NULL),
+			  m_pParent (nullptr),
 			  m_Name (name),
 			  m_TextureIndex (0),
-			  m_IconIndex (ICON_DEF_TEXTURE) { MEMBER_ADD (m_pTexture, ptexture); }
+			  m_IconIndex (ICON_DEF_TEXTURE) { REF_PTR_SET (m_pTexture, ptexture); }
 
-		~TextureListNodeClass (void) { MEMBER_RELEASE (m_pTexture); Free_Subobj_List (); }
+		~TextureListNodeClass () { REF_PTR_RELEASE (m_pTexture); Free_Subobj_List (); }
 
 
 		////////////////////////////////////////////////////////////
@@ -106,25 +101,25 @@ class TextureListNodeClass
 		//	Public methods
 		//
 		void									Set_Name (LPCTSTR name)		{ m_Name = name; }
-		LPCTSTR								Get_Name (void) const		{ return m_Name; }
+		LPCTSTR								Get_Name () const		{ return m_Name; }
 
-		NODE_TYPE							Get_Type (void) const		{ return m_Type; }
+		NODE_TYPE							Get_Type () const		{ return m_Type; }
 		void									Set_Type (NODE_TYPE type)	{ m_Type = type; }
 
-		TextureClass *						Peek_Texture (void) const	{ return m_pTexture; }
-		void									Set_Texture (TextureClass *ptex) { MEMBER_ADD (m_pTexture, ptex); }
+		TextureClass *						Peek_Texture () const	{ return m_pTexture; }
+		void									Set_Texture (TextureClass *ptex) { REF_PTR_SET (m_pTexture, ptex); }
 
-		TEXTURE_NODE_LIST	&				Get_Subobj_List (void)		{ return m_SubObjectList; }
+		TEXTURE_NODE_LIST	&				Get_Subobj_List ()		{ return m_SubObjectList; }
 
 		void									Set_Parent (TextureListNodeClass *pparent)	{ m_pParent = pparent; }
-		TextureListNodeClass *			Get_Parent (void) const		{ return m_pParent; }
+		TextureListNodeClass *			Get_Parent () const		{ return m_pParent; }
 
 		void									Add_Subobj (TextureListNodeClass *pchild)	{ m_SubObjectList.Add (pchild); }
 
-		int									Get_Icon_Index (void) const	{ return m_IconIndex; }
+		int									Get_Icon_Index () const	{ return m_IconIndex; }
 		void									Set_Icon_Index (int index)		{ m_IconIndex = index; }
 
-		int									Get_Texture_Index (void) const	{ return m_TextureIndex; }
+		int									Get_Texture_Index () const	{ return m_TextureIndex; }
 		void									Set_Texture_Index (int index)		{ m_TextureIndex = index; }
 
 	protected:
@@ -133,7 +128,7 @@ class TextureListNodeClass
 		//
 		//	Protected methods
 		//
-		void									Free_Subobj_List (void);
+		void									Free_Subobj_List ();
 
 	private:
 
@@ -156,15 +151,14 @@ class TextureListNodeClass
 // Free_Subobj_List
 //
 __inline void
-TextureListNodeClass::Free_Subobj_List (void)
+TextureListNodeClass::Free_Subobj_List ()
 {
-	// Loop through all the subobject entries and free thier pointers
+	// Loop through all the subobject entries and free their pointers
 	for (int index = 0; index < m_SubObjectList.Count (); index ++) {
 		SAFE_DELETE (m_SubObjectList[index]);
 	}
 
 	m_SubObjectList.Delete_All ();
-	return ;
 }
 
 
@@ -178,7 +172,7 @@ class TextureMgrDialogClass : public CDialog
 
 // Construction
 public:
-	TextureMgrDialogClass (RenderObjClass *pbase_model, CWnd *pParent = NULL);
+	TextureMgrDialogClass (RenderObjClass *pbase_model, CWnd *pParent = nullptr);
 
 // Dialog Data
 	//{{AFX_DATA(TextureMgrDialogClass)
@@ -224,7 +218,7 @@ protected:
 		//
 		void						Add_Subobjs_To_List (RenderObjClass *prender_obj);
 		void						Add_Textures_To_Node (MeshClass *pmesh, TextureListNodeClass *pmesh_node);
-		void						Fill_List_Ctrl_With_Meshes (void);
+		void						Fill_List_Ctrl_With_Meshes ();
 		void						Fill_List_Ctrl_With_Textures (TextureListNodeClass &pparent);
 		int						Find_Texture_Thumbnail (LPCTSTR name);
 		int						Get_Thumbnail (TextureClass *ptexture);
@@ -251,5 +245,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_TEXTUREMGRDIALOG_H__3F61844D_CDEA_11D2_9FFC_00104B791122__INCLUDED_)

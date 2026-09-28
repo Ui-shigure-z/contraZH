@@ -25,9 +25,9 @@
 // FILE: ModuleFactory.cpp ////////////////////////////////////////////////////////////////////////
 // Author: Colin Day, September 2001
 // Desc:	 TheModuleFactory is where we actually instance modules for objects
-//				 and drawbles.  Those modules are things such as an UpdateModule
+//				 and drawables.  Those modules are things such as an UpdateModule
 //			   or DamageModule or DrawModule etc.
-//	
+//
 //				 TheModuleFactory will contain a list of ModuleTemplates, when we
 //				 request a new module, we will look for that template in our
 //				 list and create it
@@ -35,7 +35,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Module.h"
 #include "Common/ModuleFactory.h"
@@ -50,10 +50,15 @@
 #include "GameLogic/Module/BridgeScaffoldBehavior.h"
 #include "GameLogic/Module/BridgeTowerBehavior.h"
 #include "GameLogic/Module/CountermeasuresBehavior.h"
+#include "GameLogic/Module/BattlePlanBonusBehavior.h"
+#include "GameLogic/Module/EnergyShieldBehavior.h"
 #include "GameLogic/Module/DumbProjectileBehavior.h"
+#include "GameLogic/Module/FreeFallProjectileBehavior.h"
 #include "GameLogic/Module/InstantDeathBehavior.h"
+#include "GameLogic/Module/ChronoDeathBehavior.h"
 #include "GameLogic/Module/SlowDeathBehavior.h"
 #include "GameLogic/Module/HelicopterSlowDeathUpdate.h"
+#include "GameLogic/Module/ShipSlowDeathBehavior.h"
 #include "GameLogic/Module/NeutronMissileSlowDeathUpdate.h"
 #include "GameLogic/Module/CaveContain.h"
 #include "GameLogic/Module/OpenContain.h"
@@ -64,27 +69,34 @@
 #include "GameLogic/Module/RailedTransportContain.h"
 #include "GameLogic/Module/RiderChangeContain.h"
 #include "GameLogic/Module/TransportContain.h"
+#include "GameLogic/Module/JumpjetContain.h"
 #include "GameLogic/Module/MobNexusContain.h"
 #include "GameLogic/Module/TunnelContain.h"
 #include "GameLogic/Module/OverlordContain.h"
 #include "GameLogic/Module/HelixContain.h"
+#include "GameLogic/Module/MultiAddOnContain.h"
 #include "GameLogic/Module/ParachuteContain.h"
 #ifdef ALLOW_SURRENDER
 #include "GameLogic/Module/POWTruckBehavior.h"
 #include "GameLogic/Module/PrisonBehavior.h"
 #include "GameLogic/Module/PropagandaCenterBehavior.h"
-#endif 
+#endif
 #include "GameLogic/Module/PropagandaTowerBehavior.h"
 #include "GameLogic/Module/BunkerBusterBehavior.h"
 #include "GameLogic/Module/FireWeaponWhenDamagedBehavior.h"
 #include "GameLogic/Module/FireWeaponWhenDeadBehavior.h"
+#include "GameLogic/Module/FireWeaponOnKillBehavior.h"
+#include "GameLogic/Module/CreateObjectOnKillBehavior.h"
+#include "GameLogic/Module/DelayedUpgradeBehavior.h"
 #include "GameLogic/Module/GenerateMinefieldBehavior.h"
 #include "GameLogic/Module/ParkingPlaceBehavior.h"
 #include "GameLogic/Module/FlightDeckBehavior.h"
 #include "GameLogic/Module/PoisonedBehavior.h"
+#include "GameLogic/Module/PoweredBehavior.h"
 #include "GameLogic/Module/RebuildHoleBehavior.h"
 #include "GameLogic/Module/SupplyWarehouseCripplingBehavior.h"
 #include "GameLogic/Module/TechBuildingBehavior.h"
+#include "GameLogic/Module/ThermiteBehavior.h"
 #include "GameLogic/Module/MinefieldBehavior.h"
 #include "GameLogic/Module/BattleBusSlowDeathBehavior.h"
 #include "GameLogic/Module/JetSlowDeathBehavior.h"
@@ -117,17 +129,21 @@
 #include "GameLogic/Module/DynamicGeometryInfoUpdate.h"
 #include "GameLogic/Module/DynamicShroudClearingRangeUpdate.h"
 #include "GameLogic/Module/EnemyNearUpdate.h"
+#include "GameLogic/Module/ProximityCaptureUpdate.h"
 #include "GameLogic/Module/FireSpreadUpdate.h"
 #include "GameLogic/Module/FirestormDynamicGeometryInfoUpdate.h"
 #include "GameLogic/Module/FireWeaponUpdate.h"
+#include "GameLogic/Module/FireWeaponAdvancedUpdate.h"
 #include "GameLogic/Module/FlammableUpdate.h"
 #include "GameLogic/Module/FloatUpdate.h"
+#include "GameLogic/Module/GlobalLightingModifierUpdate.h"
 #include "GameLogic/Module/TensileFormationUpdate.h"
 #include "GameLogic/Module/HackInternetAIUpdate.h"
 #include "GameLogic/Module/DeployStyleAIUpdate.h"
 #include "GameLogic/Module/AssaultTransportAIUpdate.h"
 #include "GameLogic/Module/HeightDieUpdate.h"
 #include "GameLogic/Module/HordeUpdate.h"
+#include "GameLogic/Module/ScatterShotUpdate.h"
 #include "GameLogic/Module/JetAIUpdate.h"
 #include "GameLogic/Module/LaserUpdate.h"
 #include "GameLogic/Module/PointDefenseLaserUpdate.h"
@@ -137,16 +153,25 @@
 #include "GameLogic/Module/PilotFindVehicleUpdate.h"
 #include "GameLogic/Module/DemoTrapUpdate.h"
 #include "GameLogic/Module/ParticleUplinkCannonUpdate.h"
+#include "GameLogic/Module/ChronoSphereUpdateModule.h"
+#include "GameLogic/Module/TeleportSelfSpecialPower.h"
+#include "GameLogic/Module/MultiLocationSpecialPowerUpdate.h"
 #include "GameLogic/Module/SpectreGunshipUpdate.h"
 #include "GameLogic/Module/SpectreGunshipDeploymentUpdate.h"
+#include "GameLogic/Module/KodiakUpdate.h"
+#include "GameLogic/Module/KodiakDeploymentUpdate.h"
 #include "GameLogic/Module/BaikonurLaunchPower.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
 #include "GameLogic/Module/LifetimeUpdate.h"
 #include "GameLogic/Module/RadiusDecalUpdate.h"
+#include "GameLogic/Module/RadiusDecalBehavior.h"
+#include "GameLogic/Module/SpecialPowerDesignatorUpdate.h"
 #include "GameLogic/Module/AutoDepositUpdate.h"
 #include "GameLogic/Module/MissileAIUpdate.h"
+#include "GameLogic/Module/JumpjetMissileAIUpdate.h"
 #include "GameLogic/Module/NeutronMissileUpdate.h"
 #include "GameLogic/Module/OCLUpdate.h"
+#include "GameLogic/Module/OrbitalBeamUpdate.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
 #ifdef ALLOW_SURRENDER
 #include "GameLogic/Module/POWTruckAIUpdate.h"
@@ -181,15 +206,27 @@
 #include "GameLogic/Module/SupplyCenterProductionExitUpdate.h"
 #include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/SupplyWarehouseDockUpdate.h"
+#include "GameLogic/Module/TimeOfDayOverrideUpdate.h"
 #include "GameLogic/Module/ToppleUpdate.h"
+#include "GameLogic/Module/TornadoUpdate.h"
 #include "GameLogic/Module/TransportAIUpdate.h"
 #include "GameLogic/Module/WanderAIUpdate.h"
+#include "GameLogic/Module/TeleporterAIUpdate.h"
 #include "GameLogic/Module/WaveGuideUpdate.h"
 #include "GameLogic/Module/WeaponBonusUpdate.h"
+#include "GameLogic/Module/BuffUpdate.h"
+#include "GameLogic/Module/ArmorDamageScalarUpdate.h"
 #include "GameLogic/Module/WorkerAIUpdate.h"
 #include "GameLogic/Module/PowerPlantUpdate.h"
 #include "GameLogic/Module/CheckpointUpdate.h"
 #include "GameLogic/Module/EMPUpdate.h"
+#include "GameLogic/Module/ResetSpecialPowerTimerWhileAliveUpdate.h"
+#include "GameLogic/Module/DroneCarrierAIUpdate.h"
+#include "GameLogic/Module/DroneCarrierSlavedUpdate.h"
+#include "GameLogic/Module/DroneCarrierContain.h"
+#include "GameLogic/Module/CarrierDroneAIUpdate.h"
+#include "GameLogic/Module/DrawBridgeTowerUpdate.h"
+#include "GameLogic/Module/DrawBridgeUpdate.h"
 
 // upgrade includes
 #include "GameLogic/Module/ActiveShroudUpgrade.h"
@@ -201,6 +238,7 @@
 #include "GameLogic/Module/ObjectCreationUpgrade.h"
 #include "GameLogic/Module/RadarUpgrade.h"
 #include "GameLogic/Module/PowerPlantUpgrade.h"
+#include "GameLogic/Module/PropagateUpgradeToContainedUpgrade.h"
 #include "GameLogic/Module/ReplaceObjectUpgrade.h"
 #include "GameLogic/Module/ModelConditionUpgrade.h"
 #include "GameLogic/Module/StatusBitsUpgrade.h"
@@ -209,10 +247,12 @@
 #include "GameLogic/Module/UnpauseSpecialPowerUpgrade.h"
 #include "GameLogic/Module/WeaponBonusUpgrade.h"
 #include "GameLogic/Module/WeaponSetUpgrade.h"
-#include "GameLogic/Module/WeaponBonusUpgrade.h"
 #include "GameLogic/Module/CostModifierUpgrade.h"
+#include "GameLogic/Module/ProductionTimeModifierUpgrade.h"
+#include "GameLogic/Module/UnitProductionBonusUpgrade.h"
 #include "GameLogic/Module/ExperienceScalarUpgrade.h"
 #include "GameLogic/Module/MaxHealthUpgrade.h"
+#include "GameLogic/Module/CrateApplyUpgrade.h"
 
 // create includes
 #include "GameLogic/Module/LockWeaponCreate.h"
@@ -229,6 +269,7 @@
 
 // collide includes
 #include "GameLogic/Module/FireWeaponCollide.h"
+#include "GameLogic/Module/AdvancedCollide.h"
 #include "GameLogic/Module/SquishCollide.h"
 
 #include "GameLogic/Module/ConvertToCarBombCrateCollide.h"
@@ -244,6 +285,7 @@
 #include "GameLogic/Module/SabotageSupplyCenterCrateCollide.h"
 #include "GameLogic/Module/SabotageSupplyDropzoneCrateCollide.h"
 #include "GameLogic/Module/SalvageCrateCollide.h"
+#include "GameLogic/Module/StickyBombCrateCollide.h"
 #include "GameLogic/Module/ShroudCrateCollide.h"
 #include "GameLogic/Module/UnitCrateCollide.h"
 #include "GameLogic/Module/VeterancyCrateCollide.h"
@@ -255,7 +297,9 @@
 #include "GameLogic/Module/ImmortalBody.h"
 #include "GameLogic/Module/StructureBody.h"
 #include "GameLogic/Module/HiveStructureBody.h"
+#include "GameLogic/Module/ShieldBody.h"
 #include "GameLogic/Module/UndeadBody.h"
+#include "GameLogic/Module/BridgeTowerBody.h"
 
 // contain includes
 // (none)
@@ -269,6 +313,7 @@
 #include "GameLogic/Module/OCLSpecialPower.h"
 #include "GameLogic/Module/SpecialAbility.h"
 #include "GameLogic/Module/SpyVisionSpecialPower.h"
+#include "GameLogic/Module/UpgradeSpecialPower.h"
 #include "GameLogic/Module/CashBountyPower.h"
 #include "GameLogic/Module/CleanupAreaPower.h"
 #include "GameLogic/Module/FireWeaponPower.h"
@@ -279,31 +324,27 @@
 // client update includes
 #include "GameClient/Module/AnimatedParticleSysBoneClientUpdate.h"
 #include "GameClient/Module/SwayClientUpdate.h"
+#include "GameClient/Module/DynamicGeometryClientUpdate.h"
 #include "GameClient/Module/BeaconClientUpdate.h"
 
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
-ModuleFactory *TheModuleFactory = NULL;  ///< the module factory singleton
+ModuleFactory *TheModuleFactory = nullptr;  ///< the module factory singleton
 
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////////////////////////
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ModuleFactory::ModuleFactory( void )
+ModuleFactory::ModuleFactory()
 {
 	m_moduleTemplateMap.clear();
 	m_moduleDataList.clear();
-	
+
 }
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-ModuleFactory::~ModuleFactory( void )
+ModuleFactory::~ModuleFactory()
 {
 	m_moduleTemplateMap.clear();
 
@@ -321,7 +362,7 @@ ModuleFactory::~ModuleFactory( void )
 	* to objects or drawables as modules needs to add a template
 	* for that class here */
 //-------------------------------------------------------------------------------------------------
-void ModuleFactory::init( void )
+void ModuleFactory::init()
 {
 
 	// behavior modules
@@ -332,11 +373,16 @@ void ModuleFactory::init( void )
 	addModule( BridgeScaffoldBehavior );
 	addModule( BridgeTowerBehavior );
 	addModule( CountermeasuresBehavior );
+	addModule( BattlePlanBonusBehavior );
+	addModule( EnergyShieldBehavior );
 	addModule( DumbProjectileBehavior );
+	addModule( FreeFallProjectileBehavior );
 	addModule( PhysicsBehavior );
 	addModule( InstantDeathBehavior );
+	addModule( ChronoDeathBehavior );
 	addModule( SlowDeathBehavior );
 	addModule( HelicopterSlowDeathBehavior );
+	addModule( ShipSlowDeathBehavior );
 	addModule( NeutronMissileSlowDeathBehavior );
 	addModule( CaveContain );
 	addModule( OpenContain );
@@ -345,12 +391,14 @@ void ModuleFactory::init( void )
 	addModule( GarrisonContain );
 	addModule( InternetHackContain );
 	addModule( TransportContain );
+	addModule( JumpjetContain );
 	addModule( RiderChangeContain );
 	addModule( RailedTransportContain );
 	addModule( MobNexusContain );
 	addModule( TunnelContain );
 	addModule( OverlordContain );
 	addModule( HelixContain );
+	addModule( MultiAddOnContain );
 	addModule( ParachuteContain );
 #ifdef ALLOW_SURRENDER
 	addModule( POWTruckBehavior );
@@ -361,18 +409,24 @@ void ModuleFactory::init( void )
 	addModule( BunkerBusterBehavior );
 	addModule( FireWeaponWhenDamagedBehavior );
 	addModule( FireWeaponWhenDeadBehavior );
+	addModule( FireWeaponOnKillBehavior );
+	addModule( CreateObjectOnKillBehavior );
+	addModule( DelayedUpgradeBehavior );
 	addModule( GenerateMinefieldBehavior );
 	addModule( ParkingPlaceBehavior );
 	addModule( FlightDeckBehavior );
 	addModule( PoisonedBehavior );
+	addModule( PoweredBehavior );
 	addModule( RebuildHoleBehavior );
 	addModule( SupplyWarehouseCripplingBehavior );
 	addModule( TechBuildingBehavior );
+	addModule( ThermiteBehavior );
 	addModule( MinefieldBehavior );
 	addModule( BattleBusSlowDeathBehavior );
 	addModule( JetSlowDeathBehavior );
 	addModule( RailroadBehavior );
 	addModule( SpawnBehavior );
+	addModule( DroneCarrierContain );
 
 	// die modules
 	addModule( DestroyDie );
@@ -401,20 +455,29 @@ void ModuleFactory::init( void )
 	addModule( HordeUpdate );
 	addModule( ToppleUpdate );
 	addModule( EnemyNearUpdate );
+	addModule( ProximityCaptureUpdate );
 	addModule( LifetimeUpdate );
 	addModule( RadiusDecalUpdate );
+	addModule( RadiusDecalBehavior );
+	addModule( SpecialPowerDesignatorUpdate );
 	addModule( EMPUpdate );
   addModule( LeafletDropBehavior );
 	addModule( AutoDepositUpdate );
 	addModule( WeaponBonusUpdate );
+	addModule( BuffUpdate );
+	addModule( ArmorDamageScalarUpdate );
 	addModule( MissileAIUpdate );
+	addModule( JumpjetMissileAIUpdate );
 	addModule( NeutronMissileUpdate );
 	addModule( FireSpreadUpdate );
 	addModule( FireWeaponUpdate );
+	addModule( FireWeaponAdvancedUpdate );
 	addModule( FlammableUpdate );
 	addModule( FloatUpdate );
+	addModule( GlobalLightingModifierUpdate );
 	addModule( TensileFormationUpdate );
 	addModule( HeightDieUpdate );
+	addModule( ScatterShotUpdate );
 	addModule( ChinookAIUpdate );
 	addModule( JetAIUpdate );
 	addModule( AIUpdateInterface );
@@ -430,8 +493,14 @@ void ModuleFactory::init( void )
 	addModule( PilotFindVehicleUpdate );
 	addModule( DemoTrapUpdate );
 	addModule( ParticleUplinkCannonUpdate );
+	addModule( TornadoUpdate );
+	addModule( ChronoSphereUpdateModule );
+	addModule( TeleportSelfSpecialPower );
+	addModule( MultiLocationSpecialPowerUpdate );
 	addModule( SpectreGunshipUpdate );
 	addModule( SpectreGunshipDeploymentUpdate );
+	addModule( KodiakUpdate );
+	addModule( KodiakDeploymentUpdate );
 	addModule( BaikonurLaunchPower );
 	addModule( BattlePlanUpdate );
 	addModule( ProjectileStreamUpdate );
@@ -447,6 +516,7 @@ void ModuleFactory::init( void )
 	addModule( SlavedUpdate );
 	addModule( MobMemberSlavedUpdate );
 	addModule( OCLUpdate );
+	addModule( OrbitalBeamUpdate );
 	addModule( SpecialAbilityUpdate );
 	addModule( MissileLauncherBuildingUpdate );
 	addModule( SupplyCenterProductionExitUpdate );
@@ -467,15 +537,25 @@ void ModuleFactory::init( void )
 	addModule( BoneFXUpdate );
 	addModule( RadarUpdate );
 	addModule( AnimationSteeringUpdate );
+	addModule( TimeOfDayOverrideUpdate );
 	addModule( TransportAIUpdate );
 	addModule( WanderAIUpdate );
+	addModule( TeleporterAIUpdate );
 	addModule( WaveGuideUpdate );
 	addModule( WorkerAIUpdate );
 	addModule( PowerPlantUpdate );
 	addModule( CheckpointUpdate );
+	addModule( ResetSpecialPowerTimerWhileAliveUpdate );
+	addModule( DroneCarrierAIUpdate );
+	addModule( DroneCarrierSlavedUpdate );
+	addModule( CarrierDroneAIUpdate );
+	addModule( DrawBridgeTowerUpdate );
+	addModule( DrawBridgeUpdate );
 
 	// upgrade modules
 	addModule( CostModifierUpgrade );
+	addModule( ProductionTimeModifierUpgrade );
+	addModule( UnitProductionBonusUpgrade );
 	addModule( ActiveShroudUpgrade );
 	addModule( ArmorUpgrade );
 	addModule( CommandSetUpgrade );
@@ -486,6 +566,7 @@ void ModuleFactory::init( void )
 	addModule( StealthUpgrade );
 	addModule( RadarUpgrade );
 	addModule( PowerPlantUpgrade );
+	addModule( PropagateUpgradeToContainedUpgrade );
 	addModule( LocomotorSetUpgrade );
 	addModule( ObjectCreationUpgrade );
 	addModule( ReplaceObjectUpgrade );
@@ -496,6 +577,7 @@ void ModuleFactory::init( void )
 	addModule( WeaponBonusUpgrade );
 	addModule( ExperienceScalarUpgrade );
 	addModule( MaxHealthUpgrade );
+	addModule( CrateApplyUpgrade );
 
 	// create modules
 	addModule( LockWeaponCreate );
@@ -512,6 +594,7 @@ void ModuleFactory::init( void )
 
 	// collide modules
 	addModule( FireWeaponCollide );
+	addModule( AdvancedCollide );
 	addModule( SquishCollide );
 
 	addModule( HealCrateCollide );
@@ -530,6 +613,7 @@ void ModuleFactory::init( void )
 	addModule( SabotageSupplyCenterCrateCollide );
 	addModule( SabotageSupplyDropzoneCrateCollide );
 	addModule( SalvageCrateCollide );
+	addModule( StickyBombCrateCollide );
 
 	// body modules
 	addModule( InactiveBody );
@@ -538,7 +622,9 @@ void ModuleFactory::init( void )
 	addModule( ImmortalBody );
 	addModule( StructureBody );
 	addModule( HiveStructureBody );
+	addModule( ShieldBody );
 	addModule( UndeadBody );
+	addModule( BridgeTowerBody );
 
 	// contain modules
 	// (none)
@@ -553,6 +639,7 @@ void ModuleFactory::init( void )
 	addModule( FireWeaponPower );
 	addModule( SpecialAbility );
 	addModule( SpyVisionSpecialPower );
+	addModule( UpgradeSpecialPower );
 	addModule( CashBountyPower );
 	addModule( CleanupAreaPower );
 
@@ -562,9 +649,10 @@ void ModuleFactory::init( void )
 	// client update modules
 	addModule( AnimatedParticleSysBoneClientUpdate );
 	addModule( SwayClientUpdate );
+	addModule( DynamicGeometryClientUpdate );
 	addModule( BeaconClientUpdate );
 
-}  // end init
+}
 
 //-------------------------------------------------------------------------------------------------
 Int ModuleFactory::findModuleInterfaceMask(const AsciiString& name, ModuleType type)
@@ -586,7 +674,7 @@ ModuleData* ModuleFactory::newModuleDataFromINI(INI* ini, const AsciiString& nam
 																								const AsciiString& moduleTag)
 {
 	if (name.isEmpty())
-		return NULL;
+		return nullptr;
 
 	const ModuleTemplate* moduleTemplate = findModuleTemplate(name, type);
 	if (moduleTemplate)
@@ -597,7 +685,7 @@ ModuleData* ModuleFactory::newModuleDataFromINI(INI* ini, const AsciiString& nam
 		return md;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 // PRIVATE FUNCTIONS //////////////////////////////////////////////////////////////////////////////
@@ -617,10 +705,10 @@ const ModuleFactory::ModuleTemplate* ModuleFactory::findModuleTemplate(const Asc
 	NameKeyType namekey = makeDecoratedNameKey(name, type);
 
   ModuleTemplateMap::const_iterator it = m_moduleTemplateMap.find(namekey);
-  if (it == m_moduleTemplateMap.end()) 
+  if (it == m_moduleTemplateMap.end())
 	{
-		DEBUG_CRASH(( "Module name '%s' not found\n", name.str() ));
-		return NULL;
+		DEBUG_CRASH(( "Module name '%s' not found", name.str() ));
+		return nullptr;
 	}
 	else
 	{
@@ -629,15 +717,15 @@ const ModuleFactory::ModuleTemplate* ModuleFactory::findModuleTemplate(const Asc
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Allocate a new acton class istance given the name */
+/** Allocate a new acton class instance given the name */
 //-------------------------------------------------------------------------------------------------
 Module *ModuleFactory::newModule( Thing *thing, const AsciiString& name, const ModuleData* moduleData, ModuleType type )
 {
 	// sanity
 	if( name.isEmpty() )
 	{
-		DEBUG_CRASH(("attempting to create module with empty name\n"));
-		return NULL;
+		DEBUG_CRASH(("attempting to create module with empty name"));
+		return nullptr;
 	}
 	const ModuleTemplate* mt = findModuleTemplate(name, type);
 	if (mt)
@@ -650,44 +738,44 @@ Module *ModuleFactory::newModule( Thing *thing, const AsciiString& name, const M
 			BehaviorModule* bm = (BehaviorModule*)mod;
 
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_BODY)) != 0) == (bm->getBody() != NULL), 
-				("getInterfaceMask bad for MODULE_BODY (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_BODY)) != 0) == (bm->getBody() != nullptr),
+				("getInterfaceMask bad for MODULE_BODY (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_COLLIDE)) != 0) == (bm->getCollide() != NULL), 
-				("getInterfaceMask bad for MODULE_COLLIDE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_COLLIDE)) != 0) == (bm->getCollide() != nullptr),
+				("getInterfaceMask bad for MODULE_COLLIDE (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_CONTAIN)) != 0) == (bm->getContain() != NULL), 
-				("getInterfaceMask bad for MODULE_CONTAIN (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_CONTAIN)) != 0) == (bm->getContain() != nullptr),
+				("getInterfaceMask bad for MODULE_CONTAIN (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_CREATE)) != 0) == (bm->getCreate() != NULL), 
-				("getInterfaceMask bad for MODULE_CREATE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_CREATE)) != 0) == (bm->getCreate() != nullptr),
+				("getInterfaceMask bad for MODULE_CREATE (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_DAMAGE)) != 0) == (bm->getDamage() != NULL), 
-				("getInterfaceMask bad for MODULE_DAMAGE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_DAMAGE)) != 0) == (bm->getDamage() != nullptr),
+				("getInterfaceMask bad for MODULE_DAMAGE (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_DESTROY)) != 0) == (bm->getDestroy() != NULL), 
-				("getInterfaceMask bad for MODULE_DESTROY (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_DESTROY)) != 0) == (bm->getDestroy() != nullptr),
+				("getInterfaceMask bad for MODULE_DESTROY (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_DIE)) != 0) == (bm->getDie() != NULL), 
-				("getInterfaceMask bad for MODULE_DIE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_DIE)) != 0) == (bm->getDie() != nullptr),
+				("getInterfaceMask bad for MODULE_DIE (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_SPECIAL_POWER)) != 0) == (bm->getSpecialPower() != NULL), 
-				("getInterfaceMask bad for MODULE_SPECIAL_POWER (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_SPECIAL_POWER)) != 0) == (bm->getSpecialPower() != nullptr),
+				("getInterfaceMask bad for MODULE_SPECIAL_POWER (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_UPDATE)) != 0) == (bm->getUpdate() != NULL), 
-				("getInterfaceMask bad for MODULE_UPDATE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_UPDATE)) != 0) == (bm->getUpdate() != nullptr),
+				("getInterfaceMask bad for MODULE_UPDATE (%s)",name.str()));
 			DEBUG_ASSERTCRASH(
-				((mt->m_whichInterfaces & (MODULEINTERFACE_UPGRADE)) != 0) == (bm->getUpgrade() != NULL), 
-				("getInterfaceMask bad for MODULE_UPGRADE (%s)\n",name.str()));
+				((mt->m_whichInterfaces & (MODULEINTERFACE_UPGRADE)) != 0) == (bm->getUpgrade() != nullptr),
+				("getInterfaceMask bad for MODULE_UPGRADE (%s)",name.str()));
 		}
 #endif
 
 		return mod;
 	}
 
-	return NULL;
+	return nullptr;
 
-}  // end newModule
+}
 
 //-------------------------------------------------------------------------------------------------
 /** Add a module template to our list of templates */
@@ -726,6 +814,6 @@ void ModuleFactory::xfer( Xfer *xfer )
 }
 
 //-------------------------------------------------------------------------------------------------
-void ModuleFactory::loadPostProcess( void )
+void ModuleFactory::loadPostProcess()
 {
 }

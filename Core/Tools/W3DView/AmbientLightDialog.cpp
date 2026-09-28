@@ -19,16 +19,16 @@
 // AmbientLightDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include "W3DView.h"
 #include "AmbientLightDialog.h"
-#include "MainFrm.H"
-#include "W3DViewDoc.H"
-#include "ViewerScene.H"
-#include "Utils.H"
+#include "MainFrm.h"
+#include "W3DViewDoc.h"
+#include "ViewerScene.h"
+#include "Utils.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -39,7 +39,7 @@ static char THIS_FILE[] = __FILE__;
 // CAmbientLightDialog dialog
 
 
-CAmbientLightDialog::CAmbientLightDialog(CWnd* pParent /*=NULL*/)
+CAmbientLightDialog::CAmbientLightDialog(CWnd* pParent /*=nullptr*/)
 	: CDialog(CAmbientLightDialog::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CAmbientLightDialog)
@@ -71,7 +71,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CAmbientLightDialog::OnInitDialog (void) 
+CAmbientLightDialog::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CDialog::OnInitDialog ();
@@ -82,7 +82,7 @@ CAmbientLightDialog::OnInitDialog (void)
 
     m_redSlider.SetRange (0, 100);
     m_greenSlider.SetRange (0, 100);
-    m_blueSlider.SetRange (0, 100);    
+    m_blueSlider.SetRange (0, 100);
 
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
@@ -159,10 +159,9 @@ CAmbientLightDialog::OnHScroll
         // Modify the ambient light for this scene
         pCDoc->GetScene ()->Set_Ambient_Light (lightSettings);
     }
-	
+
 	// Allow the base class to process this message
     CDialog::OnHScroll (nSBCode, nPos, pScrollBar);
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -170,7 +169,7 @@ CAmbientLightDialog::OnHScroll
 //  OnCancel
 //
 void
-CAmbientLightDialog::OnCancel (void)
+CAmbientLightDialog::OnCancel ()
 {
     Vector3 lightSettings;
     lightSettings.X = float(m_initialRed) / 100.00F;
@@ -185,10 +184,9 @@ CAmbientLightDialog::OnCancel (void)
         // Modify the ambient light for this scene
         pCDoc->GetScene ()->Set_Ambient_Light (lightSettings);
     }
-	
+
 	// Allow the base class to process this message
     CDialog::OnCancel();
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -201,7 +199,7 @@ CAmbientLightDialog::WindowProc
     UINT message,
     WPARAM wParam,
     LPARAM lParam
-) 
+)
 {
     if (message == WM_PAINT)
     {
@@ -210,7 +208,7 @@ CAmbientLightDialog::WindowProc
         ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
         ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
     }
-	
+
 	// Allow the base class to process this message
     return CDialog::WindowProc (message, wParam, lParam);
 }
@@ -220,7 +218,7 @@ CAmbientLightDialog::WindowProc
 //  OnGrayscaleCheck
 //
 void
-CAmbientLightDialog::OnGrayscaleCheck (void)
+CAmbientLightDialog::OnGrayscaleCheck ()
 {
     if (SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_GETCHECK))
     {
@@ -242,7 +240,5 @@ CAmbientLightDialog::OnGrayscaleCheck (void)
             pCDoc->GetScene ()->Set_Ambient_Light (lightSettings);
         }
     }
-
-    return ;
 }
 

@@ -19,17 +19,17 @@
 // SceneLightDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "SceneLightDialog.h"
-#include "Utils.H"
-#include "MainFrm.H"
-#include "W3DViewDoc.H"
-#include "Scene.H"
-#include "Light.H"
+#include "Utils.h"
+#include "MainFrm.h"
+#include "W3DViewDoc.h"
+#include "WW3D2/scene.h"
+#include "WW3D2/light.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -40,7 +40,7 @@ static char THIS_FILE[] = __FILE__;
 //
 //  CSceneLightDialog
 //
-CSceneLightDialog::CSceneLightDialog(CWnd* pParent /*=NULL*/)
+CSceneLightDialog::CSceneLightDialog(CWnd* pParent /*=nullptr*/)
 	: m_CurrentChannel (DIFFUSE),
 	  m_InitialStartAtten (0),
 	  m_InitialEndAtten (0),
@@ -51,7 +51,6 @@ CSceneLightDialog::CSceneLightDialog(CWnd* pParent /*=NULL*/)
 {
 	//{{AFX_DATA_INIT(CSceneLightDialog)
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 
@@ -72,7 +71,6 @@ CSceneLightDialog::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_SLIDER_GREEN, m_greenSlider);
 	DDX_Control(pDX, IDC_SLIDER_RED, m_redSlider);
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -93,7 +91,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CSceneLightDialog::OnInitDialog (void) 
+CSceneLightDialog::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CDialog::OnInitDialog ();
@@ -105,7 +103,7 @@ CSceneLightDialog::OnInitDialog (void)
 	// Set the initial ranges for the color sliders
 	m_redSlider.SetRange (0, 100);
 	m_greenSlider.SetRange (0, 100);
-	m_blueSlider.SetRange (0, 100);    
+	m_blueSlider.SetRange (0, 100);
 
 	// Get a pointer to the doc so we can get at the current scene
 	// pointer.
@@ -120,11 +118,11 @@ CSceneLightDialog::OnInitDialog (void)
 		// if the user cancels
 		m_InitialRedDiffuse = int(diffuse.X * 100.00F);
 		m_InitialGreenDiffuse = int(diffuse.Y * 100.00F);
-		m_InitialBlueDiffuse = int(diffuse.Z * 100.00F);        
+		m_InitialBlueDiffuse = int(diffuse.Z * 100.00F);
 		m_InitialRedSpecular = int(specular.X * 100.00F);
 		m_InitialGreenSpecular = int(specular.Y * 100.00F);
 		m_InitialBlueSpecular = int(specular.Z * 100.00F);
-		Set_Color_Control_State (diffuse);		
+		Set_Color_Control_State (diffuse);
 
 		// Get the light's attenuation
 		double start = 0;
@@ -134,12 +132,12 @@ CSceneLightDialog::OnInitDialog (void)
 		SendDlgItemMessage (IDC_ATTENUATION_CHECK, BM_SETCHECK, (WPARAM)atten_on);
 
 		// Get the light's intensity
-		float intensity = pCDoc->GetSceneLight ()->Get_Intensity ();			
+		float intensity = pCDoc->GetSceneLight ()->Get_Intensity ();
 
 		// Attempt to calculate the light's distance from the object
 		float distance = 0;
-		if (pCDoc->GetDisplayedObject () != NULL) {
-			
+		if (pCDoc->GetDisplayedObject () != nullptr) {
+
 			// Get the position of the light and the displayed object
 			Vector3 light_pos = pCDoc->GetSceneLight ()->Get_Position ();
 			Vector3 obj_pos = pCDoc->GetDisplayedObject ()->Get_Position ();
@@ -152,7 +150,7 @@ CSceneLightDialog::OnInitDialog (void)
 		::SetDlgItemFloat (m_hWnd, IDC_START_ATTENUATION_EDIT, start);
 		::SetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT, end);
 		::SetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT, distance);
-		
+
 		// Set-up the spin controls
 		m_DistanceSpin.SetRange (0, 1000000L);
 		m_DistanceSpin.SetPos ((distance * 100));
@@ -194,7 +192,7 @@ CSceneLightDialog::OnHScroll
 {
 	// Did the intensity slider send this message or did the color sliders?
 	if (pScrollBar == GetDlgItem (IDC_INTENSITY_SLIDER)) {
-		
+
 		// Update the light's intensity settings
 		float intensity = ((float)m_IntensitySlider.GetPos ()) / 100.0F;
 		::GetCurrentDocument ()->GetSceneLight ()->Set_Intensity (intensity);
@@ -203,7 +201,7 @@ CSceneLightDialog::OnHScroll
 
 		// Are the 3 colors locked together?
 		if (SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_GETCHECK)) {
-			
+
 			// Which color sent this message?
 			int iCurrentPos = 0;
 			if (pScrollBar == GetDlgItem (IDC_SLIDER_RED)) {
@@ -238,7 +236,6 @@ CSceneLightDialog::OnHScroll
 
 	// Allow the base class to process this message
 	CDialog::OnHScroll (nSBCode, nPos, pScrollBar);
-	return ;
 }
 
 
@@ -247,7 +244,7 @@ CSceneLightDialog::OnHScroll
 //  OnCancel
 //
 void
-CSceneLightDialog::OnCancel (void)
+CSceneLightDialog::OnCancel ()
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings and position
@@ -272,12 +269,11 @@ CSceneLightDialog::OnCancel (void)
 		pCDoc->GetSceneLight ()->Set_Intensity (m_InitialIntensity);
 		pCDoc->GetSceneLight ()->Set_Far_Attenuation_Range (m_InitialStartAtten, m_InitialEndAtten);
 		pCDoc->GetSceneLight ()->Set_Flag (LightClass::FAR_ATTENUATION, (m_InitialAttenOn == TRUE));
-		Update_Distance (m_InitialDistance);		
+		Update_Distance (m_InitialDistance);
 	}
 
 	// Allow the base class to process this message
 	CDialog::OnCancel ();
-	return ;
 }
 
 
@@ -291,7 +287,7 @@ CSceneLightDialog::WindowProc
     UINT message,
     WPARAM wParam,
     LPARAM lParam
-) 
+)
 {
 	switch (message)
 	{
@@ -299,9 +295,9 @@ CSceneLightDialog::WindowProc
 		{
 			// Did this notification come from a spin control?
 			NMHDR *pheader = (NMHDR *)lParam;
-			if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
+			if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 				LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-				
+
 				// Get the buddy window associated with this spin control
 				HWND hbuddy_wnd = (HWND)SendDlgItemMessage ((int)wParam, UDM_GETBUDDY);
 				if (::IsWindow (hbuddy_wnd)) {
@@ -329,7 +325,7 @@ CSceneLightDialog::WindowProc
 						Update_Distance (::GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT));
 					}
 					break;
-					
+
 					case IDC_START_ATTENUATION_EDIT:
 					case IDC_END_ATTENUATION_EDIT:
 					{
@@ -350,7 +346,7 @@ CSceneLightDialog::WindowProc
 		}
 		break;
 	}
-	
+
 	// Allow the base class to process this message
 	return CDialog::WindowProc (message, wParam, lParam);
 }
@@ -361,10 +357,10 @@ CSceneLightDialog::WindowProc
 //  OnGrayscaleCheck
 //
 void
-CSceneLightDialog::OnGrayscaleCheck (void)
+CSceneLightDialog::OnGrayscaleCheck ()
 {
 	if (SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_GETCHECK)) {
-		
+
 		// Make the green and blue sliders the same as red
 		m_greenSlider.SetPos (m_redSlider.GetPos ());
 		m_blueSlider.SetPos (m_redSlider.GetPos ());
@@ -375,8 +371,6 @@ CSceneLightDialog::OnGrayscaleCheck (void)
 		color.Z = float(m_blueSlider.GetPos ()) / 100.00F;
 		Update_Light (color);
 	}
-
-	return ;
 }
 
 
@@ -385,10 +379,9 @@ CSceneLightDialog::OnGrayscaleCheck (void)
 //  OnChannelBothRadio
 //
 void
-CSceneLightDialog::OnChannelBothRadio (void)
+CSceneLightDialog::OnChannelBothRadio ()
 {
 	m_CurrentChannel = BOTH;
-	return ;
 }
 
 
@@ -397,14 +390,13 @@ CSceneLightDialog::OnChannelBothRadio (void)
 //  OnChannelDiffuseRadio
 //
 void
-CSceneLightDialog::OnChannelDiffuseRadio (void)
+CSceneLightDialog::OnChannelDiffuseRadio ()
 {
 	// Reset the UI to reflect the current diffuse color
 	Vector3 color;
 	::GetCurrentDocument ()->GetSceneLight ()->Get_Diffuse (&color);
 	Set_Color_Control_State (color);
 	m_CurrentChannel = DIFFUSE;
-	return ;
 }
 
 
@@ -413,14 +405,13 @@ CSceneLightDialog::OnChannelDiffuseRadio (void)
 //  OnChannelSpecularRadio
 //
 void
-CSceneLightDialog::OnChannelSpecularRadio (void)
+CSceneLightDialog::OnChannelSpecularRadio ()
 {
 	// Reset the UI to reflect the current specular color
 	Vector3 color;
 	::GetCurrentDocument ()->GetSceneLight ()->Get_Specular (&color);
 	Set_Color_Control_State (color);
 	m_CurrentChannel = SPECULAR;
-	return ;
 }
 
 
@@ -446,8 +437,6 @@ CSceneLightDialog::Update_Light (const Vector3 &color)
 			pCDoc->GetSceneLight ()->Set_Specular (color);
 		}
 	}
-
-	return ;
 }
 
 
@@ -462,7 +451,7 @@ CSceneLightDialog::Set_Color_Control_State (const Vector3 &color)
 	if ((color.X == color.Y) &&
 		 (color.X == color.Z)) {
 		SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_SETCHECK, (WPARAM)TRUE);
-	} else {		
+	} else {
 		SendDlgItemMessage (IDC_GRAYSCALE_CHECK, BM_SETCHECK, (WPARAM)FALSE);
 	}
 
@@ -470,7 +459,6 @@ CSceneLightDialog::Set_Color_Control_State (const Vector3 &color)
 	m_redSlider.SetPos (int(color.X * 100.0F));
 	m_greenSlider.SetPos (int(color.Y * 100.0F));
 	m_blueSlider.SetPos (int(color.Z * 100.0F));
-	return ;
 }
 
 
@@ -479,7 +467,7 @@ CSceneLightDialog::Set_Color_Control_State (const Vector3 &color)
 //  Update_Attenuation
 //
 void
-CSceneLightDialog::Update_Attenuation (void)
+CSceneLightDialog::Update_Attenuation ()
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings
@@ -491,8 +479,6 @@ CSceneLightDialog::Update_Attenuation (void)
 		float end = ::GetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT);
 		pCDoc->GetSceneLight ()->Set_Far_Attenuation_Range (start, end);
 	}
-
-	return ;
 }
 
 
@@ -509,13 +495,13 @@ CSceneLightDialog::Update_Distance (float distance)
 	if (pCDoc && pCDoc->GetScene ()) {
 
 		// Get the position of the displayed object
-		Vector3 obj_pos (0,0,0);		
+		Vector3 obj_pos (0,0,0);
 		if (pCDoc->GetDisplayedObject ()) {
 			obj_pos = pCDoc->GetDisplayedObject ()->Get_Position ();
 		}
 
 		// Get the position of the light and the displayed object
-		Vector3 light_pos = pCDoc->GetSceneLight ()->Get_Position ();		
+		Vector3 light_pos = pCDoc->GetSceneLight ()->Get_Position ();
 		Vector3 new_pos = (light_pos - obj_pos);
 		new_pos.Normalize ();
 		new_pos = new_pos * distance;
@@ -523,8 +509,6 @@ CSceneLightDialog::Update_Distance (float distance)
 		// Update the attenuation settings
 		pCDoc->GetSceneLight ()->Set_Position (new_pos);
 	}
-
-	return ;
 }
 
 
@@ -533,7 +517,7 @@ CSceneLightDialog::Update_Distance (float distance)
 //  Update_Attenuation_Controls
 //
 void
-CSceneLightDialog::Update_Attenuation_Controls (void)
+CSceneLightDialog::Update_Attenuation_Controls ()
 {
 	// Enable or disable the attenuation controls based on the group's checkstate
 	BOOL enable = (SendDlgItemMessage (IDC_ATTENUATION_CHECK, BM_GETCHECK) == 1);
@@ -541,7 +525,6 @@ CSceneLightDialog::Update_Attenuation_Controls (void)
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_START_ATTENUATION_SPIN), enable);
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_END_ATTENUATION_EDIT), enable);
 	::EnableWindow (::GetDlgItem (m_hWnd, IDC_END_ATTENUATION_SPIN), enable);
-	return ;
 }
 
 
@@ -550,14 +533,13 @@ CSceneLightDialog::Update_Attenuation_Controls (void)
 //  OnAttenuationCheck
 //
 void
-CSceneLightDialog::OnAttenuationCheck (void) 
+CSceneLightDialog::OnAttenuationCheck ()
 {
-	// Update the scene light to reflect the new setting	
+	// Update the scene light to reflect the new setting
 	bool enable = (SendDlgItemMessage (IDC_ATTENUATION_CHECK, BM_GETCHECK) == 1);
 	CW3DViewDoc *pdoc = ::GetCurrentDocument ();
 	pdoc->GetSceneLight ()->Set_Flag (LightClass::FAR_ATTENUATION, enable);
 
 	// Update the dialog controls to reflect the new setting
 	Update_Attenuation_Controls ();
-	return ;
 }

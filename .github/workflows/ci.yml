@@ -28,10 +28,10 @@ jobs:
       shared: ${{ steps.filter.outputs.shared }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Filter Changed Paths
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
           token: ''
@@ -41,8 +41,7 @@ jobs:
             generalsmd:
               - 'GeneralsMD/**'
             shared:
-              - '.github/workflows/build-toolchain.yml'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**'
               - 'CMakeLists.txt'
               - 'CMakePresets.json'
               - 'cmake/**'
@@ -69,24 +68,27 @@ jobs:
           - preset: "vc6-profile"
             tools: true
             extras: true
-          - preset: "vc6-internal"
-            tools: true
-            extras: true
           - preset: "vc6-debug"
             tools: true
             extras: true
-          - preset: "win32-vcpkg"
+          - preset: "win32"
             tools: true
             extras: true
-          - preset: "win32-vcpkg-profile"
+          - preset: "win32-profile"
             tools: true
             extras: true
-          - preset: "win32-vcpkg-internal"
+          - preset: "win32-debug"
             tools: true
             extras: true
-          - preset: "win32-vcpkg-debug"
-            tools: true
-            extras: true
+          #- preset: "win32-vcpkg"
+          #  tools: true
+          #  extras: true
+          #- preset: "win32-vcpkg-profile"
+          #  tools: true
+          #  extras: true
+          #- preset: "win32-vcpkg-debug"
+          #  tools: true
+          #  extras: true
       fail-fast: false
     uses: ./.github/workflows/build-toolchain.yml
     with:
@@ -96,7 +98,9 @@ jobs:
       extras: ${{ matrix.extras }}
     secrets: inherit
 
-  build-generalsmd:
+  # Note build-generalsmd is split into two jobs for vc6 and win32 because replaycheck-generalsmd
+  # only requires the vc6 build and compiling vc6 is much faster than win32
+  build-generalsmd-vc6:
     name: Build GeneralsMD${{ matrix.preset && '' }}
     needs: detect-changes
     if: ${{ github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.generalsmd == 'true' || needs.detect-changes.outputs.shared == 'true' }}
@@ -109,22 +113,10 @@ jobs:
           - preset: "vc6-profile"
             tools: true
             extras: true
-          - preset: "vc6-internal"
-            tools: true
-            extras: true
           - preset: "vc6-debug"
             tools: true
             extras: true
-          - preset: "win32"
-            tools: true
-            extras: true
-          - preset: "win32-profile"
-            tools: true
-            extras: true
-          - preset: "win32-internal"
-            tools: true
-            extras: true
-          - preset: "win32-debug"
+          - preset: "vc6-releaselog"
             tools: true
             extras: true
       fail-fast: false
@@ -134,4 +126,55 @@ jobs:
       preset: ${{ matrix.preset }}
       tools: ${{ matrix.tools }}
       extras: ${{ matrix.extras }}
+    secrets: inherit
+
+  build-generalsmd-win32:
+    name: Build GeneralsMD${{ matrix.preset && '' }}
+    needs: detect-changes
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.generalsmd == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    strategy:
+      matrix:
+        include:
+          - preset: "win32"
+            tools: true
+            extras: true
+          - preset: "win32-profile"
+            tools: true
+            extras: true
+          - preset: "win32-debug"
+            tools: true
+            extras: true
+          #- preset: "win32-vcpkg"
+          #  tools: true
+          #  extras: true
+          #- preset: "win32-vcpkg-profile"
+          #  tools: true
+          #  extras: true
+          #- preset: "win32-vcpkg-debug"
+          #  tools: true
+          #  extras: true
+      fail-fast: false
+    uses: ./.github/workflows/build-toolchain.yml
+    with:
+      game: "GeneralsMD"
+      preset: ${{ matrix.preset }}
+      tools: ${{ matrix.tools }}
+      extras: ${{ matrix.extras }}
+    secrets: inherit
+
+  replaycheck-generalsmd:
+    name: Replay Check GeneralsMD${{ matrix.preset && '' }}
+    needs: build-generalsmd-vc6
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.generalsmd == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    strategy:
+      matrix:
+        include:
+          - preset: "vc6+t+e"
+          - preset: "vc6-releaselog+t+e" # optimized build with logging and crashing enabled should be compatible, so we test that here.
+      fail-fast: false
+    uses: ./.github/workflows/check-replays.yml
+    with:
+      game: "GeneralsMD"
+      userdata: "GeneralsReplays/GeneralsZH/1.04"
+      preset: ${{ matrix.preset }}
     secrets: inherit

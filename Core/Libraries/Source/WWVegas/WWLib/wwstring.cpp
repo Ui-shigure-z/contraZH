@@ -35,9 +35,8 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "wwstring.h"
-#include "wwmemlog.h"
+#include "WWDebug/wwmemlog.h"
 #include "mutex.h"
-#include <stdio.h>
 
 
 ///////////////////////////////////////////////////////////////////
@@ -72,7 +71,7 @@ StringClass::Get_String (int length, bool is_temp)
 		return;
 	}
 
-	TCHAR *string = NULL;
+	TCHAR *string = nullptr;
 
 	//
 	//	Should we attempt to use a temp buffer for this string?
@@ -97,7 +96,7 @@ StringClass::Get_String (int length, bool is_temp)
 			unsigned mask=1<<index;
 			if (!(ReservedMask&mask)) {
 				ReservedMask|=mask;
-				
+
 				//
 				//	Grab this unused buffer for our string
 				//
@@ -114,8 +113,8 @@ StringClass::Get_String (int length, bool is_temp)
 		}
 	}
 
-	if (string == NULL) {
-		
+	if (string == nullptr) {
+
 		//
 		//	Allocate a new string as necessary
 		//
@@ -153,8 +152,6 @@ StringClass::Resize (int new_len)
 		//
 		Set_Buffer_And_Allocated_Length (new_buffer, new_len);
 	}
-
-	return ;
 }
 
 
@@ -170,19 +167,18 @@ StringClass::Uninitialised_Grow (int new_len)
 
 	int allocated_len = Get_Allocated_Length ();
 	if (new_len > allocated_len) {
-		
+
 		//
 		//	Switch to a newly allocated buffer
 		//
 		TCHAR *new_buffer = Allocate_Buffer (new_len);
-		Set_Buffer_And_Allocated_Length (new_buffer, new_len);	
+		Set_Buffer_And_Allocated_Length (new_buffer, new_len);
 	}
-		
+
 	//
-	// Whenever this function is called, clear the cached length 
+	// Whenever this function is called, clear the cached length
 	//
 	Store_Length (0);
-	return ;
 }
 
 
@@ -192,7 +188,7 @@ StringClass::Uninitialised_Grow (int new_len)
 //
 ///////////////////////////////////////////////////////////////////
 void
-StringClass::Free_String (void)
+StringClass::Free_String ()
 {
 	if (m_Buffer != m_EmptyString) {
 
@@ -226,8 +222,6 @@ StringClass::Free_String (void)
 		//
 		m_Buffer = m_EmptyString;
 	}
-
-	return ;
 }
 
 
@@ -236,7 +230,7 @@ StringClass::Free_String (void)
 //	Format
 //
 ///////////////////////////////////////////////////////////////////
-int _cdecl
+int __cdecl
 StringClass::Format_Args (const TCHAR *format, va_list arg_list )
 {
 	//
@@ -249,14 +243,14 @@ StringClass::Format_Args (const TCHAR *format, va_list arg_list )
 	//	Format the string
 	//
 	#ifdef _UNICODE
-		retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
+		retval = vswprintf (temp_buffer, 512, format, arg_list);
 	#else
-		retval = _vsnprintf (temp_buffer, 512, format, arg_list);
+		retval = vsnprintf (temp_buffer, 512, format, arg_list);
 	#endif
-	
+
 	//
 	//	Copy the string into our buffer
-	//	
+	//
 	(*this) = temp_buffer;
 
 	return retval;
@@ -268,7 +262,7 @@ StringClass::Format_Args (const TCHAR *format, va_list arg_list )
 //	Format
 //
 ///////////////////////////////////////////////////////////////////
-int _cdecl
+int __cdecl
 StringClass::Format (const TCHAR *format, ...)
 {
 	va_list arg_list;
@@ -284,14 +278,14 @@ StringClass::Format (const TCHAR *format, ...)
 	//	Format the string
 	//
 	#ifdef _UNICODE
-		retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
+		retval = vswprintf (temp_buffer, 512, format, arg_list);
 	#else
-		retval = _vsnprintf (temp_buffer, 512, format, arg_list);
+		retval = vsnprintf (temp_buffer, 512, format, arg_list);
 	#endif
-	
+
 	//
 	//	Copy the string into our buffer
-	//	
+	//
 	(*this) = temp_buffer;
 
 	va_end (arg_list);
@@ -305,7 +299,7 @@ StringClass::Format (const TCHAR *format, ...)
 //
 ///////////////////////////////////////////////////////////////////
 void
-StringClass::Release_Resources (void)
+StringClass::Release_Resources ()
 {
 	Free_String();
 }
@@ -317,16 +311,16 @@ StringClass::Release_Resources (void)
 ///////////////////////////////////////////////////////////////////
 bool StringClass::Copy_Wide (const WCHAR *source)
 {
-	if (source != NULL) {
+	if (source != nullptr) {
 
 		int  length;
 		int unmapped;
-			
-		length = WideCharToMultiByte (CP_ACP, 0 , source, -1, NULL, 0, NULL, &unmapped);
+
+		length = WideCharToMultiByte (CP_ACP, 0 , source, -1, nullptr, 0, nullptr, &unmapped);
 		if (length > 0) {
 
 			// Convert.
-			WideCharToMultiByte (CP_ACP, 0, source, -1, Get_Buffer (length), length, NULL, NULL);
+			WideCharToMultiByte (CP_ACP, 0, source, -1, Get_Buffer (length), length, nullptr, nullptr);
 
 			// Update length.
 			Store_Length (length - 1);

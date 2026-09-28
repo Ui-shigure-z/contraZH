@@ -22,20 +22,17 @@
 
 #pragma once
 
-#ifndef FloodFillTool_H
-#define FloodFillTool_H
-
 #include "Tool.h"
 class WorldHeightMapEdit;
 /**************************************************************************
                             FloodFillTool
 ***************************************************************************/
 ///  Fill area with texture tool.
-class FloodFillTool : public Tool 
+class FloodFillTool : public Tool
 {
 public:
-	FloodFillTool(void);
-	~FloodFillTool(void);
+	FloodFillTool();
+	virtual ~FloodFillTool() override;
 
 protected:
 	Int			m_textureClassToDraw; ///< The texture to fill with.  Foreground for mousedDown, background for mouseDownRt.
@@ -62,6 +59,3 @@ public:
 	void setAdjustCliffs(Bool val) {m_adjustCliffTextures = val;}
 
 };
-
-
-#endif //TOOL_H

@@ -16,22 +16,20 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#pragma once
 
-#ifndef __DRAW_OBJECT_H_
-#define __DRAW_OBJECT_H_
-
-#include "always.h"
-#include "rendobj.h"
-#include "w3d_file.h"
-#include "dx8vertexbuffer.h"
-#include "dx8indexbuffer.h"
-#include "shader.h"
-#include "vertmaterial.h"
+#include "WWLib/always.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/w3d_file.h"
+#include "WW3D2/dx8vertexbuffer.h"
+#include "WW3D2/dx8indexbuffer.h"
+#include "WW3D2/shader.h"
+#include "WW3D2/vertmaterial.h"
 #include "Lib/BaseType.h"
 #include "Common/AsciiString.h"
 
 // The draw objects draw a circle of diameter 1.0 cells.
-#define THE_RADIUS (0.8f*MAP_XY_FACTOR) 
+#define THE_RADIUS (0.8f*MAP_XY_FACTOR)
 
 class MeshClass;
 class PolygonTrigger;
@@ -44,45 +42,45 @@ class TextureClass;
 //
 //
 class DrawObject : public RenderObjClass
-{	
+{
 
 public:
 
-	DrawObject(void);
+	DrawObject();
 	DrawObject(const DrawObject & src);
 	DrawObject & operator = (const DrawObject &);
-	~DrawObject(void);
+	virtual ~DrawObject() override;
 
 	/////////////////////////////////////////////////////////////////////////////
-	// Render Object Interface 
+	// Render Object Interface
 	/////////////////////////////////////////////////////////////////////////////
-	virtual RenderObjClass *	Clone(void) const;
-	virtual int						Class_ID(void) const;
-	virtual void					Render(RenderInfoClass & rinfo);
+	virtual RenderObjClass *	Clone() const override;
+	virtual int						Class_ID() const override;
+	virtual void					Render(RenderInfoClass & rinfo) override;
 //	virtual void					Special_Render(SpecialRenderInfoClass & rinfo);
-//	virtual void 					Set_Transform(const Matrix3D &m); 
+//	virtual void 					Set_Transform(const Matrix3D &m);
 //	virtual void 					Set_Position(const Vector3 &v);
 //TODO: MW: do these later - only needed for collision detection
-	virtual Bool					Cast_Ray(RayCollisionTestClass & raytest);
+	virtual Bool					Cast_Ray(RayCollisionTestClass & raytest) override;
 //	virtual Bool					Cast_AABox(AABoxCollisionTestClass & boxtest);
 //	virtual Bool					Cast_OBBox(OBBoxCollisionTestClass & boxtest);
 //	virtual Bool					Intersect_AABox(AABoxIntersectionTestClass & boxtest);
 //	virtual Bool					Intersect_OBBox(OBBoxIntersectionTestClass & boxtest);
 
-	virtual void					Get_Obj_Space_Bounding_Sphere(SphereClass & sphere) const;
-    virtual void					Get_Obj_Space_Bounding_Box(AABoxClass & aabox) const;
+	virtual void					Get_Obj_Space_Bounding_Sphere(SphereClass & sphere) const override;
+	virtual void					Get_Obj_Space_Bounding_Box(AABoxClass & aabox) const override;
 
 
-//	virtual int					 	Get_Num_Polys(void) const;
-//	virtual const char *		 	Get_Name(void) const;
+//	virtual int					 	Get_Num_Polys() const;
+//	virtual const char *		 	Get_Name() const;
 //	virtual void				 	Set_Name(const char * name);
 
-//	unsigned int					Get_Flags(void)  { return Flags; }
+//	unsigned int					Get_Flags()  { return Flags; }
 //	void								Set_Flags(unsigned int flags) { Flags = flags; }
 //	void								Set_Flag(unsigned int flag, Bool onoff) { Flags &= (~flag); if (onoff) Flags |= flag; }
 
-	Int freeMapResources(void);
-	int initData(void);
+	Int freeMapResources();
+	int initData();
 
     void setDrawObjects(Bool val, Bool waypoints, Bool poly, Bool bounding, Bool sight, Bool weapon, Bool sound, Bool testart, Bool letterbox, Bool water, Bool iconssel, Bool fixedColorsW) { 
 		m_drawObjects = val; 
@@ -160,7 +158,10 @@ public:
 	static void setDefaultIconColor(int val) { m_defaultIconColor = val; }
 	static void setTreeIconColor(int val) { m_treeIconColor = val; }
 
-	MeshClass *peekMesh(void) {return m_moldMesh;};
+
+
+
+	MeshClass *peekMesh() {return m_moldMesh;};
 	void getMeshBounds(SphereClass *pSphere) {*pSphere = m_moldMeshBounds;};
 
 	static Bool m_terrainPasteFeedback;
@@ -169,7 +170,7 @@ public:
 
 protected:
 	enum {MAX_RADIUS = 50, NUM_FEEDBACK_VERTEX = 201*201, NUM_FEEDBACK_INDEX = 101*101*6};
-	Int	m_numTriangles;	//dimensions of list 
+	Int	m_numTriangles;	//dimensions of list
 
 	DX8IndexBufferClass				*m_indexBuffer;	///< indices defining a object icon
 	ShaderClass								m_shaderClass; ///< shader or rendering state for heightmap
@@ -287,7 +288,5 @@ protected:
 
 };
 
-void BuildRectFromSegmentAndWidth(const Coord3D* b, const Coord3D* t, Real width, 
+void BuildRectFromSegmentAndWidth(const Coord3D* b, const Coord3D* t, Real width,
 																	Coord3D* outBL, Coord3D* outTL, Coord3D* outBR, Coord3D* outTR);
-
-#endif  // end __DRAW_OBJECT_H_

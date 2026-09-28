@@ -34,17 +34,11 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#if defined(_MSC_VER)
 #pragma once
-#endif
 
-#ifndef __SPHERE_PROPERTY_SHEET_H
-#define __SPHERE_PROPERTY_SHEET_H
-
-#include "SphereColorPropPage.H"
-#include "SphereGeneralPropPage.H"
-#include "SphereSizePropPage.H"
+#include "SphereColorPropPage.h"
+#include "SphereGeneralPropPage.h"
+#include "SphereSizePropPage.h"
 
 
 // Forward declarations
@@ -64,8 +58,8 @@ class SpherePropertySheetClass : public CPropertySheet
 
 // Construction
 public:
-	SpherePropertySheetClass (SphereRenderObjClass *sphere, UINT nIDCaption, CWnd* pParentWnd = NULL, UINT iSelectPage = 0);
-	SpherePropertySheetClass (SphereRenderObjClass *sphere, LPCTSTR pszCaption, CWnd* pParentWnd = NULL, UINT iSelectPage = 0);
+	SpherePropertySheetClass (SphereRenderObjClass *sphere, UINT nIDCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
+	SpherePropertySheetClass (SphereRenderObjClass *sphere, LPCTSTR pszCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
 
 // Attributes
 public:
@@ -97,15 +91,15 @@ public:
 	//////////////////////////////////////////////////////////////////////
 
 protected:
-	
+
 	//////////////////////////////////////////////////////////////////////
 	//	Protected methods
 	//////////////////////////////////////////////////////////////////////
-	void							Initialize (void);
-	SphereRenderObjClass *	Create_Object (void);
-	void							Update_Object (void);	
-	void							Add_Object_To_Viewer (void);
-	void							Create_New_Object (void);
+	void							Initialize ();
+	SphereRenderObjClass *	Create_Object ();
+	void							Update_Object ();
+	void							Add_Object_To_Viewer ();
+	void							Create_New_Object ();
 
 private:
 
@@ -115,10 +109,8 @@ private:
 	SphereGeneralPropPageClass		m_GeneralPage;
 	SphereColorPropPageClass		m_ColorPage;
 	SphereSizePropPageClass			m_ScalePage;
-	SphereRenderObjClass *			m_RenderObj;
+	RefCountPtr<SphereRenderObjClass>			m_RenderObj;
 	CString								m_LastSavedName;
 };
 
 /////////////////////////////////////////////////////////////////////////////
-
-#endif //__SPHERE_PROPERTY_SHEET_H

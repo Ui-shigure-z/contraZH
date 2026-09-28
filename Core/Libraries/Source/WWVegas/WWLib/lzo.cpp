@@ -38,7 +38,7 @@
 
 #include "lzo.h"
 #include "mutex.h"
-#include "wwdebug.h"
+#include "WWDebug/wwdebug.h"
 #include <stdlib.h>
 
 /*
@@ -111,5 +111,5 @@ int LZOCompressor::Decompress
 {
 	CriticalSectionClass::LockClass m(mutex);
 
-	return lzo1x_decompress(in,in_len,out,out_len,NULL);
+	return lzo1x_decompress(in,in_len,out,out_len,nullptr);
 }

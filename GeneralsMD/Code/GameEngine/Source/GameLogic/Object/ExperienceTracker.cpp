@@ -27,7 +27,7 @@
 // Desc:   Keeps track of experience points so Veterance levels can be gained
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Xfer.h"
 #include "Common/ThingTemplate.h"
@@ -36,20 +36,18 @@
 #include "GameLogic/Object.h"
 
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
 
 //-------------------------------------------------------------------------------------------------
 ExperienceTracker::ExperienceTracker(Object *parent) :
 	m_parent(parent),
 	m_currentLevel(LEVEL_REGULAR),
+	m_maxVeterancyLevel( (parent && parent->getTemplate()) ? parent->getTemplate()->getMaxVeterancyLevel() : LEVEL_LAST ),
 	m_experienceSink(INVALID_ID),
 	m_experienceScalar( 1.0f ),
-	m_currentExperience(0) // Added By Sadullah Nader
+	m_experienceValueScalar(1.0f ),
+	m_currentExperience(0)
 {
+	resetTrainable();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -64,13 +62,25 @@ Int ExperienceTracker::getExperienceValue( const Object* killer ) const
 	if( killer->getRelationship( m_parent ) == ALLIES )
 		return 0;
 
-	return m_parent->getTemplate()->getExperienceValue(m_currentLevel);
+	return m_parent->getTemplate()->getExperienceValue(m_currentLevel) * m_experienceValueScalar;
 }
 
 //-------------------------------------------------------------------------------------------------
 Bool ExperienceTracker::isTrainable() const
 {
-	return m_parent->getTemplate()->isTrainable();
+	return m_isTrainable;
+}
+
+//-------------------------------------------------------------------------------------------------
+void ExperienceTracker::setTrainable(Bool trainable)
+{
+	m_isTrainable = trainable;
+}
+
+//-------------------------------------------------------------------------------------------------
+void ExperienceTracker::resetTrainable()
+{
+	m_isTrainable = m_parent->getTemplate()->isTrainable();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -86,19 +96,42 @@ void ExperienceTracker::setExperienceSink( ObjectID sink )
 }
 
 //-------------------------------------------------------------------------------------------------
+ObjectID ExperienceTracker::getExperienceSink() const
+{
+	return m_experienceSink;
+}
+
+//-------------------------------------------------------------------------------------------------
+// Clamp a level to the current max cap. No object may exceed m_maxVeterancyLevel by any means.
+static inline VeterancyLevel clampToMax( VeterancyLevel level, VeterancyLevel maxLevel )
+{
+	return (level > maxLevel) ? maxLevel : level;
+}
+
+//-------------------------------------------------------------------------------------------------
+void ExperienceTracker::setMaxVeterancyLevel( VeterancyLevel maxLevel, Bool provideFeedback )
+{
+	m_maxVeterancyLevel = maxLevel;
+	// If we are already above the new cap, demote down to it.
+	if (m_currentLevel > m_maxVeterancyLevel)
+		setVeterancyLevel( m_maxVeterancyLevel, provideFeedback );
+}
+
+//-------------------------------------------------------------------------------------------------
 // Set Level to AT LEAST this... if we are already >= this level, do nothing.
-void ExperienceTracker::setMinVeterancyLevel( VeterancyLevel newLevel )
+void ExperienceTracker::setMinVeterancyLevel( VeterancyLevel newLevel, Bool provideFeedback )
 {
 	// This does not check for IsTrainable, because this function is for explicit setting,
 	// so the setter is assumed to know what they are doing.  The game function
 	// of addExperiencePoints cares about Trainability.
+	newLevel = clampToMax( newLevel, m_maxVeterancyLevel );
 	if (m_currentLevel < newLevel)
 	{
 		VeterancyLevel oldLevel = m_currentLevel;
 		m_currentLevel = newLevel;
 		m_currentExperience = m_parent->getTemplate()->getExperienceRequired(m_currentLevel); //Minimum for this level
 		if (m_parent)
-			m_parent->onVeterancyLevelChanged( oldLevel, newLevel );
+			m_parent->onVeterancyLevelChanged( oldLevel, newLevel, provideFeedback );
 	}
 }
 
@@ -108,6 +141,7 @@ void ExperienceTracker::setVeterancyLevel( VeterancyLevel newLevel, Bool provide
 	// This does not check for IsTrainable, because this function is for explicit setting,
 	// so the setter is assumed to know what they are doing.  The game function
 	// of addExperiencePoints cares about Trainability, if flagged thus.
+	newLevel = clampToMax( newLevel, m_maxVeterancyLevel );
 	if (m_currentLevel != newLevel)
 	{
 		VeterancyLevel oldLevel = m_currentLevel;
@@ -124,6 +158,7 @@ Bool ExperienceTracker::gainExpForLevel(Int levelsToGain, Bool canScaleForBonus)
 	Int newLevel = (Int)m_currentLevel + levelsToGain;
 	if (newLevel > LEVEL_LAST)
 		newLevel = LEVEL_LAST;
+	newLevel = clampToMax( (VeterancyLevel)newLevel, m_maxVeterancyLevel );
 	// gain what levels we can, even if we can't use 'em all
 	if (newLevel > m_currentLevel)
 	{
@@ -141,6 +176,7 @@ Bool ExperienceTracker::canGainExpForLevel(Int levelsToGain) const
 	// return true if we can gain levels, even if we can't gain ALL the levels requested
 	if (newLevel > LEVEL_LAST)
 		newLevel = LEVEL_LAST;
+	newLevel = clampToMax( (VeterancyLevel)newLevel, m_maxVeterancyLevel );
 	return (newLevel > m_currentLevel);
 }
 
@@ -172,8 +208,9 @@ void ExperienceTracker::addExperiencePoints( Int experienceGain, Bool canScaleFo
 	m_currentExperience += amountToGain;
 
 	Int levelIndex = 0;
-	while( ( (levelIndex + 1) < LEVEL_COUNT) 
-		&&  m_currentExperience >= m_parent->getTemplate()->getExperienceRequired(levelIndex + 1) 
+	while( ( (levelIndex + 1) < LEVEL_COUNT)
+		&&  ( (levelIndex + 1) <= m_maxVeterancyLevel )		// never climb past the max cap, regardless of ExperienceRequired
+		&&  m_currentExperience >= m_parent->getTemplate()->getExperienceRequired(levelIndex + 1)
 		)
 	{
 		// If there is a higher level to qualify for, and I qualify for it, advance the index
@@ -212,7 +249,8 @@ void ExperienceTracker::setExperienceAndLevel( Int experienceIn, Bool provideFee
 	m_currentExperience = experienceIn;
 
 	Int levelIndex = 0;
-	while( ( (levelIndex + 1) < LEVEL_COUNT) 
+	while( ( (levelIndex + 1) < LEVEL_COUNT)
+		&&  ( (levelIndex + 1) <= m_maxVeterancyLevel )		// never climb past the max cap, regardless of ExperienceRequired
 		&&  m_currentExperience >= m_parent->getTemplate()->getExperienceRequired(levelIndex + 1)
 		)
 	{
@@ -235,19 +273,28 @@ void ExperienceTracker::crc( Xfer *xfer )
 {
 	xfer->xferInt( &m_currentExperience );
 	xfer->xferUser( &m_currentLevel, sizeof( VeterancyLevel ) );
-}  // end crc
+#if !RETAIL_COMPATIBLE_CRC
+	xfer->xferBool(&m_isTrainable);
+#endif
+}
 
 //-----------------------------------------------------------------------------
 /** Xfer method
 	* Version Info:
-	* 1: Initial version 
+	* 1: Initial version
+	* 2: TheSuperHackers @tweak Serialize m_isTrainable
+	* 3: Serialize m_maxVeterancyLevel (overridable veterancy cap)
 	*/
 // ----------------------------------------------------------------------------
 void ExperienceTracker::xfer( Xfer *xfer )
 {
 
 	// version
+#if RETAIL_COMPATIBLE_XFER_SAVE
 	XferVersion currentVersion = 1;
+#else
+	XferVersion currentVersion = 3;
+#endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -266,11 +313,19 @@ void ExperienceTracker::xfer( Xfer *xfer )
 	// experience scalar
 	xfer->xferReal( &m_experienceScalar );
 
-}  // end xfer
+	// experience value scalar
+	xfer->xferReal(&m_experienceValueScalar);
+
+	if (version >= 2)
+		xfer->xferBool(&m_isTrainable);
+
+	if (version >= 3)
+		xfer->xferUser( &m_maxVeterancyLevel, sizeof( VeterancyLevel ) );
+}
 
 //-----------------------------------------------------------------------------
-void ExperienceTracker::loadPostProcess( void )
+void ExperienceTracker::loadPostProcess()
 {
 
-}  // end loadPostProcess
+}
 

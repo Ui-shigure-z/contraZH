@@ -19,15 +19,15 @@
 // EmitterPhysicsPropPage.cpp : implementation file
 //
 
-#include "StdAfx.H"
-#include "W3DView.H"
-#include "EmitterPhysicsPropPage.H"
-#include "Utils.H"
-#include "Part_Emt.H"
-#include "VolumeRandomDialog.H"
-#include "EmitterInstanceList.H"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "EmitterPhysicsPropPage.h"
+#include "Utils.h"
+#include "WW3D2/part_emt.h"
+#include "VolumeRandomDialog.h"
+#include "EmitterInstanceList.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -44,19 +44,18 @@ IMPLEMENT_DYNCREATE(EmitterPhysicsPropPageClass, CPropertyPage)
 //
 /////////////////////////////////////////////////////////////
 EmitterPhysicsPropPageClass::EmitterPhysicsPropPageClass (EmitterInstanceListClass *pemitter)
-	: m_pEmitterList (NULL),
+	: m_pEmitterList (nullptr),
 	  m_bValid (true),
 	  m_Velocity (0, 0, 1),
 	  m_Acceleration (0, 0, 0),
 	  m_OutFactor (0),
 	  m_InheritanceFactor (0),
-	  m_Randomizer (NULL),
+	  m_Randomizer (nullptr),
 	  CPropertyPage(EmitterPhysicsPropPageClass::IDD)
 {
 	//{{AFX_DATA_INIT(EmitterPhysicsPropPageClass)
 	//}}AFX_DATA_INIT
 	Initialize ();
-	return ;
 }
 
 
@@ -65,10 +64,9 @@ EmitterPhysicsPropPageClass::EmitterPhysicsPropPageClass (EmitterInstanceListCla
 //  ~EmitterPhysicsPropPageClass
 //
 /////////////////////////////////////////////////////////////
-EmitterPhysicsPropPageClass::~EmitterPhysicsPropPageClass (void)
+EmitterPhysicsPropPageClass::~EmitterPhysicsPropPageClass ()
 {
 	SAFE_DELETE (m_Randomizer);
-	return;
 }
 
 
@@ -92,7 +90,6 @@ EmitterPhysicsPropPageClass::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_ACCELERATION_Y_SPIN, m_AccelYSpin);
 	DDX_Control(pDX, IDC_ACCELERATION_X_SPIN, m_AccelXSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -109,11 +106,11 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////
 void
-EmitterPhysicsPropPageClass::Initialize (void)
+EmitterPhysicsPropPageClass::Initialize ()
 {
 	SAFE_DELETE (m_Randomizer);
-	if (m_pEmitterList != NULL) {
-	
+	if (m_pEmitterList != nullptr) {
+
 		//
 		// Get the emitter's settings
 		//
@@ -123,8 +120,6 @@ EmitterPhysicsPropPageClass::Initialize (void)
 		m_InheritanceFactor	= m_pEmitterList->Get_Vel_Inherit ();
 		m_Randomizer			= m_pEmitterList->Get_Velocity_Random ();
 	}
-
-	return ;
 }
 
 
@@ -134,7 +129,7 @@ EmitterPhysicsPropPageClass::Initialize (void)
 //
 /////////////////////////////////////////////////////////////
 BOOL
-EmitterPhysicsPropPageClass::OnInitDialog (void) 
+EmitterPhysicsPropPageClass::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CPropertyPage::OnInitDialog ();
@@ -153,7 +148,7 @@ EmitterPhysicsPropPageClass::OnInitDialog (void)
 	//
 	::Initialize_Spinner (m_AccelXSpin, m_Acceleration.X, -10000, 10000);
 	::Initialize_Spinner (m_AccelYSpin, m_Acceleration.Y, -10000, 10000);
-	::Initialize_Spinner (m_AccelZSpin, m_Acceleration.Z, -10000, 10000);		
+	::Initialize_Spinner (m_AccelZSpin, m_Acceleration.Z, -10000, 10000);
 	return TRUE;
 }
 
@@ -164,7 +159,7 @@ EmitterPhysicsPropPageClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////
 BOOL
-EmitterPhysicsPropPageClass::OnApply (void)
+EmitterPhysicsPropPageClass::OnApply ()
 {
 	//
 	//	Read the velocity settings
@@ -204,8 +199,8 @@ EmitterPhysicsPropPageClass::OnNotify
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 		On_Setting_Changed (wParam);
 	}
@@ -221,23 +216,21 @@ EmitterPhysicsPropPageClass::OnNotify
 //
 /////////////////////////////////////////////////////////////
 void
-EmitterPhysicsPropPageClass::OnSpecifyVelocityRandom (void)
+EmitterPhysicsPropPageClass::OnSpecifyVelocityRandom ()
 {
 	VolumeRandomDialogClass dialog (m_Randomizer, this);
 	if (dialog.DoModal () == IDOK) {
-		
+
 		//
 		//	Get the new randomizer from the dialog
 		//
 		SAFE_DELETE (m_Randomizer);
 		m_Randomizer = dialog.Get_Randomizer ();
-		if (m_Randomizer != NULL) {
+		if (m_Randomizer != nullptr) {
 			m_pEmitterList->Set_Velocity_Random (m_Randomizer->Clone ());
 			SetModified ();
 		}
 	}
-
-	return ;
 }
 
 
@@ -376,7 +369,5 @@ EmitterPhysicsPropPageClass::On_Setting_Changed (UINT ctrl_id)
 		}
 		break;
 	}
-
-	return ;
 }
 

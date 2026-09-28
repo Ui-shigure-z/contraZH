@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef __BRIDGE_BEHAVIOR_H_
-#define __BRIDGE_BEHAVIOR_H_
-
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "Common/AudioEventRTS.h"
 #include "GameClient/TerrainRoads.h"
@@ -39,6 +36,7 @@
 #include "GameLogic/Module/DamageModule.h"
 #include "GameLogic/Module/DieModule.h"
 #include "GameLogic/Module/UpdateModule.h"
+#include "GameLogic/Module/DrawBridgeTowerUpdate.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 enum BridgeTowerType CPP_11(: Int);
@@ -87,7 +85,9 @@ public:
 	virtual void removeScaffolding( void ) = 0;
 	virtual Bool isScaffoldInMotion( void ) = 0;
 	virtual Bool isScaffoldPresent( void ) = 0;
-
+	virtual void towerCaptured(Player* oldOwner, Player* newOwner, const Object* fromTower) {};
+	virtual void towerDrawBridgeUpdate(const Object* fromTower, DrawBridgeTowerInfo towerInfo) {};
+	virtual void onRepaired( void ) = 0;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -97,8 +97,8 @@ class BridgeBehaviorModuleData : public BehaviorModuleData
 
 public:
 
-	BridgeBehaviorModuleData( void );
-	~BridgeBehaviorModuleData( void );
+	BridgeBehaviorModuleData();
+	virtual ~BridgeBehaviorModuleData() override;
 
 	static void buildFieldParse( MultiIniFieldParse &p );
 
@@ -106,6 +106,9 @@ public:
 	Real m_verticalScaffoldSpeed;
 	BridgeFXList m_fx;							///< list of FX lists to execute
 	BridgeOCLList m_ocl;						///< list of OCL to execute
+	Bool m_restoreable;              ///< if bridge is repairable, towers do not fully die
+	UnsignedInt m_repairPushDuration; ///< if bridge is repaired, push units away for this amount of frames
+	Real m_repairPushForce; ///< lateral acceleration applied to units while pushing them off a repaired bridge (0 = no push)
 
 	static void parseFX( INI *ini, void *instance, void *store, const void* userData );
 	static void parseOCL( INI *ini, void *instance, void *store, const void* userData );
@@ -129,53 +132,58 @@ public:
 	// virtual destructor prototype provided by memory pool declaration
 
 	// module methods
-	static Int getInterfaceMask( void ) { return (MODULEINTERFACE_DAMAGE) | 
+	static Int getInterfaceMask() { return (MODULEINTERFACE_DAMAGE) |
 																							 (MODULEINTERFACE_DIE) |
 																							 (MODULEINTERFACE_UPDATE); }
-	virtual BridgeBehaviorInterface* getBridgeBehaviorInterface( void ) { return this; }
-	virtual void onDelete( void );
+	virtual BridgeBehaviorInterface* getBridgeBehaviorInterface() override { return this; }
+	virtual void onDelete() override;
 
 	// Damage methods
-	virtual DamageModuleInterface* getDamage( void ) { return this; }
-	virtual void onDamage( DamageInfo *damageInfo );
-	virtual void onHealing( DamageInfo *damageInfo );
-	virtual void onBodyDamageStateChange( const DamageInfo* damageInfo, 
-																				BodyDamageType oldState, 
-																				BodyDamageType newState );
+	virtual DamageModuleInterface* getDamage() override { return this; }
+	virtual void onDamage( DamageInfo *damageInfo ) override;
+	virtual void onHealing( DamageInfo *damageInfo ) override;
+	virtual void onBodyDamageStateChange( const DamageInfo* damageInfo,
+																				BodyDamageType oldState,
+																				BodyDamageType newState ) override;
 
 	// Die methods
-	virtual DieModuleInterface* getDie( void ) { return this; }
-	virtual void onDie( const DamageInfo *damageInfo );
+	virtual DieModuleInterface* getDie() override { return this; }
+	virtual void onDie( const DamageInfo *damageInfo ) override;
 
 	// Update methods
-	virtual UpdateModuleInterface *getUpdate( void ) { return this; }
-	virtual UpdateSleepTime update( void );
+	virtual UpdateModuleInterface *getUpdate() override { return this; }
+	virtual UpdateSleepTime update() override;
+
+	virtual void towerCaptured(Player* oldOwner, Player* newOwner, const Object* fromTower) override;
 
 	// our own methods
 	static BridgeBehaviorInterface *getBridgeBehaviorInterfaceFromObject( Object *obj );
 	virtual void setTower( BridgeTowerType towerType, Object *tower );	///< connect tower to us
-	virtual ObjectID getTowerID( BridgeTowerType towerType );						///< retrive one of our towers
+	virtual ObjectID getTowerID( BridgeTowerType towerType );						///< retrieve one of our towers
 	virtual void createScaffolding( void );		///< create scaffolding around bridge
 	virtual void removeScaffolding( void );		///< remove scaffolding around bridge
 	virtual Bool isScaffoldInMotion( void );	///< is scaffold in motion
 	virtual Bool isScaffoldPresent( void ) { return m_scaffoldPresent; }
+	virtual void onRepaired(void) override;
 
 protected:
 
-	void resolveFX( void );
-	void handleObjectsOnBridgeOnDie( void );
-	void doAreaEffects( TerrainRoadType *bridgeTemplate, Bridge *bridge, 
+	void resolveFX();
+	void handleObjectsOnBridgeOnDie();
+	void doAreaEffects( TerrainRoadType *bridgeTemplate, Bridge *bridge,
 											const ObjectCreationList *ocl, const FXList *fx );
-	void setScaffoldData( Object *obj, 
-												Real *angle, 
-												Real *sunkenHeight, 
-												const Coord3D *riseToPos, 
-												const Coord3D *buildPos, 
+	void setScaffoldData( Object *obj,
+												Real *angle,
+												Real *sunkenHeight,
+												const Coord3D *riseToPos,
+												const Coord3D *buildPos,
 												const Coord3D *bridgeCenter );
 
-	void getRandomSurfacePosition( TerrainRoadType *bridgeTemplate, 
-																 const BridgeInfo *bridgeInfo, 
+	void getRandomSurfacePosition( TerrainRoadType *bridgeTemplate,
+																 const BridgeInfo *bridgeInfo,
 																 Coord3D *pos );
+
+	void pushObjectsOnBridgeSideways();
 
 	ObjectID m_towerID[ BRIDGE_MAX_TOWERS ];		///< the towers that are a part of us
 
@@ -195,7 +203,6 @@ protected:
 	ObjectIDList m_scaffoldObjectIDList;		///< list of scaffold object IDs
 
 	UnsignedInt m_deathFrame;								///< frame we died on
+	UnsignedInt m_repairedFrame;            ///< frame we got repaired
 
 };
-
-#endif  // end __BRIDGE_DAMAGE_H_

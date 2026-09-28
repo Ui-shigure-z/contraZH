@@ -37,15 +37,15 @@
 #include "qt/panels/WBQtWaypointBridge.h"
 #endif
 
-WaypointOptions *WaypointOptions::m_staticThis = NULL;
+WaypointOptions *WaypointOptions::m_staticThis = nullptr;
 /////////////////////////////////////////////////////////////////////////////
-/// WaypointOptions dialog trivial construstor - Create does the real work.
+/// WaypointOptions dialog trivial constructor - Create does the real work.
 
 
-WaypointOptions::WaypointOptions(CWnd* pParent /*=NULL*/):
-m_moveUndoable(NULL)
+WaypointOptions::WaypointOptions(CWnd* pParent /*=nullptr*/):
+m_moveUndoable(nullptr)
 {
-	//{{AFX_DATA_INIT(WaypointOptions) 
+	//{{AFX_DATA_INIT(WaypointOptions)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
 }
@@ -59,12 +59,12 @@ void WaypointOptions::DoDataExchange(CDataExchange* pDX)
 	//}}AFX_DATA_MAP
 }
 
-MapObject *WaypointOptions::getSingleSelectedWaypoint(void)
+MapObject *WaypointOptions::getSingleSelectedWaypoint()
 {
-	MapObject *theMapObj = NULL; 
+	MapObject *theMapObj = nullptr;
 //	Bool found = false;
 	Int selCount=0;
-	MapObject *pMapObj; 
+	MapObject *pMapObj;
 	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) {
 		if (pMapObj->isSelected()) {
 			if (pMapObj->isWaypoint()) {
@@ -77,13 +77,13 @@ MapObject *WaypointOptions::getSingleSelectedWaypoint(void)
 		return theMapObj;
 	}
 
-	return(NULL);
+	return(nullptr);
 }
 
-PolygonTrigger *WaypointOptions::getSingleSelectedPolygon(void)
+PolygonTrigger *WaypointOptions::getSingleSelectedPolygon()
 {
 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
-	if (pDoc==NULL) return NULL;
+	if (pDoc==nullptr) return nullptr;
 	WbView3d *p3View = pDoc->GetActive3DView();
 	Bool showPoly = false;
 	if (p3View) {
@@ -96,15 +96,15 @@ PolygonTrigger *WaypointOptions::getSingleSelectedPolygon(void)
 			}
 		}
 	}
-	return(NULL);
+	return(nullptr);
 }
 
-void WaypointOptions::updateTheUI(void) 
+void WaypointOptions::updateTheUI()
 {
 	Tool *curTool = ((CWorldBuilderApp*)AfxGetApp())->getCurTool();
 
 	Bool isWaypointTool = (curTool && (curTool->getToolID() == ID_WAYPOINT_TOOL));
-	MapObject *theMapObj = getSingleSelectedWaypoint(); 
+	MapObject *theMapObj = getSingleSelectedWaypoint();
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 
 	CWnd *pWnd = this->GetDlgItem(IDC_WAYPOINTNAME_EDIT);
@@ -176,7 +176,7 @@ void WaypointOptions::updateTheUI(void)
 	} else {
 		// pCaption1->ShowWindow(SW_HIDE);
 		pCaption2->ShowWindow(SW_HIDE);
-		pWnd->ShowWindow(SW_HIDE);	
+		pWnd->ShowWindow(SW_HIDE);
 	}
 
 	if (pCombo && !theTrigger) {
@@ -259,7 +259,7 @@ void WaypointOptions::updateTheUI(void)
 			// convert the location coordinates to strings
 			locX.format("%f", waypointLocation->x);
 			locY.format("%f", waypointLocation->y);
-			
+
 			// set the window text to reflect the current position of the waypoint
 			pWaypointX->SetWindowText(locX.str());
 			pWaypointY->SetWindowText(locY.str());
@@ -321,7 +321,7 @@ void WaypointOptions::updateTheUI(void)
 	}
 }
 
-void WaypointOptions::update(void) 
+void WaypointOptions::update()
 {
 	if (m_staticThis) {
 		m_staticThis->updateTheUI();
@@ -335,12 +335,12 @@ void WaypointOptions::update(void)
 // WaypointOptions message handlers
 
 /// Dialog UI initialization.
-/** Creates the slider controls, and sets the initial values for 
+/** Creates the slider controls, and sets the initial values for
 width and feather in the ui controls. */
-BOOL WaypointOptions::OnInitDialog() 
+BOOL WaypointOptions::OnInitDialog()
 {
 	CDialog::OnInitDialog();
-	
+
 	m_updating = true;
 
 	m_staticThis = this;
@@ -372,7 +372,7 @@ void WaypointOptions::OnChangeSelectedWaypoint()
 	if (!currentlySelected)
 		return;
 	currentlySelected->setSelected(false);
-	
+
 	// retrieve information from dialog box, if user-typed -- sel will be -1, otherwise it will be >=0
 	CString theText;
 	CComboBox *pListWayptNames = (CComboBox*)GetDlgItem(IDC_LIST_OF_WAYPOINT_NAMES);
@@ -383,7 +383,7 @@ void WaypointOptions::OnChangeSelectedWaypoint()
 		pListWayptNames->GetWindowText(theText);
 	}
 	AsciiString name((LPCTSTR)theText);
-	
+
 	// find and store the waypoint that corresponds to the information in the dialog box
 	Bool foundWaypoint = false;
 	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) {
@@ -443,7 +443,7 @@ void WaypointOptions::OnEditWaypointLocationX()
 	newWaypointLocation.x = atof(name.str());
 	newWaypointLocation.y = waypointLocation->y;
 	newWaypointLocation.z = 0;
-	
+
 	// set the new information into both the waypointa and the window
 	waypt->setLocation(&newWaypointLocation);
 }
@@ -475,12 +475,12 @@ void WaypointOptions::OnEditWaypointLocationY()
 	newWaypointLocation.y = atof(name.str());
 	newWaypointLocation.x = waypointLocation->x;
 	newWaypointLocation.z = 0;
-	
+
 	// set the new information into both the waypointa and the window
 	waypt->setLocation(&newWaypointLocation);
 }
 
-Bool WaypointOptions::isUnique(AsciiString name, MapObject* theMapObj) 
+Bool WaypointOptions::isUnique(AsciiString name, MapObject* theMapObj)
 {
 	MapObject *pMapObj;
 	Bool didMatch = false;
@@ -497,7 +497,7 @@ Bool WaypointOptions::isUnique(AsciiString name, MapObject* theMapObj)
 	return (didMatch == false);
 }
 
-AsciiString WaypointOptions::GenerateUniqueName(Int id) 
+AsciiString WaypointOptions::GenerateUniqueName(Int id)
 {
 	AsciiString name;
 	name.format("Waypoint %d", id);
@@ -509,9 +509,9 @@ AsciiString WaypointOptions::GenerateUniqueName(Int id)
 	return name;
 }
 
-void WaypointOptions::OnChangeWaypointnameEdit() 
+void WaypointOptions::OnChangeWaypointnameEdit()
 {
-	MapObject *theMapObj = getSingleSelectedWaypoint(); 
+	MapObject *theMapObj = getSingleSelectedWaypoint();
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 
 	// get the combo box
@@ -537,7 +537,7 @@ void WaypointOptions::OnChangeWaypointnameEdit()
 		PolygonTrigger *pTrig;
 		for (pTrig=PolygonTrigger::getFirstPolygonTrigger(); !didMatch && pTrig; pTrig = pTrig->getNext()) {
 			if (pTrig==theTrigger) continue; // don't check against yourself.
-			AsciiString trigName = pTrig->getTriggerName();
+			const AsciiString& trigName = pTrig->getTriggerName();
 			if (name == trigName) {
 				if (pTrig->isValid()) {
 					didMatch = true;
@@ -565,15 +565,15 @@ void WaypointOptions::OnChangeWaypointnameEdit()
 }
 
 
-void WaypointOptions::OnEditchangeWaypointlabel1Edit() 
+void WaypointOptions::OnEditchangeWaypointlabel1Edit()
 {
 	changeWaypointLabel(IDC_WAYPOINTLABEL1_EDIT, TheKey_waypointPathLabel1);
 }
 
-void WaypointOptions::changeWaypointLabel(Int editControlID, NameKeyType key) 
+void WaypointOptions::changeWaypointLabel(Int editControlID, NameKeyType key)
 {
-	MapObject *theMapObj = getSingleSelectedWaypoint(); 
-	if (theMapObj==NULL) return;
+	MapObject *theMapObj = getSingleSelectedWaypoint();
+	if (theMapObj==nullptr) return;
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	if (!pDoc->isWaypointLinked(theMapObj)) {
 		return;
@@ -590,20 +590,20 @@ void WaypointOptions::changeWaypointLabel(Int editControlID, NameKeyType key)
 	}
 }
 
-void WaypointOptions::OnEditchangeWaypointlabel2Edit() 
+void WaypointOptions::OnEditchangeWaypointlabel2Edit()
 {
 	changeWaypointLabel(IDC_WAYPOINTLABEL2_EDIT, TheKey_waypointPathLabel2);
 }
 
-void WaypointOptions::OnEditchangeWaypointlabel3Edit() 
+void WaypointOptions::OnEditchangeWaypointlabel3Edit()
 {
 	changeWaypointLabel(IDC_WAYPOINTLABEL3_EDIT, TheKey_waypointPathLabel3);
 }
 
-void WaypointOptions::OnWaypointBidirectional() 
+void WaypointOptions::OnWaypointBidirectional()
 {
-	MapObject *theMapObj = getSingleSelectedWaypoint(); 
-	if (theMapObj==NULL) return;
+	MapObject *theMapObj = getSingleSelectedWaypoint();
+	if (theMapObj==nullptr) return;
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	if (!pDoc->isWaypointLinked(theMapObj)) {
 		return;

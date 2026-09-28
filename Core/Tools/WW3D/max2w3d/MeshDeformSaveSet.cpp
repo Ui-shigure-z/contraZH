@@ -17,22 +17,22 @@
 */
 
 /* $Header: /Commando/Code/Tools/max2w3d/MeshDeformSaveSet.cpp 2     6/16/99 6:56p Patrick $ */
-/*********************************************************************************************** 
- ***                            Confidential - Westwood Studios                              *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Commando / G 3D engine                                       * 
- *                                                                                             * 
- *                    File Name : MeshDeformSaveSet.CPP
- *                                                                                             * 
- *                   Programmer : Patrick Smith                                                * 
- *                                                                                             * 
- *                   Start Date : 05/28/99                                                     * 
- *                                                                                             * 
- *                  Last Update : 
- *                                                                                             * 
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+/***********************************************************************************************
+ ***                            Confidential - Westwood Studios                              ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Commando / G 3D engine                                       *
+ *                                                                                             *
+ *                    File Name : MeshDeformSaveSet.cpp
+ *                                                                                             *
+ *                   Programmer : Patrick Smith                                                *
+ *                                                                                             *
+ *                   Start Date : 05/28/99                                                     *
+ *                                                                                             *
+ *                  Last Update :
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "MeshDeformSaveSet.h"
@@ -45,7 +45,7 @@
 //
 ////////////////////////////////////////////////////////////////////////
 void
-MeshDeformSaveSetClass::Reset (void)
+MeshDeformSaveSetClass::Reset ()
 {
 	//
 	//	Free all the keyframe pointers in our list
@@ -55,8 +55,7 @@ MeshDeformSaveSetClass::Reset (void)
 	}
 
 	m_DeformData.Delete_All ();
-	m_CurrentKeyFrame = NULL;
-	return ;
+	m_CurrentKeyFrame = nullptr;
 }
 
 
@@ -78,7 +77,6 @@ MeshDeformSaveSetClass::Begin_Keyframe (float state)
 	//	Add this new keyframe to the end of our list
 	//
 	m_DeformData.Add (m_CurrentKeyFrame);
-	return ;
 }
 
 
@@ -88,10 +86,9 @@ MeshDeformSaveSetClass::Begin_Keyframe (float state)
 //
 ////////////////////////////////////////////////////////////////////////
 void
-MeshDeformSaveSetClass::End_Keyframe (void)
+MeshDeformSaveSetClass::End_Keyframe ()
 {
-	m_CurrentKeyFrame = NULL;
-	return ;
+	m_CurrentKeyFrame = nullptr;
 }
 
 
@@ -109,8 +106,8 @@ MeshDeformSaveSetClass::Add_Vert
 )
 {
 	// State OK?
-	assert (m_CurrentKeyFrame != NULL);
-	if (m_CurrentKeyFrame != NULL) {
+	assert (m_CurrentKeyFrame != nullptr);
+	if (m_CurrentKeyFrame != nullptr) {
 
 		//
 		//	Create a structure that will hold the
@@ -120,14 +117,12 @@ MeshDeformSaveSetClass::Add_Vert
 		data.vert_index	= vert_index;
 		data.position		= position;
 		data.color			= color;
-		
+
 		//
 		//	Add this vertex information to the keyframe list
 		//
 		m_CurrentKeyFrame->deform_list.Add (data);
 	}
-
-	return ;
 }
 
 
@@ -144,16 +139,14 @@ MeshDeformSaveSetClass::Replace_Deform_Data
 )
 {
 	KEYFRAME *key_frame = m_DeformData[keyframe_index];
-	if (key_frame != NULL) {
-		
+	if (key_frame != nullptr) {
+
 		//
 		//	Replace the vertex deformation list for the keyframe
 		//
 		key_frame->deform_list.Delete_All ();
 		key_frame->deform_list = list;
 	}
-
-	return ;
 }
 
 
@@ -163,7 +156,7 @@ MeshDeformSaveSetClass::Replace_Deform_Data
 //
 ////////////////////////////////////////////////////////////////////////
 /*int
-MeshDeformSaveSetClass::Get_Deform_Count (void) const
+MeshDeformSaveSetClass::Get_Deform_Count () const
 {
 	//
 	//	Count up all the deform entries for all the keyframes
@@ -171,7 +164,7 @@ MeshDeformSaveSetClass::Get_Deform_Count (void) const
 	int count = 0;
 	for (int index = 0; index < m_DeformData.Count (); index ++) {
 		KEYFRAME *key_frame = m_DeformData[index];
-		if (key_frame != NULL) {
+		if (key_frame != nullptr) {
 			count += key_frame->deform_list.Count ();
 		}
 	}

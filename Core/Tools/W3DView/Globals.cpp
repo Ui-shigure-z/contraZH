@@ -18,20 +18,20 @@
 
 /////////////////////////////////////////////////////////////////////
 //
-//	Globals.CPP
+//	Globals.cpp
 //
 //	Module containing global variable initialization.
 //
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
-#include "globals.h"
-#include "assetmgr.h"
-#include "viewerassetmgr.h"
+#include "Globals.h"
+#include "WW3D2/assetmgr.h"
+#include "ViewerAssetMgr.h"
 
 // Main asset manager for the application.
-ViewerAssetMgrClass *_TheAssetMgr = NULL;
+ViewerAssetMgrClass *_TheAssetMgr = nullptr;
 
 
 int g_iDeviceIndex      = -1;//DEFAULT_DEVICEINDEX;

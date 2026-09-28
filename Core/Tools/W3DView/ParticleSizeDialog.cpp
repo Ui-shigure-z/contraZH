@@ -19,12 +19,12 @@
 // ParticleSizeDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "ParticleSizeDialog.h"
 #include "Utils.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -43,7 +43,6 @@ ParticleSizeDialogClass::ParticleSizeDialogClass (float size, CWnd *pParent)
 	//{{AFX_DATA_INIT(ParticleSizeDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -59,7 +58,6 @@ ParticleSizeDialogClass::DoDataExchange (CDataExchange *pDX)
 	//{{AFX_DATA_MAP(ParticleSizeDialogClass)
 	DDX_Control(pDX, IDC_SIZE_SPIN, m_SizeSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -78,7 +76,7 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-ParticleSizeDialogClass::OnInitDialog (void)
+ParticleSizeDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog();
 
@@ -93,11 +91,10 @@ ParticleSizeDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-ParticleSizeDialogClass::OnOK (void)
+ParticleSizeDialogClass::OnOK ()
 {
 	m_Size = GetDlgItemFloat (m_hWnd, IDC_SIZE_EDIT);
 	CDialog::OnOK ();
-	return ;
 }
 
 
@@ -108,18 +105,18 @@ ParticleSizeDialogClass::OnOK (void)
 /////////////////////////////////////////////////////////////////////////////
 BOOL
 ParticleSizeDialogClass::OnNotify
-(	
+(
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 

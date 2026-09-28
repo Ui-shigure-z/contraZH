@@ -16,8 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef STREAMER_HEADER
-#define STREAMER_HEADER
+#pragma once
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -54,7 +53,7 @@ class Streamer : public streambuf
     // Virtual methods from streambuf
     int       xsputn(const char* s, int n); // buffer some characters
     int       overflow(int = EOF);          // flush buffer and make more room
-    int       underflow(void);              // Does nothing
+    int       underflow();              // Does nothing
     int       sync();
 
     int       doallocate();                 // allocate a buffer
@@ -63,5 +62,3 @@ class Streamer : public streambuf
     OutputDevice  *Output_Device;
     char* Buf;
 };
-
-#endif

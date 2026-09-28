@@ -19,14 +19,14 @@
 // BackgroundBMPDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "BackgroundBMPDialog.h"
-#include "W3DViewDoc.H"
-#include "Utils.H"
+#include "W3DViewDoc.h"
+#include "Utils.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -39,13 +39,12 @@ static char THIS_FILE[] = __FILE__;
 //
 //  CBackgroundBMPDialog
 //
-CBackgroundBMPDialog::CBackgroundBMPDialog (CWnd* pParent /*=NULL*/)
+CBackgroundBMPDialog::CBackgroundBMPDialog (CWnd* pParent /*=nullptr*/)
 	: CDialog(CBackgroundBMPDialog::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CBackgroundBMPDialog)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -61,7 +60,6 @@ CBackgroundBMPDialog::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CBackgroundBMPDialog)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -79,7 +77,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CBackgroundBMPDialog::OnInitDialog (void)
+CBackgroundBMPDialog::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CDialog::OnInitDialog ();
@@ -104,14 +102,14 @@ CBackgroundBMPDialog::OnInitDialog (void)
 //  OnOK
 //
 void
-CBackgroundBMPDialog::OnOK (void) 
+CBackgroundBMPDialog::OnOK ()
 {
     // Gett a pointer to the current document
     CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
     if (pCDoc)
     {
         CString stringBackgroundBMPName;
-        
+
         // Get the filename the user entered
         if (GetDlgItemText (IDC_FILENAME_EDIT, stringBackgroundBMPName) > 0)
         {
@@ -121,13 +119,12 @@ CBackgroundBMPDialog::OnOK (void)
         else
         {
             // Ask the doc to clear any existing background BMP
-            pCDoc->SetBackgroundBMP (NULL);
+            pCDoc->SetBackgroundBMP (nullptr);
         }
     }
-	
+
 	// Allow the base class to process this message
     CDialog::OnOK ();
-    return ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -135,7 +132,7 @@ CBackgroundBMPDialog::OnOK (void)
 //  OnBrowse
 //
 void
-CBackgroundBMPDialog::OnBrowse (void)
+CBackgroundBMPDialog::OnBrowse ()
 {
     // Get a pointer to the current document
     CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
@@ -155,6 +152,4 @@ CBackgroundBMPDialog::OnBrowse (void)
             SetDlgItemText (IDC_FILENAME_EDIT, openFileDialog.GetPathName ());
         }
     }
-
-    return ;
 }

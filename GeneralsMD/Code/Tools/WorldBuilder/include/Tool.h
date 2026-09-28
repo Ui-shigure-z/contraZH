@@ -22,9 +22,6 @@
 
 #pragma once
 
-#ifndef TOOL_H
-#define TOOL_H
-
 #include "Lib/BaseType.h"
 #include "Common/STLTypedefs.h"
 
@@ -53,7 +50,7 @@ class WbView;
 /*************************************************************************
 **                             Tool
 ***************************************************************************/
-class Tool  
+class Tool
 {
 protected:
 	Int	m_toolID;  //< Tool button ui id in resource.
@@ -66,11 +63,11 @@ protected:
 	static void revertAbandonedPreview(void); ///< Re-push the doc's height map after a stroke is dropped.
 public:
 	Tool(Int toolID, Int cursorID);
-	virtual ~Tool(void);
+	virtual ~Tool();
 
 public:
-	Int getToolID(void) {return m_toolID;}
-	virtual void setCursor(void);
+	Int getToolID() {return m_toolID;}
+	virtual void setCursor();
 
 	virtual void activate(); ///< Become the current tool.
 	virtual void deactivate(){}; ///< Become not the current tool.
@@ -88,16 +85,13 @@ public:
 	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {}
 	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {}
 	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {}
-	virtual WorldHeightMapEdit *getHeightMap(void) {return NULL;}
+	virtual WorldHeightMapEdit *getHeightMap() {return nullptr;}
 
 	static Real calcRoundBlendFactor(CPoint center, Int x, Int y, Int brushWidth, Int featherWidth);
 	static Real calcSquareBlendFactor(CPoint center, Int x, Int y, Int brushWidth, Int featherWidth);
 	static void getCenterIndex(Coord3D *docLocP, Int brushWidth, CPoint *center, CWorldBuilderDoc *pDoc);
-	static void getAllIndexesIn(const Coord3D *bl, const Coord3D *br, 
-															const Coord3D *tl, const Coord3D *tr, 
-															Int widthOutside, CWorldBuilderDoc *pDoc, 
+	static void getAllIndexesIn(const Coord3D *bl, const Coord3D *br,
+															const Coord3D *tl, const Coord3D *tr,
+															Int widthOutside, CWorldBuilderDoc *pDoc,
 															VecHeightMapIndexes* allIndices);
 };
-
-
-#endif //TOOL_H

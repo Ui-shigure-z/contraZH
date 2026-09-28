@@ -18,13 +18,13 @@
 
 //////////////////////////////////////////////////////////////////////
 //
-//  Toolbar.CPP
+//  Toolbar.cpp
 //
 //  Implementation of a 'fancy' toolbar using hi-color buttons
 //
 
-#include "stdafx.h"
-#include "Toolbar.H"
+#include "StdAfx.h"
+#include "Toolbar.h"
 
 
 
@@ -48,7 +48,7 @@ const TCHAR * const TOOLBAR_CLASS_NAME      = TEXT ("FANCYTOOLBAR");
 //
 //  CFancyToolbar
 //
-CFancyToolbar::CFancyToolbar (void)
+CFancyToolbar::CFancyToolbar ()
     : m_iButtons (0),
       m_iCurrentButton (-1)
 {
@@ -56,14 +56,13 @@ CFancyToolbar::CFancyToolbar (void)
     RegisterFancyToolbarClass ();
 
     ::memset (m_pButtonArray, 0, sizeof (m_pButtonArray));
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
 //
 //  ~CFancyToolbar
 //
-CFancyToolbar::~CFancyToolbar (void)
+CFancyToolbar::~CFancyToolbar ()
 {
     for (int iButton = 0; iButton < m_iButtons; iButton ++)
     {
@@ -71,18 +70,16 @@ CFancyToolbar::~CFancyToolbar (void)
         {
             // Free the BMP for this button
             ::DeleteObject (m_pButtonArray[iButton].hBMPUp);
-            m_pButtonArray[iButton].hBMPUp = NULL;
+            m_pButtonArray[iButton].hBMPUp = nullptr;
         }
-        
+
         if (m_pButtonArray[iButton].hBMPDn)
         {
             // Free the BMP for this button
             ::DeleteObject (m_pButtonArray[iButton].hBMPDn);
-            m_pButtonArray[iButton].hBMPDn = NULL;
+            m_pButtonArray[iButton].hBMPDn = nullptr;
         }
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -90,7 +87,7 @@ CFancyToolbar::~CFancyToolbar (void)
 //  RegisterFancyToolbarClass
 //
 void
-CFancyToolbar::RegisterFancyToolbarClass (void)
+CFancyToolbar::RegisterFancyToolbarClass ()
 {
     // Is this class already registered?
     WNDCLASS classInfo = { 0 };
@@ -101,15 +98,13 @@ CFancyToolbar::RegisterFancyToolbarClass (void)
         classInfo.style = CS_PARENTDC;
         classInfo.lpfnWndProc = ::DefWindowProc;
         classInfo.hInstance = ::AfxGetInstanceHandle ();
-        classInfo.hCursor = ::LoadCursor (NULL, IDC_ARROW);
+        classInfo.hCursor = ::LoadCursor (nullptr, IDC_ARROW);
         classInfo.hbrBackground = (HBRUSH)COLOR_BTNFACE;
         classInfo.lpszClassName = TOOLBAR_CLASS_NAME;
 
         // Register the class with windows
         ::RegisterClass (&classInfo);
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -120,7 +115,6 @@ void
 CFancyToolbar::OnPaint ()
 {
     Paint ();
-    return ;
 }
 
 
@@ -180,8 +174,6 @@ CFancyToolbar::DrawButton
         ::SelectObject (hMemDC, hOldBMP);
         DeleteDC (hMemDC);
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -204,10 +196,9 @@ CFancyToolbar::AddButton
     m_pButtonArray[iButton].hBMPUp = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPUp));
     m_pButtonArray[iButton].hBMPDn = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPDn));
     m_pButtonArray[iButton].iCommandID = iCommandID;
-    m_pButtonArray[iButton].buttonType = buttonType;    
+    m_pButtonArray[iButton].buttonType = buttonType;
     m_pButtonArray[iButton].currentState = StateUp;
     m_pButtonArray[iButton].bVisible = TRUE;
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -215,7 +206,7 @@ CFancyToolbar::AddButton
 //  Paint
 //
 void
-CFancyToolbar::Paint (void)
+CFancyToolbar::Paint ()
 {
     // Get the window's DC
     HDC hDC = ::GetDC (m_hWnd);
@@ -254,14 +245,13 @@ CFancyToolbar::Paint (void)
                 iXPos += BUTTON_WIDTH;
             }
         }
-        
+
         // Free the windows DC
         ::ReleaseDC (m_hWnd, hDC);
     }
 
     // Let the window know its done painting
-    ::ValidateRect (m_hWnd, NULL);
-    return ;
+    ::ValidateRect (m_hWnd, nullptr);
 }
 
 //////////////////////////////////////////////////////////////
@@ -290,7 +280,7 @@ CFancyToolbar::ButtonFromPoint (const CPoint &point)
         // Increment the current position
         iXPos += BUTTON_WIDTH;
     }
-    
+
     // Return the zero based index of the button we're looking for
     return iIndex;
 }
@@ -337,7 +327,7 @@ CFancyToolbar::OnLButtonDown
             // Release the window's DC
             ::ReleaseDC (m_hWnd, hDC);
         }
-        
+
         // Is this a 'normal' or 2 state button?
         if (m_pButtonArray[iButton].buttonType == TypeNormal)
         {
@@ -351,18 +341,16 @@ CFancyToolbar::OnLButtonDown
             // 2 state button
             m_iCurrentButton = -1;
 
-            // Send the message to the window's parent to let them know a command has occured
+            // Send the message to the window's parent to let them know a command has occurred
             ::AfxGetMainWnd ()->PostMessage (WM_COMMAND,
                                              MAKELONG (m_pButtonArray[iButton].iCommandID, BN_CLICKED),
                                              (LPARAM)m_hWnd);
         }
-    }    
+    }
     else
     {
         CControlBar::OnLButtonDown (nFlags, point);
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -412,13 +400,11 @@ CFancyToolbar::OnLButtonUp
 
         // Let go of the mouse capture
         ::ReleaseCapture ();
-    }    
+    }
     else
     {
         CControlBar::OnLButtonUp (nFlags, point);
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -428,7 +414,6 @@ CFancyToolbar::OnLButtonUp
 void
 CFancyToolbar::OnDraw (CDC* pDC)
 {
-    return ;
 }
 
 //////////////////////////////////////////////////////////////
@@ -470,7 +455,7 @@ CFancyToolbar::SetButtonState
             {
                 // Repaint the toolbar
                 //Paint ();
-                InvalidateRect (NULL);
+                InvalidateRect (nullptr);
                 UpdateWindow ();
             }
 
@@ -478,8 +463,6 @@ CFancyToolbar::SetButtonState
             bFound = TRUE;
         }
     }
-
-    return ;
 }
 
 //////////////////////////////////////////////////////////////

@@ -19,12 +19,12 @@
 // ParticleFrameKeyDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "ParticleFrameKeyDialog.h"
-#include "Utils.H"
+#include "Utils.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -34,7 +34,7 @@ static char THIS_FILE[] = __FILE__;
 // ParticleFrameKeyDialogClass dialog
 
 
-ParticleFrameKeyDialogClass::ParticleFrameKeyDialogClass(float frame,CWnd* pParent /*=NULL*/) : 
+ParticleFrameKeyDialogClass::ParticleFrameKeyDialogClass(float frame,CWnd* pParent /*=nullptr*/) :
 	CDialog(ParticleFrameKeyDialogClass::IDD, pParent),
 	m_Frame(frame)
 {
@@ -62,31 +62,31 @@ END_MESSAGE_MAP()
 // ParticleFrameKeyDialogClass message handlers
 
 
-BOOL ParticleFrameKeyDialogClass::OnInitDialog() 
+BOOL ParticleFrameKeyDialogClass::OnInitDialog()
 {
 	CDialog::OnInitDialog();
-	
+
 	Initialize_Spinner (m_FrameSpin, m_Frame, -1024, 1024);
-	
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
 
-void ParticleFrameKeyDialogClass::OnOK() 
+void ParticleFrameKeyDialogClass::OnOK()
 {
 	m_Frame = GetDlgItemFloat(m_hWnd,IDC_FRAME_EDIT);
 	CDialog::OnOK();
 }
 
-BOOL ParticleFrameKeyDialogClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) 
+BOOL ParticleFrameKeyDialogClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult)
 {
 	//
 	//	Update the spinner control if necessary
 	//
 	NMHDR *pheader = (NMHDR *)lParam;
-	if ((pheader != NULL) && (pheader->code == UDN_DELTAPOS)) {
-		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;		
+	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
+		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
 		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 

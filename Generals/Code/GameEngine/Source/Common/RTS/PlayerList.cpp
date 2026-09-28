@@ -24,12 +24,12 @@
 
 // FILE: PlayerList.cpp /////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Westwood Studios Pacific.                          
-//                                                                          
-//                       Confidential Information                           
-//                Copyright (C) 2001 - All Rights Reserved                  
-//                                                                          
+//
+//                       Westwood Studios Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2001 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 // Project:   RTS3
@@ -42,7 +42,7 @@
 //
 //-----------------------------------------------------------------------------
 
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Errors.h"
 #include "Common/DataChunk.h"
@@ -54,24 +54,19 @@
 #include "Common/Team.h"
 #include "Common/WellKnownKeys.h"
 #include "Common/Xfer.h"
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #include "GameLogic/Object.h"
 #endif
 #include "GameLogic/SidesList.h"
+#include "GameNetwork/GameInfo.h"
 #include "GameNetwork/NetworkDefs.h"
 
-#ifdef _INTERNAL
-// for occasional debugging...
-//#pragma optimize("", off)
-//#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
-#endif
-
 //-----------------------------------------------------------------------------
-/*extern*/ PlayerList *ThePlayerList = NULL;
+/*extern*/ PlayerList *ThePlayerList = nullptr;
 
 //-----------------------------------------------------------------------------
 PlayerList::PlayerList() :
-	m_local(NULL),
+	m_local(nullptr),
 	m_playerCount(0)
 {
 	// we only allocate a few of these, so don't bother pooling 'em
@@ -81,28 +76,25 @@ PlayerList::PlayerList() :
 }
 
 //-----------------------------------------------------------------------------
-PlayerList::~PlayerList() 
+PlayerList::~PlayerList()
 {
-	try {
-		// the world is happier if we reinit things before destroying them,
-		// to avoid debug warnings
-		init();
-	} catch (...) {
-		// nothing
-	}
+	// the world is happier if we reinit things before destroying them,
+	// to avoid debug warnings
+	init();
+
 	for( Int i = 0; i < MAX_PLAYER_COUNT; ++i )
 		delete m_players[ i ];
 }
 
 //-----------------------------------------------------------------------------
-Player *PlayerList::getNthPlayer(Int i) 
-{ 
+Player *PlayerList::getNthPlayer(Int i)
+{
 	if( i < 0 || i >= MAX_PLAYER_COUNT )
 	{
-//		DEBUG_CRASH( ("Illegal player index\n") );
-		return NULL;
+//		DEBUG_CRASH( ("Illegal player index") );
+		return nullptr;
 	}
-	return m_players[i]; 
+	return m_players[i];
 }
 
 //-----------------------------------------------------------------------------
@@ -115,7 +107,7 @@ Player *PlayerList::findPlayerWithNameKey(NameKeyType key)
 			return m_players[i];
 		}
 	}
-	return NULL;
+	return nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -134,7 +126,7 @@ void PlayerList::newGame()
 {
 	Int i;
 
-	DEBUG_ASSERTCRASH(this != NULL, ("null this"));
+	DEBUG_ASSERTCRASH(this != nullptr, ("null this"));
 
 	reset();
 
@@ -155,7 +147,7 @@ void PlayerList::newGame()
 		Bool exists;	// throwaway, since we don't care if it exists
 		if (d->getBool(TheKey_multiplayerIsLocal, &exists))
 		{
-			DEBUG_LOG(("Player %s is multiplayer local\n", pname.str()));
+			DEBUG_LOG(("Player %s is multiplayer local", pname.str()));
 			setLocalPlayer(p);
 			setLocal = true;
 		}
@@ -174,7 +166,7 @@ void PlayerList::newGame()
 
 	if (!setLocal)
 	{
-		DEBUG_ASSERTCRASH(TheNetwork, ("*** Map has no human player... picking first nonneutral player for control\n"));
+		DEBUG_ASSERTCRASH(TheNetwork, ("*** Map has no human player... picking first nonneutral player for control"));
 		for( i = 0; i < TheSidesList->getNumSides(); i++)
 		{
 			Player* p = getNthPlayer(i);
@@ -208,7 +200,7 @@ void PlayerList::newGame()
 			}
 			else
 			{
-				DEBUG_LOG(("unknown enemy %s\n",tok.str()));
+				DEBUG_LOG(("unknown enemy %s",tok.str()));
 			}
 		}
 
@@ -222,7 +214,7 @@ void PlayerList::newGame()
 			}
 			else
 			{
-				DEBUG_LOG(("unknown ally %s\n",tok.str()));
+				DEBUG_LOG(("unknown ally %s",tok.str()));
 			}
 		}
 
@@ -234,16 +226,23 @@ void PlayerList::newGame()
 		p->setDefaultTeam();
 	}
 
+	if (TheGameInfo)
+	{
+		assignSlotIndices(*TheGameInfo);
+	}
 }
 
 //-----------------------------------------------------------------------------
 void PlayerList::init()
 {
 	m_playerCount = 1;
-	m_players[0]->init(NULL);
+	m_players[0]->init(nullptr);
 
 	for (int i = 1; i < MAX_PLAYER_COUNT; i++)
-		m_players[i]->init(NULL);
+		m_players[i]->init(nullptr);
+
+	std::fill(m_slotIndices, m_slotIndices + ARRAY_SIZE(m_slotIndices), -1);
+	std::fill(m_slotToPlayerIndices, m_slotToPlayerIndices + ARRAY_SIZE(m_slotToPlayerIndices), -1);
 
 	// call setLocalPlayer so that becomingLocalPlayer() gets called appropriately
 	setLocalPlayer(m_players[0]);
@@ -257,7 +256,7 @@ void PlayerList::update()
 	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
 		m_players[i]->update();
-	}  // end for i
+	}
 
 }
 
@@ -268,7 +267,7 @@ void PlayerList::newMap()
 	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
 		m_players[i]->newMap();
-	}  // end for i
+	}
 
 }
 
@@ -282,13 +281,13 @@ void PlayerList::teamAboutToBeDeleted(Team* team)
 }
 
 //=============================================================================
-void PlayerList::updateTeamStates(void) 
+void PlayerList::updateTeamStates()
 {
 	// Clear team flags for all players.
 	for( Int i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
 		m_players[i]->updateTeamStates();
-	}  // end for i
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -298,11 +297,11 @@ Team *PlayerList::validateTeam( AsciiString owner )
 	Team *t = TheTeamFactory->findTeam(owner);
 	if (t)
 	{
-		//DEBUG_LOG(("assigned obj %08lx to team %s\n",obj,owner.str()));
-	}	
+		//DEBUG_LOG(("assigned obj %08lx to team %s",obj,owner.str()));
+	}
 	else
 	{
-		DEBUG_CRASH(("no team or player named %s could be found!\n", owner.str()));
+		DEBUG_CRASH(("no team or player named %s could be found!", owner.str()));
 		t = getNeutralPlayer()->getDefaultTeam();
 	}
 	return t;
@@ -312,7 +311,7 @@ Team *PlayerList::validateTeam( AsciiString owner )
 void PlayerList::setLocalPlayer(Player *player)
 {
 	// can't set local player to null -- if you try, you get neutral.
-	if (player == NULL)
+	if (player == nullptr)
 	{
 		DEBUG_CRASH(("local player may not be null"));
 		player = getNeutralPlayer();
@@ -330,22 +329,20 @@ void PlayerList::setLocalPlayer(Player *player)
 #ifdef INTENSE_DEBUG
 	if (player)
 	{
-		DEBUG_LOG(("\n----------\n"));
 		// did you know? you can use "%ls" to print a doublebyte string, even in a single-byte printf...
-		DEBUG_LOG(("Switching local players. The new player is named '%ls' (%s) and owns the following objects:\n",
+		DEBUG_LOG(("Switching local players. The new player is named '%ls' (%s) and owns the following objects:",
 			player->getPlayerDisplayName().str(),
 			TheNameKeyGenerator->keyToName(player->getPlayerNameKey()).str()
 		));
 		for (Object *obj = player->getFirstOwnedObject(); obj; obj = obj->getNextOwnedObject())
 		{
-			DEBUG_LOG(("Obj %08lx is of type %s",obj,obj->getTemplate()->getName().str()));
+			DEBUG_LOG_RAW(("Obj %08lx is of type %s",obj,obj->getTemplate()->getName().str()));
 			if (!player->canBuild(obj->getTemplate()))
 			{
-				DEBUG_LOG((" (NOT BUILDABLE)"));
+				DEBUG_LOG_RAW((" (NOT BUILDABLE)"));
 			}
-			DEBUG_LOG(("\n"));
+			DEBUG_LOG_RAW(("\n"));
 		}
-		DEBUG_LOG(("\n----------\n"));
 	}
 #endif
 
@@ -354,45 +351,44 @@ void PlayerList::setLocalPlayer(Player *player)
 //-----------------------------------------------------------------------------
 Player *PlayerList::getPlayerFromMask( PlayerMaskType mask )
 {
-	Player *player = NULL;
+	Player *player = nullptr;
 	Int i;
 
 	for( i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
-		
+
 		player = getNthPlayer( i );
 		if( player && player->getPlayerMask() == mask )
 			return player;
 
-	}  // end for i
+	}
 
-	DEBUG_CRASH( ("Player does not exist for mask\n") );
-	return NULL; // mask not found
+	DEBUG_CRASH( ("Player does not exist for mask") );
+	return nullptr; // mask not found
 
-}  // end getPlayerFromMask
+}
 
 //-----------------------------------------------------------------------------
 Player *PlayerList::getEachPlayerFromMask( PlayerMaskType& maskToAdjust )
 {
-	Player *player = NULL;
+	Player *player = nullptr;
 	Int i;
 
 	for( i = 0; i < MAX_PLAYER_COUNT; i++ )
 	{
-		
+
 		player = getNthPlayer( i );
 		if ( player && BitIsSet(player->getPlayerMask(), maskToAdjust ))
 		{
 			maskToAdjust &= (~player->getPlayerMask());
 			return player;
 		}
-	}  // end for i
+	}
 
-	DEBUG_CRASH( ("No players found that contain any matching masks.\n") );
+	DEBUG_CRASH( ("No players found that contain any matching masks.") );
 	maskToAdjust = 0;
-	return NULL; // mask not found
+	return nullptr; // mask not found
 }
-
 
 //-------------------------------------------------------------------------------------------------
 PlayerMaskType PlayerList::getPlayersWithRelationship( Int srcPlayerIndex, UnsignedInt allowedRelationships )
@@ -473,22 +469,95 @@ void PlayerList::xfer( Xfer *xfer )
 	if( playerCount != m_playerCount )
 	{
 
-		DEBUG_CRASH(( "Invalid player count '%d', should be '%d'\n", playerCount, m_playerCount ));
+		DEBUG_CRASH(( "Invalid player count '%d', should be '%d'", playerCount, m_playerCount ));
 		throw SC_INVALID_DATA;
 
-	}  // end if
+	}
 
 	// xfer each of the player data
 	for( Int i = 0; i < playerCount; ++i )
 		xfer->xferSnapshot( m_players[ i ] );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void PlayerList::loadPostProcess( void )
+void PlayerList::loadPostProcess()
 {
 
-}  // end postProcessLoad
+}
 
+//-----------------------------------------------------------------------------
+void PlayerList::setSlotIndex(Int playerIndex, Int slotIndex)
+{
+	if (playerIndex >= 0 && playerIndex < ARRAY_SIZE(m_slotIndices))
+	{
+		const Int oldSlotIndex = m_slotIndices[playerIndex];
+		if (oldSlotIndex >= 0 && oldSlotIndex < ARRAY_SIZE(m_slotToPlayerIndices))
+		{
+			m_slotToPlayerIndices[oldSlotIndex] = -1;
+		}
+
+		m_slotIndices[playerIndex] = slotIndex;
+
+		if (slotIndex >= 0 && slotIndex < ARRAY_SIZE(m_slotToPlayerIndices))
+		{
+			m_slotToPlayerIndices[slotIndex] = playerIndex;
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+Int PlayerList::getSlotIndex(Int playerIndex) const
+{
+	if (playerIndex >= 0 && playerIndex < ARRAY_SIZE(m_slotIndices))
+	{
+		return m_slotIndices[playerIndex];
+	}
+
+	return -1;
+}
+
+//-----------------------------------------------------------------------------
+Int PlayerList::getPlayerIndexFromSlotIndex(Int slotIndex) const
+{
+	if (slotIndex >= 0 && slotIndex < ARRAY_SIZE(m_slotToPlayerIndices))
+	{
+		return m_slotToPlayerIndices[slotIndex];
+	}
+
+	return -1;
+}
+
+//-----------------------------------------------------------------------------
+Player *PlayerList::getPlayerFromSlotIndex(Int slotIndex) const
+{
+	const Int playerIndex = getPlayerIndexFromSlotIndex(slotIndex);
+	if (playerIndex >= 0 && playerIndex < m_playerCount)
+	{
+		return m_players[playerIndex];
+	}
+
+	return nullptr;
+}
+
+//-----------------------------------------------------------------------------
+void PlayerList::assignSlotIndices(const GameInfo& gameInfo)
+{
+	AsciiString playerName;
+
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+	{
+		const GameSlot* slot = gameInfo.getConstSlot(i);
+		if (!slot || !slot->isOccupied())
+			continue;
+
+		playerName.format("player%d", i);
+
+		if (Player* player = findPlayerWithNameKey(TheNameKeyGenerator->nameToKey(playerName)))
+		{
+			setSlotIndex(player->getPlayerIndex(), i);
+		}
+	}
+}

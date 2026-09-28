@@ -34,13 +34,10 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-
-
-#ifndef GAMEMTLTEXTUREDLG_H
-#define GAMEMTLTEXTUREDLG_H
+#pragma once
 
 #include <max.h>
+
 #include "GameMtlForm.h"
 
 class GameMtl;
@@ -51,16 +48,16 @@ class GameMtlTextureDlg : public GameMtlFormClass
 public:
 
 	GameMtlTextureDlg(HWND parent, IMtlParams * imp, GameMtl * m, int pass);
-	~GameMtlTextureDlg(void);
+	~GameMtlTextureDlg();
 
 	virtual BOOL		Dialog_Proc (HWND dlg_wnd, UINT message, WPARAM wparam, LPARAM lparam);
 	void					ActivateDlg(BOOL onOff);
-	void					ReloadDialog(void);
+	void					ReloadDialog();
 
 private:
-	
+
 	void					Enable_Stage(int stage,BOOL onoff);
-	void					Update_Texture_Buttons(void);
+	void					Update_Texture_Buttons();
 
 	ISpinnerControl * Stage0FramesSpin;
 	ISpinnerControl * Stage1FramesSpin;
@@ -81,10 +78,3 @@ private:
 	ICustButton *		Stage0DisplayButton;
 	ICustButton *		Stage1DisplayButton;
 };
-
-
-
-
-#endif
-
-

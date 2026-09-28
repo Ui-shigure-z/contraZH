@@ -33,17 +33,16 @@
  *---------------------------------------------------------------------------------------------*
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-#if _MSC_VER >= 1000
-#pragma once
-#endif // _MSC_VER >= 1000
 
-#ifndef ALWAYS_H
-#define ALWAYS_H
+#pragma once
+
+#include "WWCommon.h"
+#include "WWDefines.h"
 
 #include <assert.h>
 #include <new>
 
-// TheSuperHackers @compile feliwir 17/04/2025 include utility macros for cross-platform compatibility
+// TheSuperHackers @build feliwir 17/04/2025 include utility macros for cross-platform compatibility
 #include <Utility/compat.h>
 #include <Utility/stdint_adapter.h>
 
@@ -55,7 +54,7 @@
 ** This helps find leaks.
 */
 //#define STEVES_NEW_CATCHER
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #ifdef _MSC_VER
 #ifdef STEVES_NEW_CATCHER
 
@@ -74,7 +73,7 @@
 
 #endif	//STEVES_NEW_CATCHER
 #endif	//_MSC_VER
-#endif	//_DEBUG
+#endif	//RTS_DEBUG
 
 #if !defined(DISABLE_GAMEMEMORY) // (gth) killing the Generals Memory Manager!
 
@@ -84,9 +83,11 @@
 
 	extern void * __cdecl operator new		(size_t size);
 	extern void __cdecl operator delete		(void *p);
+	extern void __cdecl operator delete		(void *p, size_t);
 
 	extern void * __cdecl operator new[]	(size_t size);
 	extern void __cdecl operator delete[]	(void *p);
+	extern void __cdecl operator delete[]	(void *p, size_t);
 
 	// additional overloads to account for VC/MFC funky versions
 	extern void* __cdecl operator new			(size_t nSize, const char *, int);
@@ -105,17 +106,24 @@
 
 #endif
 
-#if (defined(_DEBUG) || defined(_INTERNAL)) 
+#if defined(RTS_DEBUG)
 	#define MSGW3DNEW(MSG)					new( MSG, 0 )
 	#define MSGW3DNEWARRAY(MSG)			new( MSG, 0 )
 	#define W3DNEW									new("W3D_" __FILE__, 0)
 	#define W3DNEWARRAY							new("W3A_" __FILE__, 0)
+
+	#define NEW_REF( C, P )					( (C*)RefCountClass::Set_Ref_Owner( W3DNEW C P, __FILE__, __LINE__ ) )
+	#define SET_REF_OWNER( P )			( RefCountClass::Set_Ref_Owner( P, __FILE__, __LINE__ ) )
 #else
 	#define MSGW3DNEW(MSG)					new
 	#define MSGW3DNEWARRAY(MSG)			new
 	#define W3DNEW									new
 	#define W3DNEWARRAY							new
+
+	#define NEW_REF( C, P )					( W3DNEW C P )
+	#define SET_REF_OWNER( P )			P
 #endif
+
 
 // ----------------------------------------------------------------------------
 extern void* createW3DMemPool(const char *poolName, int allocationSize);
@@ -124,43 +132,22 @@ extern void* allocateFromW3DMemPool(void* p, int allocationSize, const char* msg
 extern void freeFromW3DMemPool(void* pool, void* p);
 
 // ----------------------------------------------------------------------------
-#define W3DMPO_GLUE(ARGCLASS) \
+#define W3DMPO_CODE(ARGCLASS) \
 private: \
 	static void* getClassMemoryPool() \
 	{ \
-		/* \
-			Note that this static variable will be initialized exactly once: the first time \
-			control flows over this section of code. This allows us to neatly resolve the \
-			order-of-execution problem for static variables, ensuring this is not executed \
-			prior to the initialization of TheMemoryPoolFactory. \
+		/*
+		construct on first first use to avoid static initialization order fiasco
+		that may occur if this were initialized prior to the initialization of TheMemoryPoolFactory.
 		*/ \
 		static void* The##ARGCLASS##Pool = createW3DMemPool(#ARGCLASS, sizeof(ARGCLASS)); \
 		return The##ARGCLASS##Pool; \
 	} \
-protected: \
-	virtual int glueEnforcer() const { return sizeof(this); } \
 public: \
 	inline void* operator new(size_t s) { return allocateFromW3DMemPool(getClassMemoryPool(), s); } \
 	inline void operator delete(void *p) { freeFromW3DMemPool(getClassMemoryPool(), p); } \
 	inline void* operator new(size_t s, const char* msg, int unused) { return allocateFromW3DMemPool(getClassMemoryPool(), s, msg, unused); } \
 	inline void operator delete(void *p, const char* msg, int unused) { freeFromW3DMemPool(getClassMemoryPool(), p); } \
-
-// ----------------------------------------------------------------------------
-class W3DMPO
-{
-private:
-	static void* getClassMemoryPool()
-	{
-		assert(0);	// must replace this via W3DMPO_GLUE
-		return 0;
-	}
-protected:
-	// we never call this; it is present to cause compile errors in descendent classes
-	virtual int glueEnforcer() const = 0;
-public:
-	virtual ~W3DMPO() { /* nothing */ }
-};
-// ----------------------------------------------------------------------------
 
 #else
 
@@ -169,9 +156,10 @@ public:
 	#define W3DNEW									new
 	#define W3DNEWARRAY							new
 
-	#define W3DMPO_GLUE(ARGCLASS)
+	#define NEW_REF( C, P )					( W3DNEW C P )
+	#define SET_REF_OWNER( P )			P
 
-	class W3DMPO { };
+	#define W3DMPO_CODE(ARGCLASS)
 
 #endif // (gth) removing the generals memory stuff from W3D
 
@@ -188,10 +176,12 @@ public:
 ** Define the MIN and MAX macros.
 ** NOTE: Joe used to #include <minmax.h> in the various compiler header files.  This
 ** header defines 'min' and 'max' macros which conflict with the surrender code so
-** I'm relpacing all occurances of 'min' and 'max with 'MIN' and 'MAX'.  For code which
+** I'm replacing all occurrences of 'min' and 'max with 'MIN' and 'MAX'.  For code which
 ** is out of our domain (e.g. Max sdk) I'm declaring template functions for 'min' and 'max'
 */
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 
 #ifndef MAX
 #define MAX(a,b)            (((a) > (b)) ? (a) : (b))
@@ -209,6 +199,17 @@ public:
 #undef max
 #endif
 
+// Provide min/max template functions for compatibility with legacy code
+#ifndef _MIN_MAX_TEMPLATES_DEFINED_
+#define _MIN_MAX_TEMPLATES_DEFINED_
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+// For MinGW, use STL's min/max
+#include <algorithm>
+using std::min;
+using std::max;
+#else
+// For MSVC, provide custom templates
 template <class T> T min(T a,T b)
 {
 	if (a<b) {
@@ -226,6 +227,9 @@ template <class T> T max(T a,T b)
 		return b;
 	}
 }
+#endif
+
+#endif // _MIN_MAX_TEMPLATES_DEFINED_
 
 
 /*
@@ -242,25 +246,14 @@ template <class T> T max(T a,T b)
 #endif
 
 #if defined(__WATCOMC__)
-#include	"WATCOM.H"
+#include	"watcom.h"
 #endif
 
-
-#ifndef	NULL
-	#define	NULL		0
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include	"mingw.h"
 #endif
 
-/**********************************************************************
-**	This macro serves as a general way to determine the number of elements
-**	within an array.
-*/
-#ifndef ARRAY_SIZE
-#define	ARRAY_SIZE(x)		int(sizeof(x)/sizeof(x[0]))
-#endif
 
 #ifndef size_of
 #define size_of(typ,id) sizeof(((typ*)0)->id)
-#endif
-
-
 #endif

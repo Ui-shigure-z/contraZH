@@ -16,8 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __MATCHER_H__
-#define __MATCHER_H__
+#pragma once
 
 #ifdef _WIN32
 #include <process.h>
@@ -40,10 +39,10 @@ public:
 	virtual ~MatcherClass()
 	{}
 
-	virtual void init(void)
+	virtual void init()
 	{}
 
-	virtual void checkMatches(void)
+	virtual void checkMatches()
 	{}
 
 	virtual void handleDisconnect( const char *reason )
@@ -66,7 +65,7 @@ public:
 	void handleJoin( bool success );
 	void handleNickError( const char *badNick );
 
-	void connectAndLoop( void );
+	void connectAndLoop();
 
 protected:
 
@@ -78,7 +77,7 @@ protected:
 	PEER m_peer;
 	bool m_connectSuccess;
 	bool m_joinSuccess;
-	void readLoop( void );
+	void readLoop();
 
 	int done;  // 0=no, neg=quit;error, pos=quit;success
 	bool quiet;
@@ -88,6 +87,3 @@ protected:
 	time_t m_lastRotation;
 
 };
-
-#endif /* __MATCHER_H__ */
-

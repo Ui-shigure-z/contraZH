@@ -29,11 +29,10 @@
 
 #pragma once
 
-#ifndef __SPECIAL_POWER_UPDATE_MODULE_H
-#define __SPECIAL_POWER_UPDATE_MODULE_H
-
 #include "Common/Module.h"
 #include "Common/GameType.h"
+#include "Lib/BaseType.h"
+#include <vector>
 
 //-------------------------------------------------------------------------------------------------
 class SpecialPowerUpdateInterface
@@ -50,7 +49,10 @@ public:
 	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const = 0; //Is it active now?
 	virtual Bool doesSpecialPowerHaveOverridableDestination() const = 0;	//Does it have it, even if it's not active?
 	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) = 0;
-	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = NULL ) const = 0;
+	// Deliver all N captured target points of a NEED_N_TARGET_POS power at once. Default no-op so
+	// only modules that care (chronosphere, MultiLocation) override it - no churn to other modules.
+	virtual void setSpecialPowerMultiLocations( const std::vector<Coord3D>& locs ) {}
+	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = nullptr ) const = 0;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -66,20 +68,7 @@ public:
 	// virtual destructor prototype defined by MemoryPoolObject
 
 	//SpecialPowerUpdateInterface virtual implementations
-	virtual Bool doesSpecialPowerUpdatePassScienceTest() const;
-	virtual ScienceType getExtraRequiredScience() const { return SCIENCE_INVALID; } //Does this object have more than one special power module with the same spTemplate?
-
-	//SpecialPowerUpdateInterface PURE virtual implementations
-	virtual Bool initiateIntentToDoSpecialPower(const SpecialPowerTemplate *specialPowerTemplate, const Object *targetObj, const Coord3D *targetPos, const Waypoint *way, UnsignedInt commandOptions ) = 0;
-	virtual Bool isSpecialAbility() const = 0;
-	virtual Bool isSpecialPower() const = 0;
-	virtual Bool isActive() const = 0;
-	virtual CommandOption getCommandOption() const = 0;
-	virtual Bool doesSpecialPowerHaveOverridableDestinationActive() const = 0; //Is it active now?
-	virtual Bool doesSpecialPowerHaveOverridableDestination() const = 0;	//Does it have it, even if it's not active?
-	virtual void setSpecialPowerOverridableDestination( const Coord3D *loc ) = 0;
-	virtual Bool isPowerCurrentlyInUse( const CommandButton *command = NULL ) const = 0;
+	virtual Bool doesSpecialPowerUpdatePassScienceTest() const override;
+	virtual ScienceType getExtraRequiredScience() const override { return SCIENCE_INVALID; } //Does this object have more than one special power module with the same spTemplate?
 
 };
-
-#endif

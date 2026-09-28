@@ -24,12 +24,12 @@
 
 // FILE: W3DBibBuffer.h //////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
-//                                                                          
-//                       Westwood Studios Pacific.                          
-//                                                                          
-//                       Confidential Information					         
-//                Copyright (C) 2001 - All Rights Reserved                  
-//                                                                          
+//
+//                       Westwood Studios Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2001 - All Rights Reserved
+//
 //-----------------------------------------------------------------------------
 //
 // Project:    RTS3
@@ -44,19 +44,16 @@
 
 #pragma once
 
-#ifndef __W3DBIB_BUFFER_H_
-#define __W3DBIB_BUFFER_H_
-
 //-----------------------------------------------------------------------------
-//           Includes                                                      
+//           Includes
 //-----------------------------------------------------------------------------
-#include "always.h"
-#include "rendobj.h"
-#include "w3d_file.h"
-#include "dx8vertexbuffer.h"
-#include "dx8indexbuffer.h"
-#include "shader.h"
-#include "vertmaterial.h"
+#include "WWLib/always.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/w3d_file.h"
+#include "WW3D2/dx8vertexbuffer.h"
+#include "WW3D2/dx8indexbuffer.h"
+#include "WW3D2/shader.h"
+#include "WW3D2/vertmaterial.h"
 #include "Lib/BaseType.h"
 #include "Common/GameType.h"
 #include "Common/AsciiString.h"
@@ -64,7 +61,7 @@
 //-----------------------------------------------------------------------------
 //           Forward References
 //-----------------------------------------------------------------------------
-class MeshClass; 
+class MeshClass;
 
 //-----------------------------------------------------------------------------
 //           Type Defines
@@ -84,13 +81,13 @@ typedef struct {
 // W3DBibBuffer: Draw buffer for the bibs.
 //
 //
-class W3DBibBuffer 
-{	
+class W3DBibBuffer
+{
 friend class BaseHeightMapRenderObjClass;
 public:
 
-	W3DBibBuffer(void);
-	~W3DBibBuffer(void);
+	W3DBibBuffer();
+	~W3DBibBuffer();
 	/// Add a bib at location.  Name is the w3d model name.
 	void addBib(Vector3 corners[4], ObjectID id, Bool highlight);
 	void addBibDrawable(Vector3 corners[4], DrawableID id, Bool highlight);
@@ -98,16 +95,18 @@ public:
 	void removeBib(ObjectID id);
 	void removeBibDrawable(DrawableID id);
 	/// Empties the bib buffer.
-	void clearAllBibs(void);
+	void clearAllBibs();
 	/// Removes highlighting.
-	void removeHighlighting(void);
-	/// Draws the bibs.  
+	void removeHighlighting();
+	/// Draws the bibs.
 	void renderBibs();
+	/// Called when the lighting changes, so the baked vertex lighting gets rebuilt.
+	void staticLightingChanged() {m_anythingChanged = true;};
 	/// Called when the view changes, and sort key needs to be recalculated.
 	/// Normally sortKey gets calculated when a bib becomes visible.
 protected:
-	enum { INITIAL_BIB_VERTEX=256, 
-					INITIAL_BIB_INDEX=384, 
+	enum { INITIAL_BIB_VERTEX=256,
+					INITIAL_BIB_INDEX=384,
 					MAX_BIBS=1000};
 	DX8VertexBufferClass	*m_vertexBib;	///<Bib vertex buffer.
 	Int										m_vertexBibSize; ///< Num vertices in bib buffer.
@@ -127,9 +126,7 @@ protected:
 	Bool		m_initialized;		///< True if the subsystem initialized.
 	Bool		m_isTerrainPass;  ///< True if the terrain was drawn in this W3D scene render pass.
 
-	void loadBibsInVertexAndIndexBuffers(void); ///< Fills the index and vertex buffers for drawing.
-	void allocateBibBuffers(void);							 ///< Allocates the buffers.
-	void freeBibBuffers(void);									 ///< Frees the index and vertex buffers.
+	void loadBibsInVertexAndIndexBuffers(); ///< Fills the index and vertex buffers for drawing.
+	void allocateBibBuffers();							 ///< Allocates the buffers.
+	void freeBibBuffers();									 ///< Frees the index and vertex buffers.
 };
-
-#endif  // end __W3DBIB_BUFFER_H_

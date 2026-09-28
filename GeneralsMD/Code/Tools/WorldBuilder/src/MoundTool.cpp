@@ -20,7 +20,8 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "MoundTool.h"
@@ -44,25 +45,25 @@ Bool MoundTool::m_mirrorY;
 Bool MoundTool::m_mirrorDiag;
 
 
-/// Constructor 
-MoundTool::MoundTool(void) :
+/// Constructor
+MoundTool::MoundTool() :
 	Tool(ID_BRUSH_ADD_TOOL, IDC_BRUSH_CROSS)
 {
-	m_htMapEditCopy = NULL;
-	m_htMapSaveCopy = NULL;
+	m_htMapEditCopy = nullptr;
+	m_htMapSaveCopy = nullptr;
 	m_raising = true;
 }
-	
+
 /// Destructor
-MoundTool::~MoundTool(void) 
+MoundTool::~MoundTool()
 {
 	REF_PTR_RELEASE(m_htMapEditCopy);
 	REF_PTR_RELEASE(m_htMapSaveCopy);
 }
 
 
-void MoundTool::setMoundHeight(Int height) 
-{ 
+void MoundTool::setMoundHeight(Int height)
+{
 	if (m_moundHeight != height) {
 		m_moundHeight = height;
 		// notify mound options panel
@@ -71,19 +72,19 @@ void MoundTool::setMoundHeight(Int height)
 	}
 };
 /// Set the brush width and notify the height options panel of the change.
-void MoundTool::setWidth(Int width) 
-{ 
+void MoundTool::setWidth(Int width)
+{
 	if (m_brushWidth != width) {
 		m_brushWidth = width;
 		// notify brush palette options panel
-		MoundOptions::setWidth(width);  
+		MoundOptions::setWidth(width);
 		DrawObject::setBrushFeedbackParms(false, m_brushWidth, m_brushFeather);
 	}
 };
 
 /// Set the brush feather and notify the height options panel of the change.
-void MoundTool::setFeather(Int feather) 
-{ 
+void MoundTool::setFeather(Int feather)
+{
 	if (m_brushFeather != feather) {
 		m_brushFeather = feather;
 		// notify height palette options panel
@@ -94,7 +95,7 @@ void MoundTool::setFeather(Int feather)
 
 
 /// Shows the brush options panel.
-void MoundTool::activate() 
+void MoundTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_MOUND_OPTIONS);
 	DrawObject::setDoBrushFeedback(true);
@@ -131,7 +132,7 @@ void MoundTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 	mouseMoved(m, viewPt, pView, pDoc);
 }
 
-void MoundTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void MoundTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 
@@ -283,7 +284,7 @@ void MoundTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 **                             DigTool
 ***************************************************************************/
 /// Constructor
-DigTool::DigTool(void)
+DigTool::DigTool()
 {
 	m_toolID = ID_BRUSH_SUBTRACT_TOOL;
 	m_raising = false;  // digging. 

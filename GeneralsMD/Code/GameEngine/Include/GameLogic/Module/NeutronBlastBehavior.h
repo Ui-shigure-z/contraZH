@@ -29,37 +29,43 @@
 
 #pragma once
 
-#ifndef __NeutronBlastBehavior_H_
-#define __NeutronBlastBehavior_H_
-
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/DieModule.h"
 #include "GameLogic/Module/UpdateModule.h"
+#include <vector>
+
+class ContainModuleInterface;
 
 //-------------------------------------------------------------------------------------------------
 class NeutronBlastBehaviorModuleData : public UpdateModuleData
 {
 public:
-	Real m_blastRadius; 
+	Real m_blastRadius;
 	Bool m_isAffectAirborne;
 	Bool m_affectAllies;
+	Bool m_affectGarrison;
+	std::vector<AsciiString> m_rejectEffectOnUnit;
 
 	NeutronBlastBehaviorModuleData()
 	{
 		m_blastRadius = 10.0f;
 		m_isAffectAirborne = TRUE;
 		m_affectAllies = TRUE;
+		// Retail wiped garrisons, so that stays the default.
+		m_affectGarrison = TRUE;
 	}
 
-	static void buildFieldParse( MultiIniFieldParse& p ) 
+	static void buildFieldParse( MultiIniFieldParse& p )
 	{
 		UpdateModuleData::buildFieldParse( p );
-    
-		static const FieldParse dataFieldParse[] = 
+
+		static const FieldParse dataFieldParse[] =
 		{
-			{ "BlastRadius",		INI::parseReal, NULL, offsetof( NeutronBlastBehaviorModuleData, m_blastRadius ) },
-			{ "AffectAirborne", INI::parseBool, NULL, offsetof( NeutronBlastBehaviorModuleData, m_isAffectAirborne ) },
-			{ "AffectAllies",		INI::parseBool, NULL, offsetof( NeutronBlastBehaviorModuleData, m_affectAllies ) },
+			{ "BlastRadius",		INI::parseReal, nullptr, offsetof( NeutronBlastBehaviorModuleData, m_blastRadius ) },
+			{ "AffectAirborne", INI::parseBool, nullptr, offsetof( NeutronBlastBehaviorModuleData, m_isAffectAirborne ) },
+			{ "AffectAllies",		INI::parseBool, nullptr, offsetof( NeutronBlastBehaviorModuleData, m_affectAllies ) },
+			{ "AffectGarrison",	INI::parseBool, nullptr, offsetof( NeutronBlastBehaviorModuleData, m_affectGarrison ) },
+			{ "RejectEffectOnUnit", INI::parseAsciiStringVector, nullptr, offsetof( NeutronBlastBehaviorModuleData, m_rejectEffectOnUnit ) },
 			{ 0, 0, 0, 0 }
 		};
 
@@ -71,7 +77,7 @@ public:
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 class NeutronBlastBehavior : public UpdateModule,
-														 public DieModuleInterface 
+														 public DieModuleInterface
 {
 
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( NeutronBlastBehavior, "NeutronBlastBehavior" )
@@ -83,17 +89,16 @@ public:
 	// virtual destructor prototype provided by memory pool declaration
 
 	static Int getInterfaceMask() { return UpdateModule::getInterfaceMask() | MODULEINTERFACE_DIE; }
-	virtual DieModuleInterface* getDie() { return this; }
+	virtual DieModuleInterface* getDie() override { return this; }
 
-	
-	virtual UpdateSleepTime update();
-	virtual void onDie( const DamageInfo *damageInfo );
+
+	virtual UpdateSleepTime update() override;
+	virtual void onDie( const DamageInfo *damageInfo ) override;
 
 
 private:
 
 	void neutronBlastToObject( Object *obj );
+	Bool isRejected( const Object *obj ) const;
+	void killContained( Object *container, ContainModuleInterface *contain );
 };
-
-#endif // __NeutronBlastBehavior_H_
-

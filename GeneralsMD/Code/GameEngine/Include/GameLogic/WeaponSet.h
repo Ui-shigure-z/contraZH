@@ -26,9 +26,6 @@
 
 #pragma once
 
-#ifndef _WeaponSet_H_
-#define _WeaponSet_H_
-
 #include "Lib/BaseType.h"
 #include "Common/GameType.h"
 #include "Common/KindOf.h"
@@ -54,39 +51,51 @@ enum DamageType CPP_11(: Int);
 #include "GameLogic/WeaponSetFlags.h"
 
 #ifdef DEFINE_WEAPONSLOTTYPE_NAMES
-static const char *TheWeaponSlotTypeNames[] = 
+static const char *const TheWeaponSlotTypeNames[] =
 {
 	"PRIMARY",
 	"SECONDARY",
 	"TERTIARY",
+	"WEAPON_FOUR",
+	"WEAPON_FIVE",
+	"WEAPON_SIX",
+	"WEAPON_SEVEN",
+	"WEAPON_EIGHT",
 
-	NULL
+	nullptr
 };
+static_assert(ARRAY_SIZE(TheWeaponSlotTypeNames) == WEAPONSLOT_COUNT + 1, "Incorrect array size");
 
-static const LookupListRec TheWeaponSlotTypeNamesLookupList[] = 
+static const LookupListRec TheWeaponSlotTypeNamesLookupList[] =
 {
 	{ "PRIMARY",		PRIMARY_WEAPON },
 	{ "SECONDARY",	SECONDARY_WEAPON },
 	{ "TERTIARY",		TERTIARY_WEAPON },
+	{ "WEAPON_FOUR",	WEAPON_FOUR },
+	{ "WEAPON_FIVE",	WEAPON_FIVE },
+	{ "WEAPON_SIX",		WEAPON_SIX },
+	{ "WEAPON_SEVEN",	WEAPON_SEVEN },
+	{ "WEAPON_EIGHT",	WEAPON_EIGHT },
 	
-	{ NULL, 0	}// keep this last!
+	{ nullptr, 0	}
 };
+static_assert(ARRAY_SIZE(TheWeaponSlotTypeNamesLookupList) == WEAPONSLOT_COUNT + 1, "Incorrect array size");
 
-#endif  
+#endif
 
 //-------------------------------------------------------------------------------------------------
 #ifdef DEFINE_WEAPONCONDITIONMAP
 
 //Kris: I did not write this code, but I am adding comments to clarify it.
 //When I ran into this, I discovered that it was grossly out of date. It wasn't
-//clearly identified as a "lookup table", but hopefully now it makes sense. I've 
+//clearly identified as a "lookup table", but hopefully now it makes sense. I've
 //updated it as of May 2003 when I added RIDER1-8 conditions.
 
 //Purpose: Whenever you change a weaponset, the model condition state associated with it
 //will be properly set exclusively.
 static const ModelConditionFlagType TheWeaponSetTypeToModelConditionTypeMap[WEAPONSET_COUNT] =
 {
-	/*WEAPONSET_VETERAN*/								MODELCONDITION_WEAPONSET_VETERAN,		
+	/*WEAPONSET_VETERAN*/								MODELCONDITION_WEAPONSET_VETERAN,
 	/*WEAPONSET_ELITE*/									MODELCONDITION_WEAPONSET_ELITE,
 	/*WEAPONSET_HERO*/									MODELCONDITION_WEAPONSET_HERO,
 	/*WEAPONSET_PLAYER_UPGRADE*/				MODELCONDITION_WEAPONSET_PLAYER_UPGRADE,
@@ -103,6 +112,21 @@ static const ModelConditionFlagType TheWeaponSetTypeToModelConditionTypeMap[WEAP
 	/*WEAPONSET_RIDER6*/								MODELCONDITION_RIDER6,
 	/*WEAPONSET_RIDER7*/								MODELCONDITION_RIDER7,
 	/*WEAPONSET_RIDER8*/								MODELCONDITION_RIDER8,
+	/*WEAPONSET_PLAYER_UPGRADE2*/						MODELCONDITION_WEAPONSET_PLAYER_UPGRADE2,
+	/*WEAPONSET_PLAYER_UPGRADE3*/						MODELCONDITION_WEAPONSET_PLAYER_UPGRADE3,
+	/*WEAPONSET_PLAYER_UPGRADE4*/						MODELCONDITION_WEAPONSET_PLAYER_UPGRADE4,
+	/*WEAPONSET_GARRISONED*/							MODELCONDITION_INVALID,  //No actual conditionstates needed for Garrisoned and contained
+	/*WEAPONSET_CONTAINED*/								MODELCONDITION_INVALID,
+	/*WEAPONSET_FOUR*/										MODELCONDITION_WEAPONSET_FOUR,
+	/*WEAPONSET_FIVE*/										MODELCONDITION_WEAPONSET_FIVE,
+	/*WEAPONSET_RIDER9*/									MODELCONDITION_RIDER9,
+	/*WEAPONSET_RIDER10*/									MODELCONDITION_RIDER10,
+	/*WEAPONSET_RIDER11*/									MODELCONDITION_RIDER11,
+	/*WEAPONSET_RIDER12*/									MODELCONDITION_RIDER12,
+	/*WEAPONSET_RIDER13*/									MODELCONDITION_RIDER13,
+	/*WEAPONSET_RIDER14*/									MODELCONDITION_RIDER14,
+	/*WEAPONSET_RIDER15*/									MODELCONDITION_RIDER15,
+	/*WEAPONSET_RIDER16*/									MODELCONDITION_RIDER16
 };
 #endif
 
@@ -130,7 +154,9 @@ private:
 	UnsignedInt							m_autoChooseMask[WEAPONSLOT_COUNT];
 	KindOfMaskType					m_preferredAgainst[WEAPONSLOT_COUNT];
 	Bool										m_isReloadTimeShared;
+	Bool										m_isClipShared;
 	Bool										m_isWeaponLockSharedAcrossSets; ///< A weapon set so similar that it is safe to hold locks across
+	Bool										m_isWeaponReloadSharedAcrossSets; ///< Keep current ammo count and reload progress between sets
 
 	static void parseWeapon(INI* ini, void *instance, void *store, const void* userData);
 	static void parseAutoChoose(INI* ini, void *instance, void *store, const void* userData);
@@ -148,26 +174,25 @@ public:
 	void clear();
 	void parseWeaponTemplateSet( INI* ini, const ThingTemplate* tt );
 	Bool testWeaponSetFlag( WeaponSetType wst ) const;
-	Bool isSharedReloadTime( void ) const { return m_isReloadTimeShared; }
+	Bool isSharedReloadTime() const { return m_isReloadTimeShared; }
 	Bool isWeaponLockSharedAcrossSets() const {return m_isWeaponLockSharedAcrossSets; }
+	Bool isWeaponReloadSharedAcrossSets() const { return m_isWeaponReloadSharedAcrossSets; }
+	Bool isSharedClip() const { return m_isClipShared; }
 
 	Bool hasAnyWeapons() const;
-	inline const WeaponTemplate* getNth(WeaponSlotType n) const { return m_template[n]; } 
-	inline UnsignedInt getNthCommandSourceMask(WeaponSlotType n) const { return m_autoChooseMask[n]; } 
-	inline const KindOfMaskType& getNthPreferredAgainstMask(WeaponSlotType n) const { return m_preferredAgainst[n]; } 
+	inline const WeaponTemplate* getNth(WeaponSlotType n) const { return m_template[n]; }
+	inline UnsignedInt getNthCommandSourceMask(WeaponSlotType n) const { return m_autoChooseMask[n]; }
+	inline const KindOfMaskType& getNthPreferredAgainstMask(WeaponSlotType n) const { return m_preferredAgainst[n]; }
 
 	inline Int getConditionsYesCount() const { return 1; }
 	inline const WeaponSetFlags& getNthConditionsYes(Int i) const { return m_types; }
-#if defined(_DEBUG) || defined(_INTERNAL)
-	inline AsciiString getDescription() const { return AsciiString("ArmorTemplateSet"); }
+#if defined(RTS_DEBUG)
+	inline AsciiString getDescription() const { return "ArmorTemplateSet"; }
 #endif
 };
 
 //-------------------------------------------------------------------------------------------------
 typedef std::vector<WeaponTemplateSet> WeaponTemplateSetVector;
-
-//-------------------------------------------------------------------------------------------------
-typedef SparseMatchFinder<WeaponTemplateSet, WeaponSetFlags> WeaponTemplateSetFinder;
 
 //-------------------------------------------------------------------------------------------------
 enum WeaponChoiceCriteria CPP_11(: Int)
@@ -212,9 +237,9 @@ private:
 
 protected:
 	// snapshot methods
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess( void );
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
 public:
 
@@ -224,6 +249,7 @@ public:
 	void updateWeaponSet(const Object* obj);
 	void reloadAllAmmo(const Object *obj, Bool now);
 	Bool isOutOfAmmo() const;
+	Bool isFullAmmo() const; 	// Added for OFS
 	Bool hasAnyWeapon() const { return m_filledWeaponSlotMask != 0; }
 	Bool hasAnyDamageWeapon() const { return m_hasDamageWeapon; }
 	Bool hasWeaponToDealDamageType(DamageType typeToDeal) const { return m_totalDamageTypeMask.test(typeToDeal); }
@@ -236,11 +262,12 @@ public:
 	const Weapon* findAmmoPipShowingWeapon() const;
 	void weaponSetOnWeaponBonusChange(const Object *source);
 	UnsignedInt getMostPercentReadyToFireAnyWeapon() const;
-	inline UnsignedInt getNthCommandSourceMask( WeaponSlotType n ) const { return m_curWeaponTemplateSet ? m_curWeaponTemplateSet->getNthCommandSourceMask( n ) : NULL; } 
+	inline UnsignedInt getNthCommandSourceMask( WeaponSlotType n ) const { return m_curWeaponTemplateSet ? m_curWeaponTemplateSet->getNthCommandSourceMask( n ) : 0; }
 
 	Bool setWeaponLock( WeaponSlotType weaponSlot, WeaponLockType lockType );
 	void releaseWeaponLock(WeaponLockType lockType);
 	Bool isSharedReloadTime() const;
+	Bool isSharedClip() const;
 
 	//When an AIAttackState is over, it needs to clean up any weapons that might be in leech range mode
 	//or else those weapons will have unlimited range!
@@ -248,7 +275,7 @@ public:
 
 	/**
 		Determines if the unit has any weapon that could conceivably
-		harm the victim. this does not take range, ammo, etc. into 
+		harm the victim. this does not take range, ammo, etc. into
 		account, but immutable weapon properties, such as "can you
 		target airborne victims".
 	*/
@@ -267,7 +294,10 @@ public:
 
 	Weapon* getWeaponInWeaponSlot(WeaponSlotType wslot) const;
 
+	// a weapon this command source may pick that can hit the ground and does not fire only in sync with another slot
+	Bool canSlotAttackGround(WeaponSlotType wslot, CommandSourceType cmdSource) const;
+	Bool isSlotAllowedForCommandSource(WeaponSlotType wslot, CommandSourceType cmdSource) const;
+
+
 	static ModelConditionFlags getModelConditionForWeaponSlot(WeaponSlotType wslot, WeaponSetConditionType a);
 };
-
-#endif	// _WeaponSet_H_

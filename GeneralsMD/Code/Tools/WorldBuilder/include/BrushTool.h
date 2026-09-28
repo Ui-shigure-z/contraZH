@@ -22,17 +22,14 @@
 
 #pragma once
 
-#ifndef BRUSHTOOL_H
-#define BRUSHTOOL_H
-
 #include "Tool.h"
 class WorldHeightMapEdit;
 /*************************************************************************/
 /**                             BrushTool
-	 Does the Height Brush tool operation. 
+	 Does the Height Brush tool operation.
 ***************************************************************************/
 ///  Height brush tool.
-class BrushTool : public Tool 
+class BrushTool : public Tool
 {
 protected:
 	WorldHeightMapEdit *m_htMapEditCopy; ///< ref counted.
@@ -50,13 +47,13 @@ protected:
 
 
 public:
-	BrushTool(void);
-	~BrushTool(void);
+	BrushTool();
+	virtual ~BrushTool() override;
 
 public:
-	static Int getWidth(void) {return m_brushWidth;};  ///<Returns width.
-	static Int getFeather(void) {return m_brushFeather;}; ///<Returns feather.
-	static Int getHeight(void) {return m_brushHeight;}; ///<Returns height.
+	static Int getWidth() {return m_brushWidth;};  ///<Returns width.
+	static Int getFeather() {return m_brushFeather;}; ///<Returns feather.
+	static Int getHeight() {return m_brushHeight;}; ///<Returns height.
 	static void setWidth(Int width);
 	static void setFeather(Int feather);
 	static void setHeight(Int height);
@@ -82,6 +79,3 @@ public:
 	virtual Bool followsTerrain(void) {return false;};
 
 };
-
-
-#endif //BRUSHTOOL_H

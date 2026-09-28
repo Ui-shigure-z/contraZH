@@ -60,12 +60,12 @@ BOOL CWBFrameWnd::LoadFrame(UINT nIDResource,
 	if (ret) {
 		Int top = ::AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Top", 10);
 		Int left =::AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Left", 10);
-		this->SetWindowPos(NULL, left,
+		this->SetWindowPos(nullptr, left,
 			top, 0, 0,
 			SWP_NOZORDER|SWP_NOSIZE);
 		if (!m_cellSizeToolBar.Create(this, IDD_CELL_SLIDER, CBRS_LEFT, IDD_CELL_SLIDER))
 		{
-			DEBUG_CRASH(("Failed to create toolbar\n"));
+			DEBUG_CRASH(("Failed to create toolbar"));
 		}
 		EnableDocking(CBRS_ALIGN_ANY);
 		m_cellSizeToolBar.SetupSlider();
@@ -75,7 +75,7 @@ BOOL CWBFrameWnd::LoadFrame(UINT nIDResource,
 	return(ret);
 }
 
-void CWBFrameWnd::OnMove(int x, int y) 
+void CWBFrameWnd::OnMove(int x, int y)
 {
 	CFrameWnd::OnMove(x, y);
 	if (this->IsWindowVisible() && !this->IsIconic()) {
@@ -139,7 +139,8 @@ BOOL CWB3dFrameWnd::LoadFrame(UINT nIDResource,
 				DWORD dwDefaultStyle,
 				CWnd* pParentWnd,
 				CCreateContext* pContext) {
-	// dwDefaultStyle &= ~(WS_SIZEBOX);
+	// Keep WS_SIZEBOX so the render window can be drag-resized; a debounced
+	// handler (CMainFrame::OnSize) rescales the render resolution to fit.
 
 	// m_disableOnSize = true;
 	BOOL ret = CMainFrame::LoadFrame(nIDResource, dwDefaultStyle, CMainFrame::GetMainFrame(), pContext);
@@ -163,7 +164,7 @@ void CWB3dFrameWnd::ActivateFrame(int nCmdShow)
 #endif
 
 
-void CWB3dFrameWnd::OnMove(int x, int y) 
+void CWB3dFrameWnd::OnMove(int x, int y)
 {
 	CFrameWnd::OnMove(x, y);
 	if (this->IsWindowVisible() && !this->IsIconic()) {
@@ -386,12 +387,12 @@ void CWB3dFrameWnd::OnWindowPreview1024x768()
 	adjustWindowSize(true, false);
 }
 
-void CWB3dFrameWnd::OnUpdateWindowPreview1024x768(CCmdUI* pCmdUI) 
+void CWB3dFrameWnd::OnUpdateWindowPreview1024x768(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_3dViewWidth==1024?1:0);
 }
 
-void CWB3dFrameWnd::OnWindowPreview640x480() 
+void CWB3dFrameWnd::OnWindowPreview640x480()
 {
 	if (m_3dViewWidth == 640) return;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 640);
@@ -399,12 +400,12 @@ void CWB3dFrameWnd::OnWindowPreview640x480()
 	adjustWindowSize(true, false);
 }
 
-void CWB3dFrameWnd::OnUpdateWindowPreview640x480(CCmdUI* pCmdUI) 
+void CWB3dFrameWnd::OnUpdateWindowPreview640x480(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_3dViewWidth==640?1:0);
 }
 
-void CWB3dFrameWnd::OnWindowPreview800x600() 
+void CWB3dFrameWnd::OnWindowPreview800x600()
 {
 	if (m_3dViewWidth == 800) return;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 800);
@@ -412,7 +413,7 @@ void CWB3dFrameWnd::OnWindowPreview800x600()
 	adjustWindowSize(true, false);
 }
 
-void CWB3dFrameWnd::OnUpdateWindowPreview800x600(CCmdUI* pCmdUI) 
+void CWB3dFrameWnd::OnUpdateWindowPreview800x600(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_3dViewWidth==800?1:0);
 }

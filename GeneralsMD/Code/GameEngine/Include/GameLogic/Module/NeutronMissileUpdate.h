@@ -28,9 +28,6 @@
 
 #pragma once
 
-#ifndef _MISSILE_UPDATE_H_
-#define _MISSILE_UPDATE_H_
-
 #include "GameClient/RadiusDecal.h"
 #include "Common/GameType.h"
 #include "Common/GlobalData.h"
@@ -47,7 +44,7 @@ class NeutronMissileUpdateModuleData : public UpdateModuleData
 {
 public:
 	Real					m_initialDist;
-	Real					m_maxTurnRate;		
+	Real					m_maxTurnRate;
 	Real					m_forwardDamping;
 	Real					m_relativeSpeed;
 	Real					m_targetFromDirectlyAbove;	///< aim first for dest+offset, then dest
@@ -70,7 +67,7 @@ public:
 /**
  * This module encapsulates missile behavior.
  */
-class NeutronMissileUpdate : public UpdateModule, 
+class NeutronMissileUpdate : public UpdateModule,
 	public DieModuleInterface,
 	public ProjectileUpdateInterface
 {
@@ -83,12 +80,12 @@ public:
 	static Int getInterfaceMask() { return UpdateModule::getInterfaceMask() | (MODULEINTERFACE_DIE); }
 
 	// BehaviorModule
-	virtual DieModuleInterface* getDie() { return this; }
+	virtual DieModuleInterface* getDie() override { return this; }
 
 	// DieModuleInterface
-	virtual void onDie( const DamageInfo *damageInfo );
+	virtual void onDie( const DamageInfo *damageInfo ) override;
 
-	virtual ProjectileUpdateInterface* getProjectileUpdateInterface() { return this; }
+	virtual ProjectileUpdateInterface* getProjectileUpdateInterface() override { return this; }
 
 	enum MissileStateType
 	{
@@ -102,19 +99,26 @@ public:
 	virtual void projectileFireAtObjectOrPosition( const Object *victim, const Coord3D *victimPos, const WeaponTemplate *detWeap, const ParticleSystemTemplate* exhaustSysOverride );
 	virtual Bool projectileIsArmed() const { return m_isArmed; }											///< return true if the missile is armed and ready to explode
 	virtual ObjectID projectileGetLauncherID() const { return m_launcherID; }				///< Return firer of missile. Returns 0 if not yet fired.
+	virtual Bool projectileGetLaunchPos(Coord3D& pos) const { if (m_launcherID == INVALID_ID) return false; pos = m_launchPos; return true; }	///< launcher's position at launch time (for DamageFactorAtMaxRange)
+	virtual void projectileSetLaunchVeterancy(VeterancyLevel v) { m_launchVeterancy = v; }	///< snapshot the launcher's veterancy at launch (for veterancy FX/OCL selection)
+	virtual Bool projectileGetLaunchVeterancy(VeterancyLevel& v) const { if (m_launcherID == INVALID_ID) return false; v = m_launchVeterancy; return true; }	///< launcher's veterancy at launch time
 	virtual Bool projectileHandleCollision( Object *other );
 	virtual const Coord3D *getVelocity() const { return &m_vel; }		///< get current velocity
 	virtual void setFramesTillCountermeasureDiversionOccurs( UnsignedInt frames ) {}
 	virtual void projectileNowJammed() {}
+	virtual Object* getTargetObject() { return NULL; }
+	virtual const Coord3D* getTargetPosition();
 
-	virtual UpdateSleepTime update();
-	virtual void onDelete( void );
+	virtual UpdateSleepTime update() override;
+	virtual void onDelete() override;
 
 private:
 
 	MissileStateType m_state;						///< the behavior state of the missile
 	Coord3D m_targetPos;								///< the position of the target
 	Coord3D m_intermedPos;
+	Coord3D m_launchPos;								///< launcher's position at launch time (for DamageFactorAtMaxRange)
+	VeterancyLevel m_launchVeterancy;		///< launcher's veterancy at launch time (for veterancy FX/OCL selection)
 
 	ObjectID m_launcherID;							///< ID of object that launched us (zero if not yet launched)
 	WeaponSlotType m_attach_wslot;			///< where to fire the missile from
@@ -124,7 +128,7 @@ private:
 	Coord3D m_vel;
 
 	UnsignedInt m_stateTimestamp;				///< time of state change
-	Bool m_isLaunched;							
+	Bool m_isLaunched;
 	Bool m_isArmed;											///< if true, missile will explode on contact
 	Real m_noTurnDistLeft;				///< when zero, ok to start turning
 	Bool m_reachedIntermediatePos;
@@ -134,12 +138,9 @@ private:
 
 	const ParticleSystemTemplate* m_exhaustSysTmpl;
 
-	void doLaunch( void );							///< implement LAUNCH state
-	void doAttack( void );							///< implement ATTACK state
+	void doLaunch();							///< implement LAUNCH state
+	void doAttack();							///< implement ATTACK state
 	void detonate();												///< blow it up. (usually only called by MissileCollide)
 
 
 };
-
-#endif // _MISSILE_UPDATE_H_
-

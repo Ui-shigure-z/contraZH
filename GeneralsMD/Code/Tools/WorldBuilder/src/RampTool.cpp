@@ -16,7 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// FILE: RampTool.cpp 
+// FILE: RampTool.cpp
 /*---------------------------------------------------------------------------*/
 /* EA Pacific                                                                */
 /* Confidential Information	                                                 */
@@ -30,6 +30,8 @@
 /* Revision History:                                                         */
 /*		4/19/2002 : Initial creation                                           */
 /*---------------------------------------------------------------------------*/
+
+
 #include "StdAfx.h"
 #include "RampTool.h"
 
@@ -77,7 +79,7 @@ void RampTool::deactivate()
 	mIsMouseDown = false;
 }
 
-Bool RampTool::followsTerrain(void)
+Bool RampTool::followsTerrain()
 {
 	return true;
 }
@@ -93,7 +95,7 @@ void RampTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 	} else if (m == TRACK_L) {
 		Coord3D docPt;
 		pView->viewToDocCoords(viewPt, &docPt);
-		docPt.z = TheTerrainRenderObject->getHeightMapHeight(docPt.x, docPt.y, NULL);
+		docPt.z = TheTerrainRenderObject->getHeightMapHeight(docPt.x, docPt.y, nullptr);
 		mEndPoint = docPt;
 	}
 
@@ -112,7 +114,7 @@ void RampTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 	Coord3D docPt;
 	pView->viewToDocCoords(viewPt, &docPt);
 	mStartPoint = docPt;
-	mStartPoint.z = TheTerrainRenderObject->getHeightMapHeight(mStartPoint.x, mStartPoint.y, NULL);
+	mStartPoint.z = TheTerrainRenderObject->getHeightMapHeight(mStartPoint.x, mStartPoint.y, nullptr);
 
 	mIsMouseDown = true;
 }
@@ -127,7 +129,7 @@ void RampTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuil
 	Coord3D docPt;
 	pView->viewToDocCoords(viewPt, &docPt);
 	mEndPoint = docPt;
-	mEndPoint.z = TheTerrainRenderObject->getHeightMapHeight(mEndPoint.x, mEndPoint.y, NULL);
+	mEndPoint.z = TheTerrainRenderObject->getHeightMapHeight(mEndPoint.x, mEndPoint.y, nullptr);
 
 	mIsMouseDown = false;
 }

@@ -25,7 +25,7 @@
 #include "VIEWDBSII.h"
 #include "TransDB.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -37,7 +37,7 @@ int ViewChanges = FALSE;
 // CViewDBsDlg dialog
 
 
-VIEWDBSII::VIEWDBSII(CWnd* pParent /*=NULL*/)
+VIEWDBSII::VIEWDBSII(CWnd* pParent /*=nullptr*/)
 	: CDialog(VIEWDBSII::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CViewDBsDlg)
@@ -65,7 +65,7 @@ END_MESSAGE_MAP()
 // CViewDBsDlg message handlers
 
 static int label_count;
-static void progress_cb ( void )
+static void progress_cb ()
 {
 	label_count++;
 	if ( MainDLG )
@@ -74,7 +74,7 @@ static void progress_cb ( void )
 	}
 }
 
-HTREEITEM VIEWDBSII::create_full_view ( void )
+HTREEITEM VIEWDBSII::create_full_view ()
 {
 	CTreeCtrl *tc = ( CTreeCtrl *) GetDlgItem ( IDC_TREEVIEW );
 	HTREEITEM	root;
@@ -118,7 +118,7 @@ HTREEITEM VIEWDBSII::create_full_view ( void )
 	return root;
 }
 
-HTREEITEM VIEWDBSII::create_changes_view ( void )
+HTREEITEM VIEWDBSII::create_changes_view ()
 {
 	CTreeCtrl *tc = ( CTreeCtrl *) GetDlgItem ( IDC_TREEVIEW );
 	HTREEITEM	root;
@@ -185,7 +185,7 @@ HTREEITEM VIEWDBSII::create_changes_view ( void )
 	return root;
 }
 
-BOOL VIEWDBSII::OnInitDialog() 
+BOOL VIEWDBSII::OnInitDialog()
 {
 	HTREEITEM root;
 	CDialog::OnInitDialog();
@@ -203,15 +203,15 @@ BOOL VIEWDBSII::OnInitDialog()
 
 
 	MainDLG->Ready();
-	
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void VIEWDBSII::OnClose() 
+void VIEWDBSII::OnClose()
 {
 	// TODO: Add your message handler code here and/or call default
-	
+
 	CTreeCtrl *tc = ( CTreeCtrl *) GetDlgItem ( IDC_TREEVIEW );
 	HTREEITEM root = tc->GetRootItem ();
 	tc->Expand ( root, TVE_COLLAPSE );

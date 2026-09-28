@@ -25,8 +25,8 @@ MT-LEVEL
 The debugging module is pretty good for debugging and it has some message
 printing stuff as well.  The basic idea is that you write a class that
 inherits from OutputDevice (severall are provided) and assign that output
-device to a stream.  There are seperate streams for debugging, information,
-warning, and error messages.  Each one can have a seperate output device,
+device to a stream.  There are separate streams for debugging, information,
+warning, and error messages.  Each one can have a separate output device,
 or they can all have the same one.  Debugging messages only get compiled
 in if your module defines 'DEBUG'. If you don't define debug, then not even
 the text of the debugging message gets into the binary.   All the other
@@ -50,8 +50,7 @@ will you be ready to leave grasshopper.
 
 \*****************************************************************************/
 
-#ifndef WDEBUG_HEADER
-#define WDEBUG_HEADER
+#pragma once
 
 #include <Utility/iostream_adapter.h>
 #include "odevice.h"
@@ -64,7 +63,7 @@ will you be ready to leave grasshopper.
 #define INFMSG(X)\
 {\
   char     timebuf[40]; \
-  time_t   clock=time(NULL); \
+  time_t   clock=time(nullptr); \
   cftime(timebuf,"%D %T",&clock); \
   if (MsgManager::infoStream()) \
     (*(MsgManager::infoStream())) << "INF " << timebuf << " [" << \
@@ -75,7 +74,7 @@ will you be ready to leave grasshopper.
 #define WRNMSG(X)\
 {\
   char     timebuf[40]; \
-  time_t   clock=time(NULL); \
+  time_t   clock=time(nullptr); \
   cftime(timebuf,"%D %T",&clock); \
   if (MsgManager::warnStream()) \
     (*(MsgManager::warnStream())) << "WRN " << timebuf << " [" << \
@@ -86,7 +85,7 @@ will you be ready to leave grasshopper.
 #define ERRMSG(X)\
 {\
   char     timebuf[40]; \
-  time_t   clock=time(NULL); \
+  time_t   clock=time(nullptr); \
   strcpy(timebuf,ctime(&clock)); \
   if (MsgManager::errorStream()) \
     (*(MsgManager::errorStream())) << "ERR " << timebuf << " [" << \
@@ -99,21 +98,21 @@ will you be ready to leave grasshopper.
 {\
   if (MsgManager::infoStream()) \
     (*(MsgManager::infoStream())) << X;\
-}    
+}
 
 // Just get a stream to the warning device, no extra junk
 #define WRNSTREAM(X)\
 {\
   if (MsgManager::warnStream()) \
     (*(MsgManager::warnStream())) << X;\
-}    
+}
 
 // Just get a stream to the error device, no extra junk
 #define ERRSTREAM(X)\
 {\
   if (MsgManager::errorStream()) \
     (*(MsgManager::errorStream())) << X;\
-}    
+}
 
 #ifndef DEBUG
 
@@ -123,10 +122,10 @@ will you be ready to leave grasshopper.
 // They are defined to {} for consistency when DEBUG is defined
 
 #define DBG(X)
-#define DBGSTREAM(X)  {}
-#define PVAR(v)       {}
-#define DBGMSG(X)     {}
-#define VERBOSE(X)    {}
+#define DBGSTREAM(X)
+#define PVAR(v)
+#define DBGMSG(X)
+#define VERBOSE(X)
 
 #else  // DEBUG _is_ defined
 
@@ -154,7 +153,7 @@ will you be ready to leave grasshopper.
 {\
   if (MsgManager::debugStream()) \
     (*(MsgManager::debugStream())) << X;\
-}    
+}
 
 // Verbosely execute a statement
 #define VERBOSE(X)\
@@ -184,10 +183,8 @@ class MsgManager
    static void                enableWarn(int flag);
    static void                enableError(int flag);
 
-   static ostream            *debugStream(void);
-   static ostream            *infoStream(void);
-   static ostream            *warnStream(void);
-   static ostream            *errorStream(void);
+   static ostream            *debugStream();
+   static ostream            *infoStream();
+   static ostream            *warnStream();
+   static ostream            *errorStream();
 };
-
-#endif

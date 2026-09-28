@@ -20,7 +20,7 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "BuildListTool.h"
@@ -43,7 +43,7 @@
 //
 
 Bool BuildListTool::m_isActive = false;
-PickUnitDialog* BuildListTool::m_static_pickBuildingDlg = NULL;
+PickUnitDialog* BuildListTool::m_static_pickBuildingDlg = nullptr;
 
 #ifdef RTS_HAS_QT
 // The Qt inversion floats the native Qt pick panel instead of the MFC PickUnitDialog.
@@ -77,22 +77,22 @@ static AsciiString getPickedBuilding(PickUnitDialog &mfcDlg)
 }
 
 /// Constructor
-BuildListTool::BuildListTool(void) :
-	Tool(ID_BUILD_LIST_TOOL, IDC_BUILD_LIST_TOOL), 
-	m_rotateCursor(NULL),
-	m_pointerCursor(NULL),
-	m_moveCursor(NULL),
+BuildListTool::BuildListTool() :
+	Tool(ID_BUILD_LIST_TOOL, IDC_BUILD_LIST_TOOL),
+	m_rotateCursor(nullptr),
+	m_pointerCursor(nullptr),
+	m_moveCursor(nullptr),
 	m_created(false)
 {
-	m_curObject = NULL;
+	m_curObject = nullptr;
 }
-	
+
 /// Destructor
-BuildListTool::~BuildListTool(void) 
+BuildListTool::~BuildListTool()
 {
 }
 
-void BuildListTool::createWindow(void)
+void BuildListTool::createWindow()
 {
 #ifdef RTS_HAS_QT
 	// Qt inversion: float the native Qt pick panel; the MFC dialog below is the fallback.
@@ -110,12 +110,12 @@ void BuildListTool::createWindow(void)
 	m_pickBuildingDlg.SetFactionOnly(true);
 	m_pickBuildingDlg.Create(IDD_PICKUNIT, CMainFrame::GetMainFrame());
 	m_pickBuildingDlg.SetupAsPanel();
-	m_pickBuildingDlg.SetWindowPos(NULL, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	m_pickBuildingDlg.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
 	m_static_pickBuildingDlg = &m_pickBuildingDlg;
 	m_created = true;
 }
 
-Bool BuildListTool::isDoingAdd(void)
+Bool BuildListTool::isDoingAdd()
 {
 	if (!m_created) {
 		return false;
@@ -141,7 +141,7 @@ Bool BuildListTool::isDoingAdd(void)
 }
 
 /// Shows the object options panel.
-void BuildListTool::addBuilding() 
+void BuildListTool::addBuilding()
 {
 	//PickUnitDialog dlg;
 	//dlg.SetAllowableType(ES_STRUCTURE);
@@ -159,7 +159,7 @@ void BuildListTool::addBuilding()
 }
 
 /// Shows the object options panel.
-void BuildListTool::activate() 
+void BuildListTool::activate()
 {
 	Bool wasActive = m_isActive;
 	m_isActive = true;
@@ -170,7 +170,7 @@ void BuildListTool::activate()
 	if (!wasActive)
 	{
 		p3View->resetRenderObjects();
-		p3View->invalObjectInView(NULL);
+		p3View->invalObjectInView(nullptr);
 	}
 	if (!m_created) {
 		createWindow();
@@ -185,13 +185,13 @@ void BuildListTool::activate()
 }
 
 /// Clears the isActive flag.
-void BuildListTool::deactivate() 
+void BuildListTool::deactivate()
 {
 	m_isActive = false;
 	WbView3d *p3View = CWorldBuilderDoc::GetActive3DView();
 	Coord3D loc;
 	loc.x=loc.y=loc.z=0;
-	p3View->setObjTracking(NULL, loc, 0, false);	// Turn off object cursor tracking.
+	p3View->setObjTracking(nullptr, loc, 0, false);	// Turn off object cursor tracking.
 	p3View->resetRenderObjects();
 	p3View->invalObjectInView(NULL);
 #ifdef RTS_HAS_QT
@@ -204,22 +204,22 @@ void BuildListTool::deactivate()
 }
 
 /** Set the cursor. */
-void BuildListTool::setCursor(void) 
+void BuildListTool::setCursor()
 {
 	if (isDoingAdd()) {
 		Tool::setCursor();	// Default cursor is the adding cursor
 	} else 	if (m_mouseUpMove) {
-		if (m_moveCursor == NULL) {
+		if (m_moveCursor == nullptr) {
 			m_moveCursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(IDC_BUILD_MOVE));
 		}
 		::SetCursor(m_moveCursor);
 	} else 	if (m_mouseUpRotate) {
-		if (m_rotateCursor == NULL) {
+		if (m_rotateCursor == nullptr) {
 			m_rotateCursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(IDC_BUILD_ROTATE));
 		}
 		::SetCursor(m_rotateCursor);
 	} else {
-		if (m_pointerCursor == NULL) {
+		if (m_pointerCursor == nullptr) {
 			m_pointerCursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(IDC_BUILD_POINTER));
 		}
 		::SetCursor(m_pointerCursor);
@@ -227,7 +227,7 @@ void BuildListTool::setCursor(void)
 }
 
 /** Execute the tool on mouse down - Place an object. */
-void BuildListTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void BuildListTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 	m_moving = false;
@@ -236,7 +236,7 @@ void BuildListTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWo
 	pView->viewToDocCoords(viewPt, &cpt);
 	m_downPt2d = viewPt;
 	m_downPt3d = cpt;
-	if (isDoingAdd()) return; 
+	if (isDoingAdd()) return;
 	BuildListInfo *pInfo = pView->pickedBuildObjectInView(viewPt);
 	if (pInfo) {
 		m_curObject = pInfo;
@@ -344,7 +344,7 @@ void BuildListTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CW
 
 
 /** Execute the tool on mouse up - Place an object. */
-void BuildListTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void BuildListTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 	if (!isDoingAdd()) {

@@ -37,9 +37,9 @@
 #include "vehiclecurve.h"
 #include "vector3.h"
 #include "matrix3d.h"
-#include "persistfactory.h"
+#include "WWSaveLoad/persistfactory.h"
 #include "wwmathids.h"
-#include "wwmemlog.h"
+#include "WWDebug/wwmemlog.h"
 
 
 //////////////////////////////////////////////////////////////////////
@@ -210,7 +210,7 @@ Find_Turn_Arc
 	//
 	arc_center->X = curr_pt.X + (radius * ::WWMath::Cos (avg_angle));
 	arc_center->Y = curr_pt.Y + (radius * ::WWMath::Sin (avg_angle));
-	arc_center->Z = curr_pt.Z;	
+	arc_center->Z = curr_pt.Z;
 
 	//
 	//	Will we be making a right turn or a left turn?
@@ -218,7 +218,6 @@ Find_Turn_Arc
 	Vector3 rel_center;
 	Matrix3D::Inverse_Transform_Vector (transform, *arc_center, &rel_center);
 	(*is_right_turn) = (rel_center.Y > 0);
-	return ;
 }
 
 
@@ -253,7 +252,7 @@ Find_Tangents
 	//
 	//	Find the angle where the current position lies on the turn arc
 	//
-	(*point_angle) = ::WWMath::Atan2 (curr_pt.X - arc_center.X, -(curr_pt.Y - arc_center.Y));	
+	(*point_angle) = ::WWMath::Atan2 (curr_pt.X - arc_center.X, -(curr_pt.Y - arc_center.Y));
 	(*point_angle) = WWMath::Wrap ((*point_angle), 0, DEG_TO_RADF (360));
 
 	//
@@ -273,8 +272,6 @@ Find_Tangents
 	} else {
 		(*angle_out_delta) = 0;
 	}
-
-	return ;
 }
 
 
@@ -284,11 +281,11 @@ Find_Tangents
 //
 //////////////////////////////////////////////////////////////////////
 void
-VehicleCurveClass::Update_Arc_List (void)
+VehicleCurveClass::Update_Arc_List ()
 {
 	WWMEMLOG(MEM_PATHFIND);
 	m_ArcList.Delete_All ();
-	
+
 	//
 	//	Bail out if there is nothing to do
 	//
@@ -309,7 +306,7 @@ VehicleCurveClass::Update_Arc_List (void)
 	arc_start.angle_in_delta	= 0;
 	arc_start.angle_out_delta	= 0;
 	m_ArcList.Add (arc_start);
-	
+
 	//
 	//	Loop over each 'interior' point and generate arc information
 	// for each.
@@ -398,7 +395,7 @@ VehicleCurveClass::Update_Arc_List (void)
 			//
 			//	Record information about this arc
 			//
-			ArcInfoStruct arc_info;	
+			ArcInfoStruct arc_info;
 			arc_info.center				= curr_pt;
 			arc_info.point_angle			= 0;
 			arc_info.point_in				= curr_pt;
@@ -413,7 +410,7 @@ VehicleCurveClass::Update_Arc_List (void)
 			//
 			//	Record information about this arc
 			//
-			ArcInfoStruct arc_info;	
+			ArcInfoStruct arc_info;
 			arc_info.center				= arc_center;
 			arc_info.point_angle			= point_angle;
 			arc_info.point_in				= point_in;
@@ -441,7 +438,6 @@ VehicleCurveClass::Update_Arc_List (void)
 	}
 
 	m_IsDirty = false;
-	return ;
 }
 
 
@@ -508,7 +504,7 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 	//	Determine which part of the segment we are on
 	//
 	if (seg_time < time1) {
-		
+
 		//
 		//	We are on the initial curve of the segment, so calculate where
 		// on the curve we are...
@@ -532,7 +528,7 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 		//
 		//	We are on the line between the two curves, so calculate where on
 		// the line we are
-		//			
+		//
 		float percent = (seg_time - time1) / (time2 - time1);
 
 		if (percent == 0) {
@@ -540,7 +536,7 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 			set_val->Y = arc_info0.point_out.Y;
 		} else {
 			set_val->X = arc_info1.point_in.X;
-			set_val->Y = arc_info1.point_in.Y;			
+			set_val->Y = arc_info1.point_in.Y;
 		}
 
 		//set_val->X = arc_info0.point_out.X + (arc_info1.point_in.X - arc_info0.point_out.X) * percent;
@@ -548,9 +544,9 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 
 		m_Sharpness = WWMath::Clamp (WWMath::Fabs (arc_info1.angle_out_delta) / DEG_TO_RADF (15), 0, 1.0F);
 		m_SharpnessPos = arc_info1.point_in;
-		
+
 		m_LastTime = Keys[index0].Time + (Keys[index1].Time - Keys[index0].Time) * time2;
-		
+
 	} else {
 
 		//
@@ -559,14 +555,14 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 		//
 		/*float percent = 1.0F - ((seg_time - time2) / (1.0F - time2));
 		float angle = arc_info1.point_angle + (arc_info1.angle_in_delta * percent);
-		
+
 		set_val->X = arc_info1.center.X + (arc_info1.radius * ::WWMath::Sin (angle));
 		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -::WWMath::Cos (angle));			*/
 
 		float angle = arc_info1.point_angle + (arc_info1.angle_out_delta);
 
 		set_val->X = arc_info1.center.X + (arc_info1.radius * ::WWMath::Sin (angle));
-		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -::WWMath::Cos (angle));		
+		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -::WWMath::Cos (angle));
 
 		m_Sharpness = WWMath::Clamp (WWMath::Fabs (arc_info1.angle_out_delta) / DEG_TO_RADF (15), 0, 1.0F);
 		m_SharpnessPos.X = set_val->X;
@@ -579,11 +575,10 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 	//
 	//	Our Z value is just a linear interpolation
 	//
-	set_val->Z = Keys[index0].Point.Z + (Keys[index1].Point.Z - Keys[index0].Point.Z) * seg_time;	
-	return ;
+	set_val->Z = Keys[index0].Point.Z + (Keys[index1].Point.Z - Keys[index0].Point.Z) * seg_time;
 }
 
-const PersistFactoryClass & VehicleCurveClass::Get_Factory(void) const
+const PersistFactoryClass & VehicleCurveClass::Get_Factory() const
 {
 	return _VehicleCurveFactory;
 }
@@ -608,7 +603,7 @@ VehicleCurveClass::Save (ChunkSaveClass &csave)
 		//
 		WRITE_MICRO_CHUNK (csave, VARID_IS_DIRTY,		m_IsDirty);
 		WRITE_MICRO_CHUNK (csave, VARID_RADIUS,		m_Radius);
-		
+
 	csave.End_Chunk ();
 
 	//
@@ -621,7 +616,7 @@ VehicleCurveClass::Save (ChunkSaveClass &csave)
 			csave.Write (&arc_info, sizeof (arc_info));
 		csave.End_Chunk ();
 	}
-	
+
 	return true;
 }
 
@@ -634,9 +629,9 @@ VehicleCurveClass::Save (ChunkSaveClass &csave)
 bool
 VehicleCurveClass::Load (ChunkLoadClass &cload)
 {
-	while (cload.Open_Chunk ()) {		
+	while (cload.Open_Chunk ()) {
 		switch (cload.Cur_Chunk_ID ()) {
-			
+
 			case CHUNKID_PARENT:
 				Curve3DClass::Load (cload);
 				break;
@@ -681,6 +676,4 @@ VehicleCurveClass::Load_Variables (ChunkLoadClass &cload)
 
 		cload.Close_Micro_Chunk ();
 	}
-
-	return ;
 }

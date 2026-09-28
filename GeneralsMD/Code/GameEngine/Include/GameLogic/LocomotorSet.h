@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef __LocomotorSet_H_
-#define __LocomotorSet_H_
-
 // no, please do NOT include this.
 //#include "GameLogic/Locomotor.h"
 #include "Common/GameCommon.h"
@@ -61,7 +58,7 @@ const LocomotorSurfaceTypeMask NO_SURFACES = (LocomotorSurfaceTypeMask)0x0000;
 const LocomotorSurfaceTypeMask ALL_SURFACES = (LocomotorSurfaceTypeMask)0xffff;
 
 #ifdef DEFINE_SURFACECATEGORY_NAMES
-static const char *TheLocomotorSurfaceTypeNames[] = 
+static const char *const TheLocomotorSurfaceTypeNames[] =
 {
 	"GROUND",
 	"WATER",
@@ -69,7 +66,7 @@ static const char *TheLocomotorSurfaceTypeNames[] =
 	"AIR",
 	"RUBBLE",
 
-	NULL
+	nullptr
 };
 #endif
 
@@ -83,15 +80,16 @@ private:
 	LocomotorVector						m_locomotors;
 	LocomotorSurfaceTypeMask	m_validLocomotorSurfaces;
 	Bool											m_downhillOnly;
-	
+	Int												m_requiredWaterLevel; // for ships, if there are multiple water locomotors the lowest allowed value is used
+
 	LocomotorSet(const LocomotorSet& that);
 	LocomotorSet& operator=(const LocomotorSet& that);
 
 protected:
 	// snapshot methods
-	virtual void crc( Xfer *xfer );
-	virtual void xfer( Xfer *xfer );
-	virtual void loadPostProcess( void );
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
 public:
 
@@ -103,12 +101,11 @@ public:
 	void addLocomotor(const LocomotorTemplate* lt);
 
 	Locomotor* findLocomotor(LocomotorSurfaceTypeMask t);
-	
+
 	void xferSelfAndCurLocoPtr(Xfer *xfer, Locomotor** loco);
 
-	inline LocomotorSurfaceTypeMask getValidSurfaces() const { return m_validLocomotorSurfaces; }
-	inline Bool isDownhillOnly( void ) const { return m_downhillOnly; };
+	LocomotorSurfaceTypeMask getValidSurfaces() const { return m_validLocomotorSurfaces; }
+	Bool isDownhillOnly( void ) const { return m_downhillOnly; };
+	Int getRequiredWaterLevel() const { return m_requiredWaterLevel; };
 
 };
-
-#endif

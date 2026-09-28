@@ -19,13 +19,13 @@
 // RestrictedFileDialog.cpp : implementation file
 //
 
-#include "StdAfx.H"
-#include "W3DView.H"
-#include "RestrictedFileDialog.H"
-#include "Utils.H"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "RestrictedFileDialog.h"
+#include "Utils.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -41,7 +41,6 @@ RestrictedFileDialogClass::RestrictedFileDialogClass(BOOL bOpenFileDialog, LPCTS
 		CFileDialog(bOpenFileDialog, lpszDefExt, lpszFileName, dwFlags, lpszFilter, pParentWnd)
 {
 	m_ExpectedFilename = lpszFileName;
-	return ;
 }
 
 
@@ -57,11 +56,10 @@ END_MESSAGE_MAP()
 //	OnFileNameChange
 //
 void
-RestrictedFileDialogClass::OnFileNameChange (void)
+RestrictedFileDialogClass::OnFileNameChange ()
 {
 	// Force the original filename into the filename control
 	CommDlg_OpenSave_SetControlText (::GetParent (m_hWnd), 0x480, (LPCTSTR)m_ExpectedFilename);
-	return ;
 }
 
 
@@ -70,11 +68,11 @@ RestrictedFileDialogClass::OnFileNameChange (void)
 //	OnFileNameOK
 //
 BOOL
-RestrictedFileDialogClass::OnFileNameOK (void)
+RestrictedFileDialogClass::OnFileNameOK ()
 {
 	// Force the original filename into the filename control
 	CommDlg_OpenSave_SetControlText (::GetParent (m_hWnd), 0x480, (LPCTSTR)m_ExpectedFilename);
-		
+
 	// Fill the filename fields of the OPENFILESTRUCT structure with the
 	// original filename and the new path
 	CString path = ::Strip_Filename_From_Path (m_ofn.lpstrFile);
@@ -91,10 +89,9 @@ RestrictedFileDialogClass::OnFileNameOK (void)
 //	OnInitDone
 //
 void
-RestrictedFileDialogClass::OnInitDone (void)
+RestrictedFileDialogClass::OnInitDone ()
 {
 	// Disable the controls we don't want the user to change
 	::EnableWindow (::GetDlgItem (::GetParent (m_hWnd), 0x480), FALSE);
 	::EnableWindow (::GetDlgItem (::GetParent (m_hWnd), 0x470), FALSE);
-	return ;
 }

@@ -17,12 +17,12 @@
 */
 
 //----------------------------------------------------------------------------
-//                                                                          
-//                       Westwood Studios Pacific.                          
-//                                                                          
-//                       Confidential Information					                  
-//                Copyright (C) 2001 - All Rights Reserved                  
-//                                                                          
+//
+//                       Westwood Studios Pacific.
+//
+//                       Confidential Information
+//                Copyright (C) 2001 - All Rights Reserved
+//
 //----------------------------------------------------------------------------
 //
 // Project:    RTS 3
@@ -35,12 +35,8 @@
 
 #pragma once
 
-#ifndef __GAMECLIENT_GAMETEXT_H_
-#define __GAMECLIENT_GAMETEXT_H_
-
-
 //----------------------------------------------------------------------------
-//           Includes                                                      
+//           Includes
 //----------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------
@@ -52,7 +48,7 @@
 //----------------------------------------------------------------------------
 
 //===============================
-// GameTextInterface 
+// GameTextInterface
 //===============================
 /** Game text interface object for localised text.
 	*/
@@ -65,18 +61,15 @@ class GameTextInterface
 
 		virtual ~GameTextInterface() {};
 
-		virtual void					init( void ) = 0;						///< Initlaizes the text system
+		virtual void					init() = 0;						///< Initlaizes the text system
 		virtual const wchar_t * fetch( const char *label ) = 0;		///< Returns the associated labeled unicode text
 
 };
 
 
 extern GameTextInterface *TheGameText;
-extern GameTextInterface* CreateGameTextInterface( void );
+extern GameTextInterface* CreateGameTextInterface();
 
 //----------------------------------------------------------------------------
-//           Inlining                                                       
+//           Inlining
 //----------------------------------------------------------------------------
-
-
-#endif // __GAMECLIENT_GAMETEXT_H_

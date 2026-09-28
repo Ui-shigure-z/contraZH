@@ -19,18 +19,13 @@
 // BabylonDlg.h : header file
 //
 
-#if !defined(AFX_BABYLONDLG_H__2BF3124D_3BA1_11D3_B9DA_006097B90D93__INCLUDED_)
-#define AFX_BABYLONDLG_H__2BF3124D_3BA1_11D3_B9DA_006097B90D93__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
 
 #include "resource.h"
 #include "TransDB.h"
 
-typedef enum 
-{	
+typedef enum
+{
 	SAME_LINE,
 	NEW_LINE
 
@@ -84,21 +79,21 @@ public:
 	int RetranslateText ( BabylonText *text, BabylonText *label );
 	void VerifyDialog( TransDB *db, LangID langid);
 	void VerifyTranslations( TransDB *db, LangID langid ) ;
-	int	CanProceed ( void );
-	int	CanOperate ( void );
-	int SaveMainDB ( void );
+	int	CanProceed ();
+	int	CanOperate ();
+	int SaveMainDB ();
 	int UpdateLabel ( BabylonLabel *source, BabylonLabel *destination, UPDATEINFO &info, int update = TRUE, int skip = FALSE);
 	int UpdateDB ( TransDB *source, TransDB *destination, int update = TRUE);
-	void ProgressComplete ( void );
+	void ProgressComplete ();
 	void SetProgress ( int pos );
 	void InitProgress ( int range );
-	int SaveLog ( void );
+	int SaveLog ();
 	void Status ( const char *string, int log = TRUE);
 	void Log ( const char *string, LogFormat format = NEW_LINE );
-	CBabylonDlg(CWnd* pParent = NULL);	// standard constructor
+	CBabylonDlg(CWnd* pParent = nullptr);	// standard constructor
 	virtual ~CBabylonDlg();
-	int LoadStrFile ( TransDB *db, const char *fileaname, void (*cb ) (void ) = NULL );
-	void Ready ( void ) { Status ( "Ready", FALSE ); ProgressComplete(); };
+	int LoadStrFile ( TransDB *db, const char *fileaname, void (*cb ) () = nullptr );
+	void Ready () { Status ( "Ready", FALSE ); ProgressComplete(); };
 
 // Dialog Data
 	//{{AFX_DATA(CBabylonDlg)
@@ -152,5 +147,3 @@ extern CBabylonDlg *MainDLG;
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_BABYLONDLG_H__2BF3124D_3BA1_11D3_B9DA_006097B90D93__INCLUDED_)

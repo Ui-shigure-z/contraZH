@@ -28,12 +28,12 @@
 #include "WorldBuilderDoc.h"
 #include "RulerTool.h"
 
-RulerOptions*	RulerOptions::m_staticThis = NULL;
+RulerOptions*	RulerOptions::m_staticThis = nullptr;
 
 /////////////////////////////////////////////////////////////////////////////
-RulerOptions::RulerOptions(CWnd* pParent /*=NULL*/)
+RulerOptions::RulerOptions(CWnd* pParent /*=nullptr*/)
 {
-	//{{AFX_DATA_INIT(RulerOptions) 
+	//{{AFX_DATA_INIT(RulerOptions)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
 }
@@ -65,10 +65,10 @@ void RulerOptions::setWidth(Real width)
 
 
 /// Dialog UI initialization.
-BOOL RulerOptions::OnInitDialog() 
+BOOL RulerOptions::OnInitDialog()
 {
 	CDialog::OnInitDialog();
-	
+
 	m_staticThis = this;
 	m_updating = false;
 
@@ -98,7 +98,7 @@ BOOL RulerOptions::OnInitDialog()
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void RulerOptions::OnChangeWidthEdit() 
+void RulerOptions::OnChangeWidthEdit()
 {
 	if (m_updating) return;
 	CWnd *pEdit = GetDlgItem(IDC_RULER_WIDTH);
@@ -120,7 +120,7 @@ void RulerOptions::OnChangeWidthEdit()
 	}
 }
 
-void RulerOptions::OnChangeCheckRuler() 
+void RulerOptions::OnChangeCheckRuler()
 {
 	if (m_updating) return;
 	CWnd *pCheck = GetDlgItem(IDC_CHECK_RULER);

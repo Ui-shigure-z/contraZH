@@ -20,7 +20,7 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "AutoEdgeOutTool.h"
@@ -41,18 +41,18 @@ Bool AutoEdgeOutTool::m_mirrorDiag;
 // AutoEdgeOutTool class.
 //
 /// Constructor
-AutoEdgeOutTool::AutoEdgeOutTool(void) :
-	Tool(ID_AUTO_EDGE_OUT_TOOL, IDC_AUTO_EDGE_OUT) 
+AutoEdgeOutTool::AutoEdgeOutTool() :
+	Tool(ID_AUTO_EDGE_OUT_TOOL, IDC_AUTO_EDGE_OUT)
 {
 }
-	
+
 /// Destructor
-AutoEdgeOutTool::~AutoEdgeOutTool(void) 
+AutoEdgeOutTool::~AutoEdgeOutTool()
 {
 }
 
 /// Shows the brush options panel.
-void AutoEdgeOutTool::activate() 
+void AutoEdgeOutTool::activate()
 {
 	Tool::activate();
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_BLEND_MATERIAL);

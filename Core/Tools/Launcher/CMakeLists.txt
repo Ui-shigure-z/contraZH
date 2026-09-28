@@ -1,8 +1,8 @@
 add_subdirectory(DatGen)
 
 set(LAUNCHER_SRC
-    "BFISH.CPP"
-    "BFISH.H"
+    "BFISH.cpp"
+    "BFISH.h"
     "configfile.cpp"
     "configfile.h"
     "dialog.cpp"
@@ -21,8 +21,6 @@ set(LAUNCHER_SRC
     "patch.h"
     "process.cpp"
     "process.h"
-    "Protect.cpp"
-    "Protect.h"
     "resource.h"
     "streamer.cpp"
     "streamer.h"
@@ -64,9 +62,6 @@ target_compile_definitions(corei_launcher INTERFACE
 
 target_link_libraries(corei_launcher INTERFACE
     comctl32
-    core_config
-    core_utility
-    safedisc
 )
 
 if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")

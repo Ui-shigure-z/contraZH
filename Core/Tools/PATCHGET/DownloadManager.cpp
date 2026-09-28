@@ -21,14 +21,14 @@
 // Author: Matthew D. Campbell, July 2002
 
 #include "debug.h"
-#include "CHATAPI.H"
+#include "CHATAPI.h"
 #include "DownloadManager.h"
-#include "RESOURCE.H"
+#include "RESOURCE.h"
 
 namespace patchget
 {
 
-DownloadManager *TheDownloadManager = NULL;
+DownloadManager *TheDownloadManager = nullptr;
 
 DownloadManager::DownloadManager()
 {
@@ -67,15 +67,15 @@ DownloadManager::~DownloadManager()
 	}
 }
 
-void DownloadManager::init( void )
+void DownloadManager::init()
 {
 }
 
-void DownloadManager::reset( void )
+void DownloadManager::reset()
 {
 }
 
-HRESULT DownloadManager::update( void )
+HRESULT DownloadManager::update()
 {
 	return m_download->PumpMessages();
 }
@@ -99,7 +99,7 @@ void DownloadManager::queueFileForDownload( std::string server, std::string user
 	m_queuedDownloads.push_back(q);
 }
 
-HRESULT DownloadManager::downloadNextQueuedFile( void )
+HRESULT DownloadManager::downloadNextQueuedFile()
 {
 	QueuedDownload q;
 	std::list<QueuedDownload>::iterator it = m_queuedDownloads.begin();
@@ -117,7 +117,7 @@ HRESULT DownloadManager::downloadNextQueuedFile( void )
 	}
 }
 
-std::string DownloadManager::getLastLocalFile( void )
+std::string DownloadManager::getLastLocalFile()
 {
 	char buf[256] = "";
 	m_download->GetLastLocalFile(buf, 256);
@@ -153,27 +153,27 @@ HRESULT DownloadManager::OnError( int error )
 			break;
 	}
 	m_errorString = s;
-	DEBUG_LOG(("DownloadManager::OnError(): %s(%d)\n", s.c_str(), error));
+	DEBUG_LOG(("DownloadManager::OnError(): %s(%d)", s.c_str(), error));
 	return S_OK;
 }
 
 HRESULT DownloadManager::OnEnd()
 {
 	m_sawEnd = true;
-	DEBUG_LOG(("DownloadManager::OnEnd()\n"));
+	DEBUG_LOG(("DownloadManager::OnEnd()"));
 	return S_OK;
 }
 
 HRESULT DownloadManager::OnQueryResume()
 {
-	DEBUG_LOG(("DownloadManager::OnQueryResume()\n"));
+	DEBUG_LOG(("DownloadManager::OnQueryResume()"));
 	//return DOWNLOADEVENT_DONOTRESUME;
 	return DOWNLOADEVENT_RESUME;
 }
 
 HRESULT DownloadManager::OnProgressUpdate( int bytesread, int totalsize, int timetaken, int timeleft )
 {
-	DEBUG_LOG(("DownloadManager::OnProgressUpdate(): %d/%d %d/%d\n", bytesread, totalsize, timetaken, timeleft));
+	DEBUG_LOG(("DownloadManager::OnProgressUpdate(): %d/%d %d/%d", bytesread, totalsize, timetaken, timeleft));
 	return S_OK;
 }
 
@@ -208,7 +208,7 @@ HRESULT DownloadManager::OnStatusUpdate( int status )
 			break;
 	}
 	m_statusString = s;
-	DEBUG_LOG(("DownloadManager::OnStatusUpdate(): %s(%d)\n", s.c_str(), status));
+	DEBUG_LOG(("DownloadManager::OnStatusUpdate(): %s(%d)", s.c_str(), status));
 	return S_OK;
 }
 

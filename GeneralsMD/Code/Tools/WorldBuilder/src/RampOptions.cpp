@@ -16,7 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// FILE: RampOptions.cpp 
+// FILE: RampOptions.cpp
 /*---------------------------------------------------------------------------*/
 /* EA Pacific                                                                */
 /* Confidential Information	                                                 */
@@ -49,7 +49,7 @@ RampOptions::RampOptions(CWnd* pParent) : COptionsPanel(RampOptions::IDD, pParen
 
 RampOptions::~RampOptions()
 {
-	TheRampOptions = NULL;
+	TheRampOptions = nullptr;
 }
 
 Bool RampOptions::shouldApplyTheRamp()
@@ -100,7 +100,7 @@ void RampOptions::OnToggleMirrorXY()
 	RampTool::toggleMirrorXY();
 }
 
-extern RampOptions* TheRampOptions = NULL;
+RampOptions* TheRampOptions = NULL;
 
 BEGIN_MESSAGE_MAP(RampOptions, COptionsPanel)
 	ON_BN_CLICKED(IDC_RO_APPLY, OnApply)

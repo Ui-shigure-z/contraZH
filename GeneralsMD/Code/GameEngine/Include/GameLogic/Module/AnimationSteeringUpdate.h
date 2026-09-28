@@ -29,9 +29,6 @@
 
 #pragma once
 
-#ifndef __ANIMATION_STEERING_UPDATE_H
-#define __ANIMATION_STEERING_UPDATE_H
-
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "GameLogic/Module/UpdateModule.h"
 
@@ -44,15 +41,17 @@ class AnimationSteeringUpdateModuleData : public UpdateModuleData
 
 public:
 
-	AnimationSteeringUpdateModuleData( void );
+	AnimationSteeringUpdateModuleData();
 
-	static void buildFieldParse(MultiIniFieldParse& p) 
+	static void buildFieldParse(MultiIniFieldParse& p)
 	{
     UpdateModuleData::buildFieldParse( p );
 
-		static const FieldParse dataFieldParse[] = 
+		static const FieldParse dataFieldParse[] =
 		{
-			{ "MinTransitionTime", INI::parseDurationUnsignedInt, NULL, offsetof( AnimationSteeringUpdateModuleData, m_transitionFrames ) },
+			{ "MinTransitionTime", INI::parseDurationUnsignedInt, nullptr, offsetof( AnimationSteeringUpdateModuleData, m_transitionFrames ) },
+			{ "MinAngle", INI::parseAngleReal, nullptr, offsetof( AnimationSteeringUpdateModuleData, m_minAngle ) },
+			{ "SkipCenteringAnims", INI::parseBool, nullptr, offsetof( AnimationSteeringUpdateModuleData, m_skipCenteringAnims ) },
 			{ 0, 0, 0, 0 }
 		};
     p.add(dataFieldParse);
@@ -60,6 +59,8 @@ public:
 	}
 
 	UnsignedInt m_transitionFrames;
+	Real m_minAngle;
+	Bool m_skipCenteringAnims;
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -76,12 +77,10 @@ public:
 	AnimationSteeringUpdate( Thing *thing, const ModuleData* moduleData );
 	// virtual destructor prototype defined by MemoryPoolObject
 
-	virtual UpdateSleepTime update( void ); ///< Here's the actual work of Upgrading
+	virtual UpdateSleepTime update() override; ///< Here's the actual work of Upgrading
 
 protected:
 
   ModelConditionFlagType m_currentTurnAnim;
 	UnsignedInt m_nextTransitionFrame;
 };
-
-#endif  // end __ANIMATION_STEERING_UPDATE_H

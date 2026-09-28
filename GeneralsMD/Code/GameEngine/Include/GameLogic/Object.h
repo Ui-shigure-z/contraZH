@@ -27,10 +27,10 @@
 // Author: Michael S. Booth, October 2000
 
 #pragma once
-#ifndef _OBJECT_H_
-#define _OBJECT_H_
 
 #include "Lib/BaseType.h"
+#include "Common/STLTypedefs.h"
+#include "WWLib/ref_ptr.h"
 
 #include "Common/Geometry.h"
 #include "Common/Snapshot.h"
@@ -98,6 +98,7 @@ class UpdateModuleInterface;
 class UpgradeModule;
 class UpgradeModuleInterface;
 class UpgradeTemplate;
+class BuffTemplate;
 
 class ObjectHeldHelper;
 class ObjectDisabledHelper;
@@ -105,7 +106,11 @@ class ObjectSMCHelper;
 class ObjectRepulsorHelper;
 class StatusDamageHelper;
 class SubdualDamageHelper;
+class ChronoDamageHelper;
+class JammingDamageHelper;
+class FrozenDamageHelper;
 class TempWeaponBonusHelper;
+class BuffEffectHelper;
 class ObjectWeaponStatusHelper;
 class ObjectDefectionHelper;
 
@@ -121,12 +126,13 @@ enum ArmorSetType CPP_11(: Int);
 enum WeaponStatus CPP_11(: Int);
 enum RadarPriorityType CPP_11(: Int);
 enum CanAttackResult CPP_11(: Int);
-
-// For ObjectStatusTypes
-#include "Common/ObjectStatusTypes.h"
+// enum TintStatus CPP_11(: Int);
 
 // For ObjectScriptStatusBit
 #include "GameLogic/ObjectScriptStatusBits.h"
+
+// For TintStatus
+#include "GameClient/TintStatus.h"
 
 //-----------------------------------------------------------------------------
 //           Type Defines
@@ -140,7 +146,7 @@ struct TTriggerInfo
 	Byte									isInside;	///< True if the object is inside this trigger area this frame.
 	Byte									padding;	///< unused.
 
-	TTriggerInfo() : entered(false), exited(false), isInside(false), padding(false), pTrigger(NULL) { }
+	TTriggerInfo() : entered(false), exited(false), isInside(false), padding(false), pTrigger(nullptr) { }
 
 };
 
@@ -149,8 +155,8 @@ struct TTriggerInfo
 
 enum CrushSquishTestType CPP_11(: Int)
 {
-	TEST_CRUSH_ONLY, 
-	TEST_SQUISH_ONLY, 
+	TEST_CRUSH_ONLY,
+	TEST_SQUISH_ONLY,
 	TEST_CRUSH_OR_SQUISH
 };
 
@@ -163,9 +169,7 @@ enum CrushSquishTestType CPP_11(: Int)
 class Object : public Thing, public Snapshot
 {
 
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(Object, "ObjectPool" )		
-	/// destructor is non-public in order to require the use of TheGameLogic->destroyObject()
-	MEMORY_POOL_DELETEINSTANCE_VISIBILITY(protected)
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(Object, "ObjectPool" )
 
 public:
 
@@ -178,6 +182,10 @@ public:
 
 	Object* getNextObject() { return m_next; }
 	const Object* getNextObject() const { return m_next; }
+	Object* getPrevObject() { return m_prev; }
+	const Object* getPrevObject() const { return m_prev; }
+	void friend_setNextObject(Object* obj) { m_next = obj; }
+	void friend_setPrevObject(Object* obj) { m_prev = obj; }
 
 	void updateObjValuesFromMapProperties(Dict* properties);			///< Brings in properties set in the editor.
 
@@ -193,16 +201,16 @@ public:
 	void setBuilder( const Object *obj );
 
 	void enterGroup( AIGroup *group );							///< become a member of the AIGroup
-	void leaveGroup( void );												///< leave our current AIGroup
-	AIGroup *getGroup(void);
+	void leaveGroup();												///< leave our current AIGroup
+	AIGroup *getGroup();
 
 	// physical properties
 	Bool isMobile() const;																	///< returns true if object is currently able to move
 	Bool isAbleToAttack() const;														///< returns true if object currently has some kind of attack capability
 
 	void maskObject( Bool mask );				///< mask/unmask object
-	
-	/** 
+
+	/**
 		Booby traps are set off by many random actions, so those actions are responsible for calling this.
 		Return value is if a booby trap was set off, so caller can react.
 		Those actions are: planting any type of bomb, entering, starting to capture, dying.
@@ -212,7 +220,7 @@ public:
 	// cannot set velocity, since this is calculated from position every frame
 	Bool isDestroyed() const { return m_status.test( OBJECT_STATUS_DESTROYED ); }		///< Returns TRUE if object has been destroyed
 	Bool isAirborneTarget() const { return m_status.test( OBJECT_STATUS_AIRBORNE_TARGET ); }	///< Our locomotor will control marking us as a valid target for anti air weapons or not
-	Bool isUsingAirborneLocomotor( void ) const;										///< returns true if the current locomotor is an airborne one
+	Bool isUsingAirborneLocomotor() const;										///< returns true if the current locomotor is an airborne one
 
 	/// central place for us to put any additional capture logic
 	void onCapture( Player *oldOwner, Player *newOwner );
@@ -224,20 +232,27 @@ public:
 	void attemptDamage( DamageInfo *damageInfo );			///< damage object as specified by the info
 	void attemptHealing(Real amount, const Object* source);		///< heal object as specified by the info
 	Bool attemptHealingFromSoleBenefactor ( Real amount, const Object* source, UnsignedInt duration );///< for the non-stacking healers like ambulance and propaganda
-	ObjectID getSoleHealingBenefactor( void ) const;
+	ObjectID getSoleHealingBenefactor() const;
 
 	Real estimateDamage( DamageInfoInput& damageInfo ) const;
 	void kill( DamageType damageType = DAMAGE_UNRESISTABLE, DeathType deathType = DEATH_NORMAL );	///< kill the object with an optional type of damage and death.
 	void healCompletely();														///< Restore max health to this Object
-	void notifySubdualDamage( Real amount );///< At this level, we just pass this on to our helper and do a special tint
+	void notifySubdualDamage( Real amount );
+	void notifyChronoDamage( Real amount );
+	void notifyJammingDamage( Real amount );
+	void notifyFrozenDamage( Real amount );
 	void doStatusDamage( ObjectStatusTypes status, Real duration );///< At this level, we just pass this on to our helper
-	void doTempWeaponBonus( WeaponBonusConditionType status, UnsignedInt duration );///< At this level, we just pass this on to our helper
+	void doTempWeaponBonus( WeaponBonusConditionType status, UnsignedInt duration, TintStatus tintStatus = TINT_STATUS_INVALID );///< At this level, we just pass this on to our helper
+	void applyBuff(const BuffTemplate* buffTemp, UnsignedInt duration, Object* sourceObj);
 
-	void scoreTheKill( const Object *victim );						///< I just killed this object.  
+	void scoreTheKill( const Object *victim, const DamageInfo *damageInfo = nullptr );						///< I just killed this object.
 	void onVeterancyLevelChanged( VeterancyLevel oldLevel, VeterancyLevel newLevel, Bool provideFeedback = TRUE );	///< I just achieved this level right this moment
+	void createVeterancyLevelFX(VeterancyLevel oldLevel, VeterancyLevel newLevel);
 	ExperienceTracker* getExperienceTracker() {return m_experienceTracker;}
 	const ExperienceTracker* getExperienceTracker() const {return m_experienceTracker;}
 	VeterancyLevel getVeterancyLevel() const;
+	VeterancyLevel getMaxVeterancyLevel() const;																			///< highest veterancy level this object may reach (template default, overridable)
+	void setMaxVeterancyLevel( VeterancyLevel maxLevel, Bool provideFeedback = TRUE );	///< override the veterancy cap (e.g. from an upgrade)
 
 	inline const AsciiString& getName() const { return m_name; }
 	inline void setName( const AsciiString& newName ) { m_name = newName; }
@@ -259,10 +274,13 @@ public:
 	void setCustomIndicatorColor(Color c);
 	void removeCustomIndicatorColor();
 
+	Bool isLogicallyVisible() const; ///< Returns whether the object is logically visible to the player, irrespective of shroud.
+
 	Bool isLocallyControlled() const;
+	Bool isLocallyViewed() const;
 	Bool isNeutralControlled() const;
-	
-	Bool getIsUndetectedDefector(void) const { return BitIsSet(m_privateStatus, UNDETECTED_DEFECTOR); }
+
+	Bool getIsUndetectedDefector() const { return BitIsSet(m_privateStatus, UNDETECTED_DEFECTOR); }
 	void friend_setUndetectedDefector(Bool status);
 
 	inline Bool isOffMap() const { return BitIsSet(m_privateStatus, OFF_MAP); }
@@ -275,11 +293,11 @@ public:
 	void setGeometryInfoZ( Real newZ );
 
 	void onCollide( Object *other, const Coord3D *loc, const Coord3D *normal );
-	
+
 	Real getCarrierDeckHeight() const;
 	// access to modules
 	//-----------------------------------------------------------------------------
-	
+
 	//This is a good creation inspector. There's been multitudes of issues with conflicts of
 	//Objects getting constructed causing crashes either because the modules aren't created
 	//yet, and there's stuff being done inside of setTeam() that cares.
@@ -312,15 +330,15 @@ public:
 
 	//
 	// Find us our production update interface if we have one.  This method exists simply
-	// because we do this in a lot of places in the code and I want a convenient way to get thsi (CBD)
+	// because we do this in a lot of places in the code and I want a convenient way to get this (CBD)
 	//
-	ProductionUpdateInterface* getProductionUpdateInterface( void );
+	ProductionUpdateInterface* getProductionUpdateInterface();
 
-	// 
+	//
 	// Find us our dock update interface if we have one.  Again, this method exists simple
 	// because we want to do this in a lot of places throughout the code
 	//
-	DockUpdateInterface *getDockUpdateInterface( void );
+	DockUpdateInterface *getDockUpdateInterface();
 
 	// Ditto for special powers -- Kris
 	SpecialPowerModuleInterface* findSpecialPowerModuleInterface( SpecialPowerType type ) const;
@@ -338,13 +356,13 @@ public:
 	void setStatus( ObjectStatusMaskType objectStatus, Bool set = true );
 	inline void clearStatus( ObjectStatusMaskType objectStatus ) { setStatus( objectStatus, false ); }
 	void updateUpgradeModules();	///< We need to go through our Upgrade Modules and see which should be activated
-	UpgradeMaskType getObjectCompletedUpgradeMask() const { return m_objectUpgradesCompleted; } ///< Upgrades I complete locally
+	const UpgradeMaskType& getObjectCompletedUpgradeMask() const { return m_objectUpgradesCompleted; } ///< Upgrades I complete locally
 
 	//This function sucks.
-	//It was added for objects that can disguise as other objects and contain upgraded subobject overrides. 
+	//It was added for objects that can disguise as other objects and contain upgraded subobject overrides.
 	//A concrete example is the bomb truck. Different payloads are displayed based on which upgrades have been
 	//made. When the bomb truck disguises as something else, these subobjects are lost because the vector is
-	//stored in W3DDrawModule. When we revert back to the original bomb truck, we call this function to 
+	//stored in W3DDrawModule. When we revert back to the original bomb truck, we call this function to
 	//recalculate those upgraded subobjects.
 	void forceRefreshSubObjectUpgradeStatus();
 
@@ -354,20 +372,20 @@ public:
 	inline void clearScriptStatus( ObjectScriptStatusBit bit ) { setScriptStatus(bit, false); }
 
 	// Selectable is individually controlled on an object by object basis for design now.
-	// It defaults to the thingTemplate->isKindof(KINDOF_SELECTABLE), however, it can be overridden on an 
-	// object by object basis.  Finally, it can be temporarily overriden by the OBJECT_STATUS_UNSELECTABLE. 
+	// It defaults to the thingTemplate->isKindof(KINDOF_SELECTABLE), however, it can be overridden on an
+	// object by object basis.  Finally, it can be temporarily overridden by the OBJECT_STATUS_UNSELECTABLE.
 	// jba.
 	void setSelectable(Bool selectable);
 	Bool isSelectable() const;
-	
+
 	Bool isMassSelectable() const;
 
 	// User specified formation.
 	void setFormationID(enum FormationID id) {m_formationID = id;}
-	enum FormationID getFormationID(void) const {return m_formationID;}
+	enum FormationID getFormationID() const {return m_formationID;}
 	void setFormationOffset(const Coord2D& offset) {m_formationOffset = offset;}
 	void getFormationOffset(Coord2D* offset) const {*offset = m_formationOffset;}
-		
+
 
 //THIS FUNCTION BELONGS AT THE OBJECT LEVEL BECAUSE THERE IS AT LEAST ONE SPECIAL UNIT
 //(ANGRY MOB) WHICH NEEDS LOGIC-SIDE POSITION CALC'S...
@@ -381,8 +399,8 @@ public:
 
 	void markSingleUseCommandUsed() { m_singleUseCommandUsed = true; }
 	Bool hasSingleUseCommandBeenUsed() const { return m_singleUseCommandUsed; }
-	
-	/// returns true iff the object can run over the other object. 
+
+	/// returns true iff the object can run over the other object.
 	Bool canCrushOrSquish(Object *otherObj, CrushSquishTestType testType = TEST_CRUSH_OR_SQUISH) const;
 	UnsignedByte getCrusherLevel() const;
 	UnsignedByte getCrushableLevel() const;
@@ -411,14 +429,15 @@ public:
 	Bool isInList(Object **pListHead) const;
 
 	// this is intended for use ONLY by GameLogic.
-	void friend_deleteInstance() { deleteInstance(); }
+	static void friend_deleteInstance(Object* object) { deleteInstance(object); }
 
 	/// cache the partition module (should be called only by PartitionData)
 	void friend_setPartitionData(PartitionData *pd) { m_partitionData = pd; }
 	PartitionData *friend_getPartitionData() const { return m_partitionData; }
 	const PartitionData *friend_getConstPartitionData() const { return m_partitionData; }
+	Bool hasGhostObject() const; ///< This object has a ghost object. This does not imply that a ghost snapshot is taken or active.
 
-	void onPartitionCellChange();///< We have moved a 'significant' amount, so do maintenence that can be considered 'cell-based'
+	void onPartitionCellChange();///< We have moved a 'significant' amount, so do maintenance that can be considered 'cell-based'
 	void handlePartitionCellMaintenance();					///< Undo and redo all shroud actions.  Call when something has changed, like position or ownership or Death
 
 	Real getVisionRange() const;				///< How far can you see?  This is dynamic so it is in Object.
@@ -430,8 +449,8 @@ public:
 	void setVisionSpied(Bool setting, Int byWhom);///< Change who is looking through our eyes
 
 	// Both of these calls are intended to only be used by TerrainLogic, specifically setActiveBoundary()
-	void friend_prepareForMapBoundaryAdjust(void);
-	void friend_notifyOfNewMapBoundary(void);
+	void friend_prepareForMapBoundaryAdjust();
+	void friend_notifyOfNewMapBoundary();
 
 	// data for the radar
 	void friend_setRadarData( RadarObject *rd ) { m_radarData = rd; }
@@ -442,24 +461,31 @@ public:
 	inline Object *getContainedBy() { return m_containedBy; }
 	inline const Object *getContainedBy() const { return m_containedBy; }
 	inline UnsignedInt getContainedByFrame() const { return m_containedByFrame; }
-	inline Bool isContained() const { return m_containedBy != NULL; }
+	inline Bool isContained() const { return m_containedBy != nullptr; }
 	void onContainedBy( Object *containedBy );
 	void onRemovedFrom( Object *removedFrom );
 	Int getTransportSlotCount() const;
-	void friend_setContainedBy( Object *containedBy ) { m_containedBy = containedBy; }
+	void friend_setContainedBy( Object *containedBy );
+	const Object* getEnclosingContainedBy() const; ///< Find the first enclosing container in the containment chain.
+	const Object* getOuterObject() const; ///< Get the top-level object
+
+#if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
+	void friend_setContainedByID(ObjectID id) { m_containedByID = id; }
+#endif
 
 	// Special Powers -------------------------------------------------------------------------------
 	SpecialPowerModuleInterface *getSpecialPowerModule( const SpecialPowerTemplate *specialPowerTemplate ) const;
 	void doSpecialPower( const SpecialPowerTemplate *specialPowerTemplate, UnsignedInt commandOptions, Bool forced = false );	///< execute power
 	void doSpecialPowerAtObject( const SpecialPowerTemplate *specialPowerTemplate, Object *obj, UnsignedInt commandOptions, Bool forced = false );	///< execute power
 	void doSpecialPowerAtLocation( const SpecialPowerTemplate *specialPowerTemplate, const Coord3D *loc, Real angle, UnsignedInt commandOptions, Bool forced = false );	///< execute power
+	void doSpecialPowerAtMultipleLocations( const SpecialPowerTemplate *specialPowerTemplate, const std::vector<Coord3D>& locs, UnsignedInt commandOptions, Bool forced = false );	///< execute N-point power (chronosphere = source + destination)
 	void doSpecialPowerUsingWaypoints( const SpecialPowerTemplate *specialPowerTemplate, const Waypoint *way, UnsignedInt commandOptions, Bool forced = false );	///< execute power
 
 	void doCommandButton( const CommandButton *commandButton, CommandSourceType cmdSource );
 	void doCommandButtonAtObject( const CommandButton *commandButton, Object *obj, CommandSourceType cmdSource );
 	void doCommandButtonAtPosition( const CommandButton *commandButton, const Coord3D *pos, CommandSourceType cmdSource );
 	void doCommandButtonUsingWaypoints( const CommandButton *commandButton, const Waypoint *way, CommandSourceType cmdSource );
-	
+
 	/**
 		 For Object specific dynamic command sets.  Different from the Science specific ones handled in ThingTemplate
 	*/
@@ -467,12 +493,13 @@ public:
 	void setCommandSetStringOverride( AsciiString newCommandSetString ) { m_commandSetStringOverride = newCommandSetString; }
 
 	/// People are faking their commandsets, and, Surprise!, they are authoritative.  Challenge everything.
-	Bool canProduceUpgrade( const UpgradeTemplate *upgrade ); 
+	Bool canProduceUpgrade( const UpgradeTemplate *upgrade );
 
 
 	// Weapons & Damage -------------------------------------------------------------------------------------------------
 	void reloadAllAmmo(Bool now);
 	Bool isOutOfAmmo() const;
+	Bool isFullAmmo() const; //added by OFS
 	Bool hasAnyWeapon() const;
 	Bool hasAnyDamageWeapon() const; //Kris: a should be used for real weapons that directly inflict damage... not deploy, hack, etc.
 	Bool hasWeaponToDealDamageType(DamageType typeToDeal) const;
@@ -481,32 +508,43 @@ public:
 
 	Weapon* getWeaponInWeaponSlot(WeaponSlotType wslot) const { return m_weaponSet.getWeaponInWeaponSlot(wslot); }
 	UnsignedInt getWeaponInWeaponSlotCommandSourceMask( WeaponSlotType wSlot ) const { return m_weaponSet.getNthCommandSourceMask( wSlot ); }
+	Bool getWeaponInWeaponSlotSyncedToSlot(WeaponSlotType thisSlot, WeaponSlotType otherSlot) const;
+	Bool canWeaponSlotAttackGround(WeaponSlotType wslot, CommandSourceType cmdSource) const { return m_weaponSet.canSlotAttackGround(wslot, cmdSource); }
 
 	// see if this current weapon set's weapons has shared reload times
-	const Bool isReloadTimeShared() const { return m_weaponSet.isSharedReloadTime(); }
+	Bool isReloadTimeShared() const { return m_weaponSet.isSharedReloadTime(); }
+	Bool isClipShared() const { return m_weaponSet.isSharedClip(); }
 
-	Weapon* getCurrentWeapon(WeaponSlotType* wslot = NULL);
-	const Weapon* getCurrentWeapon(WeaponSlotType* wslot = NULL) const;
+	Weapon* getCurrentWeapon(WeaponSlotType* wslot = nullptr);
+	const Weapon* getCurrentWeapon(WeaponSlotType* wslot = nullptr) const;
+	Bool isFiringWeaponSlot( WeaponSlotType wslot ) const;	///< is this object attacking with the weapon in this slot?
+	void stopFiringWeaponSlot( WeaponSlotType wslot );		///< end an attack being made with the weapon in this slot
 	void setFiringConditionForCurrentWeapon() const;
-	void adjustModelConditionForWeaponStatus();	///< Check to see if I should change my model condition. 
+	void setFiringConditionForWeaponSlot( WeaponSlotType wslot ) const;
+	void adjustModelConditionForWeaponStatus();	///< Check to see if I should change my model condition.
 	void fireCurrentWeapon(Object *target);
 	void fireCurrentWeapon(const Coord3D* pos);
 	void preFireCurrentWeapon( const Object *victim );
+	void preFireCurrentWeapon(const Coord3D* pos);
 	UnsignedInt getLastShotFiredFrame() const;					///< Get the frame a shot was last fired on
 	ObjectID getLastVictimID() const;						///< Get the last victim we shot at
 	Weapon* findWaypointFollowingCapableWeapon();
 	Bool getAmmoPipShowingInfo(Int& numTotal, Int& numFull) const;
 
+	// Progress bar for various things
+	Bool getProgressBarShowingInfo(bool selected, Real& progress, Int& type, RGBAColorInt& color, RGBAColorInt& colorBG) const;
+
   void notifyFiringTrackerShotFired( const Weapon* weaponFired, ObjectID victimID ) ;
+	FiringTracker* getFiringTracker() const { return m_firingTracker; }	///< the helper that watches this object's shots
 
   /**
 		Determines if the unit has any weapon that could conceivably
-		harm the victim. this does not take range, ammo, etc. into 
+		harm the victim. this does not take range, ammo, etc. into
 		account, but immutable weapon properties, such as "can you
 		target airborne victims".
 	*/
 	/*
-		NOTE: getAbleToAttackSpecificObject NO LONGER internally calls isAbleToAttack(), 
+		NOTE: getAbleToAttackSpecificObject NO LONGER internally calls isAbleToAttack(),
 		since that isn't an incredibly fast call, and this is called repeatedly in some inner loops
 		where we already know that isAbleToAttack() == true. so you should always
 		call isAbleToAttack prior to calling this! (srj)
@@ -559,15 +597,29 @@ public:
 
 	void setWeaponBonusCondition(WeaponBonusConditionType wst);
 	void clearWeaponBonusCondition(WeaponBonusConditionType wst);
-	
+
   // note, the !=0 at the end is important, to convert this into a boolean type! (srj)
-	Bool testWeaponBonusCondition(WeaponBonusConditionType wst) const { return (m_weaponBonusCondition & (1 << wst)) != 0; }
+	//Bool testWeaponBonusCondition(WeaponBonusConditionType wst) const { return (m_weaponBonusCondition & (1 << wst)) != 0; }
+	Bool testWeaponBonusCondition(WeaponBonusConditionType wst) const { return m_weaponBonusCondition.test(wst); }
+
 	inline WeaponBonusConditionFlags getWeaponBonusCondition() const { return m_weaponBonusCondition; }
+	inline void setWeaponBonusConditionFlags(WeaponBonusConditionFlags flags) { m_weaponBonusCondition = flags; }
+
+	void applyWeaponBonusConditionFlags(WeaponBonusConditionFlags flags);
+	void removeWeaponBonusConditionFlags(WeaponBonusConditionFlags flags);
+
+	// Weapon Bonus Against,  i.e. like Target Designator logic
+	inline void setWeaponBonusConditionAgainst(WeaponBonusConditionType wst) { m_weaponBonusConditionAgainst.set(wst); }
+	inline void clearWeaponBonusConditionAgainst(WeaponBonusConditionType wst) { m_weaponBonusConditionAgainst.set(wst, 0); }
+
+	Bool testWeaponBonusConditionAgainst(WeaponBonusConditionType wst) const { return m_weaponBonusConditionAgainst.test(wst); }
+	inline WeaponBonusConditionFlags getWeaponBonusConditionAgainst() const { return m_weaponBonusConditionAgainst; }
+	inline void setWeaponBonusConditionFlagsAgainst(WeaponBonusConditionFlags flags) { m_weaponBonusConditionAgainst = flags; }
 
 	Bool getSingleLogicalBonePosition(const char* boneName, Coord3D* position, Matrix3D* transform) const;
 	Bool getSingleLogicalBonePositionOnTurret(WhichTurretType whichTurret, const char* boneName, Coord3D* position, Matrix3D* transform) const;
 	Int getMultiLogicalBonePosition(const char* boneNamePrefix, Int maxBones, Coord3D* positions, Matrix3D* transforms, Bool convertToWorld = TRUE ) const;
-	
+
 	// Entered & exited.
 	Bool didEnter(const PolygonTrigger *pTrigger) const;
 	Bool didExit(const PolygonTrigger *pTrigger) const;
@@ -587,44 +639,47 @@ public:
 	void setDisabledUntil( DisabledType type, UnsignedInt frame );
 	Bool isDisabledByType( DisabledType type ) const { return TEST_DISABLEDMASK( m_disabledMask, type ); }
 
+	/// mid-teleport, either moving by teleport or recovering from a teleport ability
+	Bool isTeleporting() const { return isDisabledByType( DISABLED_TELEPORT ) || isDisabledByType( DISABLED_TELEPORT_RECOVER ); }
+
 	UnsignedInt getDisabledUntil( DisabledType type = DISABLED_ANY ) const;
 
-	void pauseAllSpecialPowers( const Bool disabling ) const;	
-	
+	void pauseAllSpecialPowers( const Bool disabling ) const;
+
 	//Checks any timers and clears disabled statii that have expired.
 	void checkDisabledStatus();
-	
+
 	//When an AIAttackState is over, it needs to clean up any weapons that might be in leech range mode
 	//or else those weapons will have unlimited range!
 	void clearLeechRangeModeForAllWeapons();
-	
+
 	Int getNumConsecutiveShotsFiredAtTarget( const Object *victim) const;
 
 	void setHealthBoxOffset( const Coord3D& offset ) { m_healthBoxOffset = offset; } ///< for special amorphous like angry mob
 
 	void defect( Team *newTeam, UnsignedInt detectionTime );
 	void goInvulnerable( UnsignedInt time );
-	
+
 	// This is public, since there is no Thing level master setting of Turret stuff.  It is all done in a sleepy hamlet
 	// of a module called TurretAI.
 	virtual void reactToTurretChange( WhichTurretType turret, Real oldRotation, Real oldPitch );
 
 	// Convenience function for checking certain kindof bits
-	Bool isStructure(void) const;
-	
-	// Convenience function for checking certain kindof bits
-	Bool isFactionStructure(void) const;
+	Bool isStructure() const;
 
 	// Convenience function for checking certain kindof bits
-	Bool isNonFactionStructure(void) const;
+	Bool isFactionStructure() const;
 
-	Bool isHero(void) const;
+	// Convenience function for checking certain kindof bits
+	Bool isNonFactionStructure() const;
+
+	Bool isHero() const;
 
 	Bool getReceivingDifficultyBonus() const { return m_isReceivingDifficultyBonus; }
 	void setReceivingDifficultyBonus(Bool receive);
 
-	inline UnsignedInt getSafeOcclusionFrame(void) { return m_safeOcclusionFrame; }	//< this is an object specific frame at which it's safe to enable building occlusion.
-	inline void	setSafeOcclusionFrame(UnsignedInt frame) { m_safeOcclusionFrame = frame;} 
+	inline UnsignedInt getSafeOcclusionFrame() { return m_safeOcclusionFrame; }	//< this is an object specific frame at which it's safe to enable building occlusion.
+	inline void	setSafeOcclusionFrame(UnsignedInt frame) { m_safeOcclusionFrame = frame;}
 
 	// All of our cheating for radars and power go here.
 	// This is the function that we now call in becomingTeamMember to adjust our power.
@@ -632,6 +687,11 @@ public:
 	// player. These are friend_s for player.
 	void friend_adjustPowerForPlayer( Bool incoming );
 
+	// Get position where to enter this object
+	Coord3D getEnterPosition(ObjectID enteringObject) const;
+
+	// When moving below a bridge, how high does it need to be, simplified to 0-15, where 1 is 10.0 height
+	Short getRequiredBridgeHeight() const;
 protected:
 
 	void setOrRestoreTeam( Team* team, Bool restoring );
@@ -641,9 +701,9 @@ protected:
 
 
 	// snapshot methods
-	void crc( Xfer *xfer );
-	void xfer( Xfer *xfer );
-	void loadPostProcess();
+	virtual void crc( Xfer *xfer ) override;
+	virtual void xfer( Xfer *xfer ) override;
+	virtual void loadPostProcess() override;
 
 	void handleShroud();
 	void handleValueMap();
@@ -657,14 +717,14 @@ protected:
 	Bool didEnterOrExit() const;
 
 	void setID( ObjectID id );
-	virtual Object *asObjectMeth() { return this; }
-	virtual const Object *asObjectMeth() const { return this; }
+	virtual Object *asObjectMeth() override { return this; }
+	virtual const Object *asObjectMeth() const override { return this; }
 
-	virtual Real calculateHeightAboveTerrain(void) const;		// Calculates the actual height above terrain.  Doesn't use cache.
+	virtual Real calculateHeightAboveTerrain() const override;		// Calculates the actual height above terrain.  Doesn't use cache.
 
-	void updateTriggerAreaFlags(void);
-	void setTriggerAreaFlagsForChangeInPosition(void);
-	
+	void updateTriggerAreaFlags();
+	void setTriggerAreaFlagsForChangeInPosition();
+
 	/// Look and unlook are protected.  They should be called from Object::reasonToLook.  Like Capture, or death.
 	void look();
 	void unlook();
@@ -678,7 +738,7 @@ protected:
 	void addThreat();
 	void removeThreat();
 
-	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle);
+	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override;
 
 private:
 
@@ -704,17 +764,21 @@ private:
 
 	GeometryInfo	m_geometryInfo;
 
-	AIGroup*			m_group;								///< if non-NULL, we are part of this group of agents
+#if RETAIL_COMPATIBLE_AIGROUP
+	AIGroup*			m_group;								///< if non-null, we are part of this group of agents
+#else
+	RefCountPtr<AIGroup> m_group; ///< if non-null, we are part of this group of agents
+#endif
 
 	// These will last for my lifetime.  I will reuse them and reset them.  The truly dynamic ones are in PartitionManager
 	SightingInfo		*m_partitionLastLook;								///< Where and for whom I last looked, so I can undo its effects when I stop
-	SightingInfo		*m_partitionRevealAllLastLook;			///< And a seperate look to reveal at a different range if so marked
+	SightingInfo		*m_partitionRevealAllLastLook;			///< And a separate look to reveal at a different range if so marked
 	Int							m_visionSpiedBy[MAX_PLAYER_COUNT];  ///< Reference count of having units spied on by players.
 	PlayerMaskType	m_visionSpiedMask;									///< For quick lookup and edge triggered maintenance
 
 	SightingInfo	*m_partitionLastShroud;	///< Where and for whom I last shrouded, so I can undo its effects when I stop
-	SightingInfo	*m_partitionLastThreat;	///< Where and for whom I last delt with threat, so I can undo its effects when I stop
-	SightingInfo	*m_partitionLastValue;	///< Where and for whom I last delt with value, so I can undo its effects when I stop
+	SightingInfo	*m_partitionLastThreat;	///< Where and for whom I last dealt with threat, so I can undo its effects when I stop
+	SightingInfo	*m_partitionLastValue;	///< Where and for whom I last dealt with value, so I can undo its effects when I stop
 
 	Real					m_visionRange;										///< looking range
 	Real					m_shroudClearingRange;						///< looking range for shroud ONLY
@@ -725,14 +789,18 @@ private:
 
 	UnsignedInt		m_smcUntil;
 
-	enum { NUM_SLEEP_HELPERS = 8 };
+	enum { NUM_SLEEP_HELPERS = 12 };
 	ObjectRepulsorHelper*					m_repulsorHelper;
 	ObjectSMCHelper*							m_smcHelper;
 	ObjectWeaponStatusHelper*			m_wsHelper;
 	ObjectDefectionHelper*				m_defectionHelper;
 	StatusDamageHelper*						m_statusDamageHelper;
 	SubdualDamageHelper*					m_subdualDamageHelper;
+	ChronoDamageHelper*					m_chronoDamageHelper;
+	JammingDamageHelper*					m_jammingDamageHelper;
+	FrozenDamageHelper*						m_frozenDamageHelper;
 	TempWeaponBonusHelper*				m_tempWeaponBonusHelper;
+	BuffEffectHelper*				m_buffEffectHelper;
 	FiringTracker*								m_firingTracker;	///< Tracker is really a "helper" and is included NUM_SLEEP_HELPERS
 
 	// modules
@@ -752,7 +820,7 @@ private:
 
 	Object*												m_containedBy;					/**< an object can only be contained by at most one
 																	other object, this is that object (if present) */
-	ObjectID											m_xferContainedByID;	///< xfer uses IDs to store pointers and looks them up after
+	ObjectID											m_containedByID;	///< ID of the object we're contained by; only to be used when m_containedBy cannot be used
 	UnsignedInt										m_containedByFrame;	///< frame we were contained by m_containedBy
 
 	Real													m_constructionPercent;			///< for objects being built ... this is the amount completed (0.0 to 100.0)
@@ -763,7 +831,7 @@ private:
 	Color													m_indicatorColor;			///< if nonzero, use this instead of controlling player's color
 
 	Coord3D												m_healthBoxOffset; ///< generally zero, except for special amorphous ones like angry mob
-	
+
 	/// @todo srj -- convert to non-DLINK list, after it is once again possible to test the change
 	MAKE_DLINK(Object, TeamMemberList)			///< other Things that are members of the same team
 
@@ -772,6 +840,8 @@ private:
 	WeaponSetFlags								m_curWeaponSetFlags;
 	WeaponBonusConditionFlags			m_weaponBonusCondition;
 	Byte													m_lastWeaponCondition[WEAPONSLOT_COUNT];
+
+	WeaponBonusConditionFlags			m_weaponBonusConditionAgainst;  ///< Weapon bonus granted when attacking this target;
 
 	SpecialPowerMaskType					m_specialPowerBits; ///< bits determining what kind of special abilities this object has access to.
 
@@ -785,7 +855,7 @@ private:
 	TTriggerInfo									m_triggerInfo[MAX_TRIGGER_AREA_INFOS];
 	UnsignedInt										m_enteredOrExitedFrame;
 	ICoord3D											m_iPos;
-	
+
 	PathfindLayerEnum							m_layer;							// Layer object is pathing on.
 	PathfindLayerEnum							m_destinationLayer;		// Layer of current path goal.
 
@@ -794,13 +864,13 @@ private:
 	Coord2D												m_formationOffset;
 
 	AsciiString										m_commandSetStringOverride;///< To allow specific object to switch command sets
-	
+
 	UnsignedInt										m_safeOcclusionFrame;	///<flag used by occlusion renderer so it knows when objects have exited their production building.
 
 	// --------- BYTE-SIZED THINGS GO HERE
 	Bool													m_isSelectable;
 	Bool													m_modulesReady;
-#if defined(_DEBUG) || defined(_INTERNAL)
+#if defined(RTS_DEBUG)
 	Bool													m_hasDiedAlready;
 #endif
 	UnsignedByte									m_scriptStatus;					///< status as set by scripting, corresponds to ORed ObjectScriptStatusBits
@@ -809,14 +879,15 @@ private:
 	Bool													m_singleUseCommandUsed;
 	Bool													m_isReceivingDifficultyBonus;
 
-};  // end class Object
+};
 
-#ifdef DEBUG_LOGGING
+// deleteInstance is not meant to be used with Object in order to require the use of TheGameLogic->destroyObject()
+void deleteInstance(Object* object) FUNCTION_DELETE;
+
 // describe an object as an AsciiString: e.g. "Object 102 (KillerBuggy) [GLARocketBuggy, owned by player 2 (GLAIntroPlayer)]"
-AsciiString DescribeObject(const Object *obj);
-#endif // DEBUG_LOGGING
+AsciiString DebugDescribeObject(const Object *obj);
 
-#if defined(_DEBUG) || defined(_INTERNAL)
+#if defined(RTS_DEBUG)
 	#define DEBUG_OBJECT_ID_EXISTS
 #else
 	#undef DEBUG_OBJECT_ID_EXISTS
@@ -825,5 +896,3 @@ AsciiString DescribeObject(const Object *obj);
 #ifdef DEBUG_OBJECT_ID_EXISTS
 extern ObjectID TheObjectIDToDebug;
 #endif
-
-#endif // _OBJECT_H_

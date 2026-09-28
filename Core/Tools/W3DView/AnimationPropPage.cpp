@@ -19,17 +19,17 @@
 // AnimationPropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
+#include "StdAfx.h"
+#include "W3DView.h"
 #include "AnimationPropPage.h"
-#include "RendObj.H"
-#include "AssetMgr.H"
-#include "Mesh.H"
-#include "W3DViewDoc.H"
-#include "Utils.H"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/mesh.h"
+#include "W3DViewDoc.h"
+#include "Utils.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -45,22 +45,20 @@ IMPLEMENT_DYNCREATE(CAnimationPropPage, CPropertyPage)
 //
 //  CAnimationPropPage
 //
-CAnimationPropPage::CAnimationPropPage (void)
+CAnimationPropPage::CAnimationPropPage ()
     : CPropertyPage(CAnimationPropPage::IDD)
 {
 	//{{AFX_DATA_INIT(CAnimationPropPage)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
 //
 //  CAnimationPropPage
 //
-CAnimationPropPage::~CAnimationPropPage (void)
+CAnimationPropPage::~CAnimationPropPage ()
 {
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -75,7 +73,6 @@ CAnimationPropPage::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CAnimationPropPage)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -89,7 +86,7 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CAnimationPropPage::OnInitDialog (void) 
+CAnimationPropPage::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CPropertyPage::OnInitDialog ();
@@ -99,15 +96,15 @@ CAnimationPropPage::OnInitDialog (void)
     if (pCDoc && pCDoc->GetCurrentAnimation ())
     {
         HAnimClass *pCAnimation = pCDoc->GetCurrentAnimation ();
-        
+
         // Set the description text at the top of the dialog
         CString stringTemp;
         stringTemp.Format (IDS_ANI_PROP_DESC, pCAnimation->Get_Name ());
         SetDlgItemText (IDC_DESCRIPTION, stringTemp);
-        
+
         // Fill in the number of frames
         SetDlgItemInt (IDC_FRAME_COUNT, pCAnimation->Get_Num_Frames ());
-        
+
         // Fill in the frame rate of the animation
         stringTemp.Format ("%.2f fps", pCAnimation->Get_Frame_Rate ());
         SetDlgItemText (IDC_FRAME_RATE, stringTemp);
@@ -120,6 +117,6 @@ CAnimationPropPage::OnInitDialog (void)
         SetDlgItemText (IDC_HIERARCHY_NAME, pCAnimation->Get_HName ());
 
     }
-	
+
 	return TRUE;
 }

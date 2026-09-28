@@ -24,12 +24,12 @@
 
 // FILE: InstantDeathBehavior.cpp ///////////////////////////////////////////////////////////////////////
 // Author:
-// Desc:  
+// Desc:
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
-#include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
+#include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 #define DEFINE_SLOWDEATHPHASE_NAMES
 
 #include "Common/Thing.h"
@@ -48,7 +48,6 @@
 #include "GameLogic/Object.h"
 #include "GameLogic/ObjectCreationList.h"
 #include "GameLogic/Weapon.h"
-#include "GameClient/Drawable.h"
 
 //-------------------------------------------------------------------------------------------------
 InstantDeathBehaviorModuleData::InstantDeathBehaviorModuleData()
@@ -63,7 +62,7 @@ InstantDeathBehaviorModuleData::InstantDeathBehaviorModuleData()
 static void parseFX( INI* ini, void *instance, void * /*store*/, const void* /*userData*/ )
 {
 	InstantDeathBehaviorModuleData* self = (InstantDeathBehaviorModuleData*)instance;
-	for (const char* token = ini->getNextToken(); token != NULL; token = ini->getNextTokenOrNull())
+	for (const char* token = ini->getNextToken(); token; token = ini->getNextTokenOrNull())
 	{
 		const FXList *fxl = TheFXListStore->findFXList((token));	// could be null! this is OK!
 		self->m_fx.push_back(fxl);
@@ -74,7 +73,7 @@ static void parseFX( INI* ini, void *instance, void * /*store*/, const void* /*u
 static void parseOCL( INI* ini, void *instance, void * /*store*/, const void* /*userData*/ )
 {
 	InstantDeathBehaviorModuleData* self = (InstantDeathBehaviorModuleData*)instance;
-	for (const char* token = ini->getNextToken(); token != NULL; token = ini->getNextTokenOrNull())
+	for (const char* token = ini->getNextToken(); token; token = ini->getNextTokenOrNull())
 	{
 		const ObjectCreationList *ocl = TheObjectCreationListStore->findObjectCreationList(token);	// could be null! this is OK!
 		self->m_ocls.push_back(ocl);
@@ -85,7 +84,7 @@ static void parseOCL( INI* ini, void *instance, void * /*store*/, const void* /*
 static void parseWeapon( INI* ini, void *instance, void * /*store*/, const void* /*userData*/ )
 {
 	InstantDeathBehaviorModuleData* self = (InstantDeathBehaviorModuleData*)instance;
-	for (const char* token = ini->getNextToken(); token != NULL; token = ini->getNextTokenOrNull())
+	for (const char* token = ini->getNextToken(); token; token = ini->getNextTokenOrNull())
 	{
 		const WeaponTemplate *wt = TheWeaponStore->findWeaponTemplate(token);	// could be null! this is OK!
 		self->m_weapons.push_back(wt);
@@ -93,16 +92,16 @@ static void parseWeapon( INI* ini, void *instance, void * /*store*/, const void*
 }
 
 //-------------------------------------------------------------------------------------------------
-/*static*/ void InstantDeathBehaviorModuleData::buildFieldParse(MultiIniFieldParse& p) 
+/*static*/ void InstantDeathBehaviorModuleData::buildFieldParse(MultiIniFieldParse& p)
 {
   DieModuleData::buildFieldParse(p);
 
-	static const FieldParse dataFieldParse[] = 
+	static const FieldParse dataFieldParse[] =
 	{
-		{ "FX",										parseFX,													NULL, 0 },
-		{ "OCL",									parseOCL,													NULL, 0 },
-		{ "Weapon",								parseWeapon,											NULL, 0 },
-		{ 0, 0, 0, 0 }
+		{ "FX",										parseFX,													nullptr, 0 },
+		{ "OCL",									parseOCL,													nullptr, 0 },
+		{ "Weapon",								parseWeapon,											nullptr, 0 },
+		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
 }
@@ -115,7 +114,7 @@ InstantDeathBehavior::InstantDeathBehavior( Thing *thing, const ModuleData* modu
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-InstantDeathBehavior::~InstantDeathBehavior( void )
+InstantDeathBehavior::~InstantDeathBehavior()
 {
 }
 
@@ -125,6 +124,7 @@ void InstantDeathBehavior::onDie( const DamageInfo *damageInfo )
 	if (!isDieApplicable(damageInfo))
 		return;
 
+#if RETAIL_COMPATIBLE_CRC
 	AIUpdateInterface* ai = getObject()->getAIUpdateInterface();
 	if (ai)
 	{
@@ -133,43 +133,64 @@ void InstantDeathBehavior::onDie( const DamageInfo *damageInfo )
 			return;
 		ai->markAsDead();
 	}
+#endif
 
 	const InstantDeathBehaviorModuleData* d = getInstantDeathBehaviorModuleData();
 
-	Int idx, listSize;
+	size_t idx, listSize;
 
 	listSize = d->m_fx.size();
 	if (listSize > 0)
 	{
-		idx = GameLogicRandomValue(0, listSize-1);
+		idx = (size_t)GameLogicRandomValue(0, listSize-1);
 		const FXListVec& v = d->m_fx;
 		DEBUG_ASSERTCRASH(idx>=0&&idx<v.size(),("bad idx"));
 		const FXList* fxl = v[idx];
-		FXList::doFXObj(fxl, getObject(), NULL);
+		FXList::doFXObj(fxl, getObject(), nullptr);
 	}
 
 	listSize = d->m_ocls.size();
 	if (listSize > 0)
 	{
-		idx = GameLogicRandomValue(0, listSize-1);
+		idx = (size_t)GameLogicRandomValue(0, listSize-1);
 		const OCLVec& v = d->m_ocls;
 		DEBUG_ASSERTCRASH(idx>=0&&idx<v.size(),("bad idx"));
 		const ObjectCreationList* ocl = v[idx];
-		ObjectCreationList::create(ocl, getObject(), NULL);
+		ObjectCreationList::create(ocl, getObject(), nullptr);
 	}
 
-	listSize = d->m_weapons.size();
-	if (listSize > 0)
+#if !RETAIL_COMPATIBLE_CRC
+	// TheSuperHackers @bugfix Stubbjax 23/07/2026 Prevent firing weapons when a scaffold is cancelled
+	// or destroyed. This logic matches the condition in the FireWeaponWhenDeadBehavior module.
+	if (!getObject()->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+#endif
 	{
-		idx = GameLogicRandomValue(0, listSize-1);
-		const WeaponTemplateVec& v = d->m_weapons;
-		DEBUG_ASSERTCRASH(idx>=0&&idx<v.size(),("bad idx"));
-		const WeaponTemplate* wt = v[idx];
-		if (wt)
+		listSize = d->m_weapons.size();
+		if (listSize > 0)
 		{
-			TheWeaponStore->createAndFireTempWeapon(wt, getObject(), getObject()->getPosition());
+			idx = (size_t)GameLogicRandomValue(0, listSize-1);
+			const WeaponTemplateVec& v = d->m_weapons;
+			DEBUG_ASSERTCRASH(idx>=0&&idx<v.size(),("bad idx"));
+			const WeaponTemplate* wt = v[idx];
+			if (wt)
+			{
+				TheWeaponStore->createAndFireTempWeapon(wt, getObject(), getObject()->getPosition());
+			}
 		}
 	}
+
+#if !RETAIL_COMPATIBLE_CRC
+	// TheSuperHackers @bugfix Stubbjax 21/07/2026 Allow multiple InstantDeathBehaviors to be processed.
+	// Multiple FXListDie, CreateObjectDie and FireWeaponWhenDeadBehavior modules are already supported.
+	AIUpdateInterface* ai = getObject()->getAIUpdateInterface();
+	if (ai)
+	{
+		// has another AI already handled us. (hopefully another InstantDeathBehavior)
+		if (ai->isAiInDeadState())
+			return;
+		ai->markAsDead();
+	}
+#endif
 
 	TheGameLogic->destroyObject(getObject());
 }
@@ -183,7 +204,7 @@ void InstantDeathBehavior::crc( Xfer *xfer )
 	// extend base class
 	DieModule::crc( xfer );
 
-}  // end crc
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
@@ -201,15 +222,15 @@ void InstantDeathBehavior::xfer( Xfer *xfer )
 	// extend base class
 	DieModule::xfer( xfer );
 
-}  // end xfer
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
-void InstantDeathBehavior::loadPostProcess( void )
+void InstantDeathBehavior::loadPostProcess()
 {
 
 	// extend base class
 	DieModule::loadPostProcess();
 
-}  // end loadPostProcess
+}

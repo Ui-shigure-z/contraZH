@@ -16,8 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef USTRING_HEADER
-#define USTRING_HEADER
+#pragma once
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,7 +41,7 @@ class UstringT : public basic_string<charT, string_char_traits<charT> >
 
 		UstringT() { max_bytelength=4000; }
 
-      size_t   get_max_bytelength(void) { return(max_bytelength); }
+      size_t   get_max_bytelength() { return(max_bytelength); }
       void     set_max_bytelength(size_t max) { max_bytelength=max; }
 
       bool     operator==(const UstringT<charT> &other)
@@ -57,5 +56,3 @@ class UstringT : public basic_string<charT, string_char_traits<charT> >
 };
 
 typedef UstringT<char> Ustring;
-
-#endif

@@ -20,7 +20,8 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "FloodFillTool.h"
@@ -42,14 +43,14 @@ Bool FloodFillTool::m_mirrorY;
 Bool FloodFillTool::m_mirrorDiag;
 
 /// Constructor
-FloodFillTool::FloodFillTool(void) :
+FloodFillTool::FloodFillTool() :
 	Tool(ID_TILE_FLOOD_FILL, IDC_FLOOD_FILL),
-	m_cliffCursor(NULL)
+	m_cliffCursor(nullptr)
 {
 }
-	
+
 /// Destructor
-FloodFillTool::~FloodFillTool(void) 
+FloodFillTool::~FloodFillTool()
 {
 	if (m_cliffCursor) {
 		::DestroyCursor(m_cliffCursor);
@@ -58,7 +59,7 @@ FloodFillTool::~FloodFillTool(void)
 
 
 /// Shows the terrain materials options panel.
-void FloodFillTool::activate() 
+void FloodFillTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_TERRAIN_MATERIAL);
 	TerrainMaterial::setToolOptions(true, true);
@@ -67,10 +68,10 @@ void FloodFillTool::activate()
 }
 
 /** Set the cursor. */
-void FloodFillTool::setCursor(void)   
+void FloodFillTool::setCursor()
 {
 	if (m_adjustCliffTextures) {
-		if (m_cliffCursor == NULL) {
+		if (m_cliffCursor == nullptr) {
 			m_cliffCursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(IDC_CLIFF));
 		}
 		::SetCursor(m_cliffCursor);
@@ -98,7 +99,7 @@ void FloodFillTool::applyFillAt(CPoint pt, WorldHeightMapEdit* htMapEditCopy, Bo
 /** Creates a copy of the height map, flood fills it at pt with m_textureClassToDraw which
 has been set by the calling routine.  Then builds
 the command, and passes it to the doc. */
-void FloodFillTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void FloodFillTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
     Coord3D cpt;
     pView->viewToDocCoords(viewPt, &cpt);

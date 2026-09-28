@@ -16,22 +16,22 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*********************************************************************************************** 
- ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               *** 
- *********************************************************************************************** 
- *                                                                                             * 
- *                 Project Name : Command & Conquer                                            * 
- *                                                                                             * 
- *                     $Archive:: /Commando/Library/HSV.CPP                                   $* 
- *                                                                                             * 
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : Command & Conquer                                            *
+ *                                                                                             *
+ *                     $Archive:: /Commando/Library/HSV.cpp                                   $*
+ *                                                                                             *
  *                      $Author:: Greg_h                                                      $*
- *                                                                                             * 
+ *                                                                                             *
  *                     $Modtime:: 7/22/97 11:37a                                              $*
- *                                                                                             * 
+ *                                                                                             *
  *                    $Revision:: 1                                                           $*
  *                                                                                             *
- *---------------------------------------------------------------------------------------------* 
- * Functions:                                                                                  * 
+ *---------------------------------------------------------------------------------------------*
+ * Functions:                                                                                  *
  *   HSVClass::Adjust -- Adjust an HSV color toward specified color.                           *
  *   HSVClass::Difference -- Finds the difference between two HSV color objects.               *
  *   HSVClass::operator RGBClass -- Conversion operator for RGBClass object.                   *
@@ -134,7 +134,7 @@ int HSVClass::Difference(HSVClass const & hsv) const
  * HISTORY:                                                                                    *
  *   02/20/1996 JLB : Created.                                                                 *
  *=============================================================================================*/
-HSVClass::operator RGBClass (void) const
+HSVClass::operator RGBClass () const
 {
 	unsigned int i;				// Integer part.
 	unsigned int f;				// Fractional or remainder part.  f/HSV_BASE gives fraction.

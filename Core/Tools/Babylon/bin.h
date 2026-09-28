@@ -20,9 +20,7 @@
 // Bin.h
 //
 
-
-#ifndef __BIN_H
-#define __BIN_H
+#pragma once
 
 #include "list.h"
 #include "olestring.h"
@@ -57,15 +55,15 @@ class Bin
 	Bin ( int size = 256 );
 	~Bin ();
 
-	void				Clear				( void );
-	void*				Get					( OLECHAR *text1, OLECHAR *text2 = NULL );
-	void*				GetNext			( void );
-	void				Add					( void *item, OLECHAR *text1, OLECHAR *text2 = NULL );
-	BinItem*		GetBinItem	( OLECHAR *text1, OLECHAR *text2 = NULL );
+	void				Clear				();
+	void*				Get					( OLECHAR *text1, OLECHAR *text2 = nullptr );
+	void*				GetNext			();
+	void				Add					( void *item, OLECHAR *text1, OLECHAR *text2 = nullptr );
+	BinItem*		GetBinItem	( OLECHAR *text1, OLECHAR *text2 = nullptr );
 	BinItem*		GetBinItem	( void *item );
-	BinItem*		GetNextBinItem	( void );
+	BinItem*		GetNextBinItem	();
 	void				Remove			( void *item );
-	void				Remove			( OLECHAR *text1, OLECHAR *text2 = NULL );
+	void				Remove			( OLECHAR *text1, OLECHAR *text2 = nullptr );
 	void				Remove			( BinItem *item );
 
 
@@ -92,7 +90,7 @@ class BinID
 	BinID ( int size = 256 );
 	~BinID ();
 
-	void				Clear				( void );
+	void				Clear				();
 	void*				Get					( int id );
 	void				Add					( void *item, int id  );
 	BinIDItem*	GetBinIDItem	( int id );
@@ -103,6 +101,3 @@ class BinID
 
 
 };
-
-
-#endif // __BIN_H

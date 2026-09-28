@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_ObjectOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_)
-#define AFX_ObjectOptions_H__D3FF66C5_7107_4DAC_8A29_5EBAB5C3A24E__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // ObjectOptions.h : header file
 //
 
@@ -37,9 +33,9 @@ class ObjectOptions : public COptionsPanel
 {
 // Construction
 public:
-	ObjectOptions(CWnd* pParent = NULL);   ///< standard constructor
+	ObjectOptions(CWnd* pParent = nullptr);   ///< standard constructor
 
-	~ObjectOptions(void);   ///< standard destructor
+	virtual ~ObjectOptions() override;   ///< standard destructor
 	enum { NAME_MAX_LEN = 64 };
 // Dialog Data
 	//{{AFX_DATA(ObjectOptions)
@@ -64,7 +60,7 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(ObjectOptions)
-	virtual BOOL OnInitDialog();
+	virtual BOOL OnInitDialog() override;
 	afx_msg void OnEditchangeOwningteam();
 	afx_msg void OnCloseupOwningteam();
 	afx_msg void OnSelchangeOwningteam();
@@ -99,7 +95,7 @@ protected:
 	// HTREEITEM m_lastFoundItem;
 
 protected:
-	void addObject( MapObject *mapObject, const char *pPath,  
+	void addObject( MapObject *mapObject, const char *pPath,
 									Int objectNdx, HTREEITEM parent );
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
 	// HTREEITEM getNextItem(HTREEITEM hItem);
@@ -108,15 +104,15 @@ protected:
 	HTREEITEM _FindOrDont(const char* pLabel, HTREEITEM startPoint);
 	Bool setObjectTreeViewSelection(HTREEITEM parent, Int selection);
 	void updateLabel();
-	static MapObject *getCurMapObject(void);
+	static MapObject *getCurMapObject();
 
 public:
-	static const char * getCurObjectName(void) {return m_currentObjectName;};
+	static const char * getCurObjectName() {return m_currentObjectName;};
 	static MapObject *duplicateCurMapObjectForPlace(const Coord3D* loc, Real angle, Bool checkPlayers = true);
 	static MapObject *getObjectNamed(AsciiString name);
 	static Int getObjectNamedIndex(const AsciiString& name);
 	static void selectObject(const MapObject* pObj);
-	static Real getCurObjectHeight(void);
+	static Real getCurObjectHeight();
 	static void update();
 	static AsciiString getCurGdfName(void);
 	static void reprocessObjectList();
@@ -142,5 +138,3 @@ public:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_ObjectOptions_H__D3FF66C5_711D_4DAC_8A29_5EAAB5C3A23E__INCLUDED_)

@@ -16,18 +16,14 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_RINGSIZEPROPPAGE_H__E86BBE8A_F527_11D3_A08F_00104B791122__INCLUDED_)
-#define AFX_RINGSIZEPROPPAGE_H__E86BBE8A_F527_11D3_A08F_00104B791122__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // RingSizePropPage.h : header file
 //
 
 #include "resource.h"
-#include "ringobj.h"
-#include "colorbar.h"
+#include "WW3D2/ringobj.h"
+#include "ColorBar.h"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -40,7 +36,7 @@ class RingSizePropPageClass : public CPropertyPage
 
 // Construction
 public:
-	RingSizePropPageClass(RingRenderObjClass *ring = NULL);
+	RingSizePropPageClass(RingRenderObjClass *ring = nullptr);
 	~RingSizePropPageClass();
 
 // Dialog Data
@@ -49,7 +45,7 @@ public:
 	CSpinButtonCtrl	m_InnerSizeXSpin;
 	CSpinButtonCtrl	m_InnerSizeYSpin;
 	CSpinButtonCtrl	m_OuterSizeXSpin;
-	CSpinButtonCtrl	m_OuterSizeYSpin;	
+	CSpinButtonCtrl	m_OuterSizeYSpin;
 	//}}AFX_DATA
 
 
@@ -84,19 +80,19 @@ public:
 	//
 	//	Inline accessors
 	//
-	
-	RingRenderObjClass *		Get_Ring (void) const					{ return m_RenderObj; }
+
+	RingRenderObjClass *		Get_Ring () const					{ return m_RenderObj; }
 	void							Set_Ring (RingRenderObjClass *ring)	{ m_RenderObj = ring; Initialize (); }
-	bool							Is_Data_Valid (void) const				{ return m_bValid; }
+	bool							Is_Data_Valid () const				{ return m_bValid; }
 
 protected:
 
 	/////////////////////////////////////////////////////////
 	//	Protected methods
 	/////////////////////////////////////////////////////////
-	void				Initialize (void);
-	void				Update_Inner_Scale_Array (void);
-	void				Update_Outer_Scale_Array (void);
+	void				Initialize ();
+	void				Update_Inner_Scale_Array ();
+	void				Update_Outer_Scale_Array ();
 
 private:
 
@@ -122,5 +118,3 @@ private:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_RINGSIZEPROPPAGE_H__E86BBE8A_F527_11D3_A08F_00104B791122__INCLUDED_)

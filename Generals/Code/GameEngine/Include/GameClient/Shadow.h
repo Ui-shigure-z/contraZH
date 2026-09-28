@@ -30,9 +30,6 @@
 
 #pragma once
 
-#ifndef __SHADOW_H_
-#define __SHADOW_H_
-
 //
 // skeleton definition of shadow types
 //
@@ -40,17 +37,17 @@
 // shadow bit flags, keep this in sync with TheShadowNames
 enum ShadowType CPP_11(: Int)
 {
-	SHADOW_NONE											=	0x00000000, 
+	SHADOW_NONE											=	0x00000000,
 	SHADOW_DECAL										=	0x00000001,		//shadow decal applied via modulate blend
-	SHADOW_VOLUME										=	0x00000002, 
+	SHADOW_VOLUME										=	0x00000002,
 	SHADOW_PROJECTION								=	0x00000004,
 	SHADOW_DYNAMIC_PROJECTION				= 0x00000008,		//extra setting for shadows which need dynamic updates
 	SHADOW_DIRECTIONAL_PROJECTION		= 0x00000010,		//extra setting for shadow decals that rotate with sun direction
 	SHADOW_ALPHA_DECAL							= 0x00000020,		//not really for shadows but for other decal uses. Alpha blended.
-	SHADOW_ADDITIVE_DECAL						= 0x00000040		//not really for shadows but for other decal uses. Additive blended. 
+	SHADOW_ADDITIVE_DECAL						= 0x00000040		//not really for shadows but for other decal uses. Additive blended.
 };
 #ifdef DEFINE_SHADOW_NAMES
-static const char* TheShadowNames[] = 
+static const char* const TheShadowNames[] =
 {
 	"SHADOW_DECAL",
 	"SHADOW_VOLUME",
@@ -59,11 +56,19 @@ static const char* TheShadowNames[] =
 	"SHADOW_DIRECTIONAL_PROJECTION",
 	"SHADOW_ALPHA_DECAL",
 	"SHADOW_ADDITIVE_DECAL",
-	NULL
+	nullptr
 };
 #endif  // end DEFINE_SHADOW_NAMES
 
 #define MAX_SHADOW_LIGHTS 1	//maximum number of shadow casting light sources in scene - support for more than 1 has been dropped from most code.
+
+// Per-decal ordering relative to water (evaluated only by the Zero Hour render path; inert here).
+enum ShadowWaterMode
+{
+	SHADOW_WATER_DEFAULT = 0,	//follow the global RadiusDecalsAboveWater flag
+	SHADOW_WATER_ABOVE,			//always draw above water
+	SHADOW_WATER_BELOW			//always draw below water (shadow-like)
+};
 
 class RenderObjClass; //forward reference
 class RenderCost;	//forward reference
@@ -73,9 +78,22 @@ class Shadow
 {
 
 public:
-		
+
 		struct	ShadowTypeInfo
-		{	
+		{
+				ShadowTypeInfo()
+				{
+						m_ShadowName[0] = '\0';
+						m_type = SHADOW_NONE;
+						allowUpdates = false;
+						allowWorldAlign = false;
+						m_sizeX = 0.0f;
+						m_sizeY = 0.0f;
+						m_offsetX = 0.0f;
+						m_offsetY = 0.0f;
+						m_waterRenderMode = SHADOW_WATER_DEFAULT;
+				}
+
 				char	m_ShadowName[64];	//when set, overrides the default model shadow (used mostly for Decals).
 				ShadowType m_type;			//type of shadow
 				Bool	allowUpdates;			//whether to update the shadow image when object/light moves.
@@ -84,16 +102,20 @@ public:
 				Real	m_sizeY;			//world size of decal projection
 				Real	m_offsetX;			//world shift along x axis
 				Real	m_offsetY;			//world shift along y axis
+				Int		m_waterRenderMode;	//ShadowWaterMode: above/below/default water ordering
 		};
 
-		Shadow(void) : m_diffuse(0xffffffff), m_color(0xffffffff), m_opacity (0x000000ff), m_localAngle(0.0f) {}
+		Shadow(void) : m_diffuse(0xffffffff), m_color(0xffffffff), m_opacity (0x000000ff), m_localAngle(0.0f), m_waterRenderMode(SHADOW_WATER_DEFAULT) {}
+
+		void setWaterRenderMode(Int mode) { m_waterRenderMode = mode; }
+		Int  getWaterRenderMode(void) const { return m_waterRenderMode; }
 
 		///<if this is set, then no render will occur, even if enableShadowRender() is enabled. Used by Shroud.
-		void enableShadowInvisible(Bool isEnabled);	
+		void enableShadowInvisible(Bool isEnabled);
 		void enableShadowRender(Bool isEnabled);
-		Bool isRenderEnabled(void) {return m_isEnabled;}
-		Bool isInvisibleEnabled(void) {return m_isInvisibleEnabled;}
-		virtual void release(void)=0;	///<release this shadow from suitable manager.
+		Bool isRenderEnabled() {return m_isEnabled;}
+		Bool isInvisibleEnabled() {return m_isInvisibleEnabled;}
+		virtual void release()=0;	///<release this shadow from suitable manager.
 		void setOpacity(Int value); ///<adjust opacity of decal/shadow
 		void setColor(Color value);///<adjust ARGB color of decal/shadow
 		void setAngle(Real angle);		///<adjust orientation around z-axis
@@ -101,22 +123,22 @@ public:
 
 		void setSize(Real sizeX, Real sizeY)
 		{
-			m_decalSizeX = sizeX; 
-			m_decalSizeY = sizeY; 
-			
-			if (sizeX == 0) 
+			m_decalSizeX = sizeX;
+			m_decalSizeY = sizeY;
+
+			if (sizeX == 0)
 				m_oowDecalSizeX = 0;
 			else
 				m_oowDecalSizeX = 1.0f/sizeX ;
 
-			if (sizeY == 0) 
+			if (sizeY == 0)
 				m_oowDecalSizeY = 0;
 			else
 				m_oowDecalSizeY = 1.0f/sizeY ;
 
 		};
 
-		#if defined(_DEBUG) || defined(_INTERNAL)	
+		#if defined(RTS_DEBUG)
 		virtual void getRenderCost(RenderCost & rc) const = 0;
 		#endif
 
@@ -134,6 +156,7 @@ protected:
 		Real	m_decalSizeX;		/// 1/(world space extent of texture in x direction)
 		Real	m_decalSizeY;		/// 1/(world space extent of texture in y direction)
 		Real	m_localAngle;		/// yaw or rotation around z-axis of shadow image when not bound to robj/drawable.
+		Int		m_waterRenderMode;	/// ShadowWaterMode: chooses above/below/default water ordering (Zero Hour only).
 };
 
 
@@ -165,15 +188,18 @@ inline void Shadow::setOpacity(Int value)
 		if (m_type & SHADOW_ADDITIVE_DECAL)
 		{
 			Real fvalue=(Real)m_opacity/255.0f;
-			m_diffuse=REAL_TO_INT(((Real)(m_color & 0xff) * fvalue))
-					|REAL_TO_INT(((Real)((m_color >> 8) & 0xff) * fvalue))
-					|REAL_TO_INT(((Real)((m_color >> 16) & 0xff) * fvalue));
+			// Premultiply each channel by opacity and pack into its correct byte (D3DCOLOR 0xAARRGGBB).
+			// Additive blend (ONE/ONE) ignores alpha, so fade is done by scaling RGB toward black.
+			Int r = REAL_TO_INT((Real)((m_color >> 16) & 0xff) * fvalue);
+			Int g = REAL_TO_INT((Real)((m_color >>  8) & 0xff) * fvalue);
+			Int b = REAL_TO_INT((Real)( m_color        & 0xff) * fvalue);
+			m_diffuse = (r << 16) | (g << 8) | b;
 		}
 	}
 }
 
 inline void Shadow::setColor(Color value)
-{ 
+{
 	m_color = value & 0x00ffffff;	//filter out alpha
 
 	if (m_type & SHADOW_ALPHA_DECAL)
@@ -185,9 +211,12 @@ inline void Shadow::setColor(Color value)
 		if (m_type & SHADOW_ADDITIVE_DECAL)
 		{
 			Real fvalue=(Real)m_opacity/255.0f;
-			m_diffuse=REAL_TO_INT(((Real)(m_color & 0xff) * fvalue))
-					|REAL_TO_INT(((Real)((m_color >> 8) & 0xff) * fvalue))
-					|REAL_TO_INT(((Real)((m_color >> 16) & 0xff) * fvalue));
+			// Premultiply each channel by opacity and pack into its correct byte (D3DCOLOR 0xAARRGGBB).
+			// Additive blend (ONE/ONE) ignores alpha, so fade is done by scaling RGB toward black.
+			Int r = REAL_TO_INT((Real)((m_color >> 16) & 0xff) * fvalue);
+			Int g = REAL_TO_INT((Real)((m_color >>  8) & 0xff) * fvalue);
+			Int b = REAL_TO_INT((Real)( m_color        & 0xff) * fvalue);
+			m_diffuse = (r << 16) | (g << 8) | b;
 		}
 	}
 }
@@ -213,6 +242,3 @@ public:
 };
 
 extern ProjectedShadowManager *TheProjectedShadowManager;
-
-#endif // __SHADOW_H_
-

@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_MAPOBJECTPROPS_H__44517B9E_12AB_4E2C_B49B_D6BB65C59649__INCLUDED_)
-#define AFX_MAPOBJECTPROPS_H__44517B9E_12AB_4E2C_B49B_D6BB65C59649__INCLUDED_
-
-#if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+
 // mapobjectprops.h : header file
 //
 
@@ -48,8 +44,8 @@ class MapObjectProps : public COptionsPanel, public PopupSliderOwner
 {
 // Construction
 public:
-	MapObjectProps(Dict* dictToEdit = NULL, const char* title = NULL, CWnd* pParent = NULL);   // standard constructor
-	~MapObjectProps();
+	MapObjectProps(Dict* dictToEdit = nullptr, const char* title = nullptr, CWnd* pParent = nullptr);   // standard constructor
+	virtual ~MapObjectProps() override;
 	void makeMain();
 
 // Dialog Data
@@ -62,14 +58,15 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(MapObjectProps)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
-	void getAllSelectedDicts(void);
+	void getAllSelectedDicts();
+	Dict** getAllSelectedDictsData();
 
-	static MapObjectProps *TheMapObjectProps; 
+	static MapObjectProps *TheMapObjectProps;
 
 	// Data common to all property pages
 	Dict* m_dictToEdit;
@@ -101,7 +98,7 @@ protected:
 	Coord3D m_position;
 
 	void deletePages();
-	void updateTheUI(void);
+	void updateTheUI();
 	void enableButtons();
 	int getSel();
 
@@ -130,19 +127,19 @@ protected:
 	afx_msg void OnScaleOn();
 	afx_msg void OnScaleOff();
 	afx_msg void OnKillfocusMAPOBJECTXYPosition();
-	afx_msg void _PrebuiltUpgradesToDict(void);
-	afx_msg void _HealthToDict(void);
-	afx_msg void _EnabledToDict(void);
-	afx_msg void _IndestructibleToDict(void);
-	afx_msg void _UnsellableToDict(void);
+	afx_msg void _PrebuiltUpgradesToDict();
+	afx_msg void _HealthToDict();
+	afx_msg void _EnabledToDict();
+	afx_msg void _IndestructibleToDict();
+	afx_msg void _UnsellableToDict();
 	afx_msg void _TargetableToDict();
-	afx_msg void _PoweredToDict(void);
-	afx_msg void _AggressivenessToDict(void);
-	afx_msg void _VisibilityToDict(void);
-	afx_msg void _VeterancyToDict(void);
-	afx_msg void _ShroudClearingDistanceToDict(void);
-	afx_msg void _RecruitableAIToDict(void);
-	afx_msg void _SelectableToDict(void);
+	afx_msg void _PoweredToDict();
+	afx_msg void _AggressivenessToDict();
+	afx_msg void _VisibilityToDict();
+	afx_msg void _VeterancyToDict();
+	afx_msg void _ShroudClearingDistanceToDict();
+	afx_msg void _RecruitableAIToDict();
+	afx_msg void _SelectableToDict();
 	afx_msg void _HPsToDict();
 	afx_msg void _StoppingDistanceToDict(void);
 	afx_msg void attachedSoundToDict(void);
@@ -182,28 +179,28 @@ protected:
 	void _DictToVeterancy(void);
 	void _DictToShroudClearingDistance(void);
 	void _DictToRecruitableAI();
-	void _DictToSelectable(void);
-	void _DictToStoppingDistance(void);
+	void _DictToSelectable();
+	void _DictToStoppingDistance();
 	void ShowZOffset(MapObject* pMapObj);
 	void ShowAngle(MapObject* pMapObj);
 	void ShowPosition(MapObject* pMapObj);
-	void dictToAttachedSound(void);
-	void dictToCustomize(void);
-	void dictToEnabled(void);
-	void dictToLooping(void);
-	void dictToLoopCount(void);
-	void dictToMinVolume(void);
-	void dictToVolume(void);
-	void dictToMinRange(void);
-	void dictToMaxRange(void);
-	void dictToPriority(void);
+	void dictToAttachedSound();
+	void dictToCustomize();
+	void dictToEnabled();
+	void dictToLooping();
+	void dictToLoopCount();
+	void dictToMinVolume();
+	void dictToVolume();
+	void dictToMinRange();
+	void dictToMaxRange();
+	void dictToPriority();
 
 	void clearCustomizeFlag( CWorldBuilderDoc* pDoc, MultipleUndoable * ownerUndoable );
 
 	// Implementation of PopupSliderOwner callbacks
-	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial);
-	virtual void PopSliderChanged(const long sliderID, long theVal);
-	virtual void PopSliderFinished(const long sliderID, long theVal);
+	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
+	virtual void PopSliderChanged(const long sliderID, long theVal) override;
+	virtual void PopSliderFinished(const long sliderID, long theVal) override;
 
 public:
 	static MapObject *getSingleSelectedObject(void);
@@ -341,10 +338,8 @@ private:
   MapObjectProps( const MapObjectProps & other ); // Deliberately undefined
   MapObjectProps & operator=( const MapObjectProps & other ); // Deliberately undefined
 	void updateTheUI(MapObject *pMapObj);
-	void InitSound(void);
+	void InitSound();
 };
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_MAPOBJECTPROPS_H__44517B9E_12AB_4E2C_B49B_D6BB65C59649__INCLUDED_)

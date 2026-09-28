@@ -20,7 +20,7 @@
 // Texture tiling tool for worldbuilder.
 // Author: John Ahlquist, April 2001
 
-#include "StdAfx.h" 
+#include "StdAfx.h"
 #include "resource.h"
 
 #include "TileTool.h"
@@ -43,20 +43,20 @@ TileTool::TerrainCopyBuffer TileTool::s_copyBuffer;
 std::vector<TileTool::TileTextureData> TileTool::m_copiedTileTextures;
 
 /// Constructor
-TileTool::TileTool(void) :
+TileTool::TileTool() :
 	Tool(ID_TILE_TOOL, IDC_TILE_CURSOR)
 {
-	m_htMapEditCopy = NULL;
+	m_htMapEditCopy = nullptr;
 }
-	
+
 /// Destructor
-TileTool::~TileTool(void) 
+TileTool::~TileTool()
 {
 	REF_PTR_RELEASE(m_htMapEditCopy);
 }
 
 /// Shows the terrain materials options panel.
-void TileTool::activate() 
+void TileTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_TERRAIN_MATERIAL);
 	TerrainMaterial::setToolOptions(true);
@@ -675,7 +675,7 @@ void TerrainMaterial::setPaintDensity(Int d) {
 }
 
 /// Common mouse down code for left and right clicks.
-void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
     if (m != TRACK_L && m != TRACK_R) return; 
     Coord3D cpt;
@@ -1045,7 +1045,7 @@ void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 }
 
 /// Common mouse up code for left and right clicks.
-void TileTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+void TileTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L && m != TRACK_R) return;
 	if (m_htMapEditCopy) {
@@ -1326,13 +1326,13 @@ Bool BigTileTool::m_mirrorDiag;
 Bool BigTileTool::m_enableNoMixing = false;
 
 /// Constructor
-BigTileTool::BigTileTool(void)
+BigTileTool::BigTileTool()
 {
 	m_toolID = ID_BIG_TILE_TOOL;
 }
 
 /// Shows the terrain materials options panel.
-void BigTileTool::setWidth(Int width) 
+void BigTileTool::setWidth(Int width)
 {
 	m_currentWidth = width;
 	DrawObject::setBrushFeedbackParms(true, m_currentWidth, 0, m_currentHeight);

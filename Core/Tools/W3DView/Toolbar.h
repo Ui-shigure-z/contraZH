@@ -18,14 +18,12 @@
 
 //////////////////////////////////////////////////////////////////////
 //
-//  Toolbar.H
+//  Toolbar.h
 //
 //  Declaration of a 'fancy' toolbar using hi-color buttons
 //
 
-#ifndef __FANCYTOOLBAR_H
-#define __FANCYTOOLBAR_H
-
+#pragma once
 
 //////////////////////////////////////////////////////////////
 //
@@ -56,7 +54,7 @@ class CFancyToolbar : public CControlBar
 	//{{AFX_VIRTUAL(CFancyToolbar)
 	public:
 	virtual void OnDraw(CDC* pDC);  // overridden to draw this view
-	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+	virtual BOOL PreCreateWindow(CREATESTRUCT& cs) override;
 	protected:
 	//}}AFX_VIRTUAL
 
@@ -66,13 +64,13 @@ class CFancyToolbar : public CControlBar
         //
         //  Public Data Types
         //
-        typedef enum 
+        typedef enum
         {
             StateUp = 0,
             StateDn = 1
         } STATE_INFO;
 
-        typedef enum 
+        typedef enum
         {
             TypeNormal = 0,
             Type2State = 1
@@ -83,7 +81,7 @@ class CFancyToolbar : public CControlBar
         //
         //  Public Contructors
         //
-        CFancyToolbar ();        
+        CFancyToolbar ();
         virtual ~CFancyToolbar ();
 
 
@@ -95,19 +93,19 @@ class CFancyToolbar : public CControlBar
         //
         //  Required methods
         //
-        CSize CalcFixedLayout (BOOL, BOOL)
-            { return CSize (m_iButtons*BUTTON_WIDTH + BORDER_LEFT + BORDER_RIGHT, BUTTON_HEIGHT + BORDER_TOP + BORDER_BOTTOM); }
-        
-        CSize CalcDynamicLayout( int nLength, DWORD dwMode )
+        virtual CSize CalcFixedLayout (BOOL, BOOL) override
             { return CSize (m_iButtons*BUTTON_WIDTH + BORDER_LEFT + BORDER_RIGHT, BUTTON_HEIGHT + BORDER_TOP + BORDER_BOTTOM); }
 
-        void OnUpdateCmdUI (class CFrameWnd*, int) {}
+        virtual CSize CalcDynamicLayout( int nLength, DWORD dwMode ) override
+            { return CSize (m_iButtons*BUTTON_WIDTH + BORDER_LEFT + BORDER_RIGHT, BUTTON_HEIGHT + BORDER_TOP + BORDER_BOTTOM); }
+
+        virtual void OnUpdateCmdUI (class CFrameWnd*, int) override {}
 
         //
         //  Creation routines
         //
         void AddButton (UINT iBMPUp, UINT iBMPDn, int iCommandID, BUTTON_TYPE buttonType = TypeNormal);
-        BOOL Create (LPCTSTR pszWindowName, CWnd *pCParentWnd, UINT uiID);        
+        BOOL Create (LPCTSTR pszWindowName, CWnd *pCParentWnd, UINT uiID);
 
         //
         //  State management routines
@@ -121,10 +119,10 @@ class CFancyToolbar : public CControlBar
         //
         //  Protected Methods
         //
-        void Paint (void);
+        void Paint ();
         void DrawButton (HDC hDC, int iXPos, int iYPos, HBITMAP hBMP);
         int ButtonFromPoint (const CPoint &point);
-        void RegisterFancyToolbarClass (void);
+        void RegisterFancyToolbarClass ();
 
 	    //{{AFX_MSG(CFancyToolbar)
         afx_msg void OnPaint();
@@ -140,7 +138,7 @@ class CFancyToolbar : public CControlBar
         static LRESULT CALLBACK fnMessageProc (HWND hWnd, UINT uiMessage, WPARAM wParam, LPARAM lParam);
 
     private:
-               
+
         ////////////////////////////////////////////////////////
         //
         //  Private Data Types
@@ -155,7 +153,7 @@ class CFancyToolbar : public CControlBar
             BOOL bVisible;
         } BUTTON_INFO;
 
-        
+
         ////////////////////////////////////////////////////////
         //
         //  Private Methods
@@ -164,5 +162,3 @@ class CFancyToolbar : public CControlBar
         int m_iButtons;
         int m_iCurrentButton;
 };
-
-#endif // __FANCYTOOLBAR_H

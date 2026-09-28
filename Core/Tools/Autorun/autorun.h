@@ -34,9 +34,7 @@
 *
 *************************************************************************************************/
 
-
-#ifndef  AUTORUN_H
-#define  AUTORUN_H
+#pragma once
 
 #include <tchar.h>
 #include <string.h>
@@ -65,7 +63,7 @@ typedef enum {
 	LANG_SCA,	//8
 	LANG_KOR,	//9
 	LANG_CHI,	//10
-	LANG_NUM,	
+	LANG_NUM,
 } LanguageType;
 
 #define	IS_LANGUAGE_DBCS(l)	(((l)==LANG_CHI)||((l)==LANG_JAP)||((l)==LANG_KOR))		// [OYO]
@@ -95,7 +93,7 @@ typedef enum {
 #elif RTS_ZEROHOUR
 # define SHELL_UNINSTALL_KEY			"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\InstallShield_{F3E9C243-122E-4D6B-ACC1-E1FEC02F6CA1}"
 #endif
-#define SHELL_APP_PATHS_KEY			"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths" 
+#define SHELL_APP_PATHS_KEY			"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths"
 #define PROGRAMS_SUBKEY				"Programs"
 #define COMMON_PROGRAMS_SUBKEY		"Common Programs"
 #define SOFTWARE_SUBKEY				"Software"
@@ -126,12 +124,12 @@ typedef enum {
 #define VERSION_SUBKEY				"Version"
 #define LANGUAGE_SUBKEY				"Language"
 #define MAPPACKVERSION_SUBKEY		"MapPackVersion"
-											
+
 #define DDRAW  							"DDRAW.DLL"
 #define DSOUND 							"DSOUND.DLL"
 #define DDHELP 							"DDHELP.EXE"
 
-#define NORMAL							"Normal" 
+#define NORMAL							"Normal"
 #define FOCUSED							"Focused"
 #define PRESSED							"Pressed"
 /*
@@ -167,12 +165,12 @@ typedef enum {
 class LaunchObjectClass
 {
 	public:
-		LaunchObjectClass ( char *path=NULL, char *args=NULL );
+		LaunchObjectClass ( char *path=nullptr, char *args=nullptr );
 
 		void			SetPath				( char *path );
 		void			SetArgs				( char *args );
-		unsigned int	Launch				( void );
-		bool			Launch_A_Program	( void )			{ return( LaunchSomething ); };
+		unsigned int	Launch				();
+		bool			Launch_A_Program	()			{ return( LaunchSomething ); };
 		void			Set_Launch			( bool value )		{ LaunchSomething = value; };
 
 	public:
@@ -193,7 +191,7 @@ class Main
 		static HINSTANCE hPrevInstance;
 		static HMODULE hModule;
 		static int nCmdShow;
-		static int MessageLoop( void );
+		static int MessageLoop();
 };
 
 //-------------------------------------------------------------------------
@@ -208,9 +206,9 @@ class Window
 		HWND hWnd;
 
 	public:
-		HWND GetHandle( void ) 		{ return hWnd; }
+		HWND GetHandle() 		{ return hWnd; }
 		BOOL Show( int nCmdShow ) 	{ return ShowWindow( hWnd, nCmdShow ); }
-		void Update( void ) 		{ UpdateWindow( hWnd ); }
+		void Update() 		{ UpdateWindow( hWnd ); }
 		virtual LRESULT Window_Proc( HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM lParam ) = 0;
 };
 
@@ -220,22 +218,22 @@ class Window
 class MainWindow : public Window
 {
 	protected:
-		
+
 		static char szClassName[ 100 ];
 
 	public:
 
-		MainWindow( void );
+		MainWindow();
 
-		static void		Register		  		( void );
+		static void		Register		  		();
 		static void	  	Reset_Class_Name		( char *string )
 			{
-				if ( string != NULL && string[0] != '\0' ) {
+				if ( string != nullptr && string[0] != '\0' ) {
 					strcpy( szClassName, string );
-				}		
+				}
 			};
 
-		BOOL			Is_Product_Registered	( void );
+		BOOL			Is_Product_Registered	();
 		void	 		Create_Buttons	  		( HWND hWnd, RECT *dlg_rect );
 		unsigned int	Run_Auto_Update			( HWND hWnd, RECT *rect );
 		unsigned int	Run_Demo 		  		( HWND hWnd, RECT *rect, int cd_drive );
@@ -250,7 +248,3 @@ class MainWindow : public Window
 		unsigned int	Run_OpenFile						(int cd_drive, const char *filename, bool wait = false);
 		LRESULT			Window_Proc		  		( HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM lParam );
 };
-
-
-#endif
-

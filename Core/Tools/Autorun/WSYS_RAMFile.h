@@ -17,12 +17,12 @@
 */
 
 //----------------------------------------------------------------------------=
-//                                                                          
-//                       Westwood Studios Pacific.                          
-//                                                                          
-//                       Confidential Information					                  
-//                Copyright(C) 2001 - All Rights Reserved                  
-//                                                                          
+//
+//                       Westwood Studios Pacific.
+//
+//                       Confidential Information
+//                Copyright(C) 2001 - All Rights Reserved
+//
 //----------------------------------------------------------------------------
 //
 // Project:    WSYS Library
@@ -37,13 +37,8 @@
 
 #pragma once
 
-#ifndef __WSYS_RAMFILE_H
-#define __WSYS_RAMFILE_H
-
-
-
 //----------------------------------------------------------------------------
-//           Includes                                                      
+//           Includes
 //----------------------------------------------------------------------------
 
 #include "WSYS_file.h"
@@ -73,15 +68,15 @@ class RAMFile : public File
 		Char				*m_data;											///< File data in memory
 		Int					m_pos;												///< current read position
 		Int					m_size;												///< size of file in memory
-		
+
 	public:
-		
+
 		RAMFile();
 		virtual				~RAMFile();
 
 
 		virtual Bool	open( const Char *filename, Int access = 0 );				///< Open a file for access
-		virtual void	close( void );																			///< Close the file
+		virtual void	close();																			///< Close the file
 		virtual Int		read( void *buffer, Int bytes );										///< Read the specified number of bytes in to buffer: See File::read
 		virtual Int		write( void *buffer, Int bytes );										///< Write the specified number of bytes from the buffer: See File::write
 		virtual Int		seek( Int new_pos, seekMode mode = CURRENT );				///< Set file position: See File::seek
@@ -93,8 +88,5 @@ class RAMFile : public File
 
 
 //----------------------------------------------------------------------------
-//           Inlining                                                       
+//           Inlining
 //----------------------------------------------------------------------------
-
-
-#endif // __WSYS_RAMFILE_H

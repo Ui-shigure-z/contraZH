@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_BACKGROUNDBMPDIALOG_H__5D8C201B_6380_11D2_9FC7_00104B791122__INCLUDED_)
-#define AFX_BACKGROUNDBMPDIALOG_H__5D8C201B_6380_11D2_9FC7_00104B791122__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // BackgroundBMPDialog.h : header file
 //
 
@@ -32,7 +28,7 @@ class CBackgroundBMPDialog : public CDialog
 {
 // Construction
 public:
-	CBackgroundBMPDialog(CWnd* pParent = NULL);   // standard constructor
+	CBackgroundBMPDialog(CWnd* pParent = nullptr);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CBackgroundBMPDialog)
@@ -45,7 +41,7 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBackgroundBMPDialog)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -53,8 +49,8 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(CBackgroundBMPDialog)
-	virtual BOOL OnInitDialog();
-	virtual void OnOK();
+	virtual BOOL OnInitDialog() override;
+	virtual void OnOK() override;
 	afx_msg void OnBrowse();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
@@ -62,5 +58,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_BACKGROUNDBMPDIALOG_H__5D8C201B_6380_11D2_9FC7_00104B791122__INCLUDED_)

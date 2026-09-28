@@ -37,18 +37,18 @@
 #include "qt/panels/WBQtWaterBridge.h"
 #endif
 
-WaterOptions *WaterOptions::m_staticThis = NULL;
+WaterOptions *WaterOptions::m_staticThis = nullptr;
 Int WaterOptions::m_waterHeight = 7;
 Int WaterOptions::m_waterPointSpacing = MAP_XY_FACTOR;
 Bool WaterOptions::m_creatingWaterAreas = false;
 /////////////////////////////////////////////////////////////////////////////
-/// WaterOptions dialog trivial construstor - Create does the real work.
+/// WaterOptions dialog trivial constructor - Create does the real work.
 
 
-WaterOptions::WaterOptions(CWnd* pParent /*=NULL*/):
-m_moveUndoable(NULL)
+WaterOptions::WaterOptions(CWnd* pParent /*=nullptr*/):
+m_moveUndoable(nullptr)
 {
-	//{{AFX_DATA_INIT(WaterOptions) 
+	//{{AFX_DATA_INIT(WaterOptions)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
 }
@@ -62,10 +62,10 @@ void WaterOptions::DoDataExchange(CDataExchange* pDX)
 	//}}AFX_DATA_MAP
 }
 
-void WaterOptions::setHeight(Int height) 
-{ 
-	char buffer[50];
-	sprintf(buffer, "%d", height);
+void WaterOptions::setHeight(Int height)
+{
+	char buffer[12];
+	snprintf(buffer, ARRAY_SIZE(buffer), "%d", height);
 	m_waterHeight = height;
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_HEIGHT_EDIT);
@@ -73,7 +73,7 @@ void WaterOptions::setHeight(Int height)
 	}
 }
 
-void WaterOptions::updateTheUI(void) 
+void WaterOptions::updateTheUI()
 {
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 
@@ -82,7 +82,7 @@ void WaterOptions::updateTheUI(void)
 	if (theTrigger && pWnd) {
 		pWnd->SetWindowText(theTrigger->getTriggerName().str());
 		setHeight(theTrigger->getPoint(0)->z);
-	}	
+	}
 	CButton *pButton = (CButton*)GetDlgItem(IDC_WATER_POLYGON);
 	pButton->SetCheck(m_creatingWaterAreas ? 1:0);
 	Bool isRiver = false;
@@ -91,17 +91,17 @@ void WaterOptions::updateTheUI(void)
 	}
 	pButton = (CButton*)GetDlgItem(IDC_MAKE_RIVER);
 	pButton->SetCheck(isRiver ? 1:0);
-	pButton->EnableWindow(theTrigger!=NULL);
+	pButton->EnableWindow(theTrigger!=nullptr);
 
 	pWnd = m_staticThis->GetDlgItem(IDC_SPACING);
-	char buffer[_MAX_PATH];
+	char buffer[12];
 	if (pWnd) {
-		sprintf(buffer, "%d", m_waterPointSpacing);
+		snprintf(buffer, ARRAY_SIZE(buffer), "%d", m_waterPointSpacing);
 		pWnd->SetWindowText(buffer);
 	}
 }
 
-void WaterOptions::update(void) 
+void WaterOptions::update()
 {
 	if (m_staticThis) {
 		m_staticThis->updateTheUI();
@@ -115,12 +115,12 @@ void WaterOptions::update(void)
 // WaterOptions message handlers
 
 /// Dialog UI initialization.
-/** Creates the slider controls, and sets the initial values for 
+/** Creates the slider controls, and sets the initial values for
 width and feather in the ui controls. */
-BOOL WaterOptions::OnInitDialog() 
+BOOL WaterOptions::OnInitDialog()
 {
 	CDialog::OnInitDialog();
-	
+
 	m_updating = true;
 
 	m_waterHeightPopup.SetupPopSliderButton(this, IDC_HEIGHT_POPUP, this);
@@ -136,15 +136,15 @@ BOOL WaterOptions::OnInitDialog()
 BEGIN_MESSAGE_MAP(WaterOptions, COptionsPanel)
 	//{{AFX_MSG_MAP(WaterOptions)
 	ON_CBN_KILLFOCUS(IDC_WATERNAME_EDIT, OnChangeWaterEdit)
-	ON_EN_CHANGE(IDC_HEIGHT_EDIT, OnChangeHeightEdit)	 
-	ON_EN_CHANGE(IDC_SPACING, OnChangeSpacingEdit)	 
+	ON_EN_CHANGE(IDC_HEIGHT_EDIT, OnChangeHeightEdit)
+	ON_EN_CHANGE(IDC_SPACING, OnChangeSpacingEdit)
 	ON_BN_CLICKED(IDC_WATER_POLYGON, OnWaterPolygon)
 	ON_BN_CLICKED(IDC_MAKE_RIVER, OnMakeRiver)
 	ON_CBN_SELENDOK(IDC_WATERNAME_EDIT, OnChangeWaterEdit)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
-void WaterOptions::OnChangeWaterEdit() 
+void WaterOptions::OnChangeWaterEdit()
 {
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 
@@ -168,7 +168,7 @@ void WaterOptions::OnChangeWaterEdit()
 		PolygonTrigger *pTrig;
 		for (pTrig=PolygonTrigger::getFirstPolygonTrigger(); !didMatch && pTrig; pTrig = pTrig->getNext()) {
 			if (pTrig==theTrigger) continue; // don't check against yourself.
-			AsciiString trigName = pTrig->getTriggerName();
+			const AsciiString& trigName = pTrig->getTriggerName();
 			if (name == trigName) {
 				if (pTrig->isValid()) {
 					didMatch = true;
@@ -191,13 +191,13 @@ void WaterOptions::OnChangeWaterEdit()
 }
 
 
-void WaterOptions::OnWaterPolygon() 
+void WaterOptions::OnWaterPolygon()
 {
 	CButton *pButton = (CButton*)GetDlgItem(IDC_WATER_POLYGON);
 	m_creatingWaterAreas = (pButton->GetCheck()==1);
 }
 
-void WaterOptions::OnMakeRiver() 
+void WaterOptions::OnMakeRiver()
 {
     CButton *pButton = (CButton*)GetDlgItem(IDC_MAKE_RIVER);
     Bool river = (pButton->GetCheck() == 1);
@@ -292,7 +292,7 @@ PolygonTrigger * WaterOptions::adjustCount(PolygonTrigger *trigger, Int firstPt,
 {
 	PolygonTrigger *pNew = newInstance(PolygonTrigger)(trigger->getNumPoints());
 //	Real endLen=0;
-	Real totalLen=0;	
+	Real totalLen=0;
 	Real curSpacingLen = 10;
 	Int curPoint = lastPt;
 	ICoord3D pt;
@@ -303,7 +303,7 @@ PolygonTrigger * WaterOptions::adjustCount(PolygonTrigger *trigger, Int firstPt,
 		if (curPoint>=trigger->getNumPoints()) {
 			curPoint = 0;
 		}
-	}	
+	}
 
 	curPoint = firstPt;
 	while (curPoint != lastPt) {
@@ -385,7 +385,7 @@ void WaterOptions::GetPopSliderInfo(const long sliderID, long *pMin, long *pMax,
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 }
 
 void WaterOptions::PopSliderChanged(const long sliderID, long theVal)
@@ -411,7 +411,7 @@ void WaterOptions::PopSliderChanged(const long sliderID, long theVal)
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 }
 
 void WaterOptions::PopSliderFinished(const long sliderID, long theVal)
@@ -426,11 +426,11 @@ void WaterOptions::PopSliderFinished(const long sliderID, long theVal)
 			// uh-oh!
 			DEBUG_CRASH(("Slider message from unknown control"));
 			break;
-	}	// switch
+	}
 
 }
 
-void WaterOptions::startUpdateHeight(void)
+void WaterOptions::startUpdateHeight()
 {
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 	if (!theTrigger) {
@@ -438,7 +438,7 @@ void WaterOptions::startUpdateHeight(void)
 		return;
 	}
 	if (!theTrigger->isWaterArea()) {
-		REF_PTR_RELEASE(m_moveUndoable); 
+		REF_PTR_RELEASE(m_moveUndoable);
 		return;
 	}
 	if (m_moveUndoable && theTrigger == m_moveUndoable->getTrigger()) {
@@ -457,7 +457,7 @@ void WaterOptions::startUpdateHeight(void)
 }
 
 
-void WaterOptions::updateHeight(void)
+void WaterOptions::updateHeight()
 {
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
 	if (!theTrigger || !m_moveUndoable) {
@@ -482,7 +482,7 @@ void WaterOptions::updateHeight(void)
 	pView->Invalidate();
 }
 
-void WaterOptions::endUpdateHeight(void)
+void WaterOptions::endUpdateHeight()
 {
 	REF_PTR_RELEASE(m_moveUndoable); // belongs to pDoc now.
 }
@@ -491,7 +491,7 @@ void WaterOptions::endUpdateHeight(void)
  /// Handles width edit ui messages.
 /** Gets the new edit control text, converts it to an int, then updates
 		the slider and brush tool. */
-void WaterOptions::OnChangeHeightEdit() 
+void WaterOptions::OnChangeHeightEdit()
 {
 	if (m_updating) return;
 	CWnd *pEdit = m_staticThis->GetDlgItem(IDC_HEIGHT_EDIT);
@@ -513,11 +513,11 @@ void WaterOptions::OnChangeHeightEdit()
  /// Handles width edit ui messages.
 /** Gets the new edit control text, converts it to an int, then updates
 		the slider and brush tool. */
-void WaterOptions::OnChangeSpacingEdit() 
+void WaterOptions::OnChangeSpacingEdit()
 {
 	if (m_updating) return;
 	CWnd *pEdit = m_staticThis->GetDlgItem(IDC_SPACING);
-	char buffer[_MAX_PATH];
+	char buffer[12];
 	if (pEdit) {
 		pEdit->GetWindowText(buffer, sizeof(buffer));
 		Int height;
@@ -525,7 +525,7 @@ void WaterOptions::OnChangeSpacingEdit()
 		if (1==sscanf(buffer, "%d", &height)) {
 			m_waterPointSpacing = height;
 		}	else {
-			sprintf(buffer, "%d", m_waterPointSpacing);
+			snprintf(buffer, ARRAY_SIZE(buffer), "%d", m_waterPointSpacing);
 			pEdit->SetWindowText(buffer);
 		}
 		m_updating = false;

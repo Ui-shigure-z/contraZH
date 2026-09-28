@@ -26,9 +26,10 @@ target_include_directories(corei_imagepacker INTERFACE
 )
 
 target_link_libraries(corei_imagepacker INTERFACE
-    benchmark
     comctl32
-    dbghelplib
+    core_debug
+    core_profile_legacy
+    core_wwcommon
     imm32
     vfw32
     winmm

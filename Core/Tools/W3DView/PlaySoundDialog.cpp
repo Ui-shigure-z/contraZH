@@ -19,13 +19,13 @@
 // PlaySoundDialog.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "playsounddialog.h"
-#include "utils.h"
-#include "audiblesound.h"
+#include "StdAfx.h"
+#include "PlaySoundDialog.h"
+#include "Utils.h"
+#include "WWAudio/AudibleSound.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -37,15 +37,13 @@ static char THIS_FILE[] = __FILE__;
 // PlaySoundDialogClass
 //
 /////////////////////////////////////////////////////////////////////////////
-PlaySoundDialogClass::PlaySoundDialogClass(LPCTSTR filename, CWnd* pParent /*=NULL*/)
+PlaySoundDialogClass::PlaySoundDialogClass(LPCTSTR filename, CWnd* pParent /*=nullptr*/)
 	:	Filename (filename),
-		SoundObj (NULL),
 		CDialog(PlaySoundDialogClass::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(PlaySoundDialogClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	return ;
 }
 
 
@@ -61,7 +59,6 @@ PlaySoundDialogClass::DoDataExchange (CDataExchange *pDX)
 	//{{AFX_DATA_MAP(PlaySoundDialogClass)
 		// NOTE: the ClassWizard will add DDX and DDV calls here
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -79,15 +76,13 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-PlaySoundDialogClass::OnPlaySoundEffect (void) 
+PlaySoundDialogClass::OnPlaySoundEffect ()
 {
-	ASSERT (SoundObj != NULL);
-	if (SoundObj != NULL) {
+	ASSERT (SoundObj != nullptr);
+	if (SoundObj != nullptr) {
 		SoundObj->Stop ();
 		SoundObj->Play ();
 	}
-
-	return ;
 }
 
 
@@ -97,13 +92,12 @@ PlaySoundDialogClass::OnPlaySoundEffect (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-PlaySoundDialogClass::OnCancel (void) 
+PlaySoundDialogClass::OnCancel ()
 {
 	SoundObj->Stop ();
-	MEMBER_RELEASE (SoundObj);
+	SoundObj.Clear();
 
 	CDialog::OnCancel ();
-	return ;
 }
 
 
@@ -113,7 +107,7 @@ PlaySoundDialogClass::OnCancel (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 BOOL
-PlaySoundDialogClass::OnInitDialog (void) 
+PlaySoundDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
@@ -125,8 +119,8 @@ PlaySoundDialogClass::OnInitDialog (void)
 	//
 	//	Create the sound effect so we can play it
 	//
-	SoundObj = WWAudioClass::Get_Instance ()->Create_Sound_Effect (Filename);
-	if (SoundObj == NULL) {
+	SoundObj.Assign_No_Add_Ref (WWAudioClass::Get_Instance ()->Create_Sound_Effect (Filename));
+	if (SoundObj == nullptr) {
 		CString message;
 		message.Format ("Cannot find sound file: %s!", (LPCTSTR)Filename, MB_OK);
 		MessageBox (message, "File Not Found", MB_ICONEXCLAMATION | MB_OK);
@@ -134,7 +128,7 @@ PlaySoundDialogClass::OnInitDialog (void)
 	} else {
 		OnPlaySoundEffect ();
 	}
-	
+
 	return TRUE;
 }
 
@@ -145,13 +139,11 @@ PlaySoundDialogClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////////////////////
 void
-PlaySoundDialogClass::OnStopSoundEffect (void)
+PlaySoundDialogClass::OnStopSoundEffect ()
 {
-	ASSERT (SoundObj != NULL);
-	if (SoundObj != NULL) {
+	ASSERT (SoundObj != nullptr);
+	if (SoundObj != nullptr) {
 		SoundObj->Stop ();
 	}
-	
-	return ;
 }
 

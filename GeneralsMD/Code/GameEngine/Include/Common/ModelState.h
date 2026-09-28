@@ -28,9 +28,6 @@
 
 #pragma once
 
-#ifndef _ModelState_H_
-#define _ModelState_H_
-
 #include "Lib/BaseType.h"
 #include "Common/INI.h"
 #include "Common/BitFlags.h"
@@ -42,45 +39,45 @@
 	THE PROBLEM
 	-----------
 
-	-- there are lots of different states. (consider that structures can be: day/night, snow/nosnow, 
+	-- there are lots of different states. (consider that structures can be: day/night, snow/nosnow,
 	powered/not, garrisoned/empty, damaged/not... you do the math.)
 
-	-- some states are mutually exclusive (idle vs. moving), others are not (snow/nosnow, day/night). 
-	generally, humanoid units have mostly the former, while structure units have mostly the latter. 
+	-- some states are mutually exclusive (idle vs. moving), others are not (snow/nosnow, day/night).
+	generally, humanoid units have mostly the former, while structure units have mostly the latter.
 	The current ModelState system really only supports the mutually-exclusive states well.
 
-	-- we'd rather not have to specify every state in the INI files, BUT we do want to be able 
+	-- we'd rather not have to specify every state in the INI files, BUT we do want to be able
 	to intelligently choose the best model for a given state, whether or not a "real" state exists for it.
 
-	-- it would be desirable to have a unified way of representing "ModelState" so that we don't 
+	-- it would be desirable to have a unified way of representing "ModelState" so that we don't
 	have multiple similar-yet-different systems.
 
 	YUCK, WHAT NOW
 	--------------
 
-	Let's represent the Model State with two dictinct pieces: 
-	
-	-- an "ActionState" piece, representing the mutually-exclusive states, which are almost 
+	Let's represent the Model State with two distinct pieces:
+
+	-- an "ActionState" piece, representing the mutually-exclusive states, which are almost
 		always an action of some sort
-		
-	-- and a "ConditionState" piece, which is a set of bitflags to indicate the static "condition" 
+
+	-- and a "ConditionState" piece, which is a set of bitflags to indicate the static "condition"
 		of the model.
 
 	Note that these are usually set independently in code, but they are lumped together in order to
 	determine the actual model to be used.
 
-	(Let's require all objects would be required to have an "Idle" ActionState, which is the 
-	normal, just-sitting there condition.) 
+	(Let's require all objects would be required to have an "Idle" ActionState, which is the
+	normal, just-sitting there condition.)
 
-	From a code point of view, this becomes an issue of requesting a certain state, and 
+	From a code point of view, this becomes an issue of requesting a certain state, and
 	finding the best-fit match for it. So, what are the rules for finding a good match?
 
-	-- Action states must match exactly. If the desired action state is not found, then the 
+	-- Action states must match exactly. If the desired action state is not found, then the
 	IDLE state is substituted (but this should generally be considered an error condition).
 
-	-- Condition states choose the match with the closest match among the "Condition" bits in the 
+	-- Condition states choose the match with the closest match among the "Condition" bits in the
 	INI file, based on satisfying the most of the "required" conditions and the fewest of the
-	"forbidden" conditions. 
+	"forbidden" conditions.
 
 */
 
@@ -94,13 +91,11 @@ enum ModelConditionFlagType CPP_11(: Int)
 {
 	MODELCONDITION_INVALID = -1,
 
-	MODELCONDITION_FIRST = 0,
-
 //
 // Note: these values are saved in save files, so you MUST NOT REMOVE OR CHANGE
 // existing values!
 //
-	MODELCONDITION_TOPPLED = MODELCONDITION_FIRST,
+	MODELCONDITION_TOPPLED,
 	MODELCONDITION_FRONTCRUSHED,
 	MODELCONDITION_BACKCRUSHED,
 	MODELCONDITION_DAMAGED,
@@ -118,7 +113,7 @@ enum ModelConditionFlagType CPP_11(: Int)
 	MODELCONDITION_WEAPONSET_CRATEUPGRADE_ONE,
 	MODELCONDITION_WEAPONSET_CRATEUPGRADE_TWO,
 	MODELCONDITION_WEAPONSET_PLAYER_UPGRADE,
-	MODELCONDITION_DOOR_1_OPENING, 
+	MODELCONDITION_DOOR_1_OPENING,
 	MODELCONDITION_DOOR_1_CLOSING,
 	MODELCONDITION_DOOR_1_WAITING_OPEN,
 	MODELCONDITION_DOOR_1_WAITING_TO_CLOSE,
@@ -189,7 +184,7 @@ enum ModelConditionFlagType CPP_11(: Int)
 
 	//Special model conditions work as following:
 	//Something turns it on... but a timer in the object will turn them off after a given
-	//amount of time. If you add any more special animations, then you'll need to add the 
+	//amount of time. If you add any more special animations, then you'll need to add the
 	//code to turn off the state.
 	MODELCONDITION_SPECIAL_CHEERING,	//When units do a victory cheer (or player initiated cheer).
 
@@ -237,30 +232,105 @@ enum ModelConditionFlagType CPP_11(: Int)
 	MODELCONDITION_USER_2,
 
 	MODELCONDITION_DISGUISED,
+
+	// ---
+	// New Weaponsets
+	MODELCONDITION_WEAPONSET_PLAYER_UPGRADE2,
+	MODELCONDITION_WEAPONSET_PLAYER_UPGRADE3,
+	MODELCONDITION_WEAPONSET_PLAYER_UPGRADE4,
+
+	// MODELCONDITION_WEAPONSET_CONTAINED,  // for new Garrisoned and Contained weaponsets
+	// MODELCONDITION_WEAPONSET_GARRISONED,  // somewhat obsolote since we are usually not visible when contained.
+
+
+    // New Weaponslots (4 to 8 -- D to H)
+	MODELCONDITION_PREATTACK_D,
+	MODELCONDITION_FIRING_D,
+	MODELCONDITION_BETWEEN_FIRING_SHOTS_D,
+	MODELCONDITION_RELOADING_D,
+    MODELCONDITION_USING_WEAPON_D,
+
+	MODELCONDITION_PREATTACK_E,
+	MODELCONDITION_FIRING_E,
+	MODELCONDITION_BETWEEN_FIRING_SHOTS_E,
+	MODELCONDITION_RELOADING_E,
+	MODELCONDITION_USING_WEAPON_E,
+
+	MODELCONDITION_PREATTACK_F,
+	MODELCONDITION_FIRING_F,
+	MODELCONDITION_BETWEEN_FIRING_SHOTS_F,
+	MODELCONDITION_RELOADING_F,
+	MODELCONDITION_USING_WEAPON_F,
+
+	MODELCONDITION_PREATTACK_G,
+	MODELCONDITION_FIRING_G,
+	MODELCONDITION_BETWEEN_FIRING_SHOTS_G,
+	MODELCONDITION_RELOADING_G,
+	MODELCONDITION_USING_WEAPON_G,
+
+	MODELCONDITION_PREATTACK_H,
+	MODELCONDITION_FIRING_H,
+	MODELCONDITION_BETWEEN_FIRING_SHOTS_H,
+	MODELCONDITION_RELOADING_H,
+	MODELCONDITION_USING_WEAPON_H,
+
+	// VTOL
+	MODELCONDITION_TAKEOFF,
+	MODELCONDITION_LANDING,
+
+	// Teleporter / Chrono Legionnaire
+	MODELCONDITION_TELEPORT_RECOVER,
+
+	// Carrier main door, triggered when drones are landing
+	MODELCONDITION_CARRIER_DOOR_OPENING,
+	MODELCONDITION_CARRIER_DOOR_CLOSING,
+
+	// Ship death
+	MODELCONDITION_SHIP_TOPPLING,
+	MODELCONDITION_SHIP_SINKING,
+
+	// Veterancy ranks beyond HEROIC (appended to preserve existing save values).
+	MODELCONDITION_WEAPONSET_FOUR,
+	MODELCONDITION_WEAPONSET_FIVE,
+
+	// Additional rider slots (appended to preserve existing save values). See RiderChangeContain (MAX_RIDERS).
+	MODELCONDITION_RIDER9,
+	MODELCONDITION_RIDER10,
+	MODELCONDITION_RIDER11,
+	MODELCONDITION_RIDER12,
+	MODELCONDITION_RIDER13,
+	MODELCONDITION_RIDER14,
+	MODELCONDITION_RIDER15,
+	MODELCONDITION_RIDER16,
+
+	// Set while SUBDUAL_FROZEN damage holds the unit disabled
+	MODELCONDITION_FROZEN,
+
+	// Reserved padding: keeps MODELCONDITION_COUNT distinct from KINDOF_COUNT. BitFlags<N> is keyed only
+	// on its bit count, so two flag enums with an equal COUNT would share one name list (see the guard in
+	// BitFlags.cpp). Do not reuse this slot for a real condition without re-checking the counts.
+	MODELCONDITION_RESERVED_UNIQUE_SIZE_PAD,
 //
 // Note: these values are saved in save files, so you MUST NOT REMOVE OR CHANGE
 // existing values!
 //
 
-	MODELCONDITION_COUNT	// keep last!
+	MODELCONDITION_COUNT,
+	MODELCONDITION_FIRST = 0,
 };
 
 //-------------------------------------------------------------------------------------------------
 
-typedef BitFlags<MODELCONDITION_COUNT> ModelConditionFlags;
+typedef BitFlags<MODELCONDITION_COUNT, struct ModelConditionFlagsTag> ModelConditionFlags;
 
 #define MAKE_MODELCONDITION_MASK(k) ModelConditionFlags(ModelConditionFlags::kInit, (k))
 #define MAKE_MODELCONDITION_MASK2(k,a) ModelConditionFlags(ModelConditionFlags::kInit, (k), (a))
 #define MAKE_MODELCONDITION_MASK3(k,a,b) ModelConditionFlags(ModelConditionFlags::kInit, (k), (a), (b))
 #define MAKE_MODELCONDITION_MASK4(k,a,b,c) ModelConditionFlags(ModelConditionFlags::kInit, (k), (a), (b), (c))
 #define MAKE_MODELCONDITION_MASK5(k,a,b,c,d) ModelConditionFlags(ModelConditionFlags::kInit, (k), (a), (b), (c), (d))
-#define MAKE_MODELCONDITION_MASK12(a,b,c,d,e,f,g,h,i,j,k,l) ModelConditionFlags(ModelConditionFlags::kInit, (a), (b), (c), (d), (e), (f), (g), (h), (i), (j), (k), (l))
 
 //-------------------------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------------------------
-
-#endif // _ModelState_H_
-

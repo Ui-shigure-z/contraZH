@@ -25,14 +25,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <assetmgr.h>
-#include <texture.h>
-#include <tri.h>
-#include <colmath.h>
-#include <coltest.h>
-#include <rinfo.h>
-#include <camera.h>
+#include <WW3D2/assetmgr.h>
+#include <WW3D2/texture.h>
+#include <WWMath/tri.h>
+#include <WWMath/colmath.h>
+#include <WW3D2/coltest.h>
+#include <WW3D2/rinfo.h>
+#include <WW3D2/camera.h>
 #include "Common/GlobalData.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/TerrainTex.h"
@@ -61,12 +60,12 @@
 #include "Common/BorderColors.h"
 #include "Common/ThingTemplate.h"
 #include "W3DDevice/Common/W3DConvert.h"
-#include "render2d.h"
+#include "WW3D2/render2d.h"
 #include "GameLogic/Weapon.h"
 #include "Common/AudioEventInfo.h"
 #include <d3dx8tex.h>		// D3DXCreateTextureFromFileExA, for PNG tracing overlays
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define NO_INTENSE_DEBUG 1
 #endif
 
@@ -139,7 +138,7 @@ Coord3D	DrawObject::m_rampEndPoint;
 Real DrawObject::m_rampWidth = 0.0f;
 
 
-Bool DrawObject::m_dragWaypointFeedback = false; 
+Bool DrawObject::m_dragWaypointFeedback = false;
 Coord3D DrawObject::m_dragWayStart;
 Coord3D DrawObject::m_dragWayEnd;
 
@@ -242,14 +241,14 @@ AsciiString DrawObject::resolveTracingOverlayPath(void)
 
 
 
-DrawObject::~DrawObject(void)
+DrawObject::~DrawObject()
 {
 	freeMapResources();
 	REF_PTR_RELEASE(m_waterDrawObject);
-	TheWaterRenderObj = NULL;
+	TheWaterRenderObj = nullptr;
 }
 
-DrawObject::DrawObject(void) :
+DrawObject::DrawObject() :
 	m_drawObjects(true),
 	m_drawPolygonAreas(true),
 	m_indexBuffer(NULL),
@@ -275,7 +274,7 @@ DrawObject::DrawObject(void) :
 	m_feedbackPoint.y = 20;
 	initData();
 	m_waterDrawObject = new WaterRenderObjClass;
-	m_waterDrawObject->init(0, 0, 0, NULL, WaterRenderObjClass::WATER_TYPE_0_TRANSLUCENT);
+	m_waterDrawObject->init(0, 0, 0, nullptr, WaterRenderObjClass::WATER_TYPE_0_TRANSLUCENT);
 	TheWaterRenderObj=m_waterDrawObject;
 
 	//(gth) this was needed to fix the extents bug that is based off water and too small for our maps
@@ -286,7 +285,7 @@ DrawObject::DrawObject(void) :
 Bool DrawObject::Cast_Ray(RayCollisionTestClass & raytest)
 {
 
-	return false;	
+	return false;
 
 }
 
@@ -323,18 +322,18 @@ void DrawObject::Get_Obj_Space_Bounding_Box(AABoxClass & box) const
 	box.Init(minPt,maxPt);
 }
 
-Int DrawObject::Class_ID(void) const
+Int DrawObject::Class_ID() const
 {
 	return RenderObjClass::CLASSID_UNKNOWN;
 }
 
-RenderObjClass * DrawObject::Clone(void) const
+RenderObjClass * DrawObject::Clone() const
 {
 	return new DrawObject(*this);
 }
 
 
-Int DrawObject::freeMapResources(void)
+Int DrawObject::freeMapResources()
 {
 
 	REF_PTR_RELEASE(m_indexBuffer);
@@ -348,10 +347,10 @@ Int DrawObject::freeMapResources(void)
 	REF_PTR_RELEASE(m_moldMesh);
 	REF_PTR_RELEASE(m_tracingOverlayTexture);
 	m_tracingOverlayLoadedPath.clear();
-	if (m_lineRenderer) {
-		delete m_lineRenderer;
-		m_lineRenderer = NULL;
-	}
+
+	delete m_lineRenderer;
+	m_lineRenderer = nullptr;
+
 	return 0;
 }
 
@@ -368,8 +367,8 @@ Int DrawObject::freeMapResources(void)
 // #define NUM_TRI (3 + NUM_ARROW_TRI + NUM_SELECT_TRI)
 
 
-Int DrawObject::initData(void)
-{	
+Int DrawObject::initData()
+{
 	Int i;
 
 	freeMapResources();	//free old data and ib/vb
@@ -380,7 +379,7 @@ Int DrawObject::initData(void)
 	// Fill up the IB
 	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer, D3DLOCK_DISCARD);
 	UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
-		
+
 	for (i=0; i<3*m_numTriangles; i+=3)
 	{
 		ib[0]=i;
@@ -400,19 +399,19 @@ Int DrawObject::initData(void)
 	m_vertexMaterialClass=VertexMaterialClass::Get_Preset(VertexMaterialClass::PRELIT_DIFFUSE);
 
 	//use a multi-texture shader: (text1*diffuse)*text2.
-	m_shaderClass = ShaderClass::ShaderClass(SC_OPAQUE);//_PresetOpaque2DShader;//ShaderClass(SC_OPAQUE); //_PresetOpaqueShader;
+	m_shaderClass = ShaderClass(SC_OPAQUE);//_PresetOpaque2DShader;//ShaderClass(SC_OPAQUE); //_PresetOpaqueShader;
 
 	m_shaderClass = ShaderClass::_PresetOpaque2DShader;
-	updateForWater();			 
+	updateForWater();
 	updateVB(m_vertexBufferTile1, 255<<8, true, false);
-	
+
 	return 0;
 }
 
 
 /** updateMeshVB puts mesh mold triangles into m_vertexFeedback. */
 
-void DrawObject::updateMeshVB(void)
+void DrawObject::updateMeshVB()
 {
 	const Int theAlpha = 64;
 
@@ -420,11 +419,11 @@ void DrawObject::updateMeshVB(void)
 		REF_PTR_RELEASE(m_moldMesh);
 		m_curMeshModelName = MeshMoldOptions::getModelName();
 	}
-	if (m_moldMesh == NULL) {
+	if (m_moldMesh == nullptr) {
  		WW3DAssetManager *pMgr = W3DAssetManager::Get_Instance();
 		pMgr->Set_WW3D_Load_On_Demand(false);	 // We don't want it fishing for these assets in the game assets.
 		m_moldMesh = (MeshClass*)pMgr->Create_Render_Obj(m_curMeshModelName.str());
-		if (m_moldMesh == NULL) {
+		if (m_moldMesh == nullptr) {
 			// Try loading the mold asset.
 			AsciiString path("data\\editor\\molds\\");
 			path.concat(m_curMeshModelName);
@@ -437,7 +436,7 @@ void DrawObject::updateMeshVB(void)
 		}
 		pMgr->Set_WW3D_Load_On_Demand(true);
 	}
-	if (m_moldMesh == NULL) {
+	if (m_moldMesh == nullptr) {
 		return;
 	}
 
@@ -452,7 +451,7 @@ void DrawObject::updateMeshVB(void)
 	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 	VertexFormatXYZDUV1 *curVb = vb;
 
-	if (m_moldMesh == NULL) {
+	if (m_moldMesh == nullptr) {
 		return;
 	}
 	Int i;
@@ -467,7 +466,7 @@ void DrawObject::updateMeshVB(void)
 	}
 
 #if 0	//this wasn't being used (see below) so I commented it out. -MW
-	Vector3 lightRay=Normalize(Vector3(-TheGlobalData->m_terrainLightPos[0].x, 
+	Vector3 lightRay=Normalize(Vector3(-TheGlobalData->m_terrainLightPos[0].x,
 		-TheGlobalData->m_terrainLightPos[0].y, -TheGlobalData->m_terrainLightPos[0].z));
 #endif
 
@@ -483,7 +482,7 @@ void DrawObject::updateMeshVB(void)
 		curVb->x = vLoc.X;
 		curVb->y = vLoc.Y;
 		curVb->z = vLoc.Z;
-		
+
 		VertexFormatXYZDUV2 vb;
 		vb.x = vLoc.X;
 		vb.y = vLoc.Y;
@@ -491,8 +490,8 @@ void DrawObject::updateMeshVB(void)
 
 #if 1
 		curVb->diffuse = 0x0000ffff | (theAlpha << 24);		// bright cyan.
-#else 
-		TheTerrainRenderObject->doTheLight(&vb, &lightRay, (Vector3 *)(&pNormal[i]), NULL, 1.0f);
+#else
+		TheTerrainRenderObject->doTheLight(&vb, &lightRay, (Vector3 *)(&pNormal[i]), nullptr, 1.0f);
 		vb.diffuse &= 0x0000ffff;
 		curVb->diffuse = vb.diffuse | (theAlpha << 24);
 #endif
@@ -566,7 +565,7 @@ void DrawObject::updateMeshVB(void)
 
 /** updateRampVB puts the ramps into a vertex buffer. */
 
-void DrawObject::updateRampVB(void)
+void DrawObject::updateRampVB()
 {
 	const Int theAlpha = 64;
 
@@ -586,45 +585,45 @@ void DrawObject::updateRampVB(void)
 	Int numVertex = widthVerts * lengthVerts;
 
 /*
-	Generate the rectangle via the function BuildRectFromSegmentAndWidth(...). 
-	Note that for the rectangular case, this is easy, as we simply step along the line at 
-	pre-determined step sizes, with no additional calculation. (IE, we can simply perform 
-	linear interpolation.) However, with the curved case, we will need to recalculate the 
-	value every step along the way. 
- 
- 
+	Generate the rectangle via the function BuildRectFromSegmentAndWidth(...).
+	Note that for the rectangular case, this is easy, as we simply step along the line at
+	pre-determined step sizes, with no additional calculation. (IE, we can simply perform
+	linear interpolation.) However, with the curved case, we will need to recalculate the
+	value every step along the way.
+
+
 	Ultimately, what I'd like to do is to precompute what the terrain is actually going to
 	do, and then use the faux-adjusted vertices, but this is much easier to start from. jkmcd
 */
 	Coord3D coordBL, coordTL, coordBR, coordTR;
-	BuildRectFromSegmentAndWidth(&m_rampStartPoint, &m_rampEndPoint, m_rampWidth, 
+	BuildRectFromSegmentAndWidth(&m_rampStartPoint, &m_rampEndPoint, m_rampWidth,
 															 &coordBL, &coordTL, &coordBR, &coordTR);
 
 	Vector3 bl(coordBL.x, coordBL.y, coordBL.z);
 	Vector3 tl(coordTL.x, coordTL.y, coordTL.z);
 	Vector3 br(coordBR.x, coordBR.y, coordBR.z);
 	Vector3 tr(coordTR.x, coordTR.y, coordTR.z);
-	
+
 	for (i = 0; i < numVertex; i++) {
 		curVb->u1 = INT_TO_REAL(i % widthVerts) / widthVerts;
 		curVb->v1 = INT_TO_REAL(i / lengthVerts) / lengthVerts;
 
 		curVb->diffuse = curVb->diffuse = 0x0000ffff | (theAlpha << 24);		// bright cyan.
-		
+
 		Vector3 vLoc;
-		vLoc.X = (br.X - bl.X) * INT_TO_REAL(i % widthVerts) / (widthVerts  - 1) + 
+		vLoc.X = (br.X - bl.X) * INT_TO_REAL(i % widthVerts) / (widthVerts  - 1) +
 						 (tl.X - bl.X) * INT_TO_REAL(i / lengthVerts) / (lengthVerts - 1) + bl.X;
-		
-		vLoc.Y = (br.Y - bl.Y) * INT_TO_REAL(i % widthVerts) / (widthVerts - 1) + 
+
+		vLoc.Y = (br.Y - bl.Y) * INT_TO_REAL(i % widthVerts) / (widthVerts - 1) +
 						 (tl.Y - bl.Y) * INT_TO_REAL(i / lengthVerts) / (lengthVerts - 1) + bl.Y;
 
-		vLoc.Z = (br.Z - bl.Z) * INT_TO_REAL(i % widthVerts) / (widthVerts - 1) + 
+		vLoc.Z = (br.Z - bl.Z) * INT_TO_REAL(i % widthVerts) / (widthVerts - 1) +
 						 (tl.Z - bl.Z) * INT_TO_REAL(i / lengthVerts) / (lengthVerts - 1) + bl.Z;
 
 		curVb->x = vLoc.X;
 		curVb->y = vLoc.Y;
 		curVb->z = vLoc.Z;
-		
+
 		curVb++;
 		m_feedbackVertexCount++;
 	}
@@ -635,13 +634,13 @@ void DrawObject::updateRampVB(void)
 			(*curIb++) = i * lengthVerts + j;
 			(*curIb++) = (i + 1) * lengthVerts + j;
 			(*curIb++) = (i + 1) * lengthVerts + j + 1;
-			
+
 			(*curIb++) = i * lengthVerts + j;
 			(*curIb++) = (i + 1) * lengthVerts + j + 1;
 			(*curIb++) = (i) * lengthVerts + j + 1;
 			m_feedbackIndexCount += 6;
 		}
-				
+
 	}
 #if 0
 	// Put in the "center anchor"
@@ -1511,7 +1510,7 @@ static const Int poleWidth = 2;
 static const Int flagHeight = 10;
 static const Int flagWidth = 10;
 
-void DrawObject::updateAmbientSoundVB(void)
+void DrawObject::updateAmbientSoundVB()
 {
 	m_feedbackVertexCount = 0;
 	m_feedbackIndexCount = 0;
@@ -1532,7 +1531,7 @@ void DrawObject::updateAmbientSoundVB(void)
 		}
 
 		Coord3D startPt = *mo->getLocation();
-		startPt.z = TheTerrainRenderObject->getHeightMapHeight(startPt.x, startPt.y, NULL);
+		startPt.z = TheTerrainRenderObject->getHeightMapHeight(startPt.x, startPt.y, nullptr);
 
 		if (m_feedbackVertexCount + 6 > NUM_FEEDBACK_VERTEX) {
 			return;
@@ -1965,7 +1964,7 @@ void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOp
 
 /** updateFeedbackVB puts brush feedback triangles into m_vertexFeedback. */
 
-void DrawObject::updateFeedbackVB(void)
+void DrawObject::updateFeedbackVB()
 {
 	const Int theAlpha = 64;
 	m_feedbackVertexCount = 0;
@@ -2029,15 +2028,15 @@ void DrawObject::updateFeedbackVB(void)
 					curVb->diffuse = 0;
 				}
 			}
-			Real X, Y, theZ; 
+			Real X, Y, theZ;
 			if (doubleResolution) {
-				X = ADJUST_FROM_INDEX_TO_REAL(i)/2.0f + ADJUST_FROM_INDEX_TO_REAL(2*offset+m_cellCenter.x)  / 2.0; 
+				X = ADJUST_FROM_INDEX_TO_REAL(i)/2.0f + ADJUST_FROM_INDEX_TO_REAL(2*offset+m_cellCenter.x)  / 2.0;
 				Y = ADJUST_FROM_INDEX_TO_REAL(j)/2.0f + ADJUST_FROM_INDEX_TO_REAL(2*offset+m_cellCenter.y)  / 2.0;
-				theZ = TheTerrainRenderObject->getHeightMapHeight(X, Y, NULL);
+				theZ = TheTerrainRenderObject->getHeightMapHeight(X, Y, nullptr);
 			} else {
-				X = ADJUST_FROM_INDEX_TO_REAL(i); 
+				X = ADJUST_FROM_INDEX_TO_REAL(i);
 				Y = ADJUST_FROM_INDEX_TO_REAL(j);
-				theZ = TheTerrainRenderObject->getHeightMapHeight(X, Y, NULL);
+				theZ = TheTerrainRenderObject->getHeightMapHeight(X, Y, nullptr);
 			}
 			curVb->u1 = 0;
 			curVb->v1 = 0;
@@ -2047,7 +2046,7 @@ void DrawObject::updateFeedbackVB(void)
 			curVb++;
 			m_feedbackVertexCount++;
 		}
-	} 
+	}
 	Int yOffset = maxX-minX;
 	Int halfWidth = yOffset/2;
 	for (j=0; j<maxY-minY-1; j++) {
@@ -2080,7 +2079,7 @@ void DrawObject::updateFeedbackVB(void)
 
 
 /** Calculate the sign of the cross product.  If the tails of the vectors are both placed
-at 0,0, then the cross product can be interpreted as -1 means v2 is to the right of v1, 
+at 0,0, then the cross product can be interpreted as -1 means v2 is to the right of v1,
 1 means v2 is to the left of v1, and 0 means v2 is parallel to v1. */
 
 static Int xpSign(const ICoord3D &v1, const ICoord3D &v2) {
@@ -2093,12 +2092,12 @@ static Int xpSign(const ICoord3D &v1, const ICoord3D &v2) {
 
 /** updateForWater puts a blue rectangle into the vertex buffer. */
 
-void DrawObject::updateForWater(void)
+void DrawObject::updateForWater()
 {
 }
 
-/* This is a code snippet that starts to attempt to solve the concave area problem, 
-but doesn't, really.  
+/* This is a code snippet that starts to attempt to solve the concave area problem,
+but doesn't, really.
 				const Int maxPoints = 256;
 				Bool pointFlags[256];
 				Int numPoints = pTrig->getNumPoints();
@@ -2198,10 +2197,10 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 	Int diffuse =  b + (g<<8) + (r<<16) + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
 	if (pVB )
 	{
-		
+
 		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB, D3DLOCK_DISCARD);
 		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
-		
+
 		const Real theZ = 0.0f;
 		Real theRadius = THE_RADIUS;
 		Real halfLineWidth = 0.03f*MAP_XY_FACTOR;
@@ -2240,7 +2239,7 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 					Real angle = curAngle+deltaAngle;
 					if (i==limit-1) {
 						angle = 0;
-					} 
+					}
 					Vector3 vec(theRadius/10,0,theZ);
 					vec.Rotate_Z(angle);
 					vb->x=	vec.X;
@@ -2278,7 +2277,7 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 
 		/* Now do the arrow. */
 		for (k=0; k<3; k++) {
-			vb->x=	(k&1)?2*theRadius:0.0f;	 
+			vb->x=	(k&1)?2*theRadius:0.0f;
 			vb->y=	-halfLineWidth + ((k&2)?2*halfLineWidth:0);
 			vb->z=  theZ;
 			vb->diffuse=highlightColors[curHighlight] + (theAlpha<<24);
@@ -2288,7 +2287,7 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb++;
 		}
 		for (k=0; k<3; k++) {
-			vb->x=	(k&1)?0.0f:2*theRadius;	 
+			vb->x=	(k&1)?0.0f:2*theRadius;
 			vb->y=	halfLineWidth - ((k&2)?2*halfLineWidth:0);
 			vb->z=  theZ;
 			vb->diffuse=highlightColors[curHighlight] + (theAlpha<<24);
@@ -2354,7 +2353,7 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 					Real angle = curAngle+deltaAngle;
 					if (i==limit-1) {
 						angle = 0;
-					} 
+					}
 					Vector3 vec(theRadius,0,theZ);
 					vec.Rotate_Z(angle);
 					vb->x=	vec.X;
@@ -2371,14 +2370,14 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 				vb++;
 			}
 			curAngle += deltaAngle;
-			
+
 		}
 
 #if 0
 		// Now do the highlight triangle.  This is in yellow.
 		for (k=0; k<3; k++) {
-			vb->x = k==0?theRadius:0;	 
-			vb->y = k==1?theRadius:0;	 
+			vb->x = k==0?theRadius:0;
+			vb->y = k==1?theRadius:0;
 			vb->z=  k==2?theZ+SELECT_PYRAMID_HEIGHT:theZ;
 			vb->diffuse= highlightColors[curHighlight] + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
 			vb->u1=0;
@@ -2387,8 +2386,8 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb++;
 		}
 		for (k=0; k<3; k++) {
-			vb->x = k==1?-theRadius:0;	 
-			vb->y = k==0?theRadius:0;	 
+			vb->x = k==1?-theRadius:0;
+			vb->y = k==0?theRadius:0;
 			vb->z=  k==2?theZ+SELECT_PYRAMID_HEIGHT:theZ;
 			vb->diffuse= highlightColors[curHighlight] + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
 			vb->u1=0;
@@ -2398,8 +2397,8 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 		}
 
 		for (k=0; k<3; k++) {
-			vb->x = k==1?theRadius:0;	 
-			vb->y = k==0?-theRadius:0;	 
+			vb->x = k==1?theRadius:0;
+			vb->y = k==0?-theRadius:0;
 			vb->z=  k==2?theZ+SELECT_PYRAMID_HEIGHT:theZ;
 			vb->diffuse= highlightColors[curHighlight] + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
 			vb->u1=0;
@@ -2408,8 +2407,8 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb++;
 		}
 		for (k=0; k<3; k++) {
-			vb->x = k==0?-theRadius:0;	 
-			vb->y = k==1?-theRadius:0;	 
+			vb->x = k==0?-theRadius:0;
+			vb->y = k==1?-theRadius:0;
 			vb->z=  k==2?theZ+SELECT_PYRAMID_HEIGHT:theZ;
 			vb->diffuse= highlightColors[curHighlight] + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
 			vb->u1=0;
@@ -2474,9 +2473,9 @@ void DrawObject::updateVBWithBoundingBox(MapObject *pMapObj, CameraClass* camera
 	Coord3D pos = *pMapObj->getLocation();
 	if (TheTerrainRenderObject) {
 		// Make sure that the position is on the terrain.
-		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, nullptr);
 	}
-		
+
 	switch (ginfo.getGeomType())
 	{
 		//---------------------------------------------------------------------------------------------
@@ -2852,13 +2851,13 @@ void DrawObject::updateVBWithSightRange(MapObject *pMapObj, CameraClass* camera)
 	}
 
 	const unsigned long color = 0xFFF0F0F0; // Light blue.
-	
+
 	Real radius = pMapObj->getThingTemplate()->friend_calcVisionRange();
 
 	Coord3D pos = *pMapObj->getLocation();
 	if (TheTerrainRenderObject) {
 		// Make sure that the position is on the terrain.
-		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, nullptr);
 	}
 
   addCircleToLineRenderer(pos, radius, SIGHT_RANGE_LINE_WIDTH, color, camera );
@@ -2873,13 +2872,23 @@ void DrawObject::updateVBWithWeaponRange(MapObject *pMapObj, CameraClass* camera
 		return;
 	}
 
-  const unsigned long colors[WEAPONSLOT_COUNT] = {0xFF00FF00, 0xFFE0F00A, 0xFFFF0000}; // Green, Yellow, Red
+  // const unsigned long colors[WEAPONSLOT_COUNT] = {0xFF00FF00, 0xFFE0F00A, 0xFFFF0000}; // Green, Yellow, Red
+	const unsigned long colors[WEAPONSLOT_COUNT] = {
+	  0xFF00FF00, // Green
+	  0xFFFFFF00, // Yellow
+	  0xFFFF0000, // Red
+	  0xFF0000FF, // Blue
+	  0xFF00FFFF, // Cyan
+	  0xFFFF00FF, // Magenta
+	  0xFF000000, // Black
+	  0xFFFFFFFF  // White
+	};
 
-	
+
 	Coord3D pos = *pMapObj->getLocation();
 	if (TheTerrainRenderObject) {
 		// Make sure that the position is on the terrain.
-		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, nullptr);
 	}
 
 	const WeaponTemplateSetVector& weapons = pMapObj->getThingTemplate()->getWeaponTemplateSets();
@@ -2892,7 +2901,7 @@ void DrawObject::updateVBWithWeaponRange(MapObject *pMapObj, CameraClass* camera
 		for (int i = 0; i < WEAPONSLOT_COUNT; i++) {
 			const WeaponTemplate* tmpl = it->getNth((WeaponSlotType)i);
 
-			if (tmpl == NULL) {
+			if (tmpl == nullptr) {
 				continue;
 			}
 
@@ -2911,19 +2920,19 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
   if (!pMapObj || !m_lineRenderer) {
     return;
   }
-  
+
   const unsigned long colors[2] = {0xFF0000FF, 0xFFFF00FF}; // Blue and purple
                                                             // Colors match those used in W3DView.cpp
 
-  
+
   Coord3D pos = *pMapObj->getLocation();
   if (TheTerrainRenderObject) {
     // Make sure that the position is on the terrain.
-    pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+    pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, nullptr);
   }
 
   // Does this object actually have an attached sound?
-  const AudioEventInfo * audioInfo = NULL;
+  const AudioEventInfo * audioInfo = nullptr;
 
   Dict * properties = pMapObj->getProperties();
 
@@ -2939,15 +2948,15 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
     }
     else
     {
-      if ( TheAudio == NULL )
+      if ( TheAudio == nullptr )
       {
-        DEBUG_CRASH( ("TheAudio is NULL! Can't draw sound circles") );
+        DEBUG_CRASH( ("TheAudio is null! Can't draw sound circles") );
         return;
       }
 
       audioInfo = TheAudio->findAudioEventInfo( ambientName );
 
-      if ( audioInfo == NULL )
+      if ( audioInfo == nullptr )
       {
         DEBUG_CRASH( ("Override audio named %s is missing; Can't draw sound circles", ambientName.str() ) );
         return;
@@ -2957,7 +2966,7 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
   else
   {
     const ThingTemplate * thingTemplate = pMapObj->getThingTemplate();
-    if ( thingTemplate == NULL )
+    if ( thingTemplate == nullptr )
     {
       // No sound if no template
       return;
@@ -2985,18 +2994,18 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
 
     audioInfo = event->getAudioEventInfo();
 
-    if ( audioInfo == NULL )
+    if ( audioInfo == nullptr )
     {
       // May just not be set up yet
-      if ( TheAudio == NULL )
+      if ( TheAudio == nullptr )
       {
-        DEBUG_CRASH( ("TheAudio is NULL! Can't draw sound circles") );
+        DEBUG_CRASH( ("TheAudio is null! Can't draw sound circles") );
         return;
       }
-      
+
       audioInfo = TheAudio->findAudioEventInfo( event->getEventName() );
-      
-      if ( audioInfo == NULL )
+
+      if ( audioInfo == nullptr )
       {
         DEBUG_CRASH( ("Default ambient sound %s has no info; Can't draw sound circles", event->getEventName().str() ) );
         return;
@@ -3015,8 +3024,8 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
 
 
   // Should have set up audioInfo or returned by now
-  DEBUG_ASSERTCRASH( audioInfo != NULL, ("Managed to finish setting up audio info without setting it?!?" ) );
-  if ( audioInfo == NULL )
+  DEBUG_ASSERTCRASH( audioInfo != nullptr, ("Managed to finish setting up audio info without setting it?!?" ) );
+  if ( audioInfo == nullptr )
   {
     return;
   }
@@ -3028,7 +3037,7 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
   if ( exists && customized )
   {
     Real valReal;
-   
+
     valReal = properties->getReal( TheKey_objectSoundAmbientMinRange, &exists );
     if ( exists )
     {
@@ -3039,7 +3048,7 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
     {
       maxRadius = valReal;
     }
-  } 
+  }
   addCircleToLineRenderer(pos, minRadius, SOUND_RANGE_LINE_WIDTH, colors[0], camera );
   addCircleToLineRenderer(pos, maxRadius, SOUND_RANGE_LINE_WIDTH, colors[1], camera );
 }
@@ -3056,12 +3065,12 @@ void DrawObject::updateVBWithTestArtHighlight(MapObject *pMapObj, CameraClass* c
 	}
 
 	unsigned long color = 0xFFA000A0; // Purple
-	
-	
+
+
 	Coord3D pos = *pMapObj->getLocation();
 	if (TheTerrainRenderObject) {
 		// Make sure that the position is on the terrain.
-		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+		pos.z += TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, nullptr);
 	}
 
 	Real angle, inc = PI/2.0f;
@@ -3099,8 +3108,8 @@ void DrawObject::updateVBWithTestArtHighlight(MapObject *pMapObj, CameraClass* c
 // MLL C&C3
 bool DrawObject::worldToScreen(const Coord3D *w, ICoord2D *s, CameraClass* camera)
 {
-	
-	if ((w == NULL) || (s == NULL) || (camera == NULL)) {
+
+	if ((w == nullptr) || (s == nullptr) || (camera == nullptr)) {
 		return false;
 	}
 
@@ -3111,7 +3120,7 @@ bool DrawObject::worldToScreen(const Coord3D *w, ICoord2D *s, CameraClass* camer
 	camera->Project(screen, world);
 
 	//
-	// note that the screen coord returned from the project W3D camera 
+	// note that the screen coord returned from the project W3D camera
 	// gave us a screen coords that range from (-1,-1) bottom left to
 	// (1,1) top right ... we are turning that into (0,0) upper left
 	// coords now
@@ -3119,15 +3128,15 @@ bool DrawObject::worldToScreen(const Coord3D *w, ICoord2D *s, CameraClass* camer
 	W3DLogicalScreenToPixelScreen(screen.X, screen.Y, &s->x, &s->y, m_winSize.x, m_winSize.y);
 
 	if ((screen.X > 2.0f) || (screen.Y > 2.0f) || (screen.X < -2.0f) || (screen.Y < -2.0f)) {
-		// Too far off the screen. 
+		// Too far off the screen.
 		return false;
 	}
 
 	return (true);
-}  
+}
 
 /** Tells drawobject where the tool is located, so it can draw feedback. */
-void DrawObject::setFeedbackPos(Coord3D pos) 
+void DrawObject::setFeedbackPos(Coord3D pos)
 {
 	m_feedbackPoint = pos;
 	// center on half pixel for even widths.
@@ -3142,7 +3151,7 @@ void DrawObject::setFeedbackPos(Coord3D pos)
 	if (ndx.x != m_cellCenter.x || ndx.y != m_cellCenter.y) {
 		m_cellCenter = ndx;
 		if (m_toolWantsFeedback && !m_disableFeedback) {
-			WbView3d *pView = pDoc->Get3DView();		
+			WbView3d *pView = pDoc->Get3DView();
 			if (pView) {
 				pView->Invalidate(false);
 			}
@@ -3270,23 +3279,17 @@ void DrawObject::updateTerrainPasteVB(void)
 
 void DrawObject::setRampFeedbackParms(const Coord3D *start, const Coord3D *end, Real rampWidth)
 {
-	DEBUG_ASSERTCRASH(start && end, ("Parameter passed into setRampFeedbackParms was NULL. Not allowed"));
+	DEBUG_ASSERTCRASH(start && end, ("Parameter passed into setRampFeedbackParms was null. Not allowed"));
 	if (!(start && end)) {
 		return;
 	}
-	
+
 	m_rampStartPoint = *start;
 	m_rampEndPoint = *end;
 	m_rampWidth = rampWidth;
-	
+
 }
 
-
-// This routine fails to draw poly triggers in some cases when optimized.
-// So just shut it off for now.  The failure case was new doc, add a poly trigger.
-// Adding any other object fixed the problem.	jba
-
-#pragma optimize("", off)
 
 bool _skip_drawobject_render = false;
 
@@ -3298,13 +3301,13 @@ if (_skip_drawobject_render) {
 	return;
 }
 
-	if (m_lineRenderer == NULL) {
+	if (m_lineRenderer == nullptr) {
 		// This can't be created in init because the doc hasn't been created yet.
 		m_lineRenderer = new Render2DClass();
 		ASSERT(m_lineRenderer);
 		CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 		ASSERT(pDoc);
-		WbView3d *pView = pDoc->Get3DView(); 
+		WbView3d *pView = pDoc->Get3DView();
 		ASSERT(pView);
 		m_winSize = pView->getActualWinSize();
 		m_lineRenderer->Set_Coordinate_Range(RectClass(0, 0, m_winSize.x, m_winSize.y));
@@ -3316,7 +3319,7 @@ if (_skip_drawobject_render) {
 
 	DX8Wrapper::Set_Material(m_vertexMaterialClass);
 	DX8Wrapper::Set_Shader(m_shaderClass);
-	DX8Wrapper::Set_Texture(0, NULL);
+	DX8Wrapper::Set_Texture(0, nullptr);
 	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 	DX8Wrapper::Apply_Render_State_Changes();
 	Int count=0;
@@ -3334,7 +3337,7 @@ if (_skip_drawobject_render) {
 
 		//WST Variables below are for optimization to reduce VB updates which are extremely slow
 		// Optimization strategy is to remember last setting and avoid re-updating unless it changed
-		int rememberLastSettingVB1 = -99999;	
+		int rememberLastSettingVB1 = -99999;
 		int rememberLastSettingVB2 = -99999;
 
 		// View > Show Playing Sounds asks the 3D view per object whether its sound is audible;
@@ -3429,15 +3432,15 @@ if (_skip_drawobject_render) {
 				if (pMapObj->isSelected()) {
 					if (doArrow && m_drawBoundingBoxes) {
 						linesToRender = true;
-						updateVBWithBoundingBox(pMapObj, &rinfo.Camera); 
+						updateVBWithBoundingBox(pMapObj, &rinfo.Camera);
 					}
 					if (doArrow && m_drawSightRanges) {
 						linesToRender = true;
-						updateVBWithSightRange(pMapObj, &rinfo.Camera); 
+						updateVBWithSightRange(pMapObj, &rinfo.Camera);
 					}
 					if (doArrow && m_drawWeaponRanges) {
 						linesToRender = true;
-						updateVBWithWeaponRange(pMapObj, &rinfo.Camera); 
+						updateVBWithWeaponRange(pMapObj, &rinfo.Camera);
 					}
 					if (doArrow && m_drawSoundRanges) {
 						linesToRender = true;
@@ -3454,7 +3457,7 @@ if (_skip_drawobject_render) {
 				// Force draw arrow triggering test art highlight by mistake
 				if (doArrow && m_drawTestArtHighlight && !m_forceDrawArrow) {
 					linesToRender = true;
-					updateVBWithTestArtHighlight(pMapObj, &rinfo.Camera); 
+					updateVBWithTestArtHighlight(pMapObj, &rinfo.Camera);
 				}
 				if (!m_drawObjects && !pMapObj->isSelected()) {
 					continue;
@@ -3521,15 +3524,15 @@ if (_skip_drawobject_render) {
 			int polyCount = NUM_TRI;
 			if (!pMapObj->isSelected()) {
 				polyCount -= NUM_ARROW_TRI+NUM_SELECT_TRI;
-			} 
-						
+			}
+
 			DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
 			if (isTree) {
 				DX8Wrapper::Draw_Triangles(	NUM_TRI*3,polyCount, 0,	(m_numTriangles*3));
 			} else {
 				DX8Wrapper::Draw_Triangles(	0,polyCount, 0,	(m_numTriangles*3));
 			}
-			
+
 			count++;
 		}
 	}
@@ -3549,8 +3552,8 @@ if (_skip_drawobject_render) {
 					Coord3D loc;
 					loc.x = iLoc.x;
 					loc.y = iLoc.y;
-					loc.z = TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, NULL);
-					SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS); 
+					loc.z = TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, nullptr);
+					SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS);
 					if (rinfo.Camera.Cull_Sphere(bounds)) {
 						continue;
 					}
@@ -3600,14 +3603,14 @@ if (_skip_drawobject_render) {
 
 
  	if (BuildListTool::isActive()) for (i=0; i<TheSidesList->getNumSides(); i++) {
-		SidesInfo *pSide = TheSidesList->getSideInfo(i); 
+		SidesInfo *pSide = TheSidesList->getSideInfo(i);
 		for (BuildListInfo *pBuild = pSide->getBuildList(); pBuild; pBuild = pBuild->getNext()) {
 			Coord3D loc = *pBuild->getLocation();
 			if (TheTerrainRenderObject) {
-				loc.z += TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, NULL);
+				loc.z += TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, nullptr);
 			}
 			// Cull.
-			SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS); 
+			SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS);
 			if (rinfo.Camera.Cull_Sphere(bounds)) {
 				continue;
 			}
@@ -3636,14 +3639,14 @@ if (_skip_drawobject_render) {
 				polyCountA -= NUM_ARROW_TRI+NUM_SELECT_TRI;
 			}
 
-#if 1	
+#if 1
 			DX8Wrapper::Set_Transform(D3DTS_WORLD,tmXX);
 			DX8Wrapper::Draw_Triangles(	0,polyCountA, 0,	(m_numTriangles*3));
 #endif
 
 		}
 	}
-	
+
 	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
  	DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferWater);
 	Matrix3D tmReset(Transform);
@@ -3964,8 +3967,8 @@ if (_skip_drawobject_render) {
 	}
 #endif
 
-	DX8Wrapper::Set_Vertex_Buffer(NULL);	//release reference to vertex buffer
-	DX8Wrapper::Set_Index_Buffer(NULL,0);	//release reference to vertex buffer
+	DX8Wrapper::Set_Vertex_Buffer(nullptr);	//release reference to vertex buffer
+	DX8Wrapper::Set_Index_Buffer(nullptr,0);	//release reference to vertex buffer
 
 
 	if (m_ambientSoundFeedback) {
@@ -4026,14 +4029,14 @@ if (_skip_drawobject_render) {
 		}
 	}
 }
-#pragma optimize("", on)
 
-void BuildRectFromSegmentAndWidth(const Coord3D* start, const Coord3D* end, Real width, 
+
+void BuildRectFromSegmentAndWidth(const Coord3D* start, const Coord3D* end, Real width,
 																	Coord3D* outBL, Coord3D* outTL, Coord3D* outBR, Coord3D* outTR)
 {
 /*
-	Here's how we're generating the surface to render: 
- 		1) Assign longSeg to be the segment from rampStartPoint to rampStopPoint 
+	Here's how we're generating the surface to render:
+ 		1) Assign longSeg to be the segment from rampStartPoint to rampStopPoint
  		2) Cross product with the segment (0, 0, 1)
  		3) Normalize to get the unit vector (which is in the XY plane.)
  		4) Multiply the unit vector by the ramp width / 2
@@ -4046,7 +4049,7 @@ void BuildRectFromSegmentAndWidth(const Coord3D* start, const Coord3D* end, Real
 		return;
 	}
 
-	// 1) 
+	// 1)
 	Vector3 longSeg;
 	if (start->length() > end->length()) {
 		longSeg.X = end->x - start->x;
@@ -4067,7 +4070,7 @@ void BuildRectFromSegmentAndWidth(const Coord3D* start, const Coord3D* end, Real
 	// 3)
 	unitVec.Normalize();
 
-	// 4) 
+	// 4)
 	unitVec.Scale(Vector3(width, width, width));
 
 	Coord3D bl = { start->x + unitVec.X, start->y + unitVec.Y, start->z + unitVec.Z };

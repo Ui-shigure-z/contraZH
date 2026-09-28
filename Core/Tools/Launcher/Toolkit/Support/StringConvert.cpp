@@ -84,18 +84,15 @@ Char* UStringToANSI(const UString& string, Char* buffer, UInt bufferLength)
 
 Char* UnicodeToANSI(const WChar* string, Char* buffer, UInt bufferLength)
 	{
-	if ((string == NULL) || (buffer == NULL))
+	if ((string == nullptr) || (buffer == nullptr))
 		{
-		return NULL;
+		return nullptr;
 		}
 
-	#ifdef _DEBUG
-	int result = 
-	#endif
-		WideCharToMultiByte(CP_ACP, 0, string, -1, buffer, bufferLength,
-			NULL, NULL);
+	MAYBE_UNUSED int result = WideCharToMultiByte(CP_ACP, 0, string, -1, buffer, bufferLength, nullptr, nullptr);
+	(void)result;
 
-	#ifdef _DEBUG
+	#ifdef RTS_DEBUG
 	if (result == 0)
 		{
 		PrintWin32Error("ConvertToANSI() Failed");

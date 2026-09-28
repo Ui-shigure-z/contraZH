@@ -19,16 +19,16 @@
 // HierarchyPropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "W3DView.h"
 #include "HierarchyPropPage.h"
-#include "AssetMgr.H"
-#include "RendObj.H"
-#include "AssetPropertySheet.H"
-#include "MeshPropPage.H"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/rendobj.h"
+#include "AssetPropertySheet.h"
+#include "MeshPropPage.h"
 
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -51,16 +51,14 @@ CHierarchyPropPage::CHierarchyPropPage (const CString &stringHierarchyName)
 	//}}AFX_DATA_INIT
 
     m_stringHierarchyName = stringHierarchyName;
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
 //
 //  CHierarchyPropPage
 //
-CHierarchyPropPage::~CHierarchyPropPage (void)
+CHierarchyPropPage::~CHierarchyPropPage ()
 {
-    return ;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -74,7 +72,6 @@ CHierarchyPropPage::DoDataExchange (CDataExchange* pDX)
 	//{{AFX_DATA_MAP(CHierarchyPropPage)
 	DDX_Control(pDX, IDC_SUBOBJECT_LIST, m_subObjectListCtrl);
 	//}}AFX_DATA_MAP
-    return ;
 }
 
 
@@ -92,11 +89,11 @@ END_MESSAGE_MAP()
 //  OnInitDialog
 //
 BOOL
-CHierarchyPropPage::OnInitDialog (void) 
+CHierarchyPropPage::OnInitDialog ()
 {
 	// Allow the base class to process this message
     CPropertyPage::OnInitDialog();
-	
+
     if (m_stringHierarchyName.GetLength () > 0)
     {
         // Get a pointer to the hierarchy object from the asset manager
@@ -106,7 +103,7 @@ CHierarchyPropPage::OnInitDialog (void)
         if (pCHierarchy)
         {
             CString stringDesc;
-            stringDesc.Format (IDS_HIERARCHY_PROP_DESC, m_stringHierarchyName);
+            stringDesc.Format (IDS_HIERARCHY_PROP_DESC, static_cast<const char*>(m_stringHierarchyName));
 
             // Put the description onto the dialog
             SetDlgItemText (IDC_DESCRIPTION, stringDesc);
@@ -120,7 +117,7 @@ CHierarchyPropPage::OnInitDialog (void)
 
             // Add the name column to the list control
             m_subObjectListCtrl.InsertColumn (0, "Name");
-            
+
             // Loop through all the subobjects and add them to the list control
             for (int iObject = 0;
                  iObject < iSubObjects;
@@ -135,7 +132,7 @@ CHierarchyPropPage::OnInitDialog (void)
 
                     // Free this object
                     pCSubObject->Release_Ref ();
-                    pCSubObject = NULL;
+                    pCSubObject = nullptr;
                 }
             }
 
@@ -144,12 +141,12 @@ CHierarchyPropPage::OnInitDialog (void)
 
             // Free the object
             pCHierarchy->Release_Ref ();
-            pCHierarchy = NULL;
-        }        
+            pCHierarchy = nullptr;
+        }
 	}
 
     GetParent ()->GetDlgItem (IDOK)->ShowWindow (SW_HIDE);
-    GetParent ()->GetDlgItem (IDCANCEL)->SetWindowText ("Close");	
+    GetParent ()->GetDlgItem (IDCANCEL)->SetWindowText ("Close");
     return TRUE;
 }
 
@@ -163,11 +160,11 @@ CHierarchyPropPage::OnDblclkSubObjectList
     NMHDR* pNMHDR,
     LRESULT* pResult
 )
-{    
+{
     // Get the currently selected item
     int iIndex = m_subObjectListCtrl.GetNextItem (-1, LVNI_ALL | LVNI_SELECTED);
     if (iIndex != -1)
-    {    
+    {
         // Create a one-page property sheet that will display property information
         // for the mesh
         CMeshPropPage meshPropPage (m_subObjectListCtrl.GetItemText (iIndex, 0));
@@ -176,7 +173,6 @@ CHierarchyPropPage::OnDblclkSubObjectList
         // Show the property sheet
         propertySheet.DoModal ();
     }
-	
+
 	(*pResult) = 0;
-    return ;
 }

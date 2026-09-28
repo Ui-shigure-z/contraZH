@@ -19,14 +19,14 @@
 // SphereSizePropPage.cpp : implementation file
 //
 
-#include "stdafx.h"
-#include "w3dview.h"
-#include "spheresizeproppage.h"
-#include "colorutils.h"
-#include "utils.h"
-#include "scaledialog.h"
+#include "StdAfx.h"
+#include "W3DView.h"
+#include "SphereSizePropPage.h"
+#include "ColorUtils.h"
+#include "Utils.h"
+#include "ScaleDialog.h"
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -50,18 +50,17 @@ static bool Is_LERP (float last_value, float last_time, float curr_value, float 
 SphereSizePropPageClass::SphereSizePropPageClass (SphereRenderObjClass *sphere)
 	:	m_RenderObj (sphere),
 		m_bValid (true),
-		m_ScaleXBar (NULL),
-		m_ScaleYBar (NULL),
-		m_ScaleZBar (NULL),
-		m_Size (0.5F, 0.5F, 0.5F),	
+		m_ScaleXBar (nullptr),
+		m_ScaleYBar (nullptr),
+		m_ScaleZBar (nullptr),
+		m_Size (0.5F, 0.5F, 0.5F),
 		CPropertyPage(SphereSizePropPageClass::IDD)
 {
 	//{{AFX_DATA_INIT(SphereSizePropPageClass)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
-	
+
 	Initialize ();
-	return ;
 }
 
 
@@ -70,9 +69,8 @@ SphereSizePropPageClass::SphereSizePropPageClass (SphereRenderObjClass *sphere)
 //	~SphereSizePropPageClass
 //
 /////////////////////////////////////////////////////////////
-SphereSizePropPageClass::~SphereSizePropPageClass (void)
+SphereSizePropPageClass::~SphereSizePropPageClass ()
 {
-	return ;
 }
 
 
@@ -90,7 +88,6 @@ SphereSizePropPageClass::DoDataExchange (CDataExchange* pDX)
 	DDX_Control(pDX, IDC_SIZE_Y_SPIN, m_SizeYSpin);
 	DDX_Control(pDX, IDC_SIZE_X_SPIN, m_SizeXSpin);
 	//}}AFX_DATA_MAP
-	return ;
 }
 
 
@@ -107,12 +104,12 @@ END_MESSAGE_MAP()
 //
 /////////////////////////////////////////////////////////////
 void
-SphereSizePropPageClass::Initialize (void)
+SphereSizePropPageClass::Initialize ()
 {
 	m_ScaleChannel.Reset ();
 	m_OrigScaleChannel.Reset ();
 
-	if (m_RenderObj != NULL) {
+	if (m_RenderObj != nullptr) {
 		m_Size					= m_RenderObj->Get_Box ().Extent;
 		m_ScaleChannel			= m_RenderObj->Get_Scale_Channel ();
 		m_OrigScaleChannel	= m_RenderObj->Get_Scale_Channel ();
@@ -122,8 +119,6 @@ SphereSizePropPageClass::Initialize (void)
 			m_OrigScaleChannel.Add_Key (m_RenderObj->Get_Scale (), 0);
 		}
 	}
-
-	return ;
 }
 
 
@@ -133,11 +128,11 @@ SphereSizePropPageClass::Initialize (void)
 //
 /////////////////////////////////////////////////////////////
 BOOL
-SphereSizePropPageClass::OnInitDialog (void)
+SphereSizePropPageClass::OnInitDialog ()
 {
 	// Allow the base class to process this message
 	CPropertyPage::OnInitDialog ();
-	
+
 	m_ScaleXBar = ColorBarClass::Get_Color_Bar (::GetDlgItem (m_hWnd, IDC_SCALE_BAR_X));
 	m_ScaleYBar = ColorBarClass::Get_Color_Bar (::GetDlgItem (m_hWnd, IDC_SCALE_BAR_Y));
 	m_ScaleZBar = ColorBarClass::Get_Color_Bar (::GetDlgItem (m_hWnd, IDC_SCALE_BAR_Z));
@@ -147,7 +142,7 @@ SphereSizePropPageClass::OnInitDialog (void)
 	//
 	::Initialize_Spinner (m_SizeXSpin, m_Size.X, 0, 10000);
 	::Initialize_Spinner (m_SizeYSpin, m_Size.Y, 0, 10000);
-	::Initialize_Spinner (m_SizeZSpin, m_Size.Z, 0, 10000);	
+	::Initialize_Spinner (m_SizeZSpin, m_Size.Z, 0, 10000);
 
 	//
 	// Setup the timelines
@@ -175,7 +170,7 @@ SphereSizePropPageClass::OnInitDialog (void)
 	for (int index = 1; index < m_OrigScaleChannel.Get_Key_Count (); index ++) {
 		const LERPAnimationChannelClass<Vector3>::KeyClass &prev_value = m_OrigScaleChannel.Get_Key (index - 1);
 		const LERPAnimationChannelClass<Vector3>::KeyClass &curr_value = m_OrigScaleChannel.Get_Key (index);
-		
+
 		//
 		//	Find out which channels are unique (we toss the others)
 		//
@@ -259,7 +254,7 @@ SphereSizePropPageClass::OnInitDialog (void)
 //
 /////////////////////////////////////////////////////////////
 BOOL
-SphereSizePropPageClass::OnApply (void)
+SphereSizePropPageClass::OnApply ()
 {
 	// Allow the base class to process this message
 	return CPropertyPage::OnApply ();
@@ -272,10 +267,9 @@ SphereSizePropPageClass::OnApply (void)
 //
 /////////////////////////////////////////////////////////////
 void
-SphereSizePropPageClass::OnDestroy (void)
+SphereSizePropPageClass::OnDestroy ()
 {
 	CPropertyPage::OnDestroy();
-	return ;
 }
 
 
@@ -290,7 +284,7 @@ SphereSizePropPageClass::OnNotify
 	WPARAM wParam,
 	LPARAM lParam,
 	LRESULT *pResult
-) 
+)
 {
 	CBR_NMHDR *color_bar_hdr = (CBR_NMHDR *)lParam;
 
@@ -306,7 +300,7 @@ SphereSizePropPageClass::OnNotify
 			//
 			//	Determine the timeline bar which sent the notification
 			//
-			ColorBarClass *timeline = NULL;
+			ColorBarClass *timeline = nullptr;
 			if (color_bar_hdr->hdr.idFrom == IDC_SCALE_BAR_X) {
 				timeline = m_ScaleXBar;
 			} else if (color_bar_hdr->hdr.idFrom == IDC_SCALE_BAR_Y) {
@@ -318,7 +312,7 @@ SphereSizePropPageClass::OnNotify
 			bool update =	(color_bar_hdr->hdr.code == CBRN_MOVING_POINT) ||
 								(color_bar_hdr->hdr.code == CBRN_DELETED_POINT);
 
-			if (color_bar_hdr->hdr.code == CBRN_DBLCLK_POINT) {			
+			if (color_bar_hdr->hdr.code == CBRN_DBLCLK_POINT) {
 
 				//
 				//	Allow the user to edit the keyframe
@@ -333,13 +327,13 @@ SphereSizePropPageClass::OnNotify
 					timeline->Set_Graph_Percent (color_bar_hdr->key_index, dialog.Get_Scale ());
 					update = true;
 				}
-			} 
-			
+			}
+
 			//
 			//	Update the object
-			//			
-			if (update) {				
-				Update_Scale_Array ();				
+			//
+			if (update) {
+				Update_Scale_Array ();
 				SetModified ();
 			}
 		}
@@ -358,7 +352,7 @@ SphereSizePropPageClass::OnNotify
 		}
 		break;
 	}
-		
+
 	return CPropertyPage::OnNotify (wParam, lParam, pResult);
 }
 
@@ -410,7 +404,7 @@ SphereSizePropPageClass::OnCommand
 //
 /////////////////////////////////////////////////////////////
 void
-SphereSizePropPageClass::OnCancel (void)
+SphereSizePropPageClass::OnCancel ()
 {
 	//
 	//	Reset the object to its original state
@@ -418,7 +412,6 @@ SphereSizePropPageClass::OnCancel (void)
 	m_RenderObj->Set_Scale_Channel (m_ScaleChannel);
 
 	CPropertyPage::OnCancel ();
-	return ;
 }
 
 
@@ -428,14 +421,14 @@ SphereSizePropPageClass::OnCancel (void)
 //
 /////////////////////////////////////////////////////////////
 void
-SphereSizePropPageClass::Update_Scale_Array (void)
+SphereSizePropPageClass::Update_Scale_Array ()
 {
 	m_ScaleChannel.Reset ();
 
 	float position	= 0;
 	float red		= 0;
 	float green		= 0;
-	float blue		= 0;	
+	float blue		= 0;
 
 	//
 	//	Allocate arrays we can store the 3 separate timelines in
@@ -446,29 +439,29 @@ SphereSizePropPageClass::Update_Scale_Array (void)
 	LERPAnimationChannelClass<float> x_values;
 	LERPAnimationChannelClass<float> y_values;
 	LERPAnimationChannelClass<float> z_values;
-	
+
 	//
 	//	Build the X-axis timline
 	//
 	int index;
 	for (index = 0; index < max_x; index++) {
-		m_ScaleXBar->Get_Point (index, &position, &red, &green, &blue);		
+		m_ScaleXBar->Get_Point (index, &position, &red, &green, &blue);
 		x_values.Add_Key (m_ScaleXBar->Get_Graph_Percent (index), position);
 	}
 
 	//
 	//	Build the Y-axis timline
 	//
-	for (index = 0; index < max_y; index++) {		
-		m_ScaleYBar->Get_Point (index, &position, &red, &green, &blue);		
+	for (index = 0; index < max_y; index++) {
+		m_ScaleYBar->Get_Point (index, &position, &red, &green, &blue);
 		y_values.Add_Key (m_ScaleYBar->Get_Graph_Percent (index), position);
 	}
 
 	//
 	//	Build the Z-axis timline
-	//	
-	for (index = 0; index < max_z; index++) {		
-		m_ScaleZBar->Get_Point (index, &position, &red, &green, &blue);		
+	//
+	for (index = 0; index < max_z; index++) {
+		m_ScaleZBar->Get_Point (index, &position, &red, &green, &blue);
 		z_values.Add_Key (m_ScaleZBar->Get_Graph_Percent (index), position);
 	}
 
@@ -485,7 +478,7 @@ SphereSizePropPageClass::Update_Scale_Array (void)
 	while (	x_index < max_x ||
 				y_index < max_y ||
 				z_index < max_z)
-	{		
+	{
 		//
 		//	Find the smallest time
 		//
@@ -541,7 +534,6 @@ SphereSizePropPageClass::Update_Scale_Array (void)
 	//
 	m_RenderObj->Set_Scale_Channel (m_ScaleChannel);
 	m_RenderObj->Restart_Animation ();
-	return ;
 }
 
 

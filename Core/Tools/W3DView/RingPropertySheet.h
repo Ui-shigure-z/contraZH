@@ -34,17 +34,11 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-
-#if defined(_MSC_VER)
 #pragma once
-#endif
 
-#ifndef __RING_PROPERTY_SHEET_H
-#define __RING_PROPERTY_SHEET_H
-
-#include "RingColorPropPage.H"
-#include "RingGeneralPropPage.H"
-#include "RingSizePropPage.H"
+#include "RingColorPropPage.h"
+#include "RingGeneralPropPage.h"
+#include "RingSizePropPage.h"
 
 
 // Forward declarations
@@ -64,8 +58,8 @@ class RingPropertySheetClass : public CPropertySheet
 
 // Construction
 public:
-	RingPropertySheetClass (RingRenderObjClass *ring, UINT nIDCaption, CWnd* pParentWnd = NULL, UINT iSelectPage = 0);
-	RingPropertySheetClass (RingRenderObjClass *ring, LPCTSTR pszCaption, CWnd* pParentWnd = NULL, UINT iSelectPage = 0);
+	RingPropertySheetClass (RingRenderObjClass *ring, UINT nIDCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
+	RingPropertySheetClass (RingRenderObjClass *ring, LPCTSTR pszCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
 
 // Attributes
 public:
@@ -97,15 +91,15 @@ public:
 	//////////////////////////////////////////////////////////////////////
 
 protected:
-	
+
 	//////////////////////////////////////////////////////////////////////
 	//	Protected methods
 	//////////////////////////////////////////////////////////////////////
-	void						Initialize (void);
-	RingRenderObjClass *	Create_Object (void);
-	void						Update_Object (void);	
-	void						Add_Object_To_Viewer (void);
-	void						Create_New_Object (void);
+	void						Initialize ();
+	RingRenderObjClass *	Create_Object ();
+	void						Update_Object ();
+	void						Add_Object_To_Viewer ();
+	void						Create_New_Object ();
 
 private:
 
@@ -115,10 +109,8 @@ private:
 	RingGeneralPropPageClass	m_GeneralPage;
 	RingColorPropPageClass		m_ColorPage;
 	RingSizePropPageClass		m_ScalePage;
-	RingRenderObjClass *			m_RenderObj;
+	RefCountPtr<RingRenderObjClass>			m_RenderObj;
 	CString							m_LastSavedName;
 };
 
 /////////////////////////////////////////////////////////////////////////////
-
-#endif //__RING_PROPERTY_SHEET_H

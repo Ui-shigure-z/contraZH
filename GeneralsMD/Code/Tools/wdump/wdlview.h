@@ -16,12 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_WDLVIEW_H__6C0D7C07_56CD_11D1_8CDC_006097C6A583__INCLUDED_)
-#define AFX_WDLVIEW_H__6C0D7C07_56CD_11D1_8CDC_006097C6A583__INCLUDED_
-
-#if _MSC_VER >= 1000
 #pragma once
-#endif // _MSC_VER >= 1000
+
 // WDLView.h : header file
 //
 
@@ -44,18 +40,18 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CWDumpListView)
 	public:
-	virtual void OnInitialUpdate();
+	virtual void OnInitialUpdate() override;
 	protected:
-	virtual void OnDraw(CDC* pDC);      // overridden to draw this view
-	virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint);
+	virtual void OnDraw(CDC* pDC) override;      // overridden to draw this view
+	virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) override;
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
 	virtual ~CWDumpListView();
-#ifdef _DEBUG
-	virtual void AssertValid() const;
-	virtual void Dump(CDumpContext& dc) const;
+#ifdef RTS_DEBUG
+	virtual void AssertValid() const override;
+	virtual void Dump(CDumpContext& dc) const override;
 #endif
 
 	// Generated message map functions
@@ -70,5 +66,3 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Developer Studio will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_WDLVIEW_H__6C0D7C07_56CD_11D1_8CDC_006097C6A583__INCLUDED_)

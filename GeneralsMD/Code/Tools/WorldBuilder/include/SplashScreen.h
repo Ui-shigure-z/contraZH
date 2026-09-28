@@ -16,11 +16,7 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 #pragma once
-
-#ifndef __SPLASHSCREEN_H__
-#define __SPLASHSCREEN_H__
 
 class SplashScreen : public CDialog
 {
@@ -45,5 +41,3 @@ class SplashScreen : public CDialog
 
 		DECLARE_MESSAGE_MAP()
 };
-
-#endif /* __SPLASHSCREEN_H__ */
