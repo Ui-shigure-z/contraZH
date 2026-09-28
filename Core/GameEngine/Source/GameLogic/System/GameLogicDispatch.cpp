@@ -1706,17 +1706,6 @@ bool GameLogic::onEvacuate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlyS
 {
 	// issue command for either single object or for selected group
 	//	AIGroup *group = TheAI->findGroup( *selectedGroupID );
-	Bool isAutoEvac = (Bool)msg->getArgument(0)->boolean;
-
-	//for tunnel auto pop
-	if (isAutoEvac)
-	{
-		Object* obj = TheGameLogic->findObjectByID((ObjectID)msg->getArgument(1)->objectID);
-		if (!obj || !obj->getContain())
-			return false;
-		obj->getContain()->orderAllPassengersToExit(CMD_FROM_AI, false);
-		return true;
-	}
 
 	if( currentlySelectedGroup )
 	{

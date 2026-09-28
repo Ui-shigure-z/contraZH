@@ -56,7 +56,7 @@ public:
 
 	void onTunnelCreated( const Object *newTunnel );		///< A tunnel was made
 	void onTunnelDestroyed( const Object *deadTunnel );	///< A tunnel was destroyed
-	void initAfterBuildComplete( const Object *newTunnel ) const;
+	Bool doAutoPopRegistion( const Object *newTunnel ) const;
 
 	static void destroyObject( Object *obj, void *userData ); ///< Callback for Iterate Contained system
 	static void healObject( Object *obj, void *frames ); ///< Callback for Iterate Contained system
@@ -75,7 +75,7 @@ public:
 	void updateNemesis(const Object *target);
 
 	void setTunnelAutoPop(Object *tunnel, Bool on);
-	Bool isNextTunnelToPop(Object *tunnel);
+	Bool isNextTunnelToPop(Object *tunnel, UnsignedInt frame);
 	Bool isAutoExitTunnel(const Object *tunnel);
 
 protected:
@@ -94,7 +94,7 @@ private:
 	Int m_containListSize;									///< size of the contain list
 	UnsignedInt m_heroUnitsContained;				///< cached hero count
 	UnsignedInt m_tunnelCount;							///< How many tunnels have registered so we know when we should kill our contain list
-	UnsignedInt m_tunnelAutoExitCount;						///< How many tunnels in the system are auto-pop exit
+	UnsignedInt m_tunnelAutoExitCount;			///< How many tunnels in the system are auto-pop exit
 	UnsignedInt m_framesForFullHeal;				///< How many frames it takes to fully heal a unit
 	Bool m_needsFullHealTimeUpdate;					///< Set to true when needing to recalc full heal time to batch the operation
 
@@ -102,4 +102,5 @@ private:
 	UnsignedInt m_nemesisTimestamp;					///< We only keep nemesis for a couple of seconds.
 
 	ObjectID    m_nextTunnelToPop;
+	UnsignedInt m_curFrame;
 };
