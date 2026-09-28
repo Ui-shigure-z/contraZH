@@ -631,6 +631,8 @@ public:
 	static void resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning );
 	/// How much a cryo-shaded particle is drawn larger or smaller: this template's CryoParticleScale, else GameData.ini's.
 	Real getCryoParticleScale() const;
+	/// The same for an electric-shaded particle, from ElectricParticleScale.
+	Real getElectricParticleScale() const;
 
 protected:
 	friend class ParticleSystemManager;					///< @todo remove this friendship
@@ -652,6 +654,7 @@ protected:
 
 	FlameShaderTuning					m_flameTuning;
 	Real											m_cryoParticleScale;						///< negative takes GameData.ini's
+	Real											m_electricParticleScale;				///< negative takes GameData.ini's
 
 	// template attribute data inherited from ParticleSystemInfo class
 };

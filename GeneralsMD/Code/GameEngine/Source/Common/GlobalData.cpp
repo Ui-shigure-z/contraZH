@@ -281,6 +281,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "ElectricJitter",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricJitter ) },
 	{ "ElectricFlicker",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricFlicker ) },
 	{ "ElectricRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricRate ) },
+	{ "ElectricParticleScale",			INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_electricParticleScale ) },
 	{ "LaserParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_laserParticleTextures ) },
 	{ "LaserCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCore ) },
 	{ "LaserCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCoreWidth ) },
@@ -1013,6 +1014,7 @@ GlobalData::GlobalData()
 	m_electricJitter = 0.03f;
 	m_electricFlicker = 0.6f;
 	m_electricRate = 15.0f;
+	m_electricParticleScale = 1.0f;
 	m_laserParticleTextures.clear();
 	m_laserCore = 1.2f;
 	m_laserCoreWidth = 0.25f;
@@ -1688,6 +1690,7 @@ static const char *const LiveGameDataKeys[] =
 	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
+	"ElectricParticleScale",
 	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
 	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
 	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",

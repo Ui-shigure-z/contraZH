@@ -3192,6 +3192,7 @@ const FieldParse ParticleSystemTemplate::m_fieldParseTable[] =
 	{ "HazeRise",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeRise ) },
 	{ "HazeMask",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeMask ) },
 	{ "CryoParticleScale",		INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_cryoParticleScale ) },
+	{ "ElectricParticleScale",	INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_electricParticleScale ) },
 
 	{ "WindAngleChangeMin", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMin ) },
 	{ "WindAngleChangeMax", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMax ) },
@@ -3294,6 +3295,7 @@ ParticleSystemTemplate::ParticleSystemTemplate( const AsciiString &name ) :
 {
 	m_slaveTemplate = nullptr;
 	m_cryoParticleScale = -1.0f;
+	m_electricParticleScale = -1.0f;
 
 	Real *setting = &m_flameTuning.warp;
 	for (UnsignedInt i = 0; i < sizeof( m_flameTuning ) / sizeof( Real ); ++i)
@@ -3355,6 +3357,13 @@ void ParticleSystemTemplate::resolveFlameTuning( const ParticleSystemTemplate *t
 Real ParticleSystemTemplate::getCryoParticleScale() const
 {
 	return (m_cryoParticleScale >= 0.0f) ? m_cryoParticleScale : TheGlobalData->m_cryoParticleScale;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Real ParticleSystemTemplate::getElectricParticleScale() const
+{
+	return (m_electricParticleScale >= 0.0f) ? m_electricParticleScale : TheGlobalData->m_electricParticleScale;
 }
 
 // ------------------------------------------------------------------------------------------------

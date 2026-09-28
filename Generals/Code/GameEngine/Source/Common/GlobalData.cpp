@@ -610,6 +610,7 @@ GlobalData::GlobalData()
   m_electricJitter = 0.03f;
   m_electricFlicker = 0.6f;
   m_electricRate = 15.0f;
+  m_electricParticleScale = 1.0f;
   m_laserParticleTextures.clear();
   m_laserCore = 1.2f;
   m_laserCoreWidth = 0.25f;

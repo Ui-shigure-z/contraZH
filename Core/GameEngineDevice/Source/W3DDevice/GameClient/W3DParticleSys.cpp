@@ -437,11 +437,18 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			sizeScale = resolved.hazeSize;
 			lift = resolved.hazeLift;
 		}
-		// only particles the cryo shader draws scale, so they keep their size with cryo shading off
-		else if ((effects & SoftParticleHookClass::EFFECT_CRYO) != 0 && !useTerrainConformingParticles &&
+		// only particles the cryo or electric shader draws scale, so they keep their size with that shading off
+		else if (!useTerrainConformingParticles &&
 			!(sys->isUsingVolumeParticles() && sys->getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH))
 		{
-			sizeScale = max(sys->getTemplate()->getCryoParticleScale(), 0.0f);
+			if ((effects & SoftParticleHookClass::EFFECT_CRYO) != 0)
+			{
+				sizeScale = max(sys->getTemplate()->getCryoParticleScale(), 0.0f);
+			}
+			else if ((effects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
+			{
+				sizeScale = max(sys->getTemplate()->getElectricParticleScale(), 0.0f);
+			}
 		}
 
 		UnsignedInt startCount = pointCount;

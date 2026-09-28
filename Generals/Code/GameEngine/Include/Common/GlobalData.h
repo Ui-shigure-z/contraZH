@@ -535,6 +535,7 @@ public:
   Real m_electricJitter;
   Real m_electricFlicker;
   Real m_electricRate;
+  Real m_electricParticleScale;   ///< how much larger or smaller electric-shaded particles draw, 1 unchanged
   std::vector<AsciiString> m_laserParticleTextures;  ///< streak textures that get the laser shader when their system is Auto
   Real m_laserCore;               ///< laser shader settings
   Real m_laserCoreWidth;

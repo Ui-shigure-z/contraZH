@@ -23,7 +23,7 @@ them for one effect. Each shader's own section below lists its keys.
 | Effect | Shader | Set in | Turn on with | Own tuning |
 |---|---|---|---|---|
 | Fire sprites | [Flame](#flame-shading) | `ParticleSystem` | `FlameShader = Yes` | `Flame` and `Haze` keys |
-| Sparks and flares | [Electric](#electric-shading) | `ParticleSystem` | `ElectricShader = Yes` | None |
+| Sparks and flares | [Electric](#electric-shading) | `ParticleSystem` | `ElectricShader = Yes` | `ElectricParticleScale` |
 | Laser trails | [Laser](#laser-shading) | `ParticleSystem` | `Type = STREAK` and `LaserShader = Yes` | None |
 | Laser beams | [Laser](#laser-shading) | `W3DLaserDraw` | On by default | `Laser` keys |
 | Tesla and lightning bolts | [Electric](#electric-shading) | `W3DLaserDraw` | `ElectricShader = Yes` | `Electric` keys |
@@ -377,14 +377,18 @@ adds to the list, so a long list can span several lines. Read at launch.)
 * `ElectricJitter = 0.03` - (How far the texture jumps each crackle, in texture widths.)
 * `ElectricFlicker = 0.6` - (How far brightness swings, as a fraction. 0 is steady.)
 * `ElectricRate = 15` - (Crackles per second. 0 freezes the arcs.)
+* `ElectricParticleScale = 100%` - (How large electric sprites draw, as a percentage of the particle's
+own size. With electric shading off they keep their own size.)
 
-A `W3DLaserDraw` module takes the same six tuning keys. Each one it sets overrides `GameData.ini`
-for that beam alone, and the keys it leaves out keep `GameData.ini`'s values.
+A `W3DLaserDraw` module takes the six keys from `ElectricArcs` to `ElectricRate`. Each one it sets
+overrides `GameData.ini` for that beam alone, and the keys it leaves out keep `GameData.ini`'s values.
+A `ParticleSystem` takes `ElectricParticleScale` alone, and uses `GameData.ini`'s other keys.
 
 ```
 ParticleSystem EMPRing
   ...
   ElectricShader = Yes
+  ElectricParticleScale = 80%
 End
 
 Draw = W3DLaserDraw ModuleTag_Draw
