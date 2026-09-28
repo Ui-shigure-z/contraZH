@@ -156,7 +156,7 @@ float4 main(PsIn input) : COLOR
 #endif
 
 #if GLINT
-    float glint = Glint(input.WorldPos, GlintNormal(input.WorldPos), glintStrength * lit);
+    float glint = Glint(input.WorldPos, GlintNormal(input.WorldPos), glintStrength * lit, GlintEye.w);
 #if NOISE_COUNT >= 1
     color.rgb += SunColor.rgb * cloud.rgb * glint;
 #else

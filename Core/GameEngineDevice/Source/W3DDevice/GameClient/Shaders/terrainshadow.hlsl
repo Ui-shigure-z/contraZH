@@ -34,6 +34,7 @@
 //
 // GLINT adds the sun's glint through terrainglint.hlsli. Every build with the world position has it, so
 // its constants turn it off, and GLINT alone gives the world position to terrain without bumps or lights.
+// Each texture's strength and gloss come from Terrain.ini through a map laid out like the colour atlas.
 
 #ifndef SHADOWED
 #define SHADOWED 1
@@ -230,6 +231,9 @@ float4 SunColor   : register(c2);   // the sun's diffuse colour in the vertex li
 
 #if GLINT
 #include "terrainglint.hlsli"
+
+// Point sampled, since each texture's block holds one value. Red is the strength over GlintAlbedo's scale, green the gloss over GlintEye.w.
+sampler2D GlintMaterials : register(s12);
 #endif
 
 #if BUMP
@@ -304,7 +308,9 @@ float4 main(PsIn input) : COLOR
     float weight = HeightBlendWeight(input.Diffuse.a, tex2D(HeightAtlas, input.BaseUV).r, tex2D(HeightAtlas, input.BlendUV).r);
     float4 color = lerp(base, blend, weight);
 #if GLINT
-    float glintStrength = dot(color.rgb, GlintAlbedo.xyz) + GlintAlbedo.w;
+    float2 material = lerp(tex2D(GlintMaterials, input.BaseUV).rg, tex2D(GlintMaterials, input.BlendUV).rg, weight);
+    float glintStrength = (dot(color.rgb, GlintAlbedo.xyz) + GlintAlbedo.w) * material.r;
+    float glintGloss = max(material.g * GlintEye.w, 1.0f);
 #endif
 
 #if SHADOWED
@@ -369,7 +375,7 @@ float4 main(PsIn input) : COLOR
 #else
     float3 glintNormal = GlintNormal(input.WorldPos);
 #endif
-    float glint = Glint(input.WorldPos, glintNormal, glintStrength * lit);
+    float glint = Glint(input.WorldPos, glintNormal, glintStrength * lit, glintGloss);
 #if SEABED
     glint *= 1.0f - seabed;
 #endif

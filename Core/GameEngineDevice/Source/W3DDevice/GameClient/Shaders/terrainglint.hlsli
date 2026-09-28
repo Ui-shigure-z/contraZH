@@ -9,7 +9,7 @@
 
 sampler2D GlintNormals : register(s11);
 
-float4 GlintEye    : register(c23);   // camera position in world space, w = gloss
+float4 GlintEye    : register(c23);   // camera position in world space, w = gloss, or for terrain the materials' gloss scale
 float4 GlintAlbedo : register(c24);   // weighs the albedo's rgb and 1 into the glint's strength
 float4 GlintMap    : register(c25);   // world xy to normal texcoords: xy scale, zw offset
 
@@ -20,8 +20,9 @@ float3 GlintNormal(float3 world)
 }
 
 // The share of the sun's colour to add. Surfaces turning from the sun lose it before their edge.
-float Glint(float3 world, float3 normal, float strength)
+// The gloss must be at least 1, since pow(0, 0) is NaN.
+float Glint(float3 world, float3 normal, float strength, float gloss)
 {
     float3 halfway = normalize(normalize(GlintEye.xyz - world) + ToSun.xyz);
-    return pow(saturate(dot(normal, halfway)), GlintEye.w) * saturate(dot(normal, ToSun.xyz) * GlintEye.w) * strength;
+    return pow(saturate(dot(normal, halfway)), gloss) * saturate(dot(normal, ToSun.xyz) * gloss) * strength;
 }

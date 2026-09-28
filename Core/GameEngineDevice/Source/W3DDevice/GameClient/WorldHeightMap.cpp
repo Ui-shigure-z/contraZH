@@ -416,6 +416,7 @@ WorldHeightMap::~WorldHeightMap()
 	REF_PTR_RELEASE(m_terrainNormalTex);
 	REF_PTR_RELEASE(m_terrainHeightTex);
 	REF_PTR_RELEASE(m_terrainClassMap);
+	REF_PTR_RELEASE(m_terrainGlintMap);
 	REF_PTR_RELEASE(m_alphaTerrainTex);
 	REF_PTR_RELEASE(m_alphaEdgeTex);
 }
@@ -448,7 +449,8 @@ WorldHeightMap::WorldHeightMap():
 #endif
 	m_numCliffInfo(1),
 	m_terrainTex(nullptr), m_alphaTerrainTex(nullptr), m_numBitmapTiles(0), m_numBlendedTiles(1),
-	m_terrainNormalTex(nullptr), m_terrainHeightTex(nullptr), m_terrainHeightTexFailed(false), m_terrainClassMap(nullptr), m_terrainClassMapAtlas(nullptr), m_hasNormalTiles(false)
+	m_terrainNormalTex(nullptr), m_terrainHeightTex(nullptr), m_terrainHeightTexFailed(false), m_terrainClassMap(nullptr), m_terrainClassMapAtlas(nullptr),
+	m_terrainGlintMap(nullptr), m_terrainGlintMapAtlas(nullptr), m_terrainGlintMapGloss(0.0f), m_terrainGlintStrengthScale(1.0f), m_terrainGlintGlossScale(1.0f), m_hasNormalTiles(false)
 {
 	Int i;
 	for (i=0; i<NUM_SOURCE_TILES; i++) {
@@ -490,7 +492,8 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 #endif
 	m_numCliffInfo(1),
 	m_terrainTex(nullptr), m_alphaTerrainTex(nullptr), m_numBitmapTiles(0), m_numBlendedTiles(1),
-	m_terrainNormalTex(nullptr), m_terrainHeightTex(nullptr), m_terrainHeightTexFailed(false), m_terrainClassMap(nullptr), m_terrainClassMapAtlas(nullptr), m_hasNormalTiles(false)
+	m_terrainNormalTex(nullptr), m_terrainHeightTex(nullptr), m_terrainHeightTexFailed(false), m_terrainClassMap(nullptr), m_terrainClassMapAtlas(nullptr),
+	m_terrainGlintMap(nullptr), m_terrainGlintMapAtlas(nullptr), m_terrainGlintMapGloss(0.0f), m_terrainGlintStrengthScale(1.0f), m_terrainGlintGlossScale(1.0f), m_hasNormalTiles(false)
 {
 
 	int i;
@@ -1540,6 +1543,8 @@ Bool WorldHeightMap::refreshAtlasBorder()
 	// A new atlas can land at the old one's address, so the lookup cannot tell it is stale.
 	REF_PTR_RELEASE(m_terrainClassMap);
 	m_terrainClassMapAtlas = nullptr;
+	REF_PTR_RELEASE(m_terrainGlintMap);
+	m_terrainGlintMapAtlas = nullptr;
 	RENDER_LOG(("Terrain atlas border changed to %d, laying the atlases out again", getAtlasBorderSetting()));
 	return true;
 }
@@ -2359,6 +2364,101 @@ TextureClass *WorldHeightMap::getTerrainClassMap()
 	}
 	REF_PTR_RELEASE(surface);
 	return m_terrainClassMap;
+}
+
+// The glint map is this many times smaller than the atlas. Tiles and doubled borders are multiples of it, so slots stay whole texels.
+#define GLINT_MAP_SHRINK 8
+
+static UnsignedInt Glint_Byte(Real value, Real scale)
+{
+	return (UnsignedInt)clamp(0.0f, value / scale * 255.0f + 0.5f, 255.0f);
+}
+
+// Red holds each texture's strength and green its gloss, over the scales, across every slot of its block.
+TextureClass *WorldHeightMap::getTerrainGlintMap(Real defaultGloss, Real &strengthScale, Real &glossScale)
+{
+	getTerrainTexture();
+	if (m_terrainGlintMap == nullptr || m_terrainGlintMapAtlas != m_terrainTex || m_terrainGlintMapGloss != defaultGloss)
+	{
+		REF_PTR_RELEASE(m_terrainGlintMap);
+		m_terrainGlintMapAtlas = m_terrainTex;
+		m_terrainGlintMapGloss = defaultGloss;
+
+		std::vector<Real> strengths(m_numTextureClasses, 1.0f);
+		std::vector<Real> glosses(m_numTextureClasses, defaultGloss);
+		m_terrainGlintStrengthScale = 0.0f;
+		m_terrainGlintGlossScale = 1.0f;
+		for (Int i=0; i<m_numTextureClasses; i++)
+		{
+			TerrainType *terrain = TheTerrainTypes->findTerrain(m_textureClasses[i].name);
+			if (terrain != nullptr)
+			{
+				strengths[i] = max(terrain->getGlintStrength(), 0.0f);
+				if (terrain->getGlintGloss() > 0.0f)
+				{
+					glosses[i] = terrain->getGlintGloss();
+				}
+			}
+			glosses[i] = max(glosses[i], 1.0f);
+			m_terrainGlintStrengthScale = max(m_terrainGlintStrengthScale, strengths[i]);
+			m_terrainGlintGlossScale = max(m_terrainGlintGlossScale, glosses[i]);
+		}
+		if (m_terrainGlintStrengthScale <= 0.0f)
+		{
+			m_terrainGlintStrengthScale = 1.0f;
+		}
+
+		const Int width = TEXTURE_WIDTH / GLINT_MAP_SHRINK;
+		const Int height = max(m_terrainTexHeight / GLINT_MAP_SHRINK, 1);
+		m_terrainGlintMap = MSGNEW("WorldHeightMap_getTerrainGlintMap") TextureClass(width, height, WW3D_FORMAT_A8R8G8B8, MIP_LEVELS_1, TextureClass::POOL_MANAGED, false, false);
+		if (m_terrainGlintMap->Peek_D3D_Texture() == nullptr)
+		{
+			REF_PTR_RELEASE(m_terrainGlintMap);
+		}
+		else
+		{
+			SurfaceClass *surface = m_terrainGlintMap->Get_Surface_Level(0);
+			int pitch;
+			UnsignedByte *bits = (UnsignedByte *)surface->Lock(&pitch);
+			if (bits != nullptr)
+			{
+				for (Int y=0; y<height; y++)
+				{
+					memset(bits + y * pitch, 0, width * sizeof(UnsignedInt));
+				}
+
+				// A class that did not fit sits at 0,0 and is never drawn.
+				const Int slot = TILE_PIXEL_EXTENT + 2*m_atlasBorder;
+				for (Int i=0; i<m_numTextureClasses; i++)
+				{
+					const TXTextureClass &texClass = m_textureClasses[i];
+					if (texClass.width <= 0 || (texClass.positionInTexture.x == 0 && texClass.positionInTexture.y == 0))
+					{
+						continue;
+					}
+					const Int left = (texClass.positionInTexture.x - m_atlasBorder) / GLINT_MAP_SHRINK;
+					const Int top = (texClass.positionInTexture.y - m_atlasBorder) / GLINT_MAP_SHRINK;
+					const Int side = texClass.width * slot / GLINT_MAP_SHRINK;
+					const UnsignedInt texel = 0xff000000 | (Glint_Byte(strengths[i], m_terrainGlintStrengthScale) << 16) |
+						(Glint_Byte(glosses[i], m_terrainGlintGlossScale) << 8);
+					for (Int y=top; y<top + side && y<height; y++)
+					{
+						UnsignedInt *line = (UnsignedInt *)(bits + y * pitch);
+						for (Int x=left; x<left + side && x<width; x++)
+						{
+							line[x] = texel;
+						}
+					}
+				}
+				surface->Unlock();
+			}
+			REF_PTR_RELEASE(surface);
+		}
+	}
+
+	strengthScale = m_terrainGlintStrengthScale;
+	glossScale = m_terrainGlintGlossScale;
+	return m_terrainGlintMap;
 }
 
 TextureClass *WorldHeightMap::getTerrainNormalTexture()

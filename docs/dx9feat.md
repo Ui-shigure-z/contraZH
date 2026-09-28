@@ -77,9 +77,36 @@ spreads it over all ground facing the sun.)
 * `TerrainGlintAlbedo = 0.5` - (How far the glint follows the ground's brightness. 0 glints dark and
 bright ground alike, and 1 leaves dark ground almost dull.)
 
+Each terrain texture can set its own in `Terrain.ini`, and where two textures blend, their glints
+blend too:
+
+```
+Terrain SnowFlatType1
+  Texture = TSSnow01a.tga
+  Class = SNOW_FLAT
+  GlintStrength = 2.0
+  GlintGloss = 10
+End
+```
+
+* `GlintStrength = 1.0` - (Multiplies `TerrainGlintIntensity` for this texture. 0 leaves it dull.)
+* `GlintGloss` - (This texture's gloss. Left out, it takes `TerrainGlintGloss`.)
+
+| Ground | GlintStrength | GlintGloss |
+|---|---|---|
+| Grass, field | 0.3 | 4 |
+| Sand, desert | 0.8 | 6 |
+| Rock | 0.6 | 10 |
+| Snow | 2.0 | 10 |
+| Asphalt, concrete | 1.0 | 16 |
+| Metal | 3.0 | 48 |
+
 Notes:
 * Flat terrain mode and water reflections do not glint. Ground under standing water loses it below
 the waterline.
+* Roads glint by the `GameData.ini` keys alone.
+* `Terrain.ini` changes apply when a map loads. Executables and WorldBuilders from before these keys
+reject a `Terrain.ini` that has them.
 * Launch with `CONTRA_TERRAINGLINT=0` to turn it off.
 
 ## Surface detail (normal mapping)

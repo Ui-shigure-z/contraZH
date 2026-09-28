@@ -1676,11 +1676,16 @@ static Real TerrainGlintGloss = 1.0f;
 static Real TerrainGlintAlbedo = 0.0f;
 static TextureClass *TerrainGlintNormals = nullptr;
 static Vector4 TerrainGlintMapping(0.0f, 0.0f, 0.0f, 0.0f);
+static TextureClass *TerrainGlintMaterials = nullptr;
+static Real TerrainGlintStrengthScale = 1.0f;
+static Real TerrainGlintGlossScale = 1.0f;
 static Bool TerrainGlintLoaded = FALSE;
 static Bool RoadGlintLoaded = FALSE;
 
-// Where terrainglint.hlsli reads the normals and its constants, and where the terrain and road shaders read the sun.
+// Where terrainglint.hlsli reads the normals and its constants, where the terrain shaders read each texture's
+// glint, and where the terrain and road shaders read the sun.
 #define GLINT_NORMAL_SAMPLER 11
+#define GLINT_MATERIAL_SAMPLER 12
 #define GLINT_REGISTER 23
 #define TERRAIN_SUN_REGISTER 1
 #define ROAD_SUN_REGISTER 2
@@ -1697,6 +1702,7 @@ static Bool Terrain_Glint_Wanted()
 {
 	return TerrainGlintEnabled && TerrainGlintIntensity > 0.0f && TerrainGlintLoaded && RoadGlintLoaded &&
 		TerrainGlintNormals != nullptr && TerrainGlintNormals->Peek_D3D_Texture() != nullptr &&
+		TerrainGlintMaterials != nullptr && TerrainGlintMaterials->Peek_D3D_Texture() != nullptr &&
 		!ShaderClass::Is_Backface_Culling_Inverted();
 }
 
@@ -1713,16 +1719,35 @@ static void Set_Terrain_Sun(Int reg)
 	DX8Wrapper::Set_Pixel_Shader_Constant(reg + 1, &sunDiffuse, 1);
 }
 
-static void Unbind_Glint_Normals()
+static void Unbind_Glint_Maps()
 {
 #if defined(BUILD_WITH_D3D9)
 	DX8Wrapper::_Get_D3D_Device8()->SetTexture(GLINT_NORMAL_SAMPLER, nullptr);
+	DX8Wrapper::_Get_D3D_Device8()->SetTexture(GLINT_MATERIAL_SAMPLER, nullptr);
+#endif
+}
+
+// Past the fixed-function stages, the maps only a pixel shader reads.
+static void Bind_Glint_Map(DWORD sampler, TextureClass *map, D3DTEXTUREFILTERTYPE filter)
+{
+#if defined(BUILD_WITH_D3D9)
+	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
+	device->SetTexture(sampler, map->Peek_D3D_Texture());
+	device->SetSamplerState(sampler, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	device->SetSamplerState(sampler, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+	device->SetSamplerState(sampler, D3DSAMP_MINFILTER, filter);
+	device->SetSamplerState(sampler, D3DSAMP_MAGFILTER, filter);
+	device->SetSamplerState(sampler, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+#else
+	(void)sampler;
+	(void)map;
+	(void)filter;
 #endif
 }
 
 // Every ground shader with the world position reads the sun and the glint's constants, so they go up even when
-// off, with no strength and a gloss of at least 1, since pow(0, 0) is NaN.
-static void Bind_Terrain_Glint(Int sunRegister, Bool on)
+// off, with no strength and a gloss of at least 1, since pow(0, 0) is NaN. The terrain's materials scale both.
+static void Bind_Terrain_Glint(Int sunRegister, Bool on, Bool materials)
 {
 #if defined(BUILD_WITH_D3D9)
 	Set_Terrain_Sun(sunRegister);
@@ -1734,31 +1759,30 @@ static void Bind_Terrain_Glint(Int sunRegister, Bool on)
 	Invert_D3DMATRIX(inv, &det, view);
 
 	// The albedo's share weighs the colour by its luminance.
-	const Real intensity = on ? TerrainGlintIntensity : 0.0f;
+	const Real intensity = on ? TerrainGlintIntensity * (materials ? TerrainGlintStrengthScale : 1.0f) : 0.0f;
+	const Real gloss = materials ? TerrainGlintGlossScale : TerrainGlintGloss;
 	const Real albedo = WWMath::Clamp(TerrainGlintAlbedo, 0.0f, 1.0f);
 	Vector4 constants[3];
-	constants[0].Set(inv.m[3][0], inv.m[3][1], inv.m[3][2], max(TerrainGlintGloss, 1.0f));
+	constants[0].Set(inv.m[3][0], inv.m[3][1], inv.m[3][2], max(gloss, 1.0f));
 	constants[1].Set(intensity * albedo * 0.3f, intensity * albedo * 0.59f, intensity * albedo * 0.11f, intensity * (1.0f - albedo));
 	constants[2] = TerrainGlintMapping;
 	DX8Wrapper::Set_Pixel_Shader_Constant(GLINT_REGISTER, constants, 3);
 
 	if (!on)
 	{
-		Unbind_Glint_Normals();
+		Unbind_Glint_Maps();
 		return;
 	}
 
-	// Past the fixed-function stages, the normals only a pixel shader reads.
-	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
-	device->SetTexture(GLINT_NORMAL_SAMPLER, TerrainGlintNormals->Peek_D3D_Texture());
-	device->SetSamplerState(GLINT_NORMAL_SAMPLER, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-	device->SetSamplerState(GLINT_NORMAL_SAMPLER, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-	device->SetSamplerState(GLINT_NORMAL_SAMPLER, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-	device->SetSamplerState(GLINT_NORMAL_SAMPLER, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-	device->SetSamplerState(GLINT_NORMAL_SAMPLER, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+	Bind_Glint_Map(GLINT_NORMAL_SAMPLER, TerrainGlintNormals, D3DTEXF_LINEAR);
+	if (materials)
+	{
+		Bind_Glint_Map(GLINT_MATERIAL_SAMPLER, TerrainGlintMaterials, D3DTEXF_POINT);
+	}
 #else
 	(void)sunRegister;
 	(void)on;
+	(void)materials;
 #endif
 }
 
@@ -2946,10 +2970,18 @@ Bool W3DShaderManager::wantsTerrainGlint()
 	return TerrainGlintEnabled && TerrainGlintIntensity > 0.0f && TerrainGlintLoaded && RoadGlintLoaded;
 }
 
-void W3DShaderManager::setTerrainGlintNormals(TextureClass *normals, const Vector4 &mapping)
+Real W3DShaderManager::getTerrainGlintGloss()
+{
+	return TerrainGlintGloss;
+}
+
+void W3DShaderManager::setTerrainGlintMaps(TextureClass *normals, const Vector4 &mapping, TextureClass *materials, Real strengthScale, Real glossScale)
 {
 	TerrainGlintNormals = normals;
 	TerrainGlintMapping = mapping;
+	TerrainGlintMaterials = materials;
+	TerrainGlintStrengthScale = strengthScale;
+	TerrainGlintGlossScale = glossScale;
 }
 
 Bool W3DShaderManager::supportsPixelShader2a()
@@ -3761,7 +3793,7 @@ Bool TerrainShaderPixelShader::setGlint(Int noiseCount, Bool shadowed, Bool bump
 {
 	const DWORD shader = m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount];
 	const Bool glint = Terrain_Glint_Wanted() && shader != 0;
-	Bind_Terrain_Glint(TERRAIN_SUN_REGISTER, glint);
+	Bind_Terrain_Glint(TERRAIN_SUN_REGISTER, glint, TRUE);
 	if (!glint)
 	{
 		return FALSE;
@@ -4222,7 +4254,7 @@ void TerrainShaderPixelShader::reset()
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_glintStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU|m_glintStage);
 	}
 	m_glintStage = -1;
-	Unbind_Glint_Normals();
+	Unbind_Glint_Maps();
 
 	End_Draw_Pixel_Lights();
 	Unbind_Height_Atlas();
@@ -4669,7 +4701,7 @@ Bool RoadShaderPixelShader::setPixelPath()
 	}
 
 	// A complete set of lit variants includes the shadowed ones whenever a receiver loaded.
-	Bind_Terrain_Glint(ROAD_SUN_REGISTER, glint);
+	Bind_Terrain_Glint(ROAD_SUN_REGISTER, glint, FALSE);
 	const DWORD unlit = glint ? m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount]
 		: (shadowed ? m_dwShadowPixelShader[noiseCount] : m_dwPlainPixelShader[noiseCount]);
 	if (lightable || glint)
@@ -4814,7 +4846,7 @@ void RoadShaderPixelShader::reset()
 	if (m_pixelPath)
 	{
 		Unbind_Height_Atlas();
-		Unbind_Glint_Normals();
+		Unbind_Glint_Maps();
 	}
 	m_pixelPath = FALSE;
 	End_Draw_Pixel_Lights();

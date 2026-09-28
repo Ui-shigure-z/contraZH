@@ -505,18 +505,23 @@ void HeightMapRenderObjClass::prepareSeabed()
 // HeightMapRenderObjClass::prepareGlint
 //=============================================================================
 /** Hands the terrain and road shaders the normals the sun's glint reads, which
-the water's height texture carries beside the heights. */
+the water's height texture carries beside the heights, and the terrain shaders
+each texture's glint from Terrain.ini. */
 //=============================================================================
 void HeightMapRenderObjClass::prepareGlint()
 {
 	Vector4 mapping(0.0f, 0.0f, 0.0f, 0.0f);
 	Vector4 decode;
 	TextureClass *normals = nullptr;
+	TextureClass *materials = nullptr;
+	Real strengthScale = 1.0f;
+	Real glossScale = 1.0f;
 	if (TheWaterRenderObj != nullptr && W3DShaderManager::wantsTerrainGlint())
 	{
 		normals = TheWaterRenderObj->getTerrainHeightTexture(mapping, decode);
+		materials = m_map->getTerrainGlintMap(W3DShaderManager::getTerrainGlintGloss(), strengthScale, glossScale);
 	}
-	W3DShaderManager::setTerrainGlintNormals(normals, mapping);
+	W3DShaderManager::setTerrainGlintMaps(normals, mapping, materials, strengthScale, glossScale);
 }
 
 //=============================================================================

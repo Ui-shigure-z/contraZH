@@ -164,9 +164,12 @@ public:
 	static void setTerrainGlint(Bool enabled, Real intensity, Real gloss, Real albedo);
 	/// Whether the terrain and road shaders will glint, so the terrain should hand over its normals.
 	static Bool wantsTerrainGlint();
+	/// The gloss of terrain textures without their own.
+	static Real getTerrainGlintGloss();
 	/// Sets, once a frame, the texture holding the terrain's normals in blue and alpha, and the mapping
 	/// from world xy to its texcoords as xy scale and zw offset, or turns the glint off with null.
-	static void setTerrainGlintNormals(TextureClass *normals, const Vector4 &mapping);
+	/// materials is WorldHeightMap::getTerrainGlintMap's, with its scales.
+	static void setTerrainGlintMaps(TextureClass *normals, const Vector4 &mapping, TextureClass *materials, Real strengthScale, Real glossScale);
 	/// Sets a terrain stage's filters from the player's anisotropy or the mod's settings, whose mip is linear with bilinearMipLinear.
 	static void setTerrainTextureFilter(Int stage, Bool bilinearMipLinear);
 	/// Whether the terrain shaders can blend by height, so the terrain should hand over its height atlas.
