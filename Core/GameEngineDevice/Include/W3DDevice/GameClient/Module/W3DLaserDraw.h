@@ -41,7 +41,7 @@ class LaserUpdate;
 
 enum { MAX_LASER_GROUND_LIGHTS = 12 };
 
-// Laser and electric shading settings of one beam. In the W3DLaserDraw block a negative value, the default, takes GameData.ini's.
+// Laser, electric and cryo shading settings of one beam. In the W3DLaserDraw block a negative value, the default, takes GameData.ini's.
 struct BeamShaderTuning
 {
 	Real laserCore;						///< brightness of the white-hot core, 0 for none
@@ -56,6 +56,15 @@ struct BeamShaderTuning
 	Real electricJitter;			///< how far the texture jumps each crackle, in texture widths
 	Real electricFlicker;			///< brightness swing as a fraction, 0 for steady
 	Real electricRate;				///< crackles per second, 0 freezes the arcs
+	RGBColor cryoTint;				///< the ice colour the beam's colour is pulled toward
+	Real cryoTintStrength;		///< how far the beam's colour moves to the tint, 0 to 1
+	Real cryoCore;						///< brightness of the blue-white core, 0 for none
+	Real cryoCoreWidth;				///< core width as a fraction of the beam's half width
+	Real cryoFrost;						///< how strongly frost bands whiten the beam, 0 for none
+	Real cryoFrostSize;				///< world units across one tile of frost noise
+	Real cryoFrostSpeed;			///< world units a second the frost bands drift towards the target
+	Real cryoShards;					///< how far ice teeth cut into the beam, as a fraction of its half width
+	Real cryoShardSize;				///< world units from one tooth to the next
 };
 
 class W3DLaserDrawModuleData : public ModuleData
@@ -85,6 +94,7 @@ public:
 	Real m_groundGlowIntensity;
 	Bool m_laserShader;		///< shade the beam with the laser shader: a hot core and pulses running along it
 	Bool m_electricShader;	///< shade the beam with the electric shader instead: arcs, jitter and flicker
+	Bool m_cryoShader;		///< shade the beam with the cryo shader over either: an ice tint, a blue-white core, frost bands and ice teeth
 	BeamShaderTuning m_shaderTuning;
 
 	W3DLaserDrawModuleData();
@@ -93,6 +103,9 @@ public:
 
 	/// The beam's own settings where it has them and GameData.ini's elsewhere. Null takes GameData.ini's throughout.
 	static void resolveShaderTuning(const BeamShaderTuning *own, BeamShaderTuning &tuning);
+
+	/// The ice colour with its brightest channel at 1, so a colour pulled to it at its own peak keeps its brightness. Returns how far to pull, 0 to 1.
+	static Real getIceTint(const BeamShaderTuning &tuning, RGBColor &tint);
 };
 
 //-------------------------------------------------------------------------------------------------

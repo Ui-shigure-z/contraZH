@@ -289,6 +289,20 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "LaserPulseSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSize ) },
 	{ "LaserPulseSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSpeed ) },
 	{ "LaserDebug",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserDebug ) },
+	{ "CryoParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_cryoParticleTextures ) },
+	{ "CryoTint",							INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_cryoTint ) },
+	{ "CryoTintStrength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoTintStrength ) },
+	{ "CryoCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCore ) },
+	{ "CryoCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCoreWidth ) },
+	{ "CryoFrost",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrost ) },
+	{ "CryoFrostSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSize ) },
+	{ "CryoFrostSpeed",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSpeed ) },
+	{ "CryoShards",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShards ) },
+	{ "CryoShardSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShardSize ) },
+	{ "CryoGlints",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlints ) },
+	{ "CryoGlintSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintSize ) },
+	{ "CryoGlintRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintRate ) },
+	{ "CryoParticleScale",				INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_cryoParticleScale ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -845,6 +859,7 @@ GlobalData::GlobalData()
   m_useFlameShaders = TRUE;
   m_useElectricShaders = TRUE;
   m_useLaserShaders = TRUE;
+  m_useCryoShaders = TRUE;
   m_useDynamicLights = TRUE;
   m_usePixelLights = TRUE;
   m_useAmbientOcclusion = TRUE;
@@ -1006,6 +1021,22 @@ GlobalData::GlobalData()
 	m_laserPulseSize = 120.0f;
 	m_laserPulseSpeed = 400.0f;
 	m_laserDebug = FALSE;
+	m_cryoParticleTextures.clear();
+	m_cryoTint.red = 150.0f / 255.0f;
+	m_cryoTint.green = 215.0f / 255.0f;
+	m_cryoTint.blue = 1.0f;
+	m_cryoTintStrength = 0.8f;
+	m_cryoCore = 1.0f;
+	m_cryoCoreWidth = 0.3f;
+	m_cryoFrost = 0.5f;
+	m_cryoFrostSize = 200.0f;
+	m_cryoFrostSpeed = 60.0f;
+	m_cryoShards = 0.4f;
+	m_cryoShardSize = 8.0f;
+	m_cryoGlints = 2.0f;
+	m_cryoGlintSize = 1.5f;
+	m_cryoGlintRate = 2.0f;
+	m_cryoParticleScale = 1.0f;
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -1658,6 +1689,8 @@ static const char *const LiveGameDataKeys[] =
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
 	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
+	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
+	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };
@@ -1879,6 +1912,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useFlameShaders = optionPref.getFlameShadersEnabled();
 	TheWritableGlobalData->m_useElectricShaders = optionPref.getElectricShadersEnabled();
 	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
+	TheWritableGlobalData->m_useCryoShaders = optionPref.getCryoShadersEnabled();
 	TheWritableGlobalData->m_useDynamicLights = optionPref.getDynamicLightsEnabled();
 	TheWritableGlobalData->m_usePixelLights = optionPref.getPixelLightsEnabled();
 	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();

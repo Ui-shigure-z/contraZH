@@ -452,6 +452,11 @@ Bool OptionPreferences::getLaserShadersEnabled(void) const
 	return getBool("LaserShaders", TRUE);
 }
 
+Bool OptionPreferences::getCryoShadersEnabled(void) const
+{
+	return getBool("CryoShaders", TRUE);
+}
+
 Bool OptionPreferences::getDynamicLightsEnabled(void) const
 {
 	return getBool("DynamicLights", TRUE);

@@ -160,6 +160,8 @@ public:
 	Bool getElectricShadersEnabled() const;
 	// Options.ini: LaserShaders = Yes gives laser beams a white-hot core and pulses running along them
 	Bool getLaserShadersEnabled() const;
+	// Options.ini: CryoShaders = Yes turns cryo beams, streaks and sprites to ice
+	Bool getCryoShadersEnabled() const;
 	// Options.ini: DynamicLights = Yes lets explosions, muzzle flashes and lasers light their surroundings
 	Bool getDynamicLightsEnabled() const;
 	// Options.ini: PixelLights = Yes draws those lights per pixel where the hardware allows

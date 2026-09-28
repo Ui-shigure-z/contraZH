@@ -862,6 +862,7 @@ ParticleSystemInfo::ParticleSystemInfo()
 	m_flameShader = FLAME_SHADER_AUTO;
 	m_electricShader = ELECTRIC_SHADER_AUTO;
 	m_laserShader = LASER_SHADER_AUTO;
+	m_cryoShader = CRYO_SHADER_AUTO;
 
 	m_driftVelocity.zero();
 	m_gravity = 0.0f;
@@ -941,7 +942,8 @@ void ParticleSystemInfo::xfer( Xfer *xfer )
 	// version 3 adds m_flameShader
 	// version 4 adds m_electricShader
 	// version 5 adds m_laserShader
-	XferVersion currentVersion = 5;
+	// version 6 adds m_cryoShader
+	XferVersion currentVersion = 6;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1191,6 +1193,11 @@ void ParticleSystemInfo::xfer( Xfer *xfer )
 		xfer->xferUser( &m_laserShader, sizeof( LaserShaderMode ) );
 	}
 
+	if( version >= 6 )
+	{
+		xfer->xferUser( &m_cryoShader, sizeof( CryoShaderMode ) );
+	}
+
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1357,6 +1364,9 @@ ParticleSystem::ParticleSystem( const ParticleSystemTemplate *sysTemplate,
 	m_laserShader = sysTemplate->m_laserShader;
 	m_laserKnown = FALSE;
 	m_laserAuto = FALSE;
+	m_cryoShader = sysTemplate->m_cryoShader;
+	m_cryoKnown = FALSE;
+	m_cryoAuto = FALSE;
 
 	m_windMotion = sysTemplate->m_windMotion;
 	m_windAngleChange = sysTemplate->m_windAngleChange;
@@ -1721,6 +1731,24 @@ Bool ParticleSystem::isLaser()
 		m_laserAuto = Is_Texture_Listed(m_particleTypeName, TheGlobalData->m_laserParticleTextures);
 	}
 	return m_laserAuto;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Auto looks the particle texture up in GameData.ini's CryoParticleTextures, once per system */
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystem::isCryo()
+{
+	if (m_cryoShader != CRYO_SHADER_AUTO)
+	{
+		return m_cryoShader == CRYO_SHADER_YES;
+	}
+
+	if (!m_cryoKnown)
+	{
+		m_cryoKnown = TRUE;
+		m_cryoAuto = Is_Texture_Listed(m_particleTypeName, TheGlobalData->m_cryoParticleTextures);
+	}
+	return m_cryoAuto;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -3150,6 +3178,7 @@ const FieldParse ParticleSystemTemplate::m_fieldParseTable[] =
 	{ "FlameShader",				INI::parseIndexList, FlameShaderModeNames, offsetof( ParticleSystemTemplate, m_flameShader ) },
 	{ "ElectricShader",			INI::parseIndexList, ElectricShaderModeNames, offsetof( ParticleSystemTemplate, m_electricShader ) },
 	{ "LaserShader",				INI::parseIndexList, LaserShaderModeNames, offsetof( ParticleSystemTemplate, m_laserShader ) },
+	{ "CryoShader",					INI::parseIndexList, CryoShaderModeNames, offsetof( ParticleSystemTemplate, m_cryoShader ) },
 	{ "FlameWarp",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.warp ) },
 	{ "FlameHeat",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.heat ) },
 	{ "FlameFlicker",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.flicker ) },
@@ -3162,6 +3191,7 @@ const FieldParse ParticleSystemTemplate::m_fieldParseTable[] =
 	{ "HazeNoiseSize",			INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeNoiseSize ) },
 	{ "HazeRise",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeRise ) },
 	{ "HazeMask",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeMask ) },
+	{ "CryoParticleScale",		INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_cryoParticleScale ) },
 
 	{ "WindAngleChangeMin", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMin ) },
 	{ "WindAngleChangeMax", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMax ) },
@@ -3263,6 +3293,7 @@ ParticleSystemTemplate::ParticleSystemTemplate( const AsciiString &name ) :
 	m_name(name)
 {
 	m_slaveTemplate = nullptr;
+	m_cryoParticleScale = -1.0f;
 
 	Real *setting = &m_flameTuning.warp;
 	for (UnsignedInt i = 0; i < sizeof( m_flameTuning ) / sizeof( Real ); ++i)
@@ -3317,6 +3348,13 @@ void ParticleSystemTemplate::resolveFlameTuning( const ParticleSystemTemplate *t
 			resolved[i] = own[i];
 		}
 	}
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Real ParticleSystemTemplate::getCryoParticleScale() const
+{
+	return (m_cryoParticleScale >= 0.0f) ? m_cryoParticleScale : TheGlobalData->m_cryoParticleScale;
 }
 
 // ------------------------------------------------------------------------------------------------

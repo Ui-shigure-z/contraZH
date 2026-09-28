@@ -589,6 +589,7 @@ GlobalData::GlobalData()
   m_useFlameShaders = TRUE;
   m_useElectricShaders = TRUE;
   m_useLaserShaders = TRUE;
+  m_useCryoShaders = TRUE;
   m_softParticleDistance = 12.0f;
   m_flameWarp = 0.04f;
   m_flameHeat = 2.2f;
@@ -617,6 +618,22 @@ GlobalData::GlobalData()
   m_laserPulseSize = 120.0f;
   m_laserPulseSpeed = 400.0f;
   m_laserDebug = FALSE;
+  m_cryoParticleTextures.clear();
+  m_cryoTint.red = 150.0f / 255.0f;
+  m_cryoTint.green = 215.0f / 255.0f;
+  m_cryoTint.blue = 1.0f;
+  m_cryoTintStrength = 0.8f;
+  m_cryoCore = 1.0f;
+  m_cryoCoreWidth = 0.3f;
+  m_cryoFrost = 0.5f;
+  m_cryoFrostSize = 200.0f;
+  m_cryoFrostSpeed = 60.0f;
+  m_cryoShards = 0.4f;
+  m_cryoShardSize = 8.0f;
+  m_cryoGlints = 2.0f;
+  m_cryoGlintSize = 1.5f;
+  m_cryoGlintRate = 2.0f;
+  m_cryoParticleScale = 1.0f;
   m_useAmbientOcclusion = TRUE;
   m_useHeightBlend = TRUE;
   m_useHQSky = TRUE;
@@ -1333,6 +1350,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useFlameShaders = optionPref.getFlameShadersEnabled();
 	TheWritableGlobalData->m_useElectricShaders = optionPref.getElectricShadersEnabled();
 	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
+	TheWritableGlobalData->m_useCryoShaders = optionPref.getCryoShadersEnabled();
 	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
 	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
 	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();

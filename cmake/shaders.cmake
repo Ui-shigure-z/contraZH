@@ -240,6 +240,12 @@ rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particleelect
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlelaserdepth.pso      DEPTH=1 LASER=1)
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlelaserheight.pso     DEPTH=0 LASER=1)
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlelaser.pso               SOFT=0 LASER=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryodepth.pso       DEPTH=1 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryoheight.pso      DEPTH=0 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlecryo.pso                SOFT=0 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryobeamdepth.pso   DEPTH=1 CRYO=1 BEAM=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryobeamheight.pso  DEPTH=0 CRYO=1 BEAM=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlecryobeam.pso            SOFT=0 CRYO=1 BEAM=1)
 rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_0 main laserglow.pso)
 # Overlapping glows light the ground in one pass, several beams at a time, which runs past ps_2_0's length.
 rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow2.pso               BEAMS=2)

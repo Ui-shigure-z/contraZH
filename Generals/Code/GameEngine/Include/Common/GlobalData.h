@@ -514,6 +514,7 @@ public:
   Bool m_useFlameShaders;         ///< Options.ini FlameShaders: flame weapon fire flickers and glows white-hot at its core
   Bool m_useElectricShaders;      ///< Options.ini ElectricShaders: electric sparks and flares crackle with arcs
   Bool m_useLaserShaders;         ///< Options.ini LaserShaders: laser beams get a white-hot core and pulses running along them
+  Bool m_useCryoShaders;          ///< Options.ini CryoShaders: cryo beams, streaks and sprites turn to ice
   Real m_softParticleDistance;    ///< how far in front of a surface a particle starts to fade, 0 for hard edges
   Real m_flameWarp;               ///< flame shading and heat haze defaults, see FlameShaderTuning
   Real m_flameHeat;
@@ -542,6 +543,20 @@ public:
   Real m_laserPulseSize;
   Real m_laserPulseSpeed;
   Bool m_laserDebug;              ///< shaded beams darken the scene instead of lighting it, to show the shader's shape
+  std::vector<AsciiString> m_cryoParticleTextures;  ///< particle textures that get the cryo shader when their system is Auto
+  RGBColor m_cryoTint;            ///< cryo shader settings
+  Real m_cryoTintStrength;
+  Real m_cryoCore;
+  Real m_cryoCoreWidth;
+  Real m_cryoFrost;
+  Real m_cryoFrostSize;
+  Real m_cryoFrostSpeed;
+  Real m_cryoShards;
+  Real m_cryoShardSize;
+  Real m_cryoGlints;
+  Real m_cryoGlintSize;
+  Real m_cryoGlintRate;
+  Real m_cryoParticleScale;       ///< how much larger or smaller cryo-shaded particles draw, 1 unchanged
   Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
   Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
   Bool m_useHQSky;                ///< Options.ini HQSky: cloud shadows drift softly and change shape where the hardware allows

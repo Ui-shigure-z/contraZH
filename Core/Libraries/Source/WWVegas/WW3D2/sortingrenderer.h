@@ -36,7 +36,8 @@ public:
 		EFFECT_HAZE = 4,	// wobble the scene copy behind the sprite
 		EFFECT_ELECTRIC = 8,	// arcs, jitter and strobe
 		EFFECT_LASER = 16,	// hot core and travelling pulses, from the beam coordinates in the second uv set
-		EFFECT_BEAM = 32	// a laser draw's beam, which fades only while shaded
+		EFFECT_BEAM = 32,	// a laser draw's beam or a streak, which fades only while shaded
+		EFFECT_CRYO = 64	// ice tint with teeth and frost bands on a beam, splinters and glints on a sprite
 	};
 
 	virtual ~SoftParticleHookClass() {}

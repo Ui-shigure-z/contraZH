@@ -284,6 +284,20 @@ public:
 	Real m_laserPulseSize;
 	Real m_laserPulseSpeed;
 	Bool m_laserDebug;					///< GameData LaserDebug: shaded beams darken the scene instead of lighting it, to show the shader's shape
+	std::vector<AsciiString> m_cryoParticleTextures;	///< GameData CryoParticleTextures: particle textures that get the cryo shader when their system is Auto
+	RGBColor m_cryoTint;				///< GameData CryoTint and the keys below: cryo shader settings
+	Real m_cryoTintStrength;
+	Real m_cryoCore;
+	Real m_cryoCoreWidth;
+	Real m_cryoFrost;
+	Real m_cryoFrostSize;
+	Real m_cryoFrostSpeed;
+	Real m_cryoShards;
+	Real m_cryoShardSize;
+	Real m_cryoGlints;
+	Real m_cryoGlintSize;
+	Real m_cryoGlintRate;
+	Real m_cryoParticleScale;			///< GameData CryoParticleScale: how much larger or smaller cryo-shaded particles draw, 1 unchanged
 	Real m_ambientOcclusionRadius;		///< GameData AmbientOcclusionRadius: how far, in world units, geometry darkens what is near it
 	Real m_ambientOcclusionStrength;	///< GameData AmbientOcclusionStrength: how dark the occlusion gets, 0 for none
 	Real m_groundNoiseStrength;			///< GameData GroundNoiseStrength and the keys below: the noise that stands in for the light map, see W3DGroundNoise
@@ -693,6 +707,7 @@ public:
   Bool m_useFlameShaders;         ///< Options.ini FlameShaders: flame weapon fire flickers and glows white-hot at its core
   Bool m_useElectricShaders;      ///< Options.ini ElectricShaders: electric sparks and flares crackle with arcs
   Bool m_useLaserShaders;         ///< Options.ini LaserShaders: laser beams get a white-hot core and pulses running along them
+  Bool m_useCryoShaders;          ///< Options.ini CryoShaders: cryo beams, streaks and sprites turn to ice
   Bool m_useDynamicLights;        ///< Options.ini DynamicLights: explosions, muzzle flashes and lasers light their surroundings
   Bool m_usePixelLights;          ///< Options.ini PixelLights: those lights are drawn per pixel where the hardware allows
   Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows

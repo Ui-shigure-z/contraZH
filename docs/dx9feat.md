@@ -9,7 +9,7 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric` and `Laser` tuning keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser` and `Cryo` tuning keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
@@ -27,6 +27,8 @@ them for one effect. Each shader's own section below lists its keys.
 | Laser trails | [Laser](#laser-shading) | `ParticleSystem` | `Type = STREAK` and `LaserShader = Yes` | None |
 | Laser beams | [Laser](#laser-shading) | `W3DLaserDraw` | On by default | `Laser` keys |
 | Tesla and lightning bolts | [Electric](#electric-shading) | `W3DLaserDraw` | `ElectricShader = Yes` | `Electric` keys |
+| Freeze rays | [Cryo](#cryo-shading) | `W3DLaserDraw` | `CryoShader = Yes` | `Cryo` keys |
+| Frost trails, puffs and flares | [Cryo](#cryo-shading) | `ParticleSystem` | `CryoShader = Yes` | `CryoParticleScale` |
 | Blast ring | [Shockwave](#shockwave-fxlistini) | `FXList` | A `Shockwave` block | The block's keys |
 | Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
 | Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
@@ -38,6 +40,7 @@ A `ParticleSystem` that leaves the shader key out is `Auto`:
 * `FlameShader` turns on when the system rides a projectile whose weapon has `DamageType = FLAME`.
 * `ElectricShader` turns on when the `ParticleName` texture is listed in `ElectricParticleTextures`.
 * `LaserShader` turns on when a streak's `ParticleName` texture is listed in `LaserParticleTextures`.
+* `CryoShader` turns on when the `ParticleName` texture is listed in `CryoParticleTextures`.
 
 The texture lists suit a texture many systems share. `Yes` suits a single system, and `No` opts one
 out of a list.
@@ -46,11 +49,12 @@ out of a list.
 
 | `Type` | `Shader` | Takes |
 |---|---|---|
-| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame or electric, and the soft fade |
+| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame, electric or cryo, and the soft fade |
 | `PARTICLE` | `ALPHA_TEST`, `MULTIPLY` | Nothing |
-| `STREAK` | Any but `MULTIPLY` | Laser |
+| `STREAK` | Any but `MULTIPLY` | Laser or cryo |
 | `VOLUME_PARTICLE`, `SMUDGE`, `DRAWABLE` | Any | Nothing |
 
+* Cryo wins over every other shader. A system or beam with cryo on draws as ice.
 * A system that is both flame and electric draws as flame.
 * A beam with `ElectricShader = Yes` draws as electric, whatever its `LaserShader`.
 * Only `FlameShader = Auto` follows a master system. Slave systems need their own `ElectricShader` or
@@ -73,13 +77,14 @@ theirs in `Art\Textures`, or from `Terrain.ini` for the glint.
 ### Troubleshooting
 
 * The Direct3D 8 build ignores every shader on this page.
-* `FlameShaders`, `ElectricShaders` and `LaserShaders` in `Options.ini` default to Yes. No turns that
-shader off everywhere.
+* `FlameShaders`, `ElectricShaders`, `LaserShaders` and `CryoShaders` in `Options.ini` default to Yes.
+No turns that shader off everywhere.
 * Flame haze and shockwaves need `Heat Effects` on. Bloom needs `Bloom = Yes`.
 * The system's `Type` and `Shader` must allow the shader, as in the table above.
 * `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
 reloads in cheat builds.
-* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER` or `CONTRA_LASERSHADER` set to 0 turns that shader off.
+* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER` or `CONTRA_CRYOSHADER` set to 0 turns
+that shader off.
 * `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
 laser shader.
 
@@ -466,8 +471,8 @@ the soft edges on top.
 Laser beams light the ground per pixel, with one light shaped like the beam. The light fades with
 the distance to the nearest point on the beam, so a beam skimming the ground lights a bright strip
 and a beam climbing into the sky lights only the ground near the shooter. Slopes facing the beam
-catch more light, and the laser shader's pulses brighten the ground as they pass. Beams drawn plain
-or electric light the ground steadily. The Direct3D 8
+catch more light, and the laser shader's pulses brighten the ground as they pass. Beams drawn plain,
+electric or cryo light the ground steadily, and cryo beams light it in their ice colour. The Direct3D 8
 build keeps the strip of dynamic lights described in
 [Laser ground glow](contraZH-Changes.md#laser-ground-glow). Needs a shader model 2 card. Each key is
 pictured on [Electric & Laser Shading](Electric-&-Laser-Shading.md#laser-ground-glow).
@@ -501,6 +506,81 @@ ground for one draw, each beam lights on its own.
 muzzle flashes.
 * Water covers the glow on ground beneath it. Units and buildings are not lit.
 * Launch with `CONTRA_LASERGLOW=0` to go back to the dynamic lights.
+
+## Cryo shading
+
+Freeze rays turn to ice. The beam's colour is pulled toward an ice tint at its own brightness, a
+blue-white core runs along its axis, frost bands drift slowly towards the target, and jagged ice teeth
+cut into both edges. Frost trails from particle systems draw the same way. Frost puffs and flares take
+the tint, thin cracks split their faint fringe into shards, and glints twinkle across them. Cryo wins
+over the laser, electric and flame shaders wherever it is on. Needs the Direct3D 9 build and a shader
+model 2 card.
+
+* `CryoShaders = Yes` - (No draws cryo effects plain. Options.ini only, no menu control.)
+
+Picked per beam in a `W3DLaserDraw` module:
+
+* `CryoShader = No` - (Default. `Yes` shades the beam as ice, whatever its `LaserShader` and
+`ElectricShader`.)
+
+Picked per particle system in `ParticleSystem.ini`:
+
+* `CryoShader = Auto` - (Default. On when the system's `ParticleName` texture is listed in
+`GameData.ini`'s `CryoParticleTextures`. `Yes` turns it on for any system, `No` turns it off. Streaks
+draw as freeze rays, sprites as frost.)
+
+Listed and tuned in the mod's `GameData.ini`:
+
+* `CryoParticleTextures = CryoFlare.tga EXCryoRing.tga ...` - (Textures whose systems turn to ice.
+Each line adds to the list, so a long list can span several lines. Read at launch.)
+* `CryoTint = R:150 G:215 B:255` - (The ice colour. Only its hue counts, so the effect keeps its
+brightness.)
+* `CryoTintStrength = 0.8` - (How far the effect's own colour moves to the tint, from 0 to 1. 0 keeps
+the texture's colour.)
+* `CryoCore = 1` - (Core brightness. 0 turns the core off.)
+* `CryoCoreWidth = 0.3` - (Core width, as a fraction of the beam's half width.)
+* `CryoFrost = 0.5` - (How strongly the frost bands whiten the beam. 0 turns them off.)
+* `CryoFrostSize = 200` - (World units across one tile of frost noise. Smaller gives more, closer
+bands.)
+* `CryoFrostSpeed = 60` - (World units a second the bands drift towards the target. 0 freezes them.)
+* `CryoShards = 0.4` - (How far ice teeth cut into a beam, as a fraction of its half width, and how far
+cracks reach into a sprite's fringe. 0 keeps edges whole.)
+* `CryoShardSize = 8` - (World units from one tooth or shard to the next.)
+* `CryoGlints = 2` - (Glint brightness on sprites. 0 turns glints off.)
+* `CryoGlintSize = 1.5` - (World units between glints.)
+* `CryoGlintRate = 2` - (About how many times a second each glint twinkles. 0 freezes them.)
+* `CryoParticleScale = 100%` - (How large cryo sprites and trails draw, as a percentage of the
+particle's own size. With cryo shading off they keep their own size.)
+
+A `W3DLaserDraw` module takes the nine tuning keys from `CryoTint` to `CryoShardSize`. Each one it
+sets overrides `GameData.ini` for that beam alone, and the keys it leaves out keep `GameData.ini`'s
+values. A `ParticleSystem` takes `CryoParticleScale` alone, and uses `GameData.ini`'s other keys.
+
+```
+ParticleSystem FrostPuff
+  ...
+  CryoShader = Yes
+  CryoParticleScale = 60%
+End
+
+Draw = W3DLaserDraw ModuleTag_Draw
+  ...
+  CryoShader = Yes
+  CryoTint = R:120 G:200 B:255
+  CryoShards = 0.6
+End
+```
+
+Notes:
+* The beam's texture still gives it its shape. With `CryoTintStrength` below 1 its colour shows through
+the tint.
+* Teeth and frost bands are fixed along the beam, counted from the shooter, so they travel with it.
+* Cracks and glints are fixed in the world, so they hold still while the camera pans and shift as
+the sprite drifts through them.
+* The ground glow under a cryo beam holds steady and takes the beam's tint. With cryo shading off the
+beam and its glow keep their own colour.
+* Terrain-conforming particles, volume particles and multiplied sprites stay plain.
+* Launch with `CONTRA_CRYOSHADER=0` to turn cryo shading off.
 
 ## Ambient occlusion
 

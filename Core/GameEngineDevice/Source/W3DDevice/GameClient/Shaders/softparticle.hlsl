@@ -21,6 +21,11 @@
 // x from 0 to 1 across the beam and y along it in world units. A thin core in the beam's own hue,
 // taken most of the way to white, runs along the axis and wavers in width. Noise slid along the
 // beam sends pulses of brightness towards its far end, and the edges melt into glow.
+//
+// CRYO shades a beam, streak or sprite as ice, its colour pulled toward an ice tint at its own
+// brightness. With BEAM it reads the beam coordinates as LASER does. A blue-white core runs along the
+// axis, frost bands drift towards the far end and ice teeth cut into both edges. Without BEAM a field
+// fixed in the world cracks the sprite's faint fringe into shards and twinkles glints across it.
 
 #ifndef SOFT
 #define SOFT 1
@@ -33,6 +38,12 @@
 #endif
 #ifndef LASER
 #define LASER 0
+#endif
+#ifndef CRYO
+#define CRYO 0
+#endif
+#ifndef BEAM
+#define BEAM 0
 #endif
 
 sampler2D ParticleTexture : register(s0);
@@ -67,6 +78,15 @@ float4 ElectricStrobe : register(c9);   // x = 1 - half the strobe swing
 #elif LASER
 float4 Laser      : register(c6);   // x = pulse travel so far, y = world to noise scale, z = -3 / core width squared, w = core brightness
 float4 LaserShape : register(c7);   // x = core waver, y = pulse swing
+#elif CRYO && BEAM
+float4 Cryo      : register(c6);   // x = frost travel so far, y = world to frost noise scale, z = -3 / core width squared, w = core brightness
+float4 CryoShape : register(c7);   // x = frost whitening, y = twice the tooth depth, z = world to tooth scale, w = world to tooth spacing noise scale
+float4 CryoTint  : register(c8);   // rgb = ice colour with its brightest channel at 1, a = how far the colour moves to it
+#elif CRYO
+float4 Cryo      : register(c6);   // xy = camera space to world-fixed view plane offset, zw = world to the two shard noise scales
+float4 CryoShape : register(c7);   // xy = world to the glint and twinkle noise scales, zw = twinkle travel so far
+float4 CryoTint  : register(c8);   // rgb = ice colour with its brightest channel at 1, a = how far the colour moves to it
+float4 CryoGlint : register(c9);   // rgb = glint colour times brightness, a = shard depth
 #endif
 
 struct PsIn
@@ -74,7 +94,7 @@ struct PsIn
     float4 Diffuse   : COLOR0;
     float2 TexCoord  : TEXCOORD0;
     float3 Position  : TEXCOORD1;
-#if LASER
+#if LASER || (CRYO && BEAM)
     float2 Beam      : TEXCOORD2;
 #endif
 };
@@ -161,6 +181,62 @@ float4 main(PsIn input) : COLOR
     float edge = saturate(4.0f - 4.0f * abs(side));
     color.rgb = (color.rgb * edge + hot * (core * coverage * Laser.w)) * pulse;
     color.a *= edge;
+#elif CRYO && BEAM
+    float side = input.Beam.x * 2.0f - 1.0f;
+    float along = input.Beam.y;
+    float4 frost = tex2D(NoiseTexture, float2(along * Cryo.y - Cryo.x, 0.25f));
+    float4 shard = tex2D(NoiseTexture, float2(along * CryoShape.w, 0.6f));
+
+    float4 texel = tex2D(ParticleTexture, input.TexCoord);
+    float4 color = texel * input.Diffuse;
+
+    // Adding ignores alpha, and additive systems often leave it at zero.
+    float coverage = lerp(texel.a, 1.0f, Params.y);
+
+    // The tint keeps the beam's brightness and changes only its hue.
+    float peak = max(color.r, max(color.g, color.b));
+    float3 ice = lerp(color.rgb, CryoTint.rgb * peak, CryoTint.a);
+    float3 hot = (ice + peak) * 0.5f;
+
+    // Teeth of uneven pitch and depth, half a tooth apart on the two sides.
+    float tooth = abs(frac(along * CryoShape.z + shard.r + step(0.0f, side) * 0.5f) * 2.0f - 1.0f);
+    float edge = saturate((1.0f - CryoShape.y * tooth * shard.g - abs(side)) * 12.0f);
+
+    float band = saturate((frost.r + frost.g) * 3.0f - 2.5f);
+    float core = exp2(side * side * Cryo.z);
+    color.rgb = (lerp(ice, hot, band * CryoShape.x) + hot * (core * coverage * Cryo.w)) * edge;
+    color.a *= edge;
+#elif CRYO
+    // Fixed in the world across the view plane, so the pattern holds still while the camera pans.
+    float2 field = input.Position.xy + Cryo.xy;
+    float4 shardA = tex2D(NoiseTexture, field * Cryo.z);
+    float4 shardB = tex2D(NoiseTexture, field * Cryo.w);
+    float4 glintA = tex2D(NoiseTexture, field * CryoShape.x);
+    float4 glintB = tex2D(NoiseTexture, field * CryoShape.y + CryoShape.zw);
+
+    float4 texel = tex2D(ParticleTexture, input.TexCoord);
+    float4 color = texel * input.Diffuse;
+
+    // Adding ignores alpha, and additive systems often leave it at zero.
+    float coverage = lerp(texel.a, 1.0f, Params.y);
+
+    // The tint keeps the sprite's brightness and changes only its hue.
+    float peak = max(color.r, max(color.g, color.b));
+    float3 ice = lerp(color.rgb, CryoTint.rgb * peak, CryoTint.a);
+
+    // Cracks run where two fields cross and split the faint fringe into shards.
+    float crack = saturate(1.0f - abs(shardA.b - shardB.r) * 6.0f);
+    float shape = max(texel.r, max(texel.g, texel.b)) * coverage;
+    float keep = saturate((shape - CryoGlint.a * crack) * 16.0f + 1.0f);
+
+    // Glints sit at the field's peaks and twinkle as a second field slides over them.
+    float sites = saturate(glintA.g * 8.0f - 5.6f);
+    float glint = sites * sites * saturate(glintB.b * 4.0f - 2.0f);
+    float reach = sqrt(peak * coverage) * keep;
+
+    // Alpha blending breaks up through alpha alone, so its fringe does not darken twice.
+    color.rgb = ice * lerp(1.0f, keep, Params.y) + CryoGlint.rgb * (glint * reach);
+    color.a *= keep;
 #else
     float4 color = tex2D(ParticleTexture, input.TexCoord) * input.Diffuse;
 #endif
