@@ -190,9 +190,10 @@ HexCells FindHexCells(float2 world)
     return cells;
 }
 
+// A mul and a mad, as two dot products would be two dp2adds, which the runtime counts as two slots each against ps_2_a's 512.
 float2 Turn(float2 texel, float2 turn)
 {
-    return float2(dot(texel, float2(turn.x, -turn.y)), dot(texel, turn.yx));
+    return texel.x * turn + texel.y * float2(-turn.y, turn.x);
 }
 
 // A texel position wrapped into its block, as atlas texcoords.
