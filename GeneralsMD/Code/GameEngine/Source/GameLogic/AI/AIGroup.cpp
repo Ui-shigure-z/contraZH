@@ -3276,7 +3276,7 @@ void AIGroup::groupToggleTunnelAutoPop(CommandSourceType cmdSource)
 		// get object
 		obj = *i;
 
-		if (obj->getContain() && obj->getContain()->isTunnelContain())
+		if (obj->getContain() && obj->getContain()->isTunnelContain() && !obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
 		{
 			tunnelSystem = obj->getControllingPlayer()->getTunnelSystem();
 			if (tunnelSystem)

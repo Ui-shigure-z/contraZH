@@ -162,7 +162,7 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 			for (inTunnelList = m_tunnelIDs.begin(); inTunnelList != m_tunnelIDs.end(); inTunnelList++)
 			{
 				obj = TheGameLogic->findObjectByID(*inTunnelList);
-				if (!obj || obj == tunnel)
+				if (!obj || obj == tunnel || obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
 					continue;
 				obj->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT, MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
 			}
@@ -181,7 +181,7 @@ void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
 			for (inTunnelList = m_tunnelIDs.begin(); inTunnelList != m_tunnelIDs.end(); inTunnelList++)
 			{
 				obj = TheGameLogic->findObjectByID(*inTunnelList);
-				if (!obj)
+				if (!obj || obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
 					continue;
 
 				obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
