@@ -1306,7 +1306,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 			if (BitIsSet(commandButton->getOptions(), NEED_TARGET_POS) == FALSE) {
 				pickAndPlayUnitVoiceResponse( TheInGameUI->getAllSelectedDrawables(), GameMessage::MSG_EVACUATE );
-				GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_EVACUATE );
+				TheMessageStream->appendMessage( GameMessage::MSG_EVACUATE );
 			}
 
 			break;
