@@ -31,7 +31,7 @@ a find/replace bar for renaming parameter values across all scripts (or just the
 and a repair flow for maps from other mods: clickable **[Missing]** object references that jump to
 the broken condition/action, with the object picker auto-suggesting the closest existing name.
 
-See **[ScriptEditor-QoL-Guide.md](ScriptEditor-QoL-Guide.md)** for how to use each of them, with a
+See **[ScriptEditor-QoL-Guide.md](GeneralsMD/Code/Tools/WorldBuilder/docs/ScriptEditor-QoL-Guide.md)** for how to use each of them, with a
 worked example.
 
 ## Building
@@ -41,7 +41,7 @@ WorldBuilder is a **32-bit** app built with **Visual Studio 2022 (MSVC v14x x86)
 configure gives you the classic MFC WorldBuilder; enable it with
 `-DRTS_ENABLE_WORLDBUILDER_QT=ON`.
 
-See **[QT-BUILD.md](QT-BUILD.md)** for the full step-by-step setup, the Qt install options, the
+See **[QT-BUILD.md](GeneralsMD/Code/Tools/WorldBuilder/docs/QT-BUILD.md)** for the full step-by-step setup, the Qt install options, the
 CMake preset commands, runtime deployment (`windeployqt`), and the optional keyboard/focus debug
 facility.
 
@@ -62,7 +62,7 @@ Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
 
 An experimental **Direct3D 9** variant builds with the `win32-qt-d3d9` preset as
 `WorldBuilderZH_Qt_D3D9.exe` (needs the compiled `shaders/` folder next to it; see
-[QT-BUILD.md](QT-BUILD.md)).
+[QT-BUILD.md](GeneralsMD/Code/Tools/WorldBuilder/docs/QT-BUILD.md)).
 
 ## About this repository
 
