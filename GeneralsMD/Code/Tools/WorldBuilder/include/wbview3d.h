@@ -61,6 +61,7 @@ class BuildListInfo;
 class TransRenderObj;
 class W3DModelDrawModuleData;
 struct ID3DXFont;
+struct ID3DXSprite;
 
 /////////////////////////////////////////////////////////////////////////////
 // WbView3d view
@@ -507,13 +508,13 @@ protected:
 	Bool m_textShadow;
 	Bool m_textAntialias;					///< grayscale antialiasing for viewport labels
 	Int  m_labelAnchorMode;					///< 0 = Default (ground), 1 = New (object center-height)
-	Int  m_labelRenderer;					///< 0 = Old (D3DX m3DFont, in-frame), 1 = New (raw GDI TextOut, strobes), 2 = Atlas (batched glyph quads, in-frame)
+	Int  m_labelRenderer;					///< 0 = Old (D3DX m3DFont, in-frame), 1 = New (raw GDI TextOut on the window after present, strobes; D3D8 only, the D3D9 flip model never shows it), 2 = Atlas (batched glyph quads, in-frame)
 	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
 	void setMSAA(D3DMULTISAMPLE_TYPE type);
 	void setTextureFilter(int mode);
 	void loadFxShaderSettings();			///< FX Shaders menu: WorldBuilder.ini overrides the game's Options.ini values
 	void setEffectShaders(Bool on);			///< soft particles + flame/electric/laser/cryo particle shaders as one switch
-	void releaseD3DXFont();				///< drop m3DFont (D3D8 only)
+	void releaseD3DXFont();				///< drop m3DFont
 	void createLabelFont();					///< (re)create m3DFont honoring m_textAntialias
 
 
@@ -521,6 +522,8 @@ protected:
 	WBFontAtlas							m_fontAtlas;	// GDI-built glyph atlas -> D3D quads
 #if defined(BUILD_WITH_D3D9)
 	WBFontAtlas							m_hudAtlas;		// D3D9 has no ID3DXFont: HUD/ruler text draws from this atlas instead
+	ID3DXSprite*						m_labelSprite;	// Old (D3DX) labels: one batch for every DrawText between Begin/End
+	Bool								m_labelSpriteOpen;	// between m_labelSprite Begin/End; fontDrawText joins the batch
 #endif
 	Bool hasFrameFont() const;				///< true when fontDrawText() can draw in-frame text
 	void fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color);	///< ID3DXFont on D3D8, the HUD atlas on D3D9

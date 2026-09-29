@@ -141,7 +141,9 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 // #include "CUndoable.h"
 
 
-#if !defined(BUILD_WITH_D3D9)
+#if defined(BUILD_WITH_D3D9)
+#include "WBD3DX9Font.h"
+#else
 #include <d3dx8.h>
 #endif
 
@@ -721,6 +723,10 @@ WbView3d::WbView3d() :
 	// a _DEBUG build leaves it as 0xcdcdcdcd and the first createLabelFont() call
 	// dereferences that bogus pointer -> access violation.
 	m3DFont = NULL;
+#if defined(BUILD_WITH_D3D9)
+	m_labelSprite = NULL;
+	m_labelSpriteOpen = false;
+#endif
 #ifdef RTS_HAS_QT
 	m_deviceResetFailed = false;
 #endif
@@ -734,8 +740,8 @@ WbView3d::WbView3d() :
 	m_labelAnchorMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 0);
 	m_labelRenderer = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
 #if defined(BUILD_WITH_D3D9)
-	if (m_labelRenderer == 0) {
-		m_labelRenderer = 2;	// the Old (D3DX) renderer does not exist on D3D9; Atlas is its in-frame equivalent
+	if (m_labelRenderer == 1) {
+		m_labelRenderer = 2;	// GDI text on the window never shows under the D3D9 flip model
 	}
 #endif
 	m_labelCull = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
@@ -4845,6 +4851,117 @@ void WbView3d::redraw(void)
 }
 
 // ----------------------------------------------------------------------------
+// Draws a one-pixel rectangle outline into the D3D frame as pre-transformed lines.
+// The box is part of the presented frame, so it shows on every backend and never
+// strobes; GDI ::FrameRect on the window HDC is invisible under the D3D9 flip
+// model. The states it touches are restored afterwards, matching WBFontAtlas.
+static void drawFrameRect2D(IDirect3DDevice8 *dev, const RECT &box, UnsignedInt argb)
+{
+	struct TLVertex { Real x, y, z, rhw; UnsignedInt color; };
+
+	if (dev == NULL || box.right <= box.left || box.bottom <= box.top) {
+		return;
+	}
+
+	// FrameRect covers left..right-1 / top..bottom-1; the strip closes on its first corner.
+	const Real x0 = (Real)box.left;
+	const Real y0 = (Real)box.top;
+	const Real x1 = (Real)(box.right - 1);
+	const Real y1 = (Real)(box.bottom - 1);
+	TLVertex verts[5] = {
+		{ x0, y0, 0.0f, 1.0f, argb },
+		{ x1, y0, 0.0f, 1.0f, argb },
+		{ x1, y1, 0.0f, 1.0f, argb },
+		{ x0, y1, 0.0f, 1.0f, argb },
+		{ x0, y0, 0.0f, 1.0f, argb },
+	};
+
+	DWORD oldAlphaBlend, oldZEnable, oldZWrite, oldCull, oldLighting, oldFog, oldAlphaTest;
+	dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlphaBlend);
+	dev->GetRenderState(D3DRS_ZENABLE,          &oldZEnable);
+	dev->GetRenderState(D3DRS_ZWRITEENABLE,     &oldZWrite);
+	dev->GetRenderState(D3DRS_CULLMODE,         &oldCull);
+	dev->GetRenderState(D3DRS_LIGHTING,         &oldLighting);
+	dev->GetRenderState(D3DRS_FOGENABLE,        &oldFog);
+	dev->GetRenderState(D3DRS_ALPHATESTENABLE,  &oldAlphaTest);
+
+	DWORD oldColorOp, oldColorArg1, oldAlphaOp, oldAlphaArg1, oldColorOp1;
+	dev->GetTextureStageState(0, D3DTSS_COLOROP,   &oldColorOp);
+	dev->GetTextureStageState(0, D3DTSS_COLORARG1, &oldColorArg1);
+	dev->GetTextureStageState(0, D3DTSS_ALPHAOP,   &oldAlphaOp);
+	dev->GetTextureStageState(0, D3DTSS_ALPHAARG1, &oldAlphaArg1);
+	dev->GetTextureStageState(1, D3DTSS_COLOROP,   &oldColorOp1);
+
+	IDirect3DBaseTexture8 *oldTex = NULL;
+	dev->GetTexture(0, &oldTex);
+
+#if defined(BUILD_WITH_D3D9)
+	// A bound shader pair would ignore the pre-transformed vertices; draw fixed-function.
+	IDirect3DVertexShader9 *oldVS = NULL;
+	IDirect3DPixelShader9 *oldPS = NULL;
+	dev->GetVertexShader(&oldVS);
+	dev->GetPixelShader(&oldPS);
+	dev->SetVertexShader(NULL);
+	dev->SetPixelShader(NULL);
+#else
+	DWORD oldPS = 0;
+	dev->GetPixelShader(&oldPS);
+	dev->SetPixelShader(0);
+#endif
+
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ZENABLE,          D3DZB_FALSE);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE,     FALSE);
+	dev->SetRenderState(D3DRS_CULLMODE,         D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING,         FALSE);
+	dev->SetRenderState(D3DRS_FOGENABLE,        FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE,  FALSE);
+
+	dev->SetTexture(0, NULL);
+	dev->SetTextureStageState(0, D3DTSS_COLOROP,   D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP,   D3DTOP_DISABLE);
+
+	DX8_SET_FVF(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	dev->DrawPrimitiveUP(D3DPT_LINESTRIP, 4, verts, sizeof(TLVertex));
+
+#if defined(BUILD_WITH_D3D9)
+	dev->SetVertexShader(oldVS);
+	dev->SetPixelShader(oldPS);
+	if (oldVS) {
+		oldVS->Release();
+	}
+	if (oldPS) {
+		oldPS->Release();
+	}
+#else
+	dev->SetPixelShader(oldPS);
+#endif
+
+	dev->SetTexture(0, oldTex);
+	if (oldTex) {
+		oldTex->Release();
+	}
+	dev->SetTextureStageState(0, D3DTSS_COLOROP,   oldColorOp);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, oldColorArg1);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   oldAlphaOp);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, oldAlphaArg1);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP,   oldColorOp1);
+
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlphaBlend);
+	dev->SetRenderState(D3DRS_ZENABLE,          oldZEnable);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE,     oldZWrite);
+	dev->SetRenderState(D3DRS_CULLMODE,         oldCull);
+	dev->SetRenderState(D3DRS_LIGHTING,         oldLighting);
+	dev->SetRenderState(D3DRS_FOGENABLE,        oldFog);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE,  oldAlphaTest);
+
+	DX8Wrapper::Invalidate_Cached_Render_States();
+}
+
+// ----------------------------------------------------------------------------
 void WbView3d::render()
 {
 	++m_updateCount;
@@ -5093,7 +5210,27 @@ void WbView3d::render()
 			drawLabels(NULL);
 			m_fontAtlas.end();
 		} else if (m3DFont && m_labelRenderer == 0) {
+#if defined(BUILD_WITH_D3D9)
+			// D3DX9 flushes every DrawText that has no sprite; a shared sprite batches
+			// the whole emit into one flush at End(), which is what the 11 ms was.
+			if (m_labelSprite != NULL && SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_ALPHABLEND))) {
+				m_labelSpriteOpen = true;
+				drawLabels(NULL);
+				m_labelSpriteOpen = false;
+				m_labelSprite->End();
+			} else {
+				drawLabels(NULL);
+			}
+#else
 			drawLabels(NULL);
+#endif
+		}
+
+		// Drag-select box, in-frame so it shows in every label mode and on D3D9.
+		// A subtract box (Shift+Ctrl+drag) draws red so the mode is obvious while dragging.
+		if (m_doRectFeedback) {
+			drawFrameRect2D(DX8Wrapper::_Get_D3D_Device8(), m_feedbackBox,
+				m_rectFeedbackSubtract ? 0xFFFF3030 : 0xFFFFA500);
 		}
 
 		// Ruler length/diameter readout, drawn next to the ruler. Done here (inside the
@@ -5395,6 +5532,9 @@ void WbView3d::initWW3D()
 		}
 
 		createLabelFont();
+		if (m_labelRenderer == 0 && m3DFont == NULL) {
+			m_labelRenderer = 2;	// Old needs the D3DX font; Atlas is its in-frame equivalent
+		}
 
 		int texFilterMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TexFilterMode", 0);
 		if (texFilterMode == 1) {
@@ -5594,22 +5734,13 @@ void WbView3d::OnPaint()
 	// New (GDI) mode only: draw labels with raw ::TextOut onto the window HDC, after
 	// the D3D frame has been presented by redraw()/End_Render(). This is what strobes
 	// (the next flip wipes it) -- accepted trade-off. Old (D3DX) mode draws labels
-	// inside the frame in render(), so we must NOT also draw them here.
+	// inside the frame in render(), so we must NOT also draw them here. The D3D9
+	// flip model never shows GDI on the window, so that build has no GDI mode.
+#if !defined(BUILD_WITH_D3D9)
 	if (m_labelRenderer == 1) {
 		drawLabels(hdc);
-	} else if (m_doRectFeedback) {
-		// Old (D3DX) mode draws labels inside the D3D frame and never passes an HDC to
-		// drawLabels, so the drag-select box (a GDI ::FrameRect) would never appear. Draw
-		// it here on the window HDC instead -- same GDI box as GDI mode, for both modes.
-		CBrush brush;
-		// A subtract box (Shift+Ctrl+drag) draws red so the mode is obvious while dragging.
-		if (m_rectFeedbackSubtract) {
-			brush.CreateSolidBrush(RGB(255, 48, 48));
-		} else {
-			brush.CreateSolidBrush(RGB(255, 165, 0));
-		}
-		::FrameRect(hdc, &m_feedbackBox, (HBRUSH)brush.GetSafeHandle());
 	}
+#endif
 	::EndPaint(m_hWnd, &ps);
 	// Record the view state we just painted, so OnTimer can skip timer repaints until
 	// something actually changes (all renderer modes -- see the idle skip in OnTimer;
@@ -6433,19 +6564,6 @@ void WbView3d::drawLabels(HDC hdc)
 				}
 			}
 		}
-	}
-
-	// Draw tracking box.
-	if (hdc && m_doRectFeedback) {
-		CBrush brush;
-		// green brush for drawing the grid.
-		// A subtract box (Shift+Ctrl+drag) draws red so the mode is obvious while dragging.
-		if (m_rectFeedbackSubtract) {
-			brush.CreateSolidBrush(RGB(255, 48, 48));
-		} else {
-			brush.CreateSolidBrush(RGB(255, 165, 0));
-		}
-		::FrameRect(hdc, &m_feedbackBox, (HBRUSH)brush.GetSafeHandle());
 	}
 
 	// DEBUG_LOG(("PointerTool::isMouseDown() = %d\n", PointerTool::isMouseDown() ? 1 : 0));
@@ -8559,7 +8677,8 @@ void WbView3d::OnUpdateTextShadow(CCmdUI* pCmdUI)
 // Viewport labels are rendered as textured quads from this atlas (see render()),
 // so the text is part of the presented D3D frame and never flickers. Safe to call
 // again at runtime to apply the AA toggle (build() releases the old atlas).
-// m3DFont is left NULL (the legacy D3DX text path is retired).
+// Also (re)creates the D3DX label font: D3DX8 from the SDK on D3D8, D3DX9 from the
+// runtime-loaded d3dx9 DLL on D3D9 (m3DFont stays NULL when that DLL is missing).
 void WbView3d::createLabelFont()
 {
 	if (m3DFont) {
@@ -8587,55 +8706,69 @@ void WbView3d::createLabelFont()
 	logFont.lfPitchAndFamily = DEFAULT_PITCH;
 	strcpy(logFont.lfFaceName, "Arial");
 
+#if defined(BUILD_WITH_D3D9)
+	m3DFont = WBD3DX9CreateFont(pDev, logFont);
+	if (m3DFont != NULL) {
+		((ID3DXFont*)m3DFont)->PreloadCharacters(32, 126);	// rasterize the ASCII glyphs now, not on first use
+		m_labelSprite = WBD3DX9CreateSprite(pDev);
+	}
+#else
 	HFONT hFont = CreateFontIndirect(&logFont);
 	if (hFont) {
-#if !defined(BUILD_WITH_D3D9)
 		D3DXCreateFont(pDev, hFont, &m3DFont);
-#endif
 		DeleteObject(hFont);
 	}
+#endif
 
 	// Also (re)build the glyph atlas for the Atlas renderer mode, matching the
 	// D3DX font above (Arial 20, regular) so the modes look comparable. Honors
 	// the same antialias toggle.
 	m_fontAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
 #if defined(BUILD_WITH_D3D9)
-	// D3D9 has no ID3DXFont; the HUD text draws from its own atlas so its per-frame
+	// Without the d3dx9 DLL the HUD text draws from its own atlas, whose per-frame
 	// mini batches never disturb the label batch that reissue() replays.
 	m_hudAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
 #endif
 }
 
-// Drops the D3DX label font (D3D8 only; the D3D9 build never creates one).
 void WbView3d::releaseD3DXFont()
 {
-#if !defined(BUILD_WITH_D3D9)
+#if defined(BUILD_WITH_D3D9)
+	if (m_labelSprite != NULL) {
+		m_labelSprite->Release();
+		m_labelSprite = NULL;
+	}
+	m_labelSpriteOpen = false;
+#endif
 	if (m3DFont) {
 		((ID3DXFont*)m3DFont)->Release();
 	}
-#endif
 	m3DFont = NULL;
 }
 
 Bool WbView3d::hasFrameFont() const
 {
 #if defined(BUILD_WITH_D3D9)
-	return m_hudAtlas.isValid();
+	return m3DFont != NULL || m_hudAtlas.isValid();
 #else
 	return m3DFont != NULL;
 #endif
 }
 
-// In-frame text for the HUD and ruler: the D3DX font on D3D8, the HUD glyph atlas on
-// D3D9 (no D3DX there). The atlas path honors DT_LEFT|DT_TOP placement only and splits
-// DT_WORDBREAK text on newlines, which is how the tooltip strings are laid out.
+// In-frame text for the HUD and ruler: the D3DX font, or on D3D9 without the d3dx9
+// DLL the HUD glyph atlas. The atlas path honors DT_LEFT|DT_TOP placement only and
+// splits DT_WORDBREAK text on newlines, which is how the tooltip strings are laid out.
 void WbView3d::fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color)
 {
 	if (str == NULL || len <= 0 || rct == NULL) {
 		return;
 	}
 #if defined(BUILD_WITH_D3D9)
-	(void)flags;
+	if (m3DFont != NULL) {
+		ID3DXSprite *sprite = m_labelSpriteOpen ? m_labelSprite : NULL;
+		((ID3DXFont*)m3DFont)->DrawTextA(sprite, str, len, (RECT*)rct, flags, color);
+		return;
+	}
 	if (!m_hudAtlas.isValid()) {
 		return;
 	}
@@ -8704,41 +8837,47 @@ void WbView3d::OnUpdateTextAnchorNew(CCmdUI* pCmdUI)
 
 // Label renderer: Old (D3DX m3DFont, drawn inside the D3D frame -> no flicker) vs
 // New (raw GDI ::TextOut on the window HDC -> sharper but strobes, because D3D8 has no
-// way to draw GDI into the presented frame) vs Atlas (WBFontAtlas glyph quads, also
+// way to draw GDI into the presented frame; D3D9's flip model never shows it, and
+// drawing it into the frame through GetDC stalls the GPU, so it is off there) vs Atlas (WBFontAtlas glyph quads, also
 // in-frame: the object/status/trigger labels are batched into ONE DrawPrimitiveUP --
 // ~11ms/frame cheaper than Old with names on, see wbbench). Radio trio under Text
 // Rendering.
 void WbView3d::OnTextRendererOld()
 {
-#if defined(BUILD_WITH_D3D9)
-	OnTextRendererAtlas();	// no D3DX font on D3D9
-#else
+	if (m3DFont == NULL) {
+		OnTextRendererAtlas();	// no D3DX font (D3D9 without the d3dx9 DLL)
+		return;
+	}
 	m_labelRenderer = 0;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextRendererOld(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(m3DFont != NULL);
+	pCmdUI->SetCheck(m_labelRenderer == 0);
+}
+
+void WbView3d::OnTextRendererNew()
+{
+#if defined(BUILD_WITH_D3D9)
+	OnTextRendererAtlas();
+#else
+	m_labelRenderer = 1;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 1);
 	Invalidate();
 #endif
 }
 
-void WbView3d::OnUpdateTextRendererOld(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateTextRendererNew(CCmdUI* pCmdUI)
 {
 #if defined(BUILD_WITH_D3D9)
 	pCmdUI->Enable(FALSE);
 	pCmdUI->SetCheck(0);
 #else
-	pCmdUI->SetCheck(m_labelRenderer == 0);
-#endif
-}
-
-void WbView3d::OnTextRendererNew()
-{
-	m_labelRenderer = 1;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 1);
-	Invalidate();
-}
-
-void WbView3d::OnUpdateTextRendererNew(CCmdUI* pCmdUI)
-{
 	pCmdUI->SetCheck(m_labelRenderer == 1);
+#endif
 }
 
 void WbView3d::OnTextRendererAtlas()

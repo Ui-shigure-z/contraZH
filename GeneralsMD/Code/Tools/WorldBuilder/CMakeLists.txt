@@ -108,6 +108,7 @@ set(WORLDBUILDER_SRC
     "src/WaypointOptions.cpp"
     "src/WaypointTool.cpp"
     "src/WBFontAtlas.cpp"
+    "src/WBD3DX9Font.cpp"
 "src/WBPngTexture.cpp"
     "src/WBFrameWnd.cpp"
     "src/WBHeightMap.cpp"
