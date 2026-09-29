@@ -10,13 +10,13 @@ rewrite the compressed `.map` format outside the editor.
 Build the editor with its tools enabled:
 
 ```powershell
-cmake --preset win32-internal -DRTS_ENABLE_WORLDBUILDER_QT=ON `
+cmake --preset win32-qt `
   -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
-cmake --build --preset win32-internal --target z_worldbuilder
+cmake --build --preset win32-qt --target z_worldbuilder
 ```
 
 The build must run inside an **x86** MSVC environment (`vcvarsall.bat x86`).
-Output: `build/win32-internal/GeneralsMD/Release/WorldBuilderZH_Qt.exe`.
+Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`.
 
 Start WorldBuilder. The MCP server can discover and open maps itself, so no map
 has to be opened or saved manually first. From the repository root, run:
@@ -34,7 +34,7 @@ To let MCP start the editor on demand, configure the executable explicitly:
 
 ```powershell
 python -m tools.worldbuilder_mcp `
-  --zero-hour-editor "F:\githubRepos\WorldbuilderZHAdrianeuild\win32-internal\GeneralsMD\Release\WorldBuilderZH_Qt.exe"
+  --zero-hour-editor "F:\githubRepos\WorldbuilderZHAdriane\build\win32-qt\GeneralsMD\Release\WorldBuilderZH_Qt.exe"
 ```
 
 The equivalent environment variable is `WORLDBUILDER_ZERO_HOUR_PATH`. `launch_editor` never starts a second editor
