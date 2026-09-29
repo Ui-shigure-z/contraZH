@@ -48,6 +48,43 @@ bool DX8InstancingClass::Is_Vertex_Shader_Material_Pass(const MaterialPassClass 
 	return key == InstancedPasses[0] || key == InstancedPasses[1];
 }
 
+// The instance data carries the world matrix and a tint, so camera-facing, skinned, overridden
+// and point-lit meshes draw alone.
+bool DX8InstancingClass::Allows_Mesh(MeshClass * mesh)
+{
+	MeshModelClass * model = mesh->Peek_Model();
+	if (model->Get_Flag(MeshModelClass::ALIGNED) || model->Get_Flag(MeshModelClass::ORIENTED) || model->Get_Flag(MeshModelClass::SKIN))
+	{
+		return false;
+	}
+	if (model->Get_Flag(MeshGeometryClass::SORT) && WW3D::Is_Sorting_Enabled())
+	{
+		return false;
+	}
+	if (mesh->Get_Alpha_Override() != 1.0f || (mesh->Get_User_Data() && *(int *)mesh->Get_User_Data() == RenderObjClass::USER_DATA_MATERIAL_OVERRIDE))
+	{
+		return false;
+	}
+	if (DX8RendererDebugger::Is_Enabled())
+	{
+		return false;
+	}
+	if (Pass == PASS_LIT)
+	{
+		// Later passes of a multi-pass model and per-mesh pass overrides stay fixed function, and
+		// a pass testing depth EQUAL must follow its base pass down the same path.
+		if (model->Get_Pass_Count() != 1 || mesh->Has_Material_Pass_Override())
+		{
+			return false;
+		}
+		if (mesh->Get_Lighting_Environment() == nullptr)
+		{
+			return false;
+		}
+	}
+	return Pass == PASS_SHADOW_DEPTH || !DX8VertexShadingClass::Has_Point_Light(mesh->Get_Lighting_Environment());
+}
+
 #if defined(BUILD_WITH_D3D9)
 
 // Bisects instancing faults without a rebuild. CONTRA_INSTANCING=0 draws every mesh on its own,
@@ -365,51 +402,6 @@ bool DX8InstancingClass::Allows_Category(const ShaderClass & shader, VertexMater
 	return DX8VertexShadingClass::Allows_Category((DX8VertexShadingClass::PassType)Pass, shader, material, fvf, second_stage_textured);
 }
 
-// The instance data carries the world matrix and a tint, so camera-facing, skinned, overridden
-// and point-lit meshes draw alone.
-bool DX8InstancingClass::Allows_Mesh(MeshClass * mesh)
-{
-	MeshModelClass * model = mesh->Peek_Model();
-	if (model->Get_Flag(MeshModelClass::ALIGNED) || model->Get_Flag(MeshModelClass::ORIENTED) || model->Get_Flag(MeshModelClass::SKIN))
-	{
-		return false;
-	}
-	if (model->Get_Flag(MeshGeometryClass::SORT) && WW3D::Is_Sorting_Enabled())
-	{
-		return false;
-	}
-	if (mesh->Get_Alpha_Override() != 1.0f || (mesh->Get_User_Data() && *(int *)mesh->Get_User_Data() == RenderObjClass::USER_DATA_MATERIAL_OVERRIDE))
-	{
-		return false;
-	}
-	if (DX8RendererDebugger::Is_Enabled())
-	{
-		return false;
-	}
-	if (Pass == PASS_LIT)
-	{
-		// Later passes of a multi-pass model and per-mesh pass overrides stay fixed function, and
-		// a pass testing depth EQUAL must follow its base pass down the same path.
-		if (model->Get_Pass_Count() != 1 || mesh->Has_Material_Pass_Override())
-		{
-			return false;
-		}
-		LightEnvironmentClass * environment = mesh->Get_Lighting_Environment();
-		if (environment == nullptr)
-		{
-			return false;
-		}
-		for (int i=0;i<environment->Get_Light_Count();++i)
-		{
-			if (environment->isPointLight(i))
-			{
-				return false;
-			}
-		}
-	}
-	return true;
-}
-
 // Scene lights reach every object alike except for a tint added to each light and to the ambient.
 bool DX8InstancingClass::Can_Share_Group(MeshClass * reference, MeshClass * mesh)
 {
@@ -459,8 +451,7 @@ bool DX8InstancingClass::Draw_Groups(DX8PolygonRendererClass * const * renderers
 	Vector4 fog;
 	if (Pass == PASS_LIT)
 	{
-		// Clip planes are given in world space, which a vertex shader would reinterpret in clip space.
-		if (DX8VertexShadingClass::Get_Device_Render_State(D3DRS_CLIPPLANEENABLE) != 0)
+		if (DX8VertexShadingClass::Are_Clip_Planes_Enabled())
 		{
 			Rejections[REJECT_CLIP_PLANE]++;
 			return false;
@@ -513,21 +504,13 @@ bool DX8InstancingClass::Draw_Material_Pass_Groups(const MaterialPassClass * pas
 
 	DX8Wrapper::Apply_Render_State_Changes();
 
-	// Only the matrices and stages change. The lighting constants the base pass left behind light
-	// nothing a pass's pixel shader reads.
-	Vector4 constants[DX8VertexShadingClass::CONSTANT_COUNT];
-	DX8VertexShadingClass::Get_View_Constants(constants);
-	DX8VertexShadingClass::Get_Stage_Constants(&constants[DX8VertexShadingClass::CONSTANT_STAGE_SOURCE], &constants[DX8VertexShadingClass::CONSTANT_STAGE_COLUMNS]);
-
 	unsigned offset = 0;
 	if (!Write_Instances(meshes, counts, group_count, false, offset))
 	{
 		Rejections[REJECT_RESOURCE]++;
 		return false;
 	}
-	DX8Wrapper::Set_Vertex_Shader_Constant(DX8VertexShadingClass::CONSTANT_VIEW_PROJECTION, &constants[DX8VertexShadingClass::CONSTANT_VIEW_PROJECTION], DX8VertexShadingClass::CONSTANT_VIEW + 3);
-	DX8Wrapper::Set_Vertex_Shader_Constant(DX8VertexShadingClass::CONSTANT_STAGE_SOURCE, &constants[DX8VertexShadingClass::CONSTANT_STAGE_SOURCE],
-		DX8VertexShadingClass::CONSTANT_COUNT - DX8VertexShadingClass::CONSTANT_STAGE_SOURCE);
+	DX8VertexShadingClass::Set_Material_Pass_Constants();
 
 	Draw_Instances(declaration, MainShader, renderers, counts, group_count, meshes, offset, pass);
 	return true;
@@ -588,7 +571,6 @@ void DX8InstancingClass::Begin_Lit_Pass() {}
 void DX8InstancingClass::End_Pass() {}
 bool DX8InstancingClass::Is_Supported() { return false; }
 bool DX8InstancingClass::Allows_Category(const ShaderClass & shader, VertexMaterialClass * material, unsigned fvf, bool second_stage_textured) { return false; }
-bool DX8InstancingClass::Allows_Mesh(MeshClass * mesh) { return false; }
 bool DX8InstancingClass::Can_Share_Group(MeshClass * reference, MeshClass * mesh) { return true; }
 bool DX8InstancingClass::Draw_Groups(DX8PolygonRendererClass * const * renderers, const int * counts, int group_count, MeshClass * const * meshes, VertexMaterialClass * material, unsigned fvf) { return false; }
 

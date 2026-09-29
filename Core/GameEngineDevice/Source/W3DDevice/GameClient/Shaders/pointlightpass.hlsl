@@ -11,9 +11,9 @@ sampler2D MeshTexture : register(s0);
 
 float4 EyePosition : register(c1);   // world space
 
-// Nine fill c5 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_PIXEL_LIGHTS must match.
+// Eight fill c5 to c22, since W3DShaderManager::MAX_PIXEL_LIGHTS packs them the same for every ground shader.
 #define POINT_LIGHT_REGISTER c5
-#define POINT_LIGHT_COUNT 9
+#define POINT_LIGHT_COUNT 8
 #include "pointlights.hlsli"
 
 struct PsIn

@@ -40,6 +40,9 @@
 
 W3DShockwaveManager *TheW3DShockwaves = nullptr;
 
+// StrengthInPixels counts pixels on a screen this many lines tall, so it looks the same at any resolution.
+static const Real REFERENCE_SCREEN_LINES = 1080.0f;
+
 // Where a world position lands in the scene copy, and its clip-space w.
 static Vector3 Scene_UV(const Vector3 &world, const D3DMATRIX &viewProjection, const Vector4 &screenMap)
 {
@@ -82,7 +85,7 @@ void W3DShockwaveManager::ReleaseResources()
 	m_loaded = FALSE;
 }
 
-void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, Real strength, UnsignedInt durationMs)
+void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationMs)
 {
 	if (radius <= 0.0f || width <= 0.0f || durationMs == 0)
 	{
@@ -104,6 +107,7 @@ void W3DShockwaveManager::add(const Coord3D &position, Real radius, Real width, 
 	shockwave.radius = radius;
 	shockwave.width = width;
 	shockwave.strength = strength;
+	shockwave.strengthInPixels = strengthInPixels;
 	shockwave.startMs = WW3D::Get_Sync_Time();
 	shockwave.durationMs = durationMs;
 }
@@ -151,15 +155,17 @@ void W3DShockwaveManager::render(RenderInfoClass &rinfo)
 
 	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
 	rinfo.Camera.Apply();
-	D3DMATRIX view;
+
+	// Apply defers the view to the next state flush, so it is read from the camera, not the device.
+	const D3DMATRIX view = To_D3DMATRIX(rinfo.Camera.Get_View_Matrix());
 	D3DMATRIX projection;
-	device->GetTransform(D3DTS_VIEW, &view);
 	device->GetTransform(D3DTS_PROJECTION, &projection);
 	const D3DMATRIX viewProjection = view * projection;
 
 	D3DSURFACE_DESC copyDesc;
 	m_sceneCopy->GetLevelDesc(0, &copyDesc);
 	const Vector4 screenMap = W3DShaderManager::getClipToTargetMapping((Real)copyDesc.Width, (Real)copyDesc.Height);
+	const Real sceneAspect = (Real)copyDesc.Width / (Real)copyDesc.Height;
 
 	Vector3 cameraRight;
 	rinfo.Camera.Get_Transform().Get_X_Vector(&cameraRight);
@@ -220,7 +226,9 @@ void W3DShockwaveManager::render(RenderInfoClass &rinfo)
 	DX8Wrapper::Set_Index_Buffer(ibAccess, 0);
 	DX8Wrapper::Apply_Render_State_Changes();
 
-	// The rings ripple the air, so nothing in front of them hides them.
+	// The rings ripple the air, so nothing in front of them hides them. No shader restores ZENABLE, so it is put back after.
+	DWORD depthTest = D3DZB_TRUE;
+	device->GetRenderState(D3DRS_ZENABLE, &depthTest);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, FALSE);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
@@ -260,15 +268,19 @@ void W3DShockwaveManager::render(RenderInfoClass &rinfo)
 		}
 		const Real uvPerUnit = sqrt((besideUV.X - centerUV.X) * (besideUV.X - centerUV.X) + (besideUV.Y - centerUV.Y) * (besideUV.Y - centerUV.Y));
 
+		const Real push = shockwave.strengthInPixels ? shockwave.strength / REFERENCE_SCREEN_LINES : shockwave.strength * uvPerUnit;
 		const Real fade = (1.0f - age) * (1.0f - age);
-		const Vector4 ring(age * shockwave.radius / halfSize, halfSize / shockwave.width, shockwave.strength * uvPerUnit * fade, 0.0f);
-		const Vector4 ringCenter(centerUV.X, centerUV.Y, 0.0f, 0.0f);
+		const Vector4 ring(age * shockwave.radius / halfSize, halfSize / shockwave.width, push * fade, 0.0f);
+		// A pixel push is measured in scene heights, with u scaled to match, so it bends the same pixels every way.
+		const Real uScale = shockwave.strengthInPixels ? sceneAspect : 1.0f;
+		const Vector4 ringCenter(centerUV.X, centerUV.Y, uScale, 1.0f / uScale);
 		DX8Wrapper::Set_Pixel_Shader_Constant(0, &ring, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(1, &ringCenter, 1);
 		DX8Wrapper::Draw_Triangles(i * 6, 2, i * 4, 4);
 	}
 
 	DX8Wrapper::Set_Pixel_Shader(0);
+	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, depthTest);
 	device->SetTexture(0, nullptr);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU | 1);

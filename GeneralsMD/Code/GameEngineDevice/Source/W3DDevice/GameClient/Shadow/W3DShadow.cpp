@@ -119,7 +119,9 @@ Bool IsShadowMapActive()
 Bool IsShadowMapCaster(RenderObjClass *robj, Bool shadowEnabled)
 {
 	if (TheW3DShadowMap == nullptr)
+	{
 		return FALSE;
+	}
 
 	W3DShadowMap::CasterStats &stats = TheW3DShadowMap->getCasterStats();
 

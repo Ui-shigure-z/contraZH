@@ -256,6 +256,9 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
 	{ "UnitNormalMapStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitNormalMapStrength ) },
 	{ "TerrainNormalMapStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainNormalMapStrength ) },
+	{ "TerrainGlintIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintIntensity ) },
+	{ "TerrainGlintGloss",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintGloss ) },
+	{ "TerrainGlintAlbedo",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintAlbedo ) },
 	{ "UnitEmissiveIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveIntensity ) },
 	{ "UnitEmissiveNightIntensity",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveNightIntensity ) },
 	{ "SoftParticleDistance",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_softParticleDistance ) },
@@ -278,6 +281,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "ElectricJitter",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricJitter ) },
 	{ "ElectricFlicker",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricFlicker ) },
 	{ "ElectricRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricRate ) },
+	{ "ElectricParticleScale",			INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_electricParticleScale ) },
 	{ "LaserParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_laserParticleTextures ) },
 	{ "LaserCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCore ) },
 	{ "LaserCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCoreWidth ) },
@@ -286,6 +290,20 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "LaserPulseSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSize ) },
 	{ "LaserPulseSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSpeed ) },
 	{ "LaserDebug",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserDebug ) },
+	{ "CryoParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_cryoParticleTextures ) },
+	{ "CryoTint",							INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_cryoTint ) },
+	{ "CryoTintStrength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoTintStrength ) },
+	{ "CryoCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCore ) },
+	{ "CryoCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCoreWidth ) },
+	{ "CryoFrost",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrost ) },
+	{ "CryoFrostSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSize ) },
+	{ "CryoFrostSpeed",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSpeed ) },
+	{ "CryoShards",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShards ) },
+	{ "CryoShardSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShardSize ) },
+	{ "CryoGlints",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlints ) },
+	{ "CryoGlintSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintSize ) },
+	{ "CryoGlintRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintRate ) },
+	{ "CryoParticleScale",				INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_cryoParticleScale ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -295,6 +313,16 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "TerrainHeightBlendStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendStrength ) },
 	{ "TerrainHeightBlendSharpness",		INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendSharpness ) },
 	{ "TerrainAtlasBorder",					INI::parseInt,				nullptr,			offsetof( GlobalData, m_terrainAtlasBorder ) },
+	{ "SkyCloudSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSize ) },
+	{ "SkyCloudCoverage",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudCoverage ) },
+	{ "SkyCloudSoftness",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSoftness ) },
+	{ "SkyCloudShadowStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudShadowStrength ) },
+	{ "SkyCloudShadowTint",				INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_skyCloudShadowTint ) },
+	{ "SkyCloudWindSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindSpeed ) },
+	{ "SkyCloudWindAngle",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindAngle ) },
+	{ "SkyCloudChurn",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudChurn ) },
+	{ "SkyCloudBillow",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudBillow ) },
+	{ "SkyCloudDetail",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudDetail ) },
 	{ "TextureReductionFactor",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_textureReductionFactor ) },
 	{ "UseBehindBuildingMarker",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableBehindBuildingMarkers ) },
 	{ "WaterPositionX",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_waterPositionX ) },
@@ -765,6 +793,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "LaserGroundGlowFalloff",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowFalloff ) },
 	{ "LaserGroundGlowWrap",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowWrap ) },
 	{ "LaserGroundGlowDebug",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowDebug ) },
+	{ "LaserGroundGlowOverlap",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowOverlap ) },
 	
 	// {"ChronoDamageTintStatusType", TintStatusFlags::parseSingleBitFromINI, NULL, offsetof(GlobalData, m_chronoTintStatusType) },
 	{"ChronoDamageParticleSystemLarge", INI::parseAsciiString, NULL, offsetof(GlobalData, m_chronoDisableParticleSystemLarge) },
@@ -831,10 +860,12 @@ GlobalData::GlobalData()
   m_useFlameShaders = TRUE;
   m_useElectricShaders = TRUE;
   m_useLaserShaders = TRUE;
+  m_useCryoShaders = TRUE;
   m_useDynamicLights = TRUE;
   m_usePixelLights = TRUE;
   m_useAmbientOcclusion = TRUE;
   m_useHeightBlend = TRUE;
+  m_useHQSky = TRUE;
   m_vsync = -1;
   m_lowLatency = FALSE;
   m_smoothUnitMotion = TRUE;
@@ -847,6 +878,7 @@ GlobalData::GlobalData()
   m_laserGlowFalloff = 2.0f;
   m_laserGlowWrap = 0.5f;
   m_laserGlowDebug = FALSE;
+  m_laserGlowOverlap = TRUE;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	m_shroudOn = TRUE;
@@ -957,6 +989,9 @@ GlobalData::GlobalData()
 	m_unitBumpHeight = 0.15f;
 	m_unitNormalMapStrength = 1.0f;
 	m_terrainNormalMapStrength = 2.0f;
+	m_terrainGlintIntensity = 0.25f;
+	m_terrainGlintGloss = 12.0f;
+	m_terrainGlintAlbedo = 0.5f;
 	m_unitEmissiveIntensity = 0.5f;
 	m_unitEmissiveNightIntensity = 1.5f;
 	m_softParticleDistance = 12.0f;
@@ -979,6 +1014,7 @@ GlobalData::GlobalData()
 	m_electricJitter = 0.03f;
 	m_electricFlicker = 0.6f;
 	m_electricRate = 15.0f;
+	m_electricParticleScale = 1.0f;
 	m_laserParticleTextures.clear();
 	m_laserCore = 1.2f;
 	m_laserCoreWidth = 0.25f;
@@ -987,6 +1023,22 @@ GlobalData::GlobalData()
 	m_laserPulseSize = 120.0f;
 	m_laserPulseSpeed = 400.0f;
 	m_laserDebug = FALSE;
+	m_cryoParticleTextures.clear();
+	m_cryoTint.red = 150.0f / 255.0f;
+	m_cryoTint.green = 215.0f / 255.0f;
+	m_cryoTint.blue = 1.0f;
+	m_cryoTintStrength = 0.8f;
+	m_cryoCore = 1.0f;
+	m_cryoCoreWidth = 0.3f;
+	m_cryoFrost = 0.5f;
+	m_cryoFrostSize = 200.0f;
+	m_cryoFrostSpeed = 60.0f;
+	m_cryoShards = 0.4f;
+	m_cryoShardSize = 8.0f;
+	m_cryoGlints = 2.0f;
+	m_cryoGlintSize = 1.5f;
+	m_cryoGlintRate = 2.0f;
+	m_cryoParticleScale = 1.0f;
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -996,6 +1048,18 @@ GlobalData::GlobalData()
 	m_terrainHeightBlendStrength = 2.0f;
 	m_terrainHeightBlendSharpness = 4.0f;
 	m_terrainAtlasBorder = 8;
+	m_skyCloudSize = 600.0f;
+	m_skyCloudCoverage = 0.45f;
+	m_skyCloudSoftness = 0.25f;
+	m_skyCloudShadowStrength = 0.35f;
+	m_skyCloudShadowTint.red = 235.0f / 255.0f;
+	m_skyCloudShadowTint.green = 242.0f / 255.0f;
+	m_skyCloudShadowTint.blue = 1.0f;
+	m_skyCloudWindSpeed = 11.0f;
+	m_skyCloudWindAngle = 56.0f;
+	m_skyCloudChurn = 0.3f;
+	m_skyCloudBillow = 0.5f;
+	m_skyCloudDetail = 0.4f;
 	m_textureReductionFactor = -1;
 	m_enableBehindBuildingMarkers = TRUE;
 	m_scriptDebug = FALSE;
@@ -1616,15 +1680,21 @@ void GlobalData::reset()
 static const char *const LiveGameDataKeys[] =
 {
 	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength",
+	"TerrainGlintIntensity", "TerrainGlintGloss", "TerrainGlintAlbedo",
 	"UnitEmissiveIntensity", "UnitEmissiveNightIntensity", "SoftParticleDistance",
 	"AmbientOcclusionRadius", "AmbientOcclusionStrength",
 	"GroundNoiseStrength", "GroundNoiseSize", "GroundNoiseTint", "GroundNoiseBrightness",
 	"TerrainHeightBlendStrength", "TerrainHeightBlendSharpness", "TerrainAtlasBorder",
+	"SkyCloudSize", "SkyCloudCoverage", "SkyCloudSoftness", "SkyCloudShadowStrength", "SkyCloudShadowTint",
+	"SkyCloudWindSpeed", "SkyCloudWindAngle", "SkyCloudChurn", "SkyCloudBillow", "SkyCloudDetail",
 	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
+	"ElectricParticleScale",
 	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
-	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug",
+	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
+	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
+	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };
 
@@ -1633,9 +1703,10 @@ static void parseIgnoredField( INI* ini, void *instance, void *store, const void
 {
 	if (ini->getNextTokenOrNull() == nullptr)
 	{
-		static const FieldParse noFields[] = { { nullptr, nullptr, nullptr, 0 } };
+		// The catch-all entry takes every field inside, so none reads as unknown.
+		static const FieldParse anyField[] = { { nullptr, parseIgnoredField, nullptr, 0 } };
 		Int unused = 0;
-		ini->initFromINI( &unused, noFields );
+		ini->initFromINI( &unused, anyField );
 	}
 }
 
@@ -1844,10 +1915,12 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_useFlameShaders = optionPref.getFlameShadersEnabled();
 	TheWritableGlobalData->m_useElectricShaders = optionPref.getElectricShadersEnabled();
 	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
+	TheWritableGlobalData->m_useCryoShaders = optionPref.getCryoShadersEnabled();
 	TheWritableGlobalData->m_useDynamicLights = optionPref.getDynamicLightsEnabled();
 	TheWritableGlobalData->m_usePixelLights = optionPref.getPixelLightsEnabled();
 	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
 	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
+	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();
 	TheWritableGlobalData->m_vsync = optionPref.getVSyncMode();
 	TheWritableGlobalData->m_lowLatency = optionPref.getLowLatencyEnabled();
 	TheWritableGlobalData->m_smoothUnitMotion = optionPref.getSmoothUnitMotionEnabled();

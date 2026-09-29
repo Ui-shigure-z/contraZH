@@ -48,6 +48,7 @@
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
 #include "W3DDevice/GameClient/W3DScene.h"
+#include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "WW3D2/rinfo.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/segline.h"
@@ -145,6 +146,7 @@ W3DLaserDrawModuleData::W3DLaserDrawModuleData()
 	m_groundGlowIntensity = 0.0f;
 	m_laserShader = TRUE;
 	m_electricShader = FALSE;
+	m_cryoShader = FALSE;
 
 	Real *setting = &m_shaderTuning.laserCore;
 	for (UnsignedInt i = 0; i < sizeof( m_shaderTuning ) / sizeof( Real ); ++i)
@@ -190,6 +192,7 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "GroundGlowIntensity",			INI::parsePercentToReal,				nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowIntensity) },
 		{ "LaserShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_laserShader) },
 		{ "ElectricShader",						INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_electricShader) },
+		{ "CryoShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_cryoShader) },
 		{ "LaserCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCore) },
 		{ "LaserCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCoreWidth) },
 		{ "LaserShimmer",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserShimmer) },
@@ -202,6 +205,15 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "ElectricJitter",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricJitter) },
 		{ "ElectricFlicker",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricFlicker) },
 		{ "ElectricRate",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricRate) },
+		{ "CryoTint",								INI::parseRGBColor,								nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTint) },
+		{ "CryoTintStrength",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTintStrength) },
+		{ "CryoCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCore) },
+		{ "CryoCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCoreWidth) },
+		{ "CryoFrost",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrost) },
+		{ "CryoFrostSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSize) },
+		{ "CryoFrostSpeed",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSpeed) },
+		{ "CryoShards",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShards) },
+		{ "CryoShardSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShardSize) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
@@ -223,6 +235,15 @@ void W3DLaserDrawModuleData::resolveShaderTuning( const BeamShaderTuning *own, B
 	tuning.electricJitter = TheGlobalData->m_electricJitter;
 	tuning.electricFlicker = TheGlobalData->m_electricFlicker;
 	tuning.electricRate = TheGlobalData->m_electricRate;
+	tuning.cryoTint = TheGlobalData->m_cryoTint;
+	tuning.cryoTintStrength = TheGlobalData->m_cryoTintStrength;
+	tuning.cryoCore = TheGlobalData->m_cryoCore;
+	tuning.cryoCoreWidth = TheGlobalData->m_cryoCoreWidth;
+	tuning.cryoFrost = TheGlobalData->m_cryoFrost;
+	tuning.cryoFrostSize = TheGlobalData->m_cryoFrostSize;
+	tuning.cryoFrostSpeed = TheGlobalData->m_cryoFrostSpeed;
+	tuning.cryoShards = TheGlobalData->m_cryoShards;
+	tuning.cryoShardSize = TheGlobalData->m_cryoShardSize;
 
 	if (own == nullptr)
 	{
@@ -238,6 +259,17 @@ void W3DLaserDrawModuleData::resolveShaderTuning( const BeamShaderTuning *own, B
 			resolved[i] = setting[i];
 		}
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Real W3DLaserDrawModuleData::getIceTint( const BeamShaderTuning &tuning, RGBColor &tint )
+{
+	const Real brightest = MAX( MAX( tuning.cryoTint.red, tuning.cryoTint.green ), MAX( tuning.cryoTint.blue, 0.001f ) );
+	tint.red = tuning.cryoTint.red / brightest;
+	tint.green = tuning.cryoTint.green / brightest;
+	tint.blue = tuning.cryoTint.blue / brightest;
+	return MIN( MAX( tuning.cryoTintStrength, 0.0f ), 1.0f );
 }
 
 
@@ -361,7 +393,11 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 				line->Set_Width( width );
 				line->Set_Color( Vector3( red, green, blue ) );
 				line->Set_UV_Offset_Rate( Vector2(0.0f, data->m_scrollRate) );	//amount to scroll texture on each draw
-				if( data->m_electricShader )
+				if( data->m_cryoShader )
+				{
+					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
+				}
+				else if( data->m_electricShader )
 				{
 					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_ELECTRIC | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
 				}
@@ -496,6 +532,19 @@ void W3DLaserDraw::getGroundGlowColor( Real &red, Real &green, Real &blue ) cons
 		blue *= m_textureColor.blue;
 	}
 
+	// a cryo-shaded beam lights the ground in the ice colour it is drawn in
+	if (data->m_cryoShader && TheW3DSoftParticles != nullptr && TheW3DSoftParticles->cryoEnabled())
+	{
+		BeamShaderTuning tuning;
+		W3DLaserDrawModuleData::resolveShaderTuning( &data->m_shaderTuning, tuning );
+		RGBColor tint;
+		const Real strength = W3DLaserDrawModuleData::getIceTint( tuning, tint );
+		const Real peak = MAX( red, MAX( green, blue ) );
+		red += (tint.red * peak - red) * strength;
+		green += (tint.green * peak - green) * strength;
+		blue += (tint.blue * peak - blue) * strength;
+	}
+
 	// normalize so a dim color still lights at the same strength as a bright one
 	Real brightest = MAX( red, MAX( green, blue ) );
 	if (brightest > 0.0f)
@@ -583,7 +632,7 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 		const Coord3D *start = update->getStartPos();
 		const Coord3D *end = update->getEndPos();
 		// the glow pulses along with a laser-shaded beam and holds steady under any other
-		const BeamShaderTuning *pulses = (data->m_laserShader && !data->m_electricShader) ? &data->m_shaderTuning : nullptr;
+		const BeamShaderTuning *pulses = (data->m_laserShader && !data->m_electricShader && !data->m_cryoShader) ? &data->m_shaderTuning : nullptr;
 		TheW3DLaserGlow->add( Vector3( start->x, start->y, start->z ), Vector3( end->x, end->y, end->z ), reach,
 			Vector3( glowRed, glowGreen, glowBlue ) * intensity, pulses );
 		return;

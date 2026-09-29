@@ -79,6 +79,7 @@
 #include "W3DDevice/GameClient/W3DWaypointBuffer.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
@@ -343,9 +344,7 @@ Int HeightMapRenderObjClass::getTileRow(Int y)
 //=============================================================================
 // HeightMapRenderObjClass::assignPixelLights
 //=============================================================================
-/** Each VB tile draws in one call, so it takes up to MAX_PIXEL_LIGHTS lights of
-its own. The lights nearest the middle of the view go first, each only where every
-tile it reaches has room, and leave the vertex lighting. The rest stay in it. */
+/** A light leaves the vertex lighting only when every VB tile it reaches has a slot left. */
 //=============================================================================
 void HeightMapRenderObjClass::assignPixelLights(RefRenderObjListIterator &lights)
 {
@@ -501,6 +500,27 @@ void HeightMapRenderObjClass::prepareSeabed()
 			}
 		}
 	}
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::prepareGlint
+//=============================================================================
+/** Hands the ground shaders the glint's normals from the water's height texture, and the terrain shaders each texture's glint. */
+//=============================================================================
+void HeightMapRenderObjClass::prepareGlint()
+{
+	Vector4 mapping(0.0f, 0.0f, 0.0f, 0.0f);
+	Vector4 decode;
+	TextureClass *normals = nullptr;
+	TextureClass *materials = nullptr;
+	Real strengthScale = 1.0f;
+	Real glossScale = 1.0f;
+	if (TheWaterRenderObj != nullptr && W3DShaderManager::wantsTerrainGlint())
+	{
+		normals = TheWaterRenderObj->getTerrainHeightTexture(mapping, decode);
+		materials = m_map->getTerrainGlintMap(W3DShaderManager::getTerrainGlintGloss(), strengthScale, glossScale);
+	}
+	W3DShaderManager::setTerrainGlintMaps(normals, mapping, materials, strengthScale, glossScale);
 }
 
 //=============================================================================
@@ -1583,6 +1603,7 @@ void HeightMapRenderObjClass::On_Frame_Update()
 #endif
 
 	prepareSeabed();
+	prepareGlint();
 	assignPixelLights(pDynamicLightsIterator);
 
 	Int numDynaLights=0;
@@ -2106,6 +2127,10 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		// TheSuperHackers @tweak Updates the cloud movement before applying it to the world.
 		// Is now decoupled from logic step. The water reflection pass renders the terrain again.
 		W3DShaderManager::updateCloud();
+		if (TheW3DSkyClouds)
+		{
+			TheW3DSkyClouds->update(rinfo, *this);
+		}
 	}
 
 	Matrix3D tm(Transform);
@@ -2230,11 +2255,11 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
  		//Specify all textures that this shader may need.
  		W3DShaderManager::setTexture(0,m_stageZeroTexture);
  		W3DShaderManager::setTexture(1,m_stageZeroTexture);
- 		W3DShaderManager::setTexture(2,m_stageTwoTexture);	//cloud
+ 		W3DShaderManager::setTexture(2,cloudMapTexture());	//cloud
  		W3DShaderManager::setTexture(3,m_stageThreeTexture);//noise
- 		// The reflection pass mirrors the view, and its terrain stays flat.
+ 		// The reflection pass mirrors the view, and its terrain stays flat. The atlas is built only once a shader can read it.
  		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_NORMAL_TEXTURE,
- 			ShaderClass::Is_Backface_Culling_Inverted() ? nullptr : m_map->getTerrainNormalTexture());
+ 			(ShaderClass::Is_Backface_Culling_Inverted() || !W3DShaderManager::wantsTerrainNormalAtlas()) ? nullptr : m_map->getTerrainNormalTexture());
 		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
 		//Disable writes to destination alpha channel (if there is one)
 		if (DX8Wrapper::getBackBufferFormat() == WW3D_FORMAT_A8R8G8B8)
@@ -2308,7 +2333,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			if (Scene) {
 				RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 				RefRenderObjListIterator pDynamicLightsIterator(pMyScene->getDynamicLights());
-				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?m_stageTwoTexture:nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
+				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?cloudMapTexture():nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
 					m_disableTextures,xCoordMin-m_map->getBorderSizeInline(), xCoordMax-m_map->getBorderSizeInline(), yCoordMin-m_map->getBorderSizeInline(), yCoordMax-m_map->getBorderSizeInline(), &pDynamicLightsIterator);
 			}
 		}
@@ -2328,7 +2353,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		ShaderClass::Invalidate();
 		DX8Wrapper::Apply_Render_State_Changes();
 
-		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?m_stageTwoTexture:nullptr);
+		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?cloudMapTexture():nullptr);
 
 		if (TheTerrainTracksRenderObjClassSystem)
 			TheTerrainTracksRenderObjClassSystem->flush();
@@ -2349,7 +2374,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		DX8Wrapper::Apply_Render_State_Changes();
 	}
 	else
-			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, m_stageTwoTexture);
+			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, cloudMapTexture());
 
   if ( m_waypointBuffer )
 	  m_waypointBuffer->drawWaypoints(rinfo);
@@ -2457,7 +2482,6 @@ void HeightMapRenderObjClass::renderLightingModifierOverlay(void)
 	ShaderClass::Invalidate();
 }
 
-///Performs additional terrain rendering pass, blending in the black shroud texture.
 // The shadow map's depth pass overrides the rest of the state, so an opaque shader is
 // enough to mark the terrain as a solid caster.
 void HeightMapRenderObjClass::renderShadowMapCaster()
@@ -2469,6 +2493,7 @@ void HeightMapRenderObjClass::renderShadowMapCaster()
 	renderTerrainPass(nullptr);
 }
 
+///Performs additional terrain rendering pass, blending in the black shroud texture.
 void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 {
 	DX8Wrapper::Set_Transform(D3DTS_WORLD,Matrix3D(true));
@@ -2700,7 +2725,7 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 		else
 		{
 			W3DShaderManager::setTexture(0,m_stageOneTexture);
-			W3DShaderManager::setTexture(1,m_stageTwoTexture);	//cloud
+			W3DShaderManager::setTexture(1,cloudMapTexture());	//cloud
 			W3DShaderManager::setTexture(2,m_stageThreeTexture);	//noise/lightmap
 			W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
 			W3DShaderManager::setRoadHeightBlend(TRUE);

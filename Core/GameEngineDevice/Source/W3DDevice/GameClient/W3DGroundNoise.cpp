@@ -23,12 +23,12 @@
 #include "Lib/BaseType.h"
 #include "WWLib/always.h"
 #include "W3DDevice/GameClient/W3DGroundNoise.h"
+#include "W3DDevice/GameClient/W3DNoiseTexture.h"
 #include "Common/GlobalData.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/formconv.h"
 #include "WW3D2/texture.h"
 
-#include <math.h>
 #include <vector>
 
 static const Int NOISE_SIZE = 512;
@@ -62,115 +62,6 @@ static Real BuiltStrength = 0.0f;
 static Real BuiltTint = 0.0f;
 static Real BuiltBrightness = 0.0f;
 
-static UnsignedInt Hash_Lattice(Int x, Int y, Int seed)
-{
-	UnsignedInt h = (UnsignedInt)x * 374761393u + (UnsignedInt)y * 668265263u + (UnsignedInt)seed * 2246822519u;
-	h = (h ^ (h >> 13)) * 1274126177u;
-	return h ^ (h >> 16);
-}
-
-static Real Fade(Real t)
-{
-	return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
-}
-
-// Adds one octave of gradient noise that tiles across the texture, with this many cells along each side.
-static void Add_Gradient_Noise(Real *field, Int cells, Int seed, Real amplitude)
-{
-	std::vector<Real> gradients(cells * cells * 2);
-	for (Int i = 0; i < cells * cells; i++)
-	{
-		const Real angle = (Real)(Hash_Lattice(i % cells, i / cells, seed) & 0xffff) * (6.2831853f / 65536.0f);
-		gradients[i * 2] = (Real)cos(angle);
-		gradients[i * 2 + 1] = (Real)sin(angle);
-	}
-
-	const Real step = (Real)cells / NOISE_SIZE;
-	for (Int y = 0; y < NOISE_SIZE; y++)
-	{
-		const Real fy = (y + 0.5f) * step;
-		const Int y0 = (Int)fy;
-		const Int y1 = (y0 + 1) % cells;
-		const Real ty = fy - y0;
-		const Real v = Fade(ty);
-		for (Int x = 0; x < NOISE_SIZE; x++)
-		{
-			const Real fx = (x + 0.5f) * step;
-			const Int x0 = (Int)fx;
-			const Int x1 = (x0 + 1) % cells;
-			const Real tx = fx - x0;
-			const Real u = Fade(tx);
-
-			const Real *g00 = &gradients[(y0 * cells + x0) * 2];
-			const Real *g10 = &gradients[(y0 * cells + x1) * 2];
-			const Real *g01 = &gradients[(y1 * cells + x0) * 2];
-			const Real *g11 = &gradients[(y1 * cells + x1) * 2];
-			const Real n00 = g00[0] * tx + g00[1] * ty;
-			const Real n10 = g10[0] * (tx - 1.0f) + g10[1] * ty;
-			const Real n01 = g01[0] * tx + g01[1] * (ty - 1.0f);
-			const Real n11 = g11[0] * (tx - 1.0f) + g11[1] * (ty - 1.0f);
-
-			const Real top = n00 + (n10 - n00) * u;
-			const Real bottom = n01 + (n11 - n01) * u;
-			field[y * NOISE_SIZE + x] += amplitude * (top + (bottom - top) * v);
-		}
-	}
-}
-
-// Shifts and scales the field to a mean of 0 and a standard deviation of 1.
-static void Normalize(Real *field)
-{
-	const Int count = NOISE_SIZE * NOISE_SIZE;
-	double sum = 0.0;
-	double sumSquares = 0.0;
-	for (Int i = 0; i < count; i++)
-	{
-		sum += field[i];
-		sumSquares += (double)field[i] * field[i];
-	}
-	const double mean = sum / count;
-	const double variance = sumSquares / count - mean * mean;
-	const Real scale = (variance > 0.0) ? (Real)(1.0 / sqrt(variance)) : 0.0f;
-	for (Int i = 0; i < count; i++)
-	{
-		field[i] = (field[i] - (Real)mean) * scale;
-	}
-}
-
-static void Build_Layer(Real *field, const GroundNoiseLayer &layer, Int seed)
-{
-	memset(field, 0, sizeof(Real) * NOISE_SIZE * NOISE_SIZE);
-	Real amplitude = 1.0f;
-	for (Int octave = 0; octave < layer.octaves; octave++)
-	{
-		Add_Gradient_Noise(field, layer.cells << octave, seed * 16 + octave, amplitude);
-		amplitude *= layer.gain;
-	}
-	Normalize(field);
-
-	if (layer.squeeze > 0.0f)
-	{
-		for (Int i = 0; i < NOISE_SIZE * NOISE_SIZE; i++)
-		{
-			field[i] = (Real)tanh(layer.squeeze * field[i]);
-		}
-		Normalize(field);
-	}
-}
-
-static UnsignedInt To_Byte(Real value)
-{
-	return (UnsignedInt)(clamp(0.0f, value, 1.0f) * 255.0f + 0.5f);
-}
-
-// Hands a texture made here to a TextureClass, which the wrapper's deferred texture binding takes.
-static TextureClass *Wrap_Texture(IDirect3DTexture8 *texture)
-{
-	TextureClass *wrapped = NEW_REF(TextureClass, (texture));
-	texture->Release();
-	return wrapped;
-}
-
 static TextureClass *Build_Ground_Noise(Real strength, Real tint, Real brightness)
 {
 #if defined(BUILD_WITH_D3D9)
@@ -183,46 +74,17 @@ static TextureClass *Build_Ground_Noise(Real strength, Real tint, Real brightnes
 	for (Int channel = 0; channel < 4; channel++)
 	{
 		const GroundNoiseLayer &layer = Layers[channel];
-		Build_Layer(&field[0], layer, channel + 1);
+		W3DNoiseTexture::buildLayer(&field[0], NOISE_SIZE, layer.cells, layer.octaves, layer.gain, layer.squeeze, channel + 1);
 
 		const Real mean = (channel < 3) ? shadeMean : 0.5f;
 		const Real amplitude = (channel < 3) ? strength * layer.share : tint;
 		for (Int i = 0; i < NOISE_SIZE * NOISE_SIZE; i++)
 		{
-			pixels[i] |= To_Byte(mean + amplitude * field[i]) << shifts[channel];
+			pixels[i] |= W3DNoiseTexture::toByte(mean + amplitude * field[i]) << shifts[channel];
 		}
 	}
 
-	IDirect3DTexture8 *texture = DX8Wrapper::_Create_DX8_Texture(NOISE_SIZE, NOISE_SIZE, WW3D_FORMAT_A8R8G8B8, MIP_LEVELS_ALL, D3DPOOL_MANAGED, false);
-	if (texture == nullptr)
-	{
-		return nullptr;
-	}
-
-	IDirect3DTexture8 *lockable = DX8Wrapper::_Peek_Lockable_Texture(texture);
-	D3DLOCKED_RECT locked;
-	if (FAILED(lockable->LockRect(0, &locked, nullptr, 0)))
-	{
-		texture->Release();
-		return nullptr;
-	}
-	for (Int y = 0; y < NOISE_SIZE; y++)
-	{
-		memcpy((UnsignedByte *)locked.pBits + y * locked.Pitch, &pixels[y * NOISE_SIZE], NOISE_SIZE * sizeof(UnsignedInt));
-	}
-	lockable->UnlockRect(0);
-
-	// Box-filtered mips keep the distant ground from shimmering.
-	Filter_Texture_Mipmaps(lockable);
-	DX8Wrapper::_Upload_Lockable_Texture(texture);
-
-	TextureClass *wrapped = Wrap_Texture(texture);
-	wrapped->Get_Filter().Set_Min_Filter(TextureFilterClass::FILTER_TYPE_BEST);
-	wrapped->Get_Filter().Set_Mag_Filter(TextureFilterClass::FILTER_TYPE_BEST);
-	wrapped->Get_Filter().Set_Mip_Mapping(TextureFilterClass::FILTER_TYPE_BEST);
-	wrapped->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
-	wrapped->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
-	return wrapped;
+	return W3DNoiseTexture::createTexture(&pixels[0], NOISE_SIZE);
 #else
 	(void)strength;
 	(void)tint;
@@ -275,7 +137,7 @@ TextureClass *W3DGroundNoise::getWhiteTexture()
 		*(UnsignedInt *)locked.pBits = 0xffffffffu;
 		lockable->UnlockRect(0);
 		DX8Wrapper::_Upload_Lockable_Texture(texture);
-		WhiteTexture = Wrap_Texture(texture);
+		WhiteTexture = W3DNoiseTexture::wrapTexture(texture);
 	}
 #endif
 	return WhiteTexture;

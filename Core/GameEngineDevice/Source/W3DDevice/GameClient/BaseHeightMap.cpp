@@ -100,6 +100,7 @@
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 
 #include "GameLogic/PolygonTrigger.h"
@@ -457,6 +458,11 @@ void BaseHeightMapRenderObjClass::ReleaseResources()
 	if (TheW3DLaserGlow)
 	{
 		TheW3DLaserGlow->ReleaseResources();
+	}
+
+	if (TheW3DSkyClouds)
+	{
+		TheW3DSkyClouds->ReleaseResources();
 	}
 
 	if (TheSnowManager)
@@ -3156,5 +3162,15 @@ Bool BaseHeightMapRenderObjClass::useCloud()
 //=============================================================================
 TextureClass *BaseHeightMapRenderObjClass::getCloudTexture() const
 {
-	return useCloud() ? m_stageTwoTexture : nullptr;
+	return useCloud() ? cloudMapTexture() : nullptr;
+}
+
+//=============================================================================
+TextureClass *BaseHeightMapRenderObjClass::cloudMapTexture() const
+{
+	if (TheW3DSkyClouds != nullptr && TheW3DSkyClouds->isActive())
+	{
+		return TheW3DSkyClouds->getTexture();
+	}
+	return m_stageTwoTexture;
 }

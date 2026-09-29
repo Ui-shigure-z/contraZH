@@ -37,7 +37,7 @@ endif()
 message(STATUS "Shader compiler: ${RTS_FXC_EXECUTABLE}")
 set(RTS_SHADERS_AVAILABLE TRUE CACHE INTERNAL "")
 
-# Shaders land beside the binary, where the engine finds loose files before archives.
+# Shaders land in the build root's shaders folder, which is copied into the game folder with the exe.
 set(RTS_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${RTS_SHADER_OUTPUT_DIR}")
 
@@ -69,7 +69,8 @@ set(RTS_SHADER_INCLUDES
     "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/shadowreceive.hlsli"
     "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/pointlights.hlsli"
     "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/groundnoise.hlsli"
-    "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/heightblend.hlsli")
+    "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/heightblend.hlsli"
+    "${CMAKE_SOURCE_DIR}/${RTS_SHADER_DIR}/terrainglint.hlsli")
 
 rts_add_shader("${RTS_SHADER_DIR}/shadowdepth.hlsl"   ps_2_0 mainPackedPS  shadowdepthpacked.pso)
 rts_add_shader("${RTS_SHADER_DIR}/instancedepth.hlsl" vs_2_0 main instancedepth.vso             PACKED=0)
@@ -169,6 +170,35 @@ rts_add_shader("${RTS_SHADER_DIR}/roadshadow.hlsl"    ps_2_a main roadlitnoisepa
 rts_add_shader("${RTS_SHADER_DIR}/roadshadow.hlsl"    ps_2_a main roadlitnoise2noshadow.pso     NOISE_COUNT=2 SHADOWED=0 PACKED=0 LIGHTS=1)
 rts_add_shader("${RTS_SHADER_DIR}/roadshadow.hlsl"    ps_2_a main roadlitnoise2.pso             NOISE_COUNT=2 SHADOWED=1 PACKED=0 LIGHTS=1)
 rts_add_shader("${RTS_SHADER_DIR}/roadshadow.hlsl"    ps_2_a main roadlitnoise2packed.pso       NOISE_COUNT=2 SHADOWED=1 PACKED=1 LIGHTS=1)
+# The sun's glint alone, for terrain and road draws without bumps or lights, named <terrain|road>glint[noise|noise2][packed|noshadow].pso.
+foreach(RTS_GLINT_GROUND terrain road)
+    foreach(RTS_GLINT_NOISE 0 1 2)
+        foreach(RTS_GLINT_SHADOW shadowed packed noshadow)
+            set(name "${RTS_GLINT_GROUND}glint")
+            if(RTS_GLINT_NOISE EQUAL 1)
+                string(APPEND name "noise")
+            elseif(RTS_GLINT_NOISE EQUAL 2)
+                string(APPEND name "noise2")
+            endif()
+            set(shadowed 1)
+            set(packed 0)
+            if(RTS_GLINT_SHADOW STREQUAL "packed")
+                string(APPEND name "packed")
+                set(packed 1)
+            elseif(RTS_GLINT_SHADOW STREQUAL "noshadow")
+                string(APPEND name "noshadow")
+                set(shadowed 0)
+            endif()
+            if(RTS_GLINT_GROUND STREQUAL "terrain")
+                set(source "terrainshadow.hlsl")
+            else()
+                set(source "roadshadow.hlsl")
+            endif()
+            rts_add_shader("${RTS_SHADER_DIR}/${source}" ps_2_a main ${name}.pso NOISE_COUNT=${RTS_GLINT_NOISE}
+                SHADOWED=${shadowed} PACKED=${packed} GLINT=1)
+        endforeach()
+    endforeach()
+endforeach()
 rts_add_shader("${RTS_SHADER_DIR}/flatterrain.hlsl"   ps_2_a main flatterrainlit1.pso           TEXTURE_COUNT=1)
 rts_add_shader("${RTS_SHADER_DIR}/flatterrain.hlsl"   ps_2_a main flatterrainlit2.pso           TEXTURE_COUNT=2)
 rts_add_shader("${RTS_SHADER_DIR}/flatterrain.hlsl"   ps_2_a main flatterrainlit3.pso           TEXTURE_COUNT=3)
@@ -210,11 +240,22 @@ rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particleelect
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlelaserdepth.pso      DEPTH=1 LASER=1)
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlelaserheight.pso     DEPTH=0 LASER=1)
 rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlelaser.pso               SOFT=0 LASER=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryodepth.pso       DEPTH=1 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryoheight.pso      DEPTH=0 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlecryo.pso                SOFT=0 CRYO=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryobeamdepth.pso   DEPTH=1 CRYO=1 BEAM=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main softparticlecryobeamheight.pso  DEPTH=0 CRYO=1 BEAM=1)
+rts_add_shader("${RTS_SHADER_DIR}/softparticle.hlsl"   ps_2_0 main particlecryobeam.pso            SOFT=0 CRYO=1 BEAM=1)
 rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_0 main laserglow.pso)
+# Overlapping glows light the ground in one pass, several beams at a time, which runs past ps_2_0's length.
+rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow2.pso               BEAMS=2)
+rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow4.pso               BEAMS=4)
+rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow7.pso               BEAMS=7)
 rts_add_shader("${RTS_SHADER_DIR}/heathaze.hlsl"       ps_2_0 main heathaze.pso)
 rts_add_shader("${RTS_SHADER_DIR}/shockwave.hlsl"      ps_2_0 main shockwave.pso)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusion.pso      BLUR=0)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusionblur.pso  BLUR=1)
+rts_add_shader("${RTS_SHADER_DIR}/skyclouds.hlsl"      ps_2_0 main skyclouds.pso)
 # The water shaders outgrow ps_2_0's instruction limit.
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderwater.pso              RIVER=0 PACKED=0)
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderwaterpacked.pso        RIVER=0 PACKED=1)

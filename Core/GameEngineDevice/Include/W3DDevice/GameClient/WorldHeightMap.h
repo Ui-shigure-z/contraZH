@@ -203,6 +203,12 @@ protected:
 	/** Per atlas slot, the texture block it belongs to, for the seabed's hex tiling. */
 	TextureClass *m_terrainClassMap;
 	TerrainTextureClass *m_terrainClassMapAtlas;	///< the atlas m_terrainClassMap was built for
+	/** Each texture's sun glint strength and gloss from Terrain.ini, laid out like m_terrainTex. */
+	TextureClass *m_terrainGlintMap;
+	TerrainTextureClass *m_terrainGlintMapAtlas;	///< the atlas m_terrainGlintMap was built for
+	Real m_terrainGlintMapGloss;	///< the default gloss m_terrainGlintMap was built with
+	Real m_terrainGlintStrengthScale;	///< the strength a full red channel stands for
+	Real m_terrainGlintGlossScale;	///< the gloss a full green channel stands for
 	/** The texture that contains the alpha edge tiles that get blended on
 			top of the base texture. getAlphaUVData does the mapping. */
 	AlphaTerrainTextureClass *m_alphaTerrainTex;
@@ -315,6 +321,8 @@ public:  // tile and texture info.
 	TextureClass *getTerrainNormalTexture();  //< generates if needed and returns the terrain normal maps, or null when there are none
 	TextureClass *getTerrainHeightTexture();  //< generates if needed and returns the heights the textures blend by, or null when the card lacks the format
 	TextureClass *getTerrainClassMap();  //< generates if needed and returns the atlas slot lookup the seabed shaders read, or null
+	/// Generates if needed and returns each texture's glint strength and gloss, defaultGloss without a GlintGloss, and what a full channel stands for, or null.
+	TextureClass *getTerrainGlintMap(Real defaultGloss, Real &strengthScale, Real &glossScale);
 	Int getTerrainTexHeight() const { return m_terrainTexHeight; }
 	Int getAtlasBorder() const { return m_atlasBorder; }
 	/// The atlas border GameData TerrainAtlasBorder asks for, rounded and bounded as the atlases lay it out.

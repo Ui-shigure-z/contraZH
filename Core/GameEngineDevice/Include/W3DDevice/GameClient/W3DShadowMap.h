@@ -145,6 +145,9 @@ protected:
 	// m_colorTarget where supported, since the hardware path reads back only depth.
 	IDirect3DSurface8* m_nullTarget;
 
+	// The packed path's depth buffer, sized to m_colorTarget since the default one is the back buffer's.
+	IDirect3DSurface8* m_packedDepth;
+
 	// The mesh renderer culls against a camera, so the depth pass needs one that
 	// contains the sun's box. It never reaches the device.
 	CameraClass*   m_cullCamera;

@@ -950,8 +950,17 @@ void WaterRenderObjClass::updateHeightTexture()
 			const Int y = min(j, height - 1);
 			for (Int i=0; i<(Int)desc.Width; i++)
 			{
-				const UnsignedInt h = map->getHeight(min(i, width - 1), y);
-				row[i] = 0xff000000 | ((h >> 8) & 0xff) << 16 | (h & 0xff) << 8;
+				const Int x = min(i, width - 1);
+				const UnsignedInt h = map->getHeight(x, y);
+
+				// The normal the vertex lighting takes, from the heights on either side, as updateVB does.
+				const Real dx = MAP_HEIGHT_SCALE * ((Int)map->getHeight(min(x + 1, width - 1), y) - (Int)map->getHeight(max(x - 1, 0), y));
+				const Real dy = MAP_HEIGHT_SCALE * ((Int)map->getHeight(x, min(y + 1, height - 1)) - (Int)map->getHeight(x, max(y - 1, 0)));
+				Vector3 normal(-dx, -dy, 2.0f * MAP_XY_FACTOR);
+				normal.Normalize();
+				const UnsignedInt nx = (UnsignedInt)WWMath::Clamp(normal.X * 127.5f + 127.5f, 0.0f, 255.0f);
+				const UnsignedInt ny = (UnsignedInt)WWMath::Clamp(normal.Y * 127.5f + 127.5f, 0.0f, 255.0f);
+				row[i] = ny << 24 | ((h >> 8) & 0xff) << 16 | (h & 0xff) << 8 | nx;
 			}
 		}
 		surface->Unlock();

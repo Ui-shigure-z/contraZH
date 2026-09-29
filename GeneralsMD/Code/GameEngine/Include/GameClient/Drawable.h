@@ -838,6 +838,8 @@ private:
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 	// TheSuperHackers @feature Debug object and particle name overlays (Ctrl+[ and Ctrl+]).
 	void drawDebugNameOverlay( const IRegion2D *healthBarRegion );
+	// Laser name and beam block overlays (Ctrl+, and Ctrl+.). Returns TRUE for a laser while either is on.
+	Bool drawDebugLaserOverlay();
 	// Fold this frame's findings into the remembered list, refreshing anything already there.
 	void rememberParticleNames( const AsciiString *names, const AsciiString *fxNames, Int count,
 																UnsignedInt nowFrame );

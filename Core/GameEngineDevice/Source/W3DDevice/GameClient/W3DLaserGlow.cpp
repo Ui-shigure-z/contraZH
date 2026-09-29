@@ -56,14 +56,25 @@ static const Real GLOW_LIFT = MAP_XY_FACTOR / 10.0f;
 // A footprint past this many heightmap samples is left dark.
 static const Int MAX_GLOW_SAMPLES = 16384;
 
+// The dynamic index buffer counts in 16 bits, so a footprint lighting more cells than this is left dark too.
+static const Int MAX_GLOW_CELLS = 0xffff / 6;
+
 // Scene light below this is treated as this, so the glow on black ground stays in bounds.
 static const Real MIN_SCENE_LIGHT = 0.15f;
+
+// The group shaders, smallest first, and how many beams each lights in one pass.
+static const char *const GroupShaderFiles[] = { "shaders\\laserglow2.pso", "shaders\\laserglow4.pso", "shaders\\laserglow7.pso" };
+static const Int GroupShaderBeams[] = { 2, 4, 7 };
 
 W3DLaserGlow::W3DLaserGlow()
 	: m_count(0),
 	  m_shader(0),
 	  m_loaded(FALSE)
 {
+	for (Int i = 0; i < GROUP_SHADERS; i++)
+	{
+		m_groupShaders[i] = 0;
+	}
 }
 
 W3DLaserGlow::~W3DLaserGlow()
@@ -77,8 +88,16 @@ void W3DLaserGlow::ReleaseResources()
 	if (device != nullptr)
 	{
 		DX8_DELETE_PIXEL_SHADER(device, m_shader);
+		for (Int i = 0; i < GROUP_SHADERS; i++)
+		{
+			DX8_DELETE_PIXEL_SHADER(device, m_groupShaders[i]);
+		}
 	}
 	m_shader = 0;
+	for (Int i = 0; i < GROUP_SHADERS; i++)
+	{
+		m_groupShaders[i] = 0;
+	}
 	m_loaded = FALSE;
 }
 
@@ -97,6 +116,17 @@ Bool W3DLaserGlow::isEnabled()
 			FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\laserglow.pso", nullptr, 0, false, &m_shader)))
 		{
 			m_shader = 0;
+		}
+		// Without ps_2_a, overlapping glows draw one at a time.
+		if (m_shader != 0 && W3DShaderManager::supportsPixelShader2a())
+		{
+			for (Int i = 0; i < GROUP_SHADERS; i++)
+			{
+				if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(GroupShaderFiles[i], nullptr, 0, false, &m_groupShaders[i])))
+				{
+					m_groupShaders[i] = 0;
+				}
+			}
 		}
 	}
 	return m_shader != 0;
@@ -160,6 +190,18 @@ static Real Ground_Distance_Squared(Real x, Real y, const Vector3 &start, const 
 	return dx * dx + dy * dy;
 }
 
+// The glow's light over the scene's light, which the shader adds to the ground's own colour.
+static Vector3 Relative_Light(const Vector3 &color, const Vector3 &sceneLight)
+{
+	return Vector3(color.X / sceneLight.X, color.Y / sceneLight.Y, color.Z / sceneLight.Z);
+}
+
+// The falloff and wrap every beam shares.
+static Vector4 Glow_Shape()
+{
+	return Vector4(max(TheGlobalData->m_laserGlowFalloff, 0.1f), min(max(TheGlobalData->m_laserGlowWrap, 0.0f), 1.0f), 0.0f, 0.0f);
+}
+
 void W3DLaserGlow::render(RenderInfoClass &rinfo)
 {
 #if defined(BUILD_WITH_D3D9)
@@ -170,6 +212,7 @@ void W3DLaserGlow::render(RenderInfoClass &rinfo)
 		return;
 	}
 
+	WorldHeightMap *map = TheTerrainRenderObject->getMap();
 	const Vector3 sceneLight = Scene_Light();
 
 	rinfo.Camera.Apply();
@@ -182,11 +225,68 @@ void W3DLaserGlow::render(RenderInfoClass &rinfo)
 	REF_PTR_RELEASE(material);
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaque2DShader);
 
+	// Every glow reads the same noise texture.
+	Vector4 pulses[MAX_GLOWS];
+	IDirect3DTexture8 *noise = nullptr;
 	for (Int i = 0; i < count; i++)
 	{
-		Vector4 pulse(0.0f, 0.0f, 0.0f, 0.0f);
-		IDirect3DTexture8 *noise = (TheW3DSoftParticles != nullptr) ? TheW3DSoftParticles->getLaserPulse(m_glows[i].pulses, pulse) : nullptr;
-		drawGlow(TheTerrainRenderObject->getMap(), m_glows[i], sceneLight, pulse, noise);
+		pulses[i] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+		noise = (TheW3DSoftParticles != nullptr) ? TheW3DSoftParticles->getLaserPulse(m_glows[i].pulses, pulses[i]) : nullptr;
+	}
+
+	// Glows whose footprints share a cell join one group, labelled by its first glow.
+	Footprint boxes[MAX_GLOWS];
+	Int group[MAX_GLOWS];
+	for (Int i = 0; i < count; i++)
+	{
+		boxes[i] = findFootprint(map, m_glows[i]);
+		group[i] = i;
+		if (!TheGlobalData->m_laserGlowOverlap)
+		{
+			continue;
+		}
+		for (Int j = 0; j < i; j++)
+		{
+			if (group[j] != group[i] &&
+				max(boxes[i].loX, boxes[j].loX) < min(boxes[i].hiX, boxes[j].hiX) &&
+				max(boxes[i].loY, boxes[j].loY) < min(boxes[i].hiY, boxes[j].hiY))
+			{
+				const Int from = max(group[i], group[j]);
+				const Int to = min(group[i], group[j]);
+				for (Int k = 0; k <= i; k++)
+				{
+					if (group[k] == from)
+					{
+						group[k] = to;
+					}
+				}
+			}
+		}
+	}
+
+	for (Int i = 0; i < count; i++)
+	{
+		if (group[i] != i)
+		{
+			continue;
+		}
+		Int members[MAX_GLOWS];
+		Int memberCount = 0;
+		for (Int k = i; k < count; k++)
+		{
+			if (group[k] == i)
+			{
+				members[memberCount++] = k;
+			}
+		}
+		if (memberCount > 1 && drawGroup(map, members, memberCount, sceneLight, pulses, noise))
+		{
+			continue;
+		}
+		for (Int k = 0; k < memberCount; k++)
+		{
+			drawGlow(map, m_glows[members[k]], sceneLight, pulses[members[k]], noise);
+		}
 	}
 
 	DX8Wrapper::Set_Pixel_Shader(0);
@@ -199,29 +299,179 @@ void W3DLaserGlow::render(RenderInfoClass &rinfo)
 #endif
 }
 
+// The heightmap samples under the beam's reach, clamped to the map.
+W3DLaserGlow::Footprint W3DLaserGlow::findFootprint(WorldHeightMap *map, const Glow &glow)
+{
+	const Int border = map->getBorderSizeInline();
+	Footprint box;
+	box.loX = max((Int)floor((min(glow.start.X, glow.end.X) - glow.reach) / MAP_XY_FACTOR), -border);
+	box.loY = max((Int)floor((min(glow.start.Y, glow.end.Y) - glow.reach) / MAP_XY_FACTOR), -border);
+	box.hiX = min((Int)ceil((max(glow.start.X, glow.end.X) + glow.reach) / MAP_XY_FACTOR), map->getXExtent() - border - 1);
+	box.hiY = min((Int)ceil((max(glow.start.Y, glow.end.Y) + glow.reach) / MAP_XY_FACTOR), map->getYExtent() - border - 1);
+	return box;
+}
+
+// The four constants the shader reads per beam, with the pulses measured from the beam's start.
+void W3DLaserGlow::beamConstants(const Glow &glow, const Vector3 &sceneLight, const Vector4 &pulse, Vector4 *constants)
+{
+	const Vector3 span = glow.end - glow.start;
+	const Real lengthSquared = span.Length2();
+	const Real length = sqrt(lengthSquared);
+	const Real alongStart = (length > 0.0f) ? Vector3::Dot_Product(glow.start, span) / length * pulse.Y : 0.0f;
+	const Vector3 light = Relative_Light(glow.color, sceneLight);
+
+	constants[0] = Vector4(glow.start.X, glow.start.Y, glow.start.Z, alongStart);
+	constants[1] = Vector4(span.X, span.Y, span.Z, (lengthSquared > 0.0f) ? 1.0f / lengthSquared : 0.0f);
+	constants[2] = Vector4(light.X, light.Y, light.Z, 1.0f / glow.reach);
+	constants[3] = Vector4(pulse.X, length * pulse.Y, pulse.Z, 0.0f);
+}
+
+// Whether any glow's light reaches the cell on the ground. Half a cell's diagonal covers its corners.
+// Each glow keeps to its own footprint, so glows in different groups never light the same cell.
+Bool W3DLaserGlow::reachesCell(const Glow *const *glows, const Footprint *footprints, Int count, Int x, Int y)
+{
+	const Real centerX = (x + 0.5f) * MAP_XY_FACTOR;
+	const Real centerY = (y + 0.5f) * MAP_XY_FACTOR;
+	for (Int i = 0; i < count; i++)
+	{
+		if (x < footprints[i].loX || x >= footprints[i].hiX || y < footprints[i].loY || y >= footprints[i].hiY)
+		{
+			continue;
+		}
+		const Real cellReach = glows[i]->reach + MAP_XY_FACTOR * 0.75f;
+		if (Ground_Distance_Squared(centerX, centerY, glows[i]->start, glows[i]->end) < cellReach * cellReach)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 void W3DLaserGlow::drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3 &sceneLight, const Vector4 &pulse, IDirect3DTexture8 *noise)
 {
 #if defined(BUILD_WITH_D3D9)
-	const Int border = map->getBorderSizeInline();
-	const Int loX = max((Int)floor((min(glow.start.X, glow.end.X) - glow.reach) / MAP_XY_FACTOR), -border);
-	const Int loY = max((Int)floor((min(glow.start.Y, glow.end.Y) - glow.reach) / MAP_XY_FACTOR), -border);
-	const Int hiX = min((Int)ceil((max(glow.start.X, glow.end.X) + glow.reach) / MAP_XY_FACTOR), map->getXExtent() - border - 1);
-	const Int hiY = min((Int)ceil((max(glow.start.Y, glow.end.Y) + glow.reach) / MAP_XY_FACTOR), map->getYExtent() - border - 1);
-	const Int width = hiX - loX + 1;
-	const Int height = hiY - loY + 1;
-	if (width < 2 || height < 2 || width * height > MAX_GLOW_SAMPLES)
+	Vector4 constants[5];
+	beamConstants(glow, sceneLight, pulse, constants);
+	constants[4] = Glow_Shape();
+
+	// A footprint past the limits is left dark.
+	const Glow *glows[1] = { &glow };
+	drawCells(map, glows, 1, findFootprint(map, glow), m_shader, constants, 5, noise);
+#endif
+}
+
+// Lights the group's cells once, with the shader combining its glows. False leaves them to draw one at a time.
+Bool W3DLaserGlow::drawGroup(WorldHeightMap *map, const Int *members, Int count, const Vector3 &sceneLight, const Vector4 *pulses, IDirect3DTexture8 *noise)
+{
+#if defined(BUILD_WITH_D3D9)
+	Int order[MAX_GLOWS];
+	Real brightness[MAX_GLOWS];
+	for (Int i = 0; i < count; i++)
 	{
-		return;
+		const Glow &glow = m_glows[members[i]];
+		const Vector3 light = Relative_Light(glow.color, sceneLight);
+		order[i] = members[i];
+		brightness[i] = (light.X + light.Y + light.Z) * glow.reach;
 	}
 
-	// Only cells the light can reach on the ground are drawn. Half a cell's diagonal covers their corners.
-	const Real cellReach = glow.reach + MAP_XY_FACTOR * 0.75f;
+	// Past the largest shader's beams, the brightest glows light the group and the rest go dark.
+	const Int kept = min(count, (Int)MAX_GROUP_BEAMS);
+	if (count > kept)
+	{
+		for (Int i = 0; i < kept; i++)
+		{
+			Int brightest = i;
+			for (Int j = i + 1; j < count; j++)
+			{
+				if (brightness[j] > brightness[brightest])
+				{
+					brightest = j;
+				}
+			}
+			const Int index = order[i];
+			order[i] = order[brightest];
+			order[brightest] = index;
+			const Real value = brightness[i];
+			brightness[i] = brightness[brightest];
+			brightness[brightest] = value;
+		}
+	}
+
+	Int shader = 0;
+	while (shader < GROUP_SHADERS && (GroupShaderBeams[shader] < kept || m_groupShaders[shader] == 0))
+	{
+		shader++;
+	}
+	if (shader == GROUP_SHADERS)
+	{
+		return FALSE;
+	}
+
+	const Glow *glows[MAX_GROUP_BEAMS];
+	Vector4 constants[1 + MAX_GROUP_BEAMS * 4];
+	constants[0] = Glow_Shape();
+	Footprint box = findFootprint(map, m_glows[order[0]]);
+	for (Int i = 0; i < GroupShaderBeams[shader]; i++)
+	{
+		Vector4 *beam = &constants[1 + i * 4];
+		if (i >= kept)
+		{
+			// A beam slot past the group's glows gives no light.
+			for (Int j = 0; j < 4; j++)
+			{
+				beam[j] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+			}
+			continue;
+		}
+		glows[i] = &m_glows[order[i]];
+		beamConstants(*glows[i], sceneLight, pulses[order[i]], beam);
+		const Footprint footprint = findFootprint(map, *glows[i]);
+		box.loX = min(box.loX, footprint.loX);
+		box.loY = min(box.loY, footprint.loY);
+		box.hiX = max(box.hiX, footprint.hiX);
+		box.hiY = max(box.hiY, footprint.hiY);
+	}
+
+	return drawCells(map, glows, kept, box, m_groupShaders[shader], constants, 1 + GroupShaderBeams[shader] * 4, noise);
+#else
+	return FALSE;
+#endif
+}
+
+// Lights the box's cells that any of the glows reach, each once. False draws nothing, when the box or its
+// cells run past what one draw holds.
+Bool W3DLaserGlow::drawCells(WorldHeightMap *map, const Glow *const *glows, Int count, const Footprint &box, DWORD shader,
+	const Vector4 *constants, Int constantCount, IDirect3DTexture8 *noise)
+{
+#if defined(BUILD_WITH_D3D9)
+	const Int border = map->getBorderSizeInline();
+	const Int loX = box.loX;
+	const Int loY = box.loY;
+	const Int hiX = box.hiX;
+	const Int hiY = box.hiY;
+	const Int width = hiX - loX + 1;
+	const Int height = hiY - loY + 1;
+	if (width < 2 || height < 2)
+	{
+		return TRUE;
+	}
+	if (width * height > MAX_GLOW_SAMPLES)
+	{
+		return FALSE;
+	}
+
+	Footprint footprints[MAX_GROUP_BEAMS];
+	for (Int i = 0; i < count; i++)
+	{
+		footprints[i] = findFootprint(map, *glows[i]);
+	}
+
 	Int cells = 0;
 	for (Int y = loY; y < hiY; y++)
 	{
 		for (Int x = loX; x < hiX; x++)
 		{
-			if (Ground_Distance_Squared((x + 0.5f) * MAP_XY_FACTOR, (y + 0.5f) * MAP_XY_FACTOR, glow.start, glow.end) < cellReach * cellReach)
+			if (reachesCell(glows, footprints, count, x, y))
 			{
 				cells++;
 			}
@@ -229,7 +479,11 @@ void W3DLaserGlow::drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3
 	}
 	if (cells == 0)
 	{
-		return;
+		return TRUE;
+	}
+	if (cells > MAX_GLOW_CELLS)
+	{
+		return FALSE;
 	}
 
 	DynamicVBAccessClass vbAccess(BUFFER_TYPE_DYNAMIC_DX8, dynamic_fvf_type, width * height);
@@ -271,7 +525,7 @@ void W3DLaserGlow::drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3
 		{
 			for (Int x = loX; x < hiX; x++)
 			{
-				if (Ground_Distance_Squared((x + 0.5f) * MAP_XY_FACTOR, (y + 0.5f) * MAP_XY_FACTOR, glow.start, glow.end) >= cellReach * cellReach)
+				if (!reachesCell(glows, footprints, count, x, y))
 				{
 					continue;
 				}
@@ -332,29 +586,15 @@ void W3DLaserGlow::drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3
 		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_MIPFILTER, D3DTEXF_NONE);
 	}
 
-	// Constants for the laser shader's pulses, measured from the beam's start.
-	const Vector3 span = glow.end - glow.start;
-	const Real lengthSquared = span.Length2();
-	const Real length = sqrt(lengthSquared);
-	const Real alongStart = (length > 0.0f) ? Vector3::Dot_Product(glow.start, span) / length * pulse.Y : 0.0f;
-
-	const Vector3 light(glow.color.X / sceneLight.X, glow.color.Y / sceneLight.Y, glow.color.Z / sceneLight.Z);
-	const Vector4 beamStart(glow.start.X, glow.start.Y, glow.start.Z, alongStart);
-	const Vector4 beamSpan(span.X, span.Y, span.Z, (lengthSquared > 0.0f) ? 1.0f / lengthSquared : 0.0f);
-	const Vector4 glowLight(light.X, light.Y, light.Z, 1.0f / glow.reach);
-	const Vector4 glowPulse(pulse.X, length * pulse.Y, pulse.Z, 0.0f);
-	const Vector4 shape(max(TheGlobalData->m_laserGlowFalloff, 0.1f), min(max(TheGlobalData->m_laserGlowWrap, 0.0f), 1.0f), 0.0f, 0.0f);
-
-	DX8Wrapper::Set_Pixel_Shader(m_shader);
-	DX8Wrapper::Set_Pixel_Shader_Constant(0, &beamStart, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(1, &beamSpan, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(2, &glowLight, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(3, &glowPulse, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(4, &shape, 1);
+	DX8Wrapper::Set_Pixel_Shader(shader);
+	DX8Wrapper::Set_Pixel_Shader_Constant(0, constants, constantCount);
 	DX8Wrapper::Draw_Triangles(0, cells * 2, 0, width * height);
 
 	device->SetTexture(0, nullptr);
 	device->SetTexture(1, nullptr);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU | 1);
+	return TRUE;
+#else
+	return FALSE;
 #endif
 }

@@ -84,7 +84,7 @@ Only the lake and sea swell builds turn it; rivers, foam and ripples are shifted
 * `ShaderWaterStochasticSeabed = Yes` - (The same cells also shift and turn the terrain textures under
 standing water, fading in below the waterline over `TransparentWaterDepth`. Cliffs keep their own
 texturing, and ground under rivers is left as it is. Terrain chunks with standing water draw through
-their own shaders, which take six point lights instead of nine. No turns it off.)
+their own shaders, which take four point lights instead of eight. No turns it off.)
 
 ## Animation
 

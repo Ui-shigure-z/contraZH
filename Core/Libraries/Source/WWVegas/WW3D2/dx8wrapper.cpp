@@ -1950,8 +1950,12 @@ void DX8Wrapper::End_Scene(bool flip_frames)
 				hr=static_cast<IDirect3DDevice9Ex*>(_Get_D3D_Device8())->PresentEx(nullptr, nullptr, nullptr, nullptr, 0);
 			}
 			else
-#endif
+			{
+				hr=_Get_D3D_Device8()->Present(nullptr, nullptr, nullptr, nullptr);
+			}
+#else
 			hr=_Get_D3D_Device8()->Present(nullptr, nullptr, nullptr, nullptr);
+#endif
 		}
 
 		DX8_RECORD_DX8_CALLS();
@@ -1993,7 +1997,6 @@ void DX8Wrapper::End_Scene(bool flip_frames)
 			Set_Render_Device(-1, -1, -1, -1, -1, false, true, true);
 		}
 		else if (hr==D3DERR_DEVICEHUNG) {
-			// A GPU timeout on D3D9Ex; a reset puts the device back in a default state
 			DX8_ErrorCode(hr);
 			RENDER_LOG(("DX8Wrapper::End_Scene is resetting the device after a GPU timeout."));
 			Reset_Device();
@@ -2966,7 +2969,7 @@ void DX8Wrapper::Create_Scene_Target()
 	}
 	if (FAILED(hr))
 	{
-		// The swap chain is already single sampled, so MSAA is off for this device
+		// The swap chain is already single sampled, so it needs no reset
 		RENDER_LOG(("MSAA scene target creation failed, disabling MSAA"));
 		Release_Scene_Target();
 		MultiSampleAntiAliasing = D3DMULTISAMPLE_NONE;
@@ -3647,7 +3650,10 @@ HRESULT DX8Wrapper::_Copy_DX8_Rects(
 				if (resolved != nullptr)
 				{
 					DX8CALL_HRES(StretchRect(pSourceSurface, nullptr, resolved, nullptr, D3DTEXF_NONE), hr);
-					source = resolved;
+					if (SUCCEEDED(hr))
+					{
+						source = resolved;
+					}
 				}
 			}
 

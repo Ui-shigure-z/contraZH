@@ -539,7 +539,7 @@ void DX8FVFCategoryContainer::Render_Material_Pass_Window()
 
 void DX8FVFCategoryContainer::Render_Procedural_Material_Passes()
 {
-	if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT && Bind_Static_Buffers() && !sorting)
+	if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT && !sorting && Bind_Static_Buffers())
 	{
 		Render_Instanced_Material_Passes();
 		return;
@@ -2337,42 +2337,13 @@ bool DX8TextureCategoryClass::Allows_Instancing() const
 	return true;
 }
 
-// The instance data carries a world matrix and a tint, so anything else that varies per mesh rules it out.
 static bool Mesh_Allows_Instancing(MeshClass * mesh)
 {
 	if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT && Has_Fixed_Function_Pass(mesh))
 	{
 		return false;
 	}
-	if (DX8InstancingClass::Get_Pass() != DX8InstancingClass::PASS_NONE)
-	{
-		return DX8InstancingClass::Allows_Mesh(mesh);
-	}
-	MeshModelClass * model = mesh->Peek_Model();
-	if (model->Get_Flag(MeshModelClass::ALIGNED) || model->Get_Flag(MeshModelClass::ORIENTED) || model->Get_Flag(MeshModelClass::SKIN))
-	{
-		return false;
-	}
-	if (model->Get_Flag(MeshGeometryClass::SORT) && WW3D::Is_Sorting_Enabled())
-	{
-		return false;
-	}
-	if (mesh->Get_Alpha_Override() != 1.0f || (mesh->Get_User_Data() && *(int *)mesh->Get_User_Data() == RenderObjClass::USER_DATA_MATERIAL_OVERRIDE))
-	{
-		return false;
-	}
-	LightEnvironmentClass * lenv = mesh->Get_Lighting_Environment();
-	if (lenv != nullptr)
-	{
-		for (int i=0;i<lenv->Get_Light_Count();++i)
-		{
-			if (lenv->isPointLight(i))
-			{
-				return false;
-			}
-		}
-	}
-	return true;
+	return DX8InstancingClass::Allows_Mesh(mesh);
 }
 
 static void Record_Eligible_Groups(std::vector<DX8PolygonRendererClass *> & renderers)

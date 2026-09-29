@@ -65,6 +65,7 @@
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "W3DDevice/GameClient/W3DGroundNoise.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "GameClient/View.h"
 #include "GameClient/CommandXlat.h"
 #include "GameClient/Display.h"
@@ -77,6 +78,9 @@
 #include "WW3D2/ww3d.h"
 #include "WW3D2/formconv.h"
 #include "WW3D2/dx8renderer.h"
+#include "WW3D2/dx8vertexbuffer.h"
+#include "WW3D2/dx8indexbuffer.h"
+#include "WW3D2/dx8fvf.h"
 #include "WW3D2/dx8instancing.h"
 #include "WW3D2/dx8skinning.h"
 #include "WW3D2/dx8polygonrenderer.h"
@@ -1542,8 +1546,8 @@ static DWORD DrawGroundShader = 0;
 static DWORD DrawSeabedUnlitShader = 0;
 static DWORD DrawSeabedLitShader = 0;
 
-// Where terrainshadow.hlsl reads the seabed, past the six point lights its seabed variants keep.
-#define SEABED_REGISTER 19
+// Where terrainshadow.hlsl reads the seabed, past the four point lights its seabed variants keep.
+#define SEABED_REGISTER 14
 #define SEABED_CLASS_MAP_SAMPLER 8
 #define SEABED_WATER_MASK_SAMPLER 9
 
@@ -1664,11 +1668,164 @@ static void End_Draw_Pixel_Lights()
 
 // The terrain normal maps, set once a frame by the scene.
 static Bool TerrainBumpEnabled = FALSE;
+static Bool TerrainBumpSupported = FALSE;
 static Real TerrainBumpStrength = 1.0f;
 static Bool TerrainBumpDebug = FALSE;
 static Int TerrainBumpCount = 0;
 
+// The sun's glint on the ground, set once a frame by the scene and the terrain.
+static Bool TerrainGlintEnabled = FALSE;
+static Real TerrainGlintIntensity = 0.0f;
+static Real TerrainGlintGloss = 1.0f;
+static Real TerrainGlintAlbedo = 0.0f;
+static TextureClass *TerrainGlintNormals = nullptr;
+static Vector4 TerrainGlintMapping(0.0f, 0.0f, 0.0f, 0.0f);
+static TextureClass *TerrainGlintMaterials = nullptr;
+static Real TerrainGlintStrengthScale = 1.0f;
+static Real TerrainGlintGlossScale = 1.0f;
+static Bool TerrainGlintLoaded = FALSE;
+static Bool RoadGlintLoaded = FALSE;
+
+// Where terrainglint.hlsli reads the normals and its constants, the terrain shaders each texture's glint, and the ground shaders the sun.
+#define GLINT_NORMAL_SAMPLER 11
+#define GLINT_MATERIAL_SAMPLER 12
+#define GLINT_REGISTER 23
+#define TERRAIN_SUN_REGISTER 1
+#define ROAD_SUN_REGISTER 2
+
+// Bisects glint faults without a rebuild. CONTRA_TERRAINGLINT=0 loads none of the glint-only shaders.
+static Bool Get_Terrain_Glint_Allowed()
+{
+	const char *value = getenv("CONTRA_TERRAINGLINT");
+	return (value == nullptr) || atoi(value) != 0;
+}
+
+// Terrain and roads glint together or not at all, or blend tiles would show as patches. The mirror stays flat.
+static Bool Terrain_Glint_Wanted()
+{
+	return TerrainGlintEnabled && TerrainGlintIntensity > 0.0f && TerrainGlintLoaded && RoadGlintLoaded &&
+		TerrainGlintNormals != nullptr && TerrainGlintNormals->Peek_D3D_Texture() != nullptr &&
+		TerrainGlintMaterials != nullptr && TerrainGlintMaterials->Peek_D3D_Texture() != nullptr &&
+		!ShaderClass::Is_Backface_Culling_Inverted();
+}
+
+// The vertex lighting's first light is the sun, which the bump and the glint redo per pixel.
+static void Set_Terrain_Sun(Int reg)
+{
+	const Coord3D &lightPos = TheGlobalData->m_terrainLightPos[0];
+	Vector3 toSun(-lightPos.x, -lightPos.y, -lightPos.z);
+	toSun.Normalize();
+	const RGBColor &sunColor = TheGlobalData->m_terrainDiffuse[0];
+	Vector4 sunDirection(toSun.X, toSun.Y, toSun.Z, TerrainBumpStrength);
+	Vector4 sunDiffuse(sunColor.red, sunColor.green, sunColor.blue, TerrainBumpDebug ? 1.0f : 0.0f);
+	DX8Wrapper::Set_Pixel_Shader_Constant(reg, &sunDirection, 1);
+	DX8Wrapper::Set_Pixel_Shader_Constant(reg + 1, &sunDiffuse, 1);
+}
+
+static void Unbind_Glint_Maps()
+{
 #if defined(BUILD_WITH_D3D9)
+	DX8Wrapper::_Get_D3D_Device8()->SetTexture(GLINT_NORMAL_SAMPLER, nullptr);
+	DX8Wrapper::_Get_D3D_Device8()->SetTexture(GLINT_MATERIAL_SAMPLER, nullptr);
+#endif
+}
+
+// Past the fixed-function stages, the maps only a pixel shader reads.
+static void Bind_Glint_Map(DWORD sampler, TextureClass *map, D3DTEXTUREFILTERTYPE filter)
+{
+#if defined(BUILD_WITH_D3D9)
+	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
+	device->SetTexture(sampler, map->Peek_D3D_Texture());
+	device->SetSamplerState(sampler, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	device->SetSamplerState(sampler, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+	device->SetSamplerState(sampler, D3DSAMP_MINFILTER, filter);
+	device->SetSamplerState(sampler, D3DSAMP_MAGFILTER, filter);
+	device->SetSamplerState(sampler, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+#else
+	(void)sampler;
+	(void)map;
+	(void)filter;
+#endif
+}
+
+// Every ground shader with the world position reads the sun and the glint's constants, so they go up even when
+// off, with no strength and a gloss of at least 1, as Glint needs. The terrain's materials scale both.
+static void Bind_Terrain_Glint(Int sunRegister, Bool on, Bool materials)
+{
+#if defined(BUILD_WITH_D3D9)
+	Set_Terrain_Sun(sunRegister);
+
+	D3DMATRIX view;
+	D3DMATRIX inv;
+	float det;
+	DX8Wrapper::_Get_DX8_Transform(D3DTS_VIEW, view);
+	Invert_D3DMATRIX(inv, &det, view);
+
+	// The albedo's share weighs the colour by its luminance.
+	const Real intensity = on ? TerrainGlintIntensity * (materials ? TerrainGlintStrengthScale : 1.0f) : 0.0f;
+	const Real gloss = materials ? TerrainGlintGlossScale : TerrainGlintGloss;
+	const Real albedo = WWMath::Clamp(TerrainGlintAlbedo, 0.0f, 1.0f);
+	Vector4 constants[3];
+	constants[0].Set(inv.m[3][0], inv.m[3][1], inv.m[3][2], max(gloss, 1.0f));
+	constants[1].Set(intensity * albedo * 0.3f, intensity * albedo * 0.59f, intensity * albedo * 0.11f, intensity * (1.0f - albedo));
+	constants[2] = TerrainGlintMapping;
+	DX8Wrapper::Set_Pixel_Shader_Constant(GLINT_REGISTER, constants, 3);
+
+	if (!on)
+	{
+		Unbind_Glint_Maps();
+		return;
+	}
+
+	Bind_Glint_Map(GLINT_NORMAL_SAMPLER, TerrainGlintNormals, D3DTEXF_LINEAR);
+	if (materials)
+	{
+		Bind_Glint_Map(GLINT_MATERIAL_SAMPLER, TerrainGlintMaterials, D3DTEXF_POINT);
+	}
+#else
+	(void)sunRegister;
+	(void)on;
+	(void)materials;
+#endif
+}
+
+static void Release_Glint_Shaders(DWORD shaders[2][3])
+{
+	for (Int s=0; s<2; s++)
+	{
+		for (Int i=0; i<3; i++)
+		{
+			if (shaders[s][i])
+			{
+				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), shaders[s][i]);
+			}
+			shaders[s][i]=0;
+		}
+	}
+}
+
+#if defined(BUILD_WITH_D3D9)
+
+// Loads a ground shader's glint-only variants by shadow and noise count, and says whether all of them loaded.
+static Bool Load_Glint_Shaders(const char *ground, Bool shadowMap, Bool packed, DWORD shaders[2][3])
+{
+	static const char *const noiseNames[3] = { "", "noise", "noise2" };
+	Bool complete = TRUE;
+	for (Int s=0; s<(shadowMap ? 2 : 1); s++)
+	{
+		for (Int i=0; i<3; i++)
+		{
+			char file[64];
+			snprintf(file, sizeof(file), "shaders\\%sglint%s%s.pso", ground, noiseNames[i], s == 0 ? "noshadow" : (packed ? "packed" : ""));
+			if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(file, nullptr, 0, false, &shaders[s][i])))
+			{
+				shaders[s][i]=0;
+				complete = FALSE;
+			}
+		}
+	}
+	return complete;
+}
 
 // The instancing and skinning modules build their own declarations, so the one loaded here only has to be valid.
 static HRESULT Load_Vertex_Shading_Shader(const char *file, DWORD *handle)
@@ -1787,14 +1944,15 @@ void ShadowDepthShader::applyOverride(const ShaderClass &shader)
 	Bool cutout = FALSE;
 	Bool inverted = (src == ShaderClass::SRCBLEND_ONE_MINUS_SRC_ALPHA);
 
-	if (shader.Uses_Alpha())
+	// Additive and multiplied passes are glows and effects, which cast nothing, even when they fade by alpha.
+	if (src == ShaderClass::SRCBLEND_ZERO || dst == ShaderClass::DSTBLEND_ONE ||
+		dst == ShaderClass::DSTBLEND_SRC_COLOR || dst == ShaderClass::DSTBLEND_ONE_MINUS_SRC_COLOR)
+	{
+		casts = FALSE;
+	}
+	else if (shader.Uses_Alpha())
 	{
 		cutout = TRUE;
-	}
-	else if (src != ShaderClass::SRCBLEND_ONE || dst != ShaderClass::DSTBLEND_ZERO)
-	{
-		// Additive and multiplied passes are glows and effects, which cast nothing.
-		casts = FALSE;
 	}
 
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, casts);
@@ -2797,6 +2955,38 @@ void W3DShaderManager::setTerrainBumps(Bool enabled, Real strength, Bool debug)
 	TerrainBumpDebug = debug;
 }
 
+Bool W3DShaderManager::wantsTerrainNormalAtlas()
+{
+	return TerrainBumpEnabled && TerrainBumpSupported;
+}
+
+void W3DShaderManager::setTerrainGlint(Bool enabled, Real intensity, Real gloss, Real albedo)
+{
+	TerrainGlintEnabled = enabled;
+	TerrainGlintIntensity = intensity;
+	TerrainGlintGloss = gloss;
+	TerrainGlintAlbedo = albedo;
+}
+
+Bool W3DShaderManager::wantsTerrainGlint()
+{
+	return TerrainGlintEnabled && TerrainGlintIntensity > 0.0f && TerrainGlintLoaded && RoadGlintLoaded;
+}
+
+Real W3DShaderManager::getTerrainGlintGloss()
+{
+	return TerrainGlintGloss;
+}
+
+void W3DShaderManager::setTerrainGlintMaps(TextureClass *normals, const Vector4 &mapping, TextureClass *materials, Real strengthScale, Real glossScale)
+{
+	TerrainGlintNormals = normals;
+	TerrainGlintMapping = mapping;
+	TerrainGlintMaterials = materials;
+	TerrainGlintStrengthScale = strengthScale;
+	TerrainGlintGlossScale = glossScale;
+}
+
 Bool W3DShaderManager::supportsPixelShader2a()
 {
 #if defined(BUILD_WITH_D3D9)
@@ -2930,7 +3120,7 @@ class TerrainShader8Stage : public W3DShaderInterface
 class TerrainShaderPixelShader : public W3DShaderInterface
 {
 public:
-	TerrainShaderPixelShader() : m_shadowStage(-1), m_bumpStage(-1), m_lightStage(-1), m_seabedStage(-1)
+	TerrainShaderPixelShader() : m_shadowStage(-1), m_bumpStage(-1), m_lightStage(-1), m_seabedStage(-1), m_glintStage(-1)
 	{
 		m_dwPlainPixelShader[0] = m_dwPlainPixelShader[1] = m_dwPlainPixelShader[2] = 0;
 	}
@@ -2948,6 +3138,8 @@ private:
 	Int						m_lightStage;	///<stage the world position is generated on for unbumped point lights, or -1
 	DWORD					m_dwSeabedPixelShader[2][2][2][3];	///<every variant again hex-tiling the seabed, by lights, bump, shadow and noise count
 	Int						m_seabedStage;	///<stage the world position is generated on for the unbumped seabed, or -1
+	DWORD					m_dwGlintPixelShader[2][3];	///<the plain and shadowed ones adding the sun's glint, unshadowed then shadowed
+	Int						m_glintStage;	///<stage the world position is generated on for the unbumped glint, or -1
 
 	virtual Int set(Int pass) override;		///<setup shader for the specified rendering pass.
 	virtual void reset() override;		///<do any custom resetting necessary to bring W3D in sync.
@@ -2958,10 +3150,12 @@ private:
 	Bool setShadowReceiver(Int noiseCount);
 	void initBump();
 	Bool setBump(Int noiseCount, Bool shadowed);
+	void initGlint();
+	Bool setGlint(Int noiseCount, Bool shadowed, Bool bumped);
 	void initPixelLights();
-	Bool setPixelLights(Int noiseCount, Bool shadowed, Bool bumped, DWORD unlit);
+	Bool setPixelLights(Int noiseCount, Bool shadowed, Bool bumped, Bool positioned, DWORD unlit);
 	void initSeabed();
-	void setSeabed(Int noiseCount, Bool shadowed, Bool bumped, DWORD unlit);
+	void setSeabed(Int noiseCount, Bool shadowed, Bool bumped, Bool positioned, DWORD unlit);
 } terrainShaderPixelShader;
 
 ///List of different terrain shader implementations in order of preference
@@ -3031,6 +3225,13 @@ void TerrainShader2Stage::updateCloud()
 
 void TerrainShader2Stage::updateNoise1(D3DMATRIX *destMatrix,D3DMATRIX *curViewInverse, Bool doUpdate)
 {
+	// The HQ sky's map covers the ground around the camera, and BaseHeightMapRenderObjClass::cloudMapTexture binds it on the same test.
+	if (TheW3DSkyClouds != nullptr && TheW3DSkyClouds->isActive())
+	{
+		TheW3DSkyClouds->getTextureMatrix(*destMatrix, *curViewInverse);
+		return;
+	}
+
 	#define STRETCH_FACTOR ((float)(1/(63.0*MAP_XY_FACTOR/2))) /* covers 63/2 tiles */
 
 	D3DMATRIX scale;
@@ -3346,7 +3547,9 @@ Int TerrainShaderPixelShader::shutdown()
 	for (Int i=0; i<3; i++)
 	{
 		if (m_dwShadowPixelShader[i])
+		{
 			DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[i]);
+		}
 		m_dwShadowPixelShader[i]=0;
 	}
 
@@ -3361,6 +3564,7 @@ Int TerrainShaderPixelShader::shutdown()
 			m_dwBumpPixelShader[s][i]=0;
 		}
 	}
+	TerrainBumpSupported = FALSE;
 
 	for (Int b=0; b<2; b++)
 	{
@@ -3397,52 +3601,74 @@ Int TerrainShaderPixelShader::shutdown()
 	}
 	TerrainSeabedLoaded = FALSE;
 
+	Release_Glint_Shaders(m_dwGlintPixelShader);
+	TerrainGlintLoaded = FALSE;
+
 	return TRUE;
+}
+
+// Loads the shadow receiving variants of one legacy shader, indexed by noise texture count, or none of them.
+// A missing variant only turns the shadows off, since the legacy shader still draws.
+static void Load_Shadow_Receiver_Shaders(const char *const files[3][2], DWORD shaders[3])
+{
+	for (Int i=0; i<3; i++)
+	{
+		shaders[i]=0;
+	}
+
+#if defined(BUILD_WITH_D3D9)
+	if (TheW3DShadowMap == nullptr || !TheW3DShadowMap->isAvailable())
+	{
+		return;
+	}
+
+	const Bool packed = TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
+	for (Int i=0; i<3; i++)
+	{
+		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &shaders[i])))
+		{
+			for (Int j=0; j<i; j++)
+			{
+				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), shaders[j]);
+			}
+			for (Int j=0; j<3; j++)
+			{
+				shaders[j]=0;
+			}
+			return;
+		}
+	}
+#else
+	(void)files;
+#endif
 }
 
 void TerrainShaderPixelShader::initShadowReceiver()
 {
-	for (Int i=0; i<3; i++)
-		m_dwShadowPixelShader[i]=0;
-	m_shadowStage = -1;
-
-#if defined(BUILD_WITH_D3D9)
-	if (TheW3DShadowMap == nullptr || !TheW3DShadowMap->isAvailable())
-		return;
-
-	const Bool packed = TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	const char *files[3][2] =
+	static const char *const files[3][2] =
 	{
 		{ "shaders\\terrainshadow.pso",       "shaders\\terrainshadowpacked.pso" },
 		{ "shaders\\terrainshadownoise.pso",  "shaders\\terrainshadownoisepacked.pso" },
 		{ "shaders\\terrainshadownoise2.pso", "shaders\\terrainshadownoise2packed.pso" }
 	};
-
-	for (Int i=0; i<3; i++)
-	{
-		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &m_dwShadowPixelShader[i])))
-		{
-			// Terrain still draws without shadows, so a missing variant only turns them off.
-			for (Int j=0; j<i; j++)
-				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[j]);
-			for (Int j=0; j<3; j++)
-				m_dwShadowPixelShader[j]=0;
-			return;
-		}
-	}
-#endif
+	Load_Shadow_Receiver_Shaders(files, m_dwShadowPixelShader);
+	m_shadowStage = -1;
 }
 
 Bool TerrainShaderPixelShader::setShadowReceiver(Int noiseCount)
 {
 	if (m_dwShadowPixelShader[noiseCount] == 0 || TheW3DShadowMap == nullptr)
+	{
 		return FALSE;
+	}
 
 	// The first stage after the base, blend and noise textures. Fixed-function vertex
 	// processing hands out texcoord sets in stage order, so this is the set the shader reads.
 	const Int stage = 2 + noiseCount;
 	if (!TheW3DShadowMap->bindReceiver(stage))
+	{
 		return FALSE;
+	}
 
 	m_shadowStage = stage;
 	DX8Wrapper::Set_Pixel_Shader(m_dwShadowPixelShader[noiseCount]);
@@ -3459,6 +3685,7 @@ void TerrainShaderPixelShader::initBump()
 		}
 	}
 	m_bumpStage = -1;
+	TerrainBumpSupported = FALSE;
 
 #if defined(BUILD_WITH_D3D9)
 	const DX8Caps *caps = DX8Wrapper::Get_Current_Caps();
@@ -3491,6 +3718,10 @@ void TerrainShaderPixelShader::initBump()
 		if (shadowMap && FAILED(W3DShaderManager::LoadAndCreateD3DShader(shadowedFiles[i][packed ? 1 : 0], nullptr, 0, false, &m_dwBumpPixelShader[1][i])))
 		{
 			m_dwBumpPixelShader[1][i]=0;
+		}
+		if (m_dwBumpPixelShader[0][i] != 0 || m_dwBumpPixelShader[1][i] != 0)
+		{
+			TerrainBumpSupported = TRUE;
 		}
 	}
 #endif
@@ -3533,19 +3764,58 @@ Bool TerrainShaderPixelShader::setBump(Int noiseCount, Bool shadowed)
 	DX8Wrapper::Set_DX8_Texture_Stage_State(atlasStage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(atlasStage, D3DTSS_MIPFILTER, D3DTEXF_LINEAR);
 
-	// The vertex lighting's first light is the sun, so the bump redoes that one.
-	const Coord3D &lightPos = TheGlobalData->m_terrainLightPos[0];
-	Vector3 toSun(-lightPos.x, -lightPos.y, -lightPos.z);
-	toSun.Normalize();
-	const RGBColor &sunColor = TheGlobalData->m_terrainDiffuse[0];
-	Vector4 sunDirection(toSun.X, toSun.Y, toSun.Z, TerrainBumpStrength);
-	Vector4 sunDiffuse(sunColor.red, sunColor.green, sunColor.blue, TerrainBumpDebug ? 1.0f : 0.0f);
-	DX8Wrapper::Set_Pixel_Shader_Constant(1, &sunDirection, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(2, &sunDiffuse, 1);
-
+	// setGlint sends the sun, which the glint reads too.
 	m_bumpStage = stage;
 	DX8Wrapper::Set_Pixel_Shader(shader);
 	++TerrainBumpCount;
+	return TRUE;
+}
+
+void TerrainShaderPixelShader::initGlint()
+{
+	for (Int s=0; s<2; s++)
+	{
+		for (Int i=0; i<3; i++)
+		{
+			m_dwGlintPixelShader[s][i]=0;
+		}
+	}
+	m_glintStage = -1;
+	TerrainGlintLoaded = FALSE;
+
+#if defined(BUILD_WITH_D3D9)
+	const DX8Caps *caps = DX8Wrapper::Get_Current_Caps();
+	if (caps == nullptr || !Supports_Pixel_Shader_2_a(caps) || !Get_Terrain_Glint_Allowed())
+	{
+		return;
+	}
+
+	// Shadowed variants only go with the shadow receivers they replace.
+	const Bool shadowMap = (m_dwShadowPixelShader[0] != 0 && TheW3DShadowMap != nullptr);
+	const Bool packed = shadowMap && TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
+	TerrainGlintLoaded = Load_Glint_Shaders("terrain", shadowMap, packed, m_dwGlintPixelShader);
+#endif
+}
+
+// Expects the shadow map and bump already bound, since the stage after them is this one's. The variants
+// with the world position all read the sun and the glint's constants, so those go up either way.
+Bool TerrainShaderPixelShader::setGlint(Int noiseCount, Bool shadowed, Bool bumped)
+{
+	const DWORD shader = m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount];
+	const Bool glint = Terrain_Glint_Wanted() && shader != 0;
+	Bind_Terrain_Glint(TERRAIN_SUN_REGISTER, glint, TRUE);
+	if (!glint)
+	{
+		return FALSE;
+	}
+
+	// Bumped terrain already has the world position, and its shader the glint.
+	if (!bumped)
+	{
+		m_glintStage = 2 + noiseCount + (shadowed ? 1 : 0);
+		Set_Terrain_World_Position(m_glintStage);
+		DX8Wrapper::Set_Pixel_Shader(shader);
+	}
 	return TRUE;
 }
 
@@ -3599,9 +3869,9 @@ void TerrainShaderPixelShader::initPixelLights()
 #endif
 }
 
-// Expects the shadow map and bump already bound, since the stages after them are this one's. Each
+// Expects the shadow map, bump and glint already bound, since the stages after them are this one's. Each
 // tile then picks its lights, and so this variant or the unlit one bound now.
-Bool TerrainShaderPixelShader::setPixelLights(Int noiseCount, Bool shadowed, Bool bumped, DWORD unlit)
+Bool TerrainShaderPixelShader::setPixelLights(Int noiseCount, Bool shadowed, Bool bumped, Bool positioned, DWORD unlit)
 {
 	const DWORD shader = m_dwLitPixelShader[bumped ? 1 : 0][shadowed ? 1 : 0][noiseCount];
 	if (!TerrainPixelLightsLoaded || PixelLightCount == 0 || shader == 0 || unlit == 0)
@@ -3609,8 +3879,8 @@ Bool TerrainShaderPixelShader::setPixelLights(Int noiseCount, Bool shadowed, Boo
 		return FALSE;
 	}
 
-	// Bumped terrain already has the world position.
-	if (!bumped)
+	// Bumped or glinting terrain already has the world position.
+	if (!positioned)
 	{
 		m_lightStage = 2 + noiseCount + (shadowed ? 1 : 0);
 		Set_Terrain_World_Position(m_lightStage);
@@ -3676,8 +3946,8 @@ void TerrainShaderPixelShader::initSeabed()
 #endif
 }
 
-// Expects the shadow map and bump already bound. Draws with standing water then take these variants in setDrawTerrain.
-void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bumped, DWORD unlit)
+// Expects the shadow map, bump and glint already bound. Draws with standing water then take these variants in setDrawTerrain.
+void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bumped, Bool positioned, DWORD unlit)
 {
 #if defined(BUILD_WITH_D3D9)
 	if (!TerrainSeabedLoaded || SeabedClassMap == nullptr || SeabedWaterMask == nullptr ||
@@ -3693,8 +3963,8 @@ void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bum
 		return;
 	}
 
-	// Bumped terrain already has the world position.
-	if (!bumped)
+	// Bumped or glinting terrain already has the world position.
+	if (!positioned)
 	{
 		m_seabedStage = 2 + noiseCount + (shadowed ? 1 : 0);
 		Set_Terrain_World_Position(m_seabedStage);
@@ -3725,6 +3995,7 @@ void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bum
 	(void)noiseCount;
 	(void)shadowed;
 	(void)bumped;
+	(void)positioned;
 	(void)unlit;
 #endif
 }
@@ -3789,6 +4060,7 @@ Int TerrainShaderPixelShader::init()
 			initBump();
 			initPixelLights();
 			initSeabed();
+			initGlint();
 
 			W3DShaders[W3DShaderManager::ST_TERRAIN_BASE]=&terrainShaderPixelShader;
 			W3DShaders[W3DShaderManager::ST_TERRAIN_BASE_NOISE1]=&terrainShaderPixelShader;
@@ -3937,11 +4209,13 @@ Int TerrainShaderPixelShader::set(Int pass)
 
 	const Bool shadowed = setShadowReceiver(noiseCount);
 	const Bool bumped = setBump(noiseCount, shadowed);
+	const Bool glint = setGlint(noiseCount, shadowed, bumped);
 
 	const DWORD unlit = bumped ? m_dwBumpPixelShader[shadowed ? 1 : 0][noiseCount]
+		: glint ? m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount]
 		: (shadowed ? m_dwShadowPixelShader[noiseCount] : baseShader);
-	setPixelLights(noiseCount, shadowed, bumped, unlit);
-	setSeabed(noiseCount, shadowed, bumped, unlit);
+	setPixelLights(noiseCount, shadowed, bumped, bumped || glint, unlit);
+	setSeabed(noiseCount, shadowed, bumped, bumped || glint, unlit);
 
 	return TRUE;
 }
@@ -3949,7 +4223,9 @@ Int TerrainShaderPixelShader::set(Int pass)
 void TerrainShaderPixelShader::reset()
 {
 	if (TheW3DShadowMap != nullptr && m_shadowStage >= 0)
+	{
 		TheW3DShadowMap->unbindReceiver(m_shadowStage);
+	}
 	m_shadowStage = -1;
 
 	if (m_bumpStage >= 0)
@@ -3981,6 +4257,15 @@ void TerrainShaderPixelShader::reset()
 		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_CLASS_MAP_SAMPLER, nullptr);
 		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_WATER_MASK_SAMPLER, nullptr);
 	}
+
+	if (m_glintStage >= 0)
+	{
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_glintStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_glintStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU|m_glintStage);
+	}
+	m_glintStage = -1;
+	Unbind_Glint_Maps();
+
 	End_Draw_Pixel_Lights();
 	Unbind_Height_Atlas();
 
@@ -4139,6 +4424,7 @@ private:
 	DWORD					m_dwShadowPixelShader[3];	///<every road mode, also receiving the shadow map, indexed by noise texture count
 	DWORD					m_dwPlainPixelShader[3];	///<every road mode without the shadow map, for lit draws' unlit neighbours and the ground noise
 	DWORD					m_dwLitPixelShader[2][3];	///<both again adding the point lights, by shadow and noise count
+	DWORD					m_dwGlintPixelShader[2][3];	///<both again adding the sun's glint instead, by shadow and noise count
 	Int						m_shadowStage;	///<stage the shadow map is bound to, or -1
 	Int						m_lightStage;	///<stage the world position is generated on, or -1
 	Bool					m_pixelPath;	///<whether the current pass draws through the shaders above
@@ -4150,6 +4436,7 @@ private:
 
 	void initShadowReceiver();
 	void initPixelLights();
+	void initGlint();
 	Bool setPixelPath();
 } roadShaderPixelShader;
 
@@ -4179,7 +4466,9 @@ Int RoadShaderPixelShader::shutdown()
 	for (Int i=0; i<3; i++)
 	{
 		if (m_dwShadowPixelShader[i])
+		{
 			DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[i]);
+		}
 		m_dwShadowPixelShader[i]=0;
 		if (m_dwPlainPixelShader[i])
 		{
@@ -4197,40 +4486,22 @@ Int RoadShaderPixelShader::shutdown()
 	}
 	RoadPixelLightsLoaded = FALSE;
 
+	Release_Glint_Shaders(m_dwGlintPixelShader);
+	RoadGlintLoaded = FALSE;
+
 	return TRUE;
 }
 
 void RoadShaderPixelShader::initShadowReceiver()
 {
-	for (Int i=0; i<3; i++)
-		m_dwShadowPixelShader[i]=0;
-	m_shadowStage = -1;
-
-#if defined(BUILD_WITH_D3D9)
-	if (TheW3DShadowMap == nullptr || !TheW3DShadowMap->isAvailable())
-		return;
-
-	const Bool packed = TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	const char *files[3][2] =
+	static const char *const files[3][2] =
 	{
 		{ "shaders\\roadshadow.pso",       "shaders\\roadshadowpacked.pso" },
 		{ "shaders\\roadshadownoise.pso",  "shaders\\roadshadownoisepacked.pso" },
 		{ "shaders\\roadshadownoise2.pso", "shaders\\roadshadownoise2packed.pso" }
 	};
-
-	for (Int i=0; i<3; i++)
-	{
-		if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(files[i][packed ? 1 : 0], nullptr, 0, false, &m_dwShadowPixelShader[i])))
-		{
-			// Roads still draw without shadows, so a missing variant only turns them off.
-			for (Int j=0; j<i; j++)
-				DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwShadowPixelShader[j]);
-			for (Int j=0; j<3; j++)
-				m_dwShadowPixelShader[j]=0;
-			return;
-		}
-	}
-#endif
+	Load_Shadow_Receiver_Shaders(files, m_dwShadowPixelShader);
+	m_shadowStage = -1;
 }
 
 void RoadShaderPixelShader::initPixelLights()
@@ -4288,8 +4559,33 @@ void RoadShaderPixelShader::initPixelLights()
 #endif
 }
 
-// Sets up the shaders that receive the shadow map, add the point lights, or both. Each road draw
-// then picks its lights, and so the lit variant or the unlit one bound here.
+void RoadShaderPixelShader::initGlint()
+{
+	for (Int s=0; s<2; s++)
+	{
+		for (Int i=0; i<3; i++)
+		{
+			m_dwGlintPixelShader[s][i]=0;
+		}
+	}
+	RoadGlintLoaded = FALSE;
+
+#if defined(BUILD_WITH_D3D9)
+	const DX8Caps *caps = DX8Wrapper::Get_Current_Caps();
+	if (caps == nullptr || !Supports_Pixel_Shader_2_a(caps) || !Get_Terrain_Glint_Allowed())
+	{
+		return;
+	}
+
+	// Shadowed variants only go with the shadow receivers they replace.
+	const Bool shadowMap = (m_dwShadowPixelShader[0] != 0 && TheW3DShadowMap != nullptr);
+	const Bool packed = shadowMap && TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
+	RoadGlintLoaded = Load_Glint_Shaders("road", shadowMap, packed, m_dwGlintPixelShader);
+#endif
+}
+
+// Sets up the shaders that receive the shadow map, add the point lights or the glint, or all three. Each
+// road draw then picks its lights, and so the lit variant or the unlit one bound here.
 Bool RoadShaderPixelShader::setPixelPath()
 {
 	const W3DShaderManager::ShaderTypes shader = W3DShaderManager::getCurrentShader();
@@ -4314,7 +4610,8 @@ Bool RoadShaderPixelShader::setPixelPath()
 	Bool shadowed = (m_dwShadowPixelShader[noiseCount] != 0 && TheW3DShadowMap != nullptr && TheW3DShadowMap->hasDepth());
 	const Bool lightable = (RoadPixelLightsLoaded && PixelLightCount > 0);
 	const Bool lightMapReplaced = (anyLightMap && groundCapable);
-	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend)
+	const Bool glintable = Terrain_Glint_Wanted();
+	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glintable)
 	{
 		return FALSE;
 	}
@@ -4331,7 +4628,8 @@ Bool RoadShaderPixelShader::setPixelPath()
 		shadowed = TheW3DShadowMap->bindReceiver(stage);
 		m_shadowStage = shadowed ? stage : -1;
 	}
-	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend)
+	const Bool glint = glintable && m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount] != 0;
+	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glint)
 	{
 		return FALSE;
 	}
@@ -4381,9 +4679,13 @@ Bool RoadShaderPixelShader::setPixelPath()
 
 		D3DMATRIX textureTransform = curView;
 		if (isCloud)
+		{
 			terrainShader2Stage.updateNoise1(&textureTransform, &inv, false);
+		}
 		else
+		{
 			terrainShader2Stage.updateNoise2(&textureTransform, &inv, false);
+		}
 
 		// White stands in for missing clouds, and the ground noise for the light map.
 		TextureClass *texture = W3DShaderManager::getShaderTexture(isCloud ? 1 : 2);
@@ -4409,11 +4711,16 @@ Bool RoadShaderPixelShader::setPixelPath()
 	}
 
 	// A complete set of lit variants includes the shadowed ones whenever a receiver loaded.
-	const DWORD unlit = shadowed ? m_dwShadowPixelShader[noiseCount] : m_dwPlainPixelShader[noiseCount];
-	if (lightable)
+	Bind_Terrain_Glint(ROAD_SUN_REGISTER, glint, FALSE);
+	const DWORD unlit = glint ? m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount]
+		: (shadowed ? m_dwShadowPixelShader[noiseCount] : m_dwPlainPixelShader[noiseCount]);
+	if (lightable || glint)
 	{
 		m_lightStage = 1 + noiseCount + (shadowed ? 1 : 0);
 		Set_Terrain_World_Position(m_lightStage);
+	}
+	if (lightable)
+	{
 		Begin_Draw_Pixel_Lights(unlit, m_dwLitPixelShader[shadowed ? 1 : 0][noiseCount]);
 	}
 
@@ -4449,6 +4756,7 @@ Int RoadShaderPixelShader::init()
 
 			initShadowReceiver();
 			initPixelLights();
+			initGlint();
 
 			//Only set this shader for use in dual noise mode.  The 2Stage shader will take care of
 			//all the other modes.
@@ -4533,12 +4841,22 @@ Int RoadShaderPixelShader::set(Int pass)
 void RoadShaderPixelShader::reset()
 {
 	if (TheW3DShadowMap != nullptr && m_shadowStage >= 0)
+	{
 		TheW3DShadowMap->unbindReceiver(m_shadowStage);
+	}
 	m_shadowStage = -1;
+
+	// Only stages 0 to 3 go back below, and the world position can sit on stage 4.
+	if (m_lightStage >= 0)
+	{
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_lightStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_lightStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU|m_lightStage);
+	}
 	m_lightStage = -1;
 	if (m_pixelPath)
 	{
 		Unbind_Height_Atlas();
+		Unbind_Glint_Maps();
 	}
 	m_pixelPath = FALSE;
 	End_Draw_Pixel_Lights();
@@ -5236,6 +5554,48 @@ Vector4 W3DShaderManager::getClipToTargetMapping(Real width, Real height)
 	DX8Wrapper::_Get_D3D_Device8()->GetViewport(&viewport);
 	return Vector4(0.5f * viewport.Width / width, -0.5f * viewport.Height / height,
 		(viewport.X + 0.5f * viewport.Width + 0.5f) / width, (viewport.Y + 0.5f * viewport.Height + 0.5f) / height);
+}
+
+void W3DShaderManager::drawClipQuad(const Vector4 &clipToTarget)
+{
+	static const Real cornerX[4] = { -1.0f, 1.0f, -1.0f, 1.0f };
+	static const Real cornerY[4] = { 1.0f, 1.0f, -1.0f, -1.0f };
+
+	DynamicVBAccessClass vbAccess(BUFFER_TYPE_DYNAMIC_DX8, dynamic_fvf_type, 4);
+	{
+		DynamicVBAccessClass::WriteLockClass lock(&vbAccess);
+		VertexFormatXYZNDUV2 *verts = lock.Get_Formatted_Vertex_Array();
+		for (Int i = 0; i < 4; i++)
+		{
+			verts[i].x = cornerX[i];
+			verts[i].y = cornerY[i];
+			verts[i].z = 0.0f;
+			verts[i].nx = 0.0f;
+			verts[i].ny = 0.0f;
+			verts[i].nz = 0.0f;
+			verts[i].diffuse = 0xffffffff;
+			verts[i].u1 = cornerX[i] * clipToTarget.X + clipToTarget.Z;
+			verts[i].v1 = cornerY[i] * clipToTarget.Y + clipToTarget.W;
+			verts[i].u2 = 0.0f;
+			verts[i].v2 = 0.0f;
+		}
+	}
+
+	DynamicIBAccessClass ibAccess(BUFFER_TYPE_DYNAMIC_DX8, 6);
+	{
+		DynamicIBAccessClass::WriteLockClass lock(&ibAccess);
+		UnsignedShort *indices = lock.Get_Index_Array();
+		indices[0] = 0;
+		indices[1] = 1;
+		indices[2] = 2;
+		indices[3] = 2;
+		indices[4] = 1;
+		indices[5] = 3;
+	}
+
+	DX8Wrapper::Set_Vertex_Buffer(vbAccess);
+	DX8Wrapper::Set_Index_Buffer(ibAccess, 0);
+	DX8Wrapper::Draw_Triangles(0, 2, 0, 4);
 }
 
 enum GraphicsVenderID CPP_11(: Int)

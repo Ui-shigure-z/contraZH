@@ -190,6 +190,11 @@ IndexBufferClass::WriteLockClass::WriteLockClass(IndexBufferClass* index_buffer_
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			indices = static_cast<DX8IndexBufferClass*>(index_buffer)->shadow;
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->Get_DX8_Index_Buffer()->Lock(
 			0,
@@ -216,6 +221,11 @@ IndexBufferClass::WriteLockClass::~WriteLockClass()
 	DX8_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			static_cast<DX8IndexBufferClass*>(index_buffer)->Upload_Shadow(0, index_buffer->Get_Index_Count());
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
@@ -232,7 +242,9 @@ IndexBufferClass::WriteLockClass::~WriteLockClass()
 
 IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffer_,unsigned start_index, unsigned index_range)
 	:
-	index_buffer(index_buffer_)
+	index_buffer(index_buffer_),
+	start(start_index),
+	range(index_range)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(start_index+index_range<=index_buffer->Get_Index_Count());
@@ -241,6 +253,11 @@ IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffe
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			indices = static_cast<DX8IndexBufferClass*>(index_buffer)->shadow + start_index;
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Lock(
 			start_index*sizeof(unsigned short),
@@ -264,6 +281,11 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 	DX8_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			static_cast<DX8IndexBufferClass*>(index_buffer)->Upload_Shadow(start, range);
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
@@ -284,10 +306,20 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 
 DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType usage)
 	:
-	IndexBufferClass(BUFFER_TYPE_DX8,index_count_)
+	IndexBufferClass(BUFFER_TYPE_DX8,index_count_),
+	shadow(nullptr)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(index_count);
+
+#if defined(BUILD_WITH_D3D9)
+	if (DX8Wrapper::Is_Ex() && !(usage&USAGE_DYNAMIC))
+	{
+		shadow = W3DNEWARRAY unsigned short[index_count];
+		memset(shadow, 0, sizeof(unsigned short)*index_count);
+	}
+#endif
+
 	unsigned usage_flags=
 		D3DUSAGE_WRITEONLY|
 		((usage&USAGE_DYNAMIC) ? D3DUSAGE_DYNAMIC : 0)|
@@ -339,6 +371,23 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 DX8IndexBufferClass::~DX8IndexBufferClass()
 {
 	index_buffer->Release();
+	delete[] shadow;
+}
+
+// ----------------------------------------------------------------------------
+
+void DX8IndexBufferClass::Upload_Shadow(unsigned first_index, unsigned count)
+{
+	// A zero size would lock the whole buffer.
+	if (count == 0)
+	{
+		return;
+	}
+	DX8_Assert();
+	void *data = nullptr;
+	DX8_ErrorCode(index_buffer->Lock(first_index*sizeof(unsigned short), count*sizeof(unsigned short), (DX8LockPointer)&data, 0));
+	memcpy(data, shadow + first_index, count*sizeof(unsigned short));
+	DX8_ErrorCode(index_buffer->Unlock());
 }
 
 // ----------------------------------------------------------------------------

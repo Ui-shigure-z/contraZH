@@ -444,7 +444,6 @@ void SortingRendererClass::Insert_Triangles(
 	const bool additive=BlendBatching && Is_Order_Independent(state->sorting_state.shader);
 
 	if (!Uses_Sorting_Buffers(state->sorting_state)) {
-		WWASSERT(Sorts_Meshes_Per_Object());
 		if (bounding_sphere.Is_Valid()) {
 			// Mesh bounding spheres are already in world space, so only the view's depth column applies.
 			const float (&view)[4][4]=state->sorting_state.view.m;

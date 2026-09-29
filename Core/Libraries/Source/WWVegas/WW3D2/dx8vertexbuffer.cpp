@@ -162,6 +162,11 @@ VertexBufferClass::WriteLockClass::WriteLockClass(VertexBufferClass* VertexBuffe
 	VertexBuffer->Add_Ref();
 	switch (VertexBuffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow() != nullptr)
+		{
+			Vertices = static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow();
+			break;
+		}
 #ifdef VERTEX_BUFFER_LOG
 		{
 		StringClass fvf_name;
@@ -195,6 +200,12 @@ VertexBufferClass::WriteLockClass::~WriteLockClass()
 	DX8_THREAD_ASSERT();
 	switch (VertexBuffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow() != nullptr)
+		{
+			static_cast<DX8VertexBufferClass*>(VertexBuffer)->Upload_Shadow(0,
+				VertexBuffer->Get_Vertex_Count()*VertexBuffer->FVF_Info().Get_FVF_Size());
+			break;
+		}
 #ifdef VERTEX_BUFFER_LOG
 		RENDER_LOG(("VertexBuffer->Unlock()"));
 #endif
@@ -218,7 +229,9 @@ VertexBufferClass::WriteLockClass::~WriteLockClass()
 
 VertexBufferClass::AppendLockClass::AppendLockClass(VertexBufferClass* VertexBuffer,unsigned start_index, unsigned index_range)
 	:
-	VertexBufferLockClass(VertexBuffer)
+	VertexBufferLockClass(VertexBuffer),
+	StartIndex(start_index),
+	IndexRange(index_range)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(VertexBuffer);
@@ -227,6 +240,11 @@ VertexBufferClass::AppendLockClass::AppendLockClass(VertexBufferClass* VertexBuf
 	VertexBuffer->Add_Ref();
 	switch (VertexBuffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow() != nullptr)
+		{
+			Vertices = static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow() + start_index*VertexBuffer->FVF_Info().Get_FVF_Size();
+			break;
+		}
 #ifdef VERTEX_BUFFER_LOG
 		{
 		StringClass fvf_name;
@@ -261,6 +279,12 @@ VertexBufferClass::AppendLockClass::~AppendLockClass()
 	DX8_THREAD_ASSERT();
 	switch (VertexBuffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8VertexBufferClass*>(VertexBuffer)->Peek_Shadow() != nullptr)
+		{
+			static_cast<DX8VertexBufferClass*>(VertexBuffer)->Upload_Shadow(StartIndex*VertexBuffer->FVF_Info().Get_FVF_Size(),
+				IndexRange*VertexBuffer->FVF_Info().Get_FVF_Size());
+			break;
+		}
 		DX8_Assert();
 #ifdef VERTEX_BUFFER_LOG
 		RENDER_LOG(("VertexBuffer->Unlock()"));
@@ -309,7 +333,8 @@ SortingVertexBufferClass::~SortingVertexBufferClass()
 DX8VertexBufferClass::DX8VertexBufferClass(unsigned FVF, unsigned short vertex_count_, UsageType usage)
 	:
 	VertexBufferClass(BUFFER_TYPE_DX8, FVF, vertex_count_),
-	VertexBuffer(nullptr)
+	VertexBuffer(nullptr),
+	Shadow(nullptr)
 {
 	Create_Vertex_Buffer(usage);
 }
@@ -324,7 +349,8 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	UsageType usage)
 	:
 	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_NORMAL, VertexCount),
-	VertexBuffer(nullptr)
+	VertexBuffer(nullptr),
+	Shadow(nullptr)
 {
 	WWASSERT(vertices);
 	WWASSERT(normals);
@@ -345,7 +371,8 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	UsageType usage)
 	:
 	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_NORMAL|D3DFVF_DIFFUSE, VertexCount),
-	VertexBuffer(nullptr)
+	VertexBuffer(nullptr),
+	Shadow(nullptr)
 {
 	WWASSERT(vertices);
 	WWASSERT(normals);
@@ -366,7 +393,8 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	UsageType usage)
 	:
 	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_DIFFUSE, VertexCount),
-	VertexBuffer(nullptr)
+	VertexBuffer(nullptr),
+	Shadow(nullptr)
 {
 	WWASSERT(vertices);
 	WWASSERT(tex_coords);
@@ -385,7 +413,8 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	UsageType usage)
 	:
 	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1, VertexCount),
-	VertexBuffer(nullptr)
+	VertexBuffer(nullptr),
+	Shadow(nullptr)
 {
 	WWASSERT(vertices);
 	WWASSERT(tex_coords);
@@ -404,6 +433,23 @@ DX8VertexBufferClass::~DX8VertexBufferClass()
 	RENDER_LOG(("Current vertex buffer count: %d",_DX8VertexBufferCount));
 #endif
 	VertexBuffer->Release();
+	delete[] Shadow;
+}
+
+// ----------------------------------------------------------------------------
+
+void DX8VertexBufferClass::Upload_Shadow(unsigned first_byte, unsigned byte_count)
+{
+	// A zero size would lock the whole buffer.
+	if (byte_count == 0)
+	{
+		return;
+	}
+	DX8_Assert();
+	void *data = nullptr;
+	DX8_ErrorCode(VertexBuffer->Lock(first_byte, byte_count, (DX8LockPointer)&data, 0));
+	memcpy(data, Shadow + first_byte, byte_count);
+	DX8_ErrorCode(VertexBuffer->Unlock());
 }
 
 // ----------------------------------------------------------------------------
@@ -416,6 +462,16 @@ void DX8VertexBufferClass::Create_Vertex_Buffer(UsageType usage)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(!VertexBuffer);
+
+#if defined(BUILD_WITH_D3D9)
+	// Every lock then writes the whole range it locks, as the managed pool's own copy made sure.
+	if (DX8Wrapper::Is_Ex() && !(usage & USAGE_DYNAMIC))
+	{
+		const unsigned size = FVF_Info().Get_FVF_Size()*VertexCount;
+		Shadow = W3DNEWARRAY unsigned char[size];
+		memset(Shadow, 0, size);
+	}
+#endif
 
 #ifdef VERTEX_BUFFER_LOG
 	StringClass fvf_name;

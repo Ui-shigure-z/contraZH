@@ -47,10 +47,10 @@ public:
 	/// Draws this frame's glows over the terrain, then forgets them.
 	void render(RenderInfoClass &rinfo);
 
-	void ReleaseResources();	///< drops the shader before a device reset; the next draw loads it again
+	void ReleaseResources();	///< drops the shaders before a device reset; the next draw loads them again
 
 private:
-	enum { MAX_GLOWS = 64 };
+	enum { MAX_GLOWS = 64, MAX_GROUP_BEAMS = 7, GROUP_SHADERS = 3 };
 
 	struct Glow
 	{
@@ -61,11 +61,27 @@ private:
 		const BeamShaderTuning *pulses;
 	};
 
+	// Heightmap samples from lo to hi inclusive, so the cells run from lo to hi - 1.
+	struct Footprint
+	{
+		Int loX;
+		Int loY;
+		Int hiX;
+		Int hiY;
+	};
+
+	static Footprint findFootprint(WorldHeightMap *map, const Glow &glow);
+	static void beamConstants(const Glow &glow, const Vector3 &sceneLight, const Vector4 &pulse, Vector4 *constants);
+	static Bool reachesCell(const Glow *const *glows, const Footprint *footprints, Int count, Int x, Int y);
 	void drawGlow(WorldHeightMap *map, const Glow &glow, const Vector3 &sceneLight, const Vector4 &pulse, IDirect3DTexture8 *noise);
+	Bool drawGroup(WorldHeightMap *map, const Int *members, Int count, const Vector3 &sceneLight, const Vector4 *pulses, IDirect3DTexture8 *noise);
+	static Bool drawCells(WorldHeightMap *map, const Glow *const *glows, Int count, const Footprint &box, DWORD shader,
+		const Vector4 *constants, Int constantCount, IDirect3DTexture8 *noise);
 
 	Glow m_glows[MAX_GLOWS];
 	Int m_count;
 	DWORD m_shader;
+	DWORD m_groupShaders[GROUP_SHADERS];	///< combine 2, 4 and 7 overlapping glows in one pass, where ps_2_a runs
 	Bool m_loaded;
 };
 

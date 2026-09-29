@@ -166,6 +166,12 @@ public:
 	/// get the texture file for this terrain
 	AsciiString getTexture() { return m_texture; }
 
+	/// get the sun glint's strength, a multiple of GameData's TerrainGlintIntensity
+	Real getGlintStrength() { return m_glintStrength; }
+
+	/// get the sun glint's gloss, or 0 for GameData's TerrainGlintGloss
+	Real getGlintGloss() { return m_glintGloss; }
+
 	/// get next terrain in list, only for use by the terrain collection
 	TerrainType *friend_getNext() { return m_next; }
 
@@ -197,6 +203,8 @@ protected:
 	Bool m_blendEdgeTexture;					///< contains custom blend edges
 	TerrainClass m_class;							///< type classification of name
 	Bool m_restrictConstruction;			///< do not allow construction on this terrain tile
+	Real m_glintStrength;							///< sun glint strength, times GameData's TerrainGlintIntensity
+	Real m_glintGloss;								///< sun glint gloss, 0 for GameData's TerrainGlintGloss
 	TerrainType *m_next;							///< next in terrain list
 
 	// for parsing from INI

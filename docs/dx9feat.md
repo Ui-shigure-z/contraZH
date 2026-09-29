@@ -7,12 +7,86 @@ Options live in `Options.ini` and the advanced display options; tuning keys live
 
 Cheat builds reload `Data\INI\GameData.ini` about half a second after it is saved, so these tuning
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
-`UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, `UnitEmissiveIntensity`,
+`UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise` and `TerrainHeightBlend` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric` and `Laser` tuning keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser` and `Cryo` tuning keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
+
+## Shader implementation
+
+An effect picks up its shader in one of three places: the `ParticleSystem` block, the `W3DLaserDraw`
+module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
+them for one effect. Each shader's own section below lists its keys.
+
+| Effect | Shader | Set in | Turn on with | Own tuning |
+|---|---|---|---|---|
+| Fire sprites | [Flame](#flame-shading) | `ParticleSystem` | `FlameShader = Yes` | `Flame` and `Haze` keys |
+| Sparks and flares | [Electric](#electric-shading) | `ParticleSystem` | `ElectricShader = Yes` | `ElectricParticleScale` |
+| Laser trails | [Laser](#laser-shading) | `ParticleSystem` | `Type = STREAK` and `LaserShader = Yes` | None |
+| Laser beams | [Laser](#laser-shading) | `W3DLaserDraw` | On by default | `Laser` keys |
+| Tesla and lightning bolts | [Electric](#electric-shading) | `W3DLaserDraw` | `ElectricShader = Yes` | `Electric` keys |
+| Freeze rays | [Cryo](#cryo-shading) | `W3DLaserDraw` | `CryoShader = Yes` | `Cryo` keys |
+| Frost trails, puffs and flares | [Cryo](#cryo-shading) | `ParticleSystem` | `CryoShader = Yes` | `CryoParticleScale` |
+| Blast ring | [Shockwave](#shockwave-fxlistini) | `FXList` | A `Shockwave` block | The block's keys |
+| Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
+| Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
+
+"None" means the effect always uses the `GameData.ini` values.
+
+A `ParticleSystem` that leaves the shader key out is `Auto`:
+
+* `FlameShader` turns on when the system rides a projectile whose weapon has `DamageType = FLAME`.
+* `ElectricShader` turns on when the `ParticleName` texture is listed in `ElectricParticleTextures`.
+* `LaserShader` turns on when a streak's `ParticleName` texture is listed in `LaserParticleTextures`.
+* `CryoShader` turns on when the `ParticleName` texture is listed in `CryoParticleTextures`.
+
+The texture lists suit a texture many systems share. `Yes` suits a single system, and `No` opts one
+out of a list.
+
+### What a particle system can take
+
+| `Type` | `Shader` | Takes |
+|---|---|---|
+| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame, electric or cryo, and the soft fade |
+| `PARTICLE` | `ALPHA_TEST`, `MULTIPLY` | Nothing |
+| `STREAK` | Any but `MULTIPLY` | Laser or cryo |
+| `VOLUME_PARTICLE`, `SMUDGE`, `DRAWABLE` | Any | Nothing |
+
+* Cryo wins over every other shader. A system or beam with cryo on draws as ice.
+* A system that is both flame and electric draws as flame.
+* A beam with `ElectricShader = Yes` draws as electric, whatever its `LaserShader`.
+* Only `FlameShader = Auto` follows a master system. Slave systems need their own `ElectricShader` or
+`LaserShader`.
+* Terrain-conforming particles stay plain.
+
+### Models and terrain
+
+Models and terrain have no shader switch. They pick up a shader when a matching texture sits beside
+theirs in `Art\Textures`, or from `Terrain.ini` for the glint.
+
+| Effect | Add | Section |
+|---|---|---|
+| Bumps on a unit or structure | `<texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Lit windows, lamps and exhausts | `<texture>_emi.dds` | [Glow masks](#glow-masks) |
+| Bumps on terrain | `<terrain texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Stones pushing through blends | `<terrain texture>_hgt.dds` | [Height blending](#height-blending) |
+| Shine on one terrain type | `GlintStrength` and `GlintGloss` in `Terrain.ini` | [Terrain glint](#terrain-glint) |
+
+### Troubleshooting
+
+* The Direct3D 8 build ignores every shader on this page.
+* `FlameShaders`, `ElectricShaders`, `LaserShaders` and `CryoShaders` in `Options.ini` default to Yes.
+No turns that shader off everywhere.
+* Flame haze and shockwaves need `Heat Effects` on. Bloom needs `Bloom = Yes`.
+* The system's `Type` and `Shader` must allow the shader, as in the table above.
+* `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
+reloads in cheat builds.
+* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER` or `CONTRA_CRYOSHADER` set to 0 turns
+that shader off.
+* `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
+laser shader.
 
 ## Shadow mapping
 
@@ -47,8 +121,9 @@ Vehicles and structures get a per-pixel sun highlight, following the map's sun, 
 texture areas, and hidden in shadow when shadow mapping is on. Infantry stay matte. Needs the
 Direct3D 9 build and a shader model 2 card.
 
-* `Specular = Yes` - (No turns highlights off. Also `Specular highlights` in the advanced display
-options, applied on Accept. Needs `CheckSpecular` in `OptionsMenu.wnd` for the menu control.)
+* `Specular = Yes` - (No turns highlights and the terrain glint off. Also `Specular highlights` in the
+advanced display options, applied on Accept. Needs `CheckSpecular` in `OptionsMenu.wnd` for the menu
+control.)
 
 Tuned in the mod's `GameData.ini`:
 
@@ -58,6 +133,55 @@ Around 4 to 128 is useful; past that the highlight shrinks to nothing.)
 
 `SpecularDebug = Yes` in `Options.ini` tints covered surfaces magenta and shows the highlight 8x
 brighter.
+
+## Terrain glint
+
+The ground glints where it mirrors the sun towards the camera, so it lights up when the view faces
+the sun. The glint takes the map's sun colour, so night maps glint faintly, and shadows and clouds
+hide it. Roads and the third texture where three meet glint with the terrain, and terrain normal
+maps break it up. Needs the Direct3D 9 build and shader model 2.0a.
+
+* Follows `Specular` above. No turns both off.
+
+Tuned in the mod's `GameData.ini`:
+
+* `TerrainGlintIntensity = 0.25` - (How bright the glint is. 0 turns it off.)
+* `TerrainGlintGloss = 12` - (How tight it is. Higher values give a smaller, sharper glint, and 1
+spreads it over all ground facing the sun.)
+* `TerrainGlintAlbedo = 0.5` - (How far the glint follows the ground's brightness. 0 glints dark and
+bright ground alike, and 1 leaves dark ground almost dull.)
+
+Each terrain texture can set its own in `Terrain.ini`, and where two textures blend, their glints
+blend too:
+
+```
+Terrain SnowFlatType1
+  Texture = TSSnow01a.tga
+  Class = SNOW_FLAT
+  GlintStrength = 2.0
+  GlintGloss = 10
+End
+```
+
+* `GlintStrength = 1.0` - (Multiplies `TerrainGlintIntensity` for this texture. 0 leaves it dull.)
+* `GlintGloss` - (This texture's gloss. Left out, it takes `TerrainGlintGloss`.)
+
+| Ground | GlintStrength | GlintGloss |
+|---|---|---|
+| Grass, field | 0.3 | 4 |
+| Sand, desert | 0.8 | 6 |
+| Rock | 0.6 | 10 |
+| Snow | 2.0 | 10 |
+| Asphalt, concrete | 1.0 | 16 |
+| Metal | 3.0 | 48 |
+
+Notes:
+* Flat terrain mode and water reflections do not glint. Ground under standing water loses it below
+the waterline.
+* Roads glint by the `GameData.ini` keys alone.
+* `Terrain.ini` changes apply when a map loads. Executables and WorldBuilders from before these keys
+reject a `Terrain.ini` that has them.
+* Launch with `CONTRA_TERRAINGLINT=0` to turn it off.
 
 ## Surface detail (normal mapping)
 
@@ -138,10 +262,10 @@ lights` in the advanced display options, greyed out while dynamic lights are off
 
 Notes:
 * Every draw picks its own lights, so a busy battle can light the whole screen per pixel:
-  * The terrain draws in patches of 32 by 32 cells, each taking nine lights.
+  * The terrain draws in patches of 32 by 32 cells, each taking eight lights, or four with standing water.
   * Each vehicle, structure or soldier takes the eight brightest where it stands.
-  * Each bridge takes nine.
-  * Roads take the nine lights nearest the middle of the view.
+  * Each bridge takes eight.
+  * Roads take the eight lights nearest the middle of the view.
 * The lights nearest the middle of the view go first, up to 64 at once. A light whose reach covers
 the middle counts as nearest.
 * A light that would overfill a terrain patch stays on the old lighting, which lights the terrain
@@ -253,14 +377,18 @@ adds to the list, so a long list can span several lines. Read at launch.)
 * `ElectricJitter = 0.03` - (How far the texture jumps each crackle, in texture widths.)
 * `ElectricFlicker = 0.6` - (How far brightness swings, as a fraction. 0 is steady.)
 * `ElectricRate = 15` - (Crackles per second. 0 freezes the arcs.)
+* `ElectricParticleScale = 100%` - (How large electric sprites draw, as a percentage of the particle's
+own size. With electric shading off they keep their own size.)
 
-A `W3DLaserDraw` module takes the same six tuning keys. Each one it sets overrides `GameData.ini`
-for that beam alone, and the keys it leaves out keep `GameData.ini`'s values.
+A `W3DLaserDraw` module takes the six keys from `ElectricArcs` to `ElectricRate`. Each one it sets
+overrides `GameData.ini` for that beam alone, and the keys it leaves out keep `GameData.ini`'s values.
+A `ParticleSystem` takes `ElectricParticleScale` alone, and uses `GameData.ini`'s other keys.
 
 ```
 ParticleSystem EMPRing
   ...
   ElectricShader = Yes
+  ElectricParticleScale = 80%
 End
 
 Draw = W3DLaserDraw ModuleTag_Draw
@@ -347,8 +475,8 @@ the soft edges on top.
 Laser beams light the ground per pixel, with one light shaped like the beam. The light fades with
 the distance to the nearest point on the beam, so a beam skimming the ground lights a bright strip
 and a beam climbing into the sky lights only the ground near the shooter. Slopes facing the beam
-catch more light, and the laser shader's pulses brighten the ground as they pass. Beams drawn plain
-or electric light the ground steadily. The Direct3D 8
+catch more light, and the laser shader's pulses brighten the ground as they pass. Beams drawn plain,
+electric or cryo light the ground steadily, and cryo beams light it in their ice colour. The Direct3D 8
 build keeps the strip of dynamic lights described in
 [Laser ground glow](contraZH-Changes.md#laser-ground-glow). Needs a shader model 2 card. Each key is
 pictured on [Electric & Laser Shading](Electric-&-Laser-Shading.md#laser-ground-glow).
@@ -364,16 +492,99 @@ Higher gives a tight bright core, lower a broad wash.)
 only slopes facing it, 1 lights all ground evenly.)
 * `LaserGroundGlowDebug = No` - (Yes darkens the ground by as much as the glow would light it, so the
 light's reach and shape show as a shadow.)
+* `LaserGroundGlowOverlap = Yes` - (Yes lights the ground under overlapping beams in one pass, so the
+overlap brightens modestly. No lights each beam on its own, and overlaps compound.)
 
 Notes:
 * The light lights the ground's own colour, measured against the map's terrain lighting, so red
 ground turns redder and a dark night map lights up as much as a bright day.
 * The light reaches `GroundGlowRadius` on the module, else `LaserGroundGlowRadius`, else 1.25 times
 the laser's `OuterBeamWidth`, at least 15. It is counted from the beam in three dimensions.
+* Beams whose glows overlap light the ground together. Each colour channel takes the root of the sum
+of the beams' squared light, so two equal beams light 1.4 times as much as one, three light 1.7
+times, and crossing beams leave no crease. A lone beam lights as before.
+* Up to seven overlapping beams combine. Past that, the seven brightest light the spot and the rest
+go dark. Combining needs a shader model 2.0a card. Without one, or when the overlap covers too much
+ground for one draw, each beam lights on its own.
 * Lasers no longer take dynamic lights, so the per-pixel lights stay free for explosions and
 muzzle flashes.
 * Water covers the glow on ground beneath it. Units and buildings are not lit.
 * Launch with `CONTRA_LASERGLOW=0` to go back to the dynamic lights.
+
+## Cryo shading
+
+Freeze rays turn to ice. The beam's colour is pulled toward an ice tint at its own brightness, a
+blue-white core runs along its axis, frost bands drift slowly towards the target, and jagged ice teeth
+cut into both edges. Frost trails from particle systems draw the same way. Frost puffs and flares take
+the tint, thin cracks split their faint fringe into shards, and glints twinkle across them. Cryo wins
+over the laser, electric and flame shaders wherever it is on. Needs the Direct3D 9 build and a shader
+model 2 card.
+
+* `CryoShaders = Yes` - (No draws cryo effects plain. Options.ini only, no menu control.)
+
+Picked per beam in a `W3DLaserDraw` module:
+
+* `CryoShader = No` - (Default. `Yes` shades the beam as ice, whatever its `LaserShader` and
+`ElectricShader`.)
+
+Picked per particle system in `ParticleSystem.ini`:
+
+* `CryoShader = Auto` - (Default. On when the system's `ParticleName` texture is listed in
+`GameData.ini`'s `CryoParticleTextures`. `Yes` turns it on for any system, `No` turns it off. Streaks
+draw as freeze rays, sprites as frost.)
+
+Listed and tuned in the mod's `GameData.ini`:
+
+* `CryoParticleTextures = CryoFlare.tga EXCryoRing.tga ...` - (Textures whose systems turn to ice.
+Each line adds to the list, so a long list can span several lines. Read at launch.)
+* `CryoTint = R:150 G:215 B:255` - (The ice colour. Only its hue counts, so the effect keeps its
+brightness.)
+* `CryoTintStrength = 0.8` - (How far the effect's own colour moves to the tint, from 0 to 1. 0 keeps
+the texture's colour.)
+* `CryoCore = 1` - (Core brightness. 0 turns the core off.)
+* `CryoCoreWidth = 0.3` - (Core width, as a fraction of the beam's half width.)
+* `CryoFrost = 0.5` - (How strongly the frost bands whiten the beam. 0 turns them off.)
+* `CryoFrostSize = 200` - (World units across one tile of frost noise. Smaller gives more, closer
+bands.)
+* `CryoFrostSpeed = 60` - (World units a second the bands drift towards the target. 0 freezes them.)
+* `CryoShards = 0.4` - (How far ice teeth cut into a beam, as a fraction of its half width, and how far
+cracks reach into a sprite's fringe. 0 keeps edges whole.)
+* `CryoShardSize = 8` - (World units from one tooth or shard to the next.)
+* `CryoGlints = 2` - (Glint brightness on sprites. 0 turns glints off.)
+* `CryoGlintSize = 1.5` - (World units between glints.)
+* `CryoGlintRate = 2` - (About how many times a second each glint twinkles. 0 freezes them.)
+* `CryoParticleScale = 100%` - (How large cryo sprites and trails draw, as a percentage of the
+particle's own size. With cryo shading off they keep their own size.)
+
+A `W3DLaserDraw` module takes the nine tuning keys from `CryoTint` to `CryoShardSize`. Each one it
+sets overrides `GameData.ini` for that beam alone, and the keys it leaves out keep `GameData.ini`'s
+values. A `ParticleSystem` takes `CryoParticleScale` alone, and uses `GameData.ini`'s other keys.
+
+```
+ParticleSystem FrostPuff
+  ...
+  CryoShader = Yes
+  CryoParticleScale = 60%
+End
+
+Draw = W3DLaserDraw ModuleTag_Draw
+  ...
+  CryoShader = Yes
+  CryoTint = R:120 G:200 B:255
+  CryoShards = 0.6
+End
+```
+
+Notes:
+* The beam's texture still gives it its shape. With `CryoTintStrength` below 1 its colour shows through
+the tint.
+* Teeth and frost bands are fixed along the beam, counted from the shooter, so they travel with it.
+* Cracks and glints are fixed in the world, so they hold still while the camera pans and shift as
+the sprite drifts through them.
+* The ground glow under a cryo beam holds steady and takes the beam's tint. With cryo shading off the
+beam and its glow keep their own colour.
+* Terrain-conforming particles, volume particles and multiplied sprites stay plain.
+* Launch with `CONTRA_CRYOSHADER=0` to turn cryo shading off.
 
 ## Ambient occlusion
 
@@ -452,6 +663,39 @@ Notes:
 * The lower terrain detail settings keep the soft fade.
 * Roads draw as before.
 
+## HQ sky
+
+Cloud shadows drift softly over the ground, change shape as they go and never repeat, in place of
+one tiled cloud texture sliding across the map. Each frame a shader draws the clouds into a map over
+the ground the camera sees, and terrain, roads, bridges, units and buildings darken from it. Two
+cloud shapes at unrelated sizes and angles add up to each cloud, a slow warp bends them, and a
+finer layer frays their edges. Each layer drifts at its own speed, so clouds form and fade instead
+of sliding as one sheet. Needs the Direct3D 9 build and Cloud shadows on.
+
+* `HQSky = Yes` - (No brings back the tiled cloud texture. Also `HQ sky` in the advanced display
+options, greyed out while Cloud shadows is off. Needs `CheckHQSky` in `OptionsMenu.wnd` for the
+menu control.)
+
+Tuned in the mod's `GameData.ini`:
+
+* `SkyCloudSize = 600` - (World units across a typical cloud.)
+* `SkyCloudCoverage = 0.45` - (Share of the ground in shadow. 0 is a clear sky, 1 overcast.)
+* `SkyCloudSoftness = 0.25` - (How wide the fade at a cloud's edge is. Low gives crisp edges.)
+* `SkyCloudShadowStrength = 0.35` - (How dark a thick cloud's shadow is. 0 for none. The default matches
+the old clouds' darkest.)
+* `SkyCloudShadowTint = R:235 G:242 B:255` - (The shadow's hue. White gives neutral grey.)
+* `SkyCloudWindSpeed = 11` - (World units a second the clouds drift. 0 holds them still.)
+* `SkyCloudWindAngle = 56` - (Degrees the clouds drift towards, 0 along the map's x. The default
+matches the old clouds.)
+* `SkyCloudChurn = 0.3` - (How fast shapes change as they drift. 0 slides them as one sheet.)
+* `SkyCloudBillow = 0.5` - (How far shapes bulge and curl. High values twist them into streaks.)
+* `SkyCloudDetail = 0.4` - (Ragged detail at the edges. 0 gives smooth blobs.)
+
+Notes:
+* Night keeps the clouds off, as before.
+* Trees and the water's reflected sky keep their old look.
+* `CONTRA_SKYCLOUDS=0` keeps the tiled texture, to rule the HQ sky out of a rendering fault.
+
 ## Shader water
 
 Lakes, seas and rivers are shaded per pixel, with refraction, reflection, sun glint, foam and
@@ -523,16 +767,20 @@ out. Needs the Direct3D 9 build, a shader model 2 card and `Heat Effects` on.
 
 * `Radius` - (How far the ring travels, in world units.)
 * `Width` - (How thick the ring is, in world units.)
-* `Strength` - (How far it bends the scene, in world units. Around 2 to 6 reads well.)
+* `Strength` - (How far it bends the scene, in world units. Around 2 to 6 reads well. In world units
+the bend shrinks on screen as the camera pulls back, and is lost when zoomed far out.)
+* `StrengthInPixels = No` - (Yes counts `Strength` in pixels on a 1080p screen instead, scaled to
+other resolutions, so the bend looks the same at every zoom. Around 6 to 12 reads well.)
 * `Duration` - (How long the ring takes to reach `Radius`, in milliseconds. It fades as it goes.)
 
 ```
 FXList FX_NukeExplosion
   Shockwave
-    Radius   = 300
-    Width    = 40
-    Strength = 4
-    Duration = 900
+    Radius           = 300
+    Width            = 40
+    Strength         = 8
+    StrengthInPixels = Yes
+    Duration         = 900
   End
 End
 ```

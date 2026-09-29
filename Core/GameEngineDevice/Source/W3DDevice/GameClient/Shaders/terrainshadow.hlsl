@@ -30,7 +30,11 @@
 // Each atlas texture is a block that wraps seamlessly, so a cell shifts and turns its read
 // within the block. The block comes from a lookup of the atlas slot, and the read follows
 // the world position, which matches the vertex UVs on every cell but cliffs, which keep
-// their own. It needs the world position too, and leaves room for only six point lights.
+// their own. It needs the world position too, and leaves room for only four point lights.
+//
+// GLINT adds the sun's glint through terrainglint.hlsli. Every build with the world position has it, so
+// its constants turn it off, and GLINT alone gives the world position to terrain without bumps or lights.
+// Each texture's strength and gloss come from Terrain.ini through a map laid out like the colour atlas.
 
 #ifndef SHADOWED
 #define SHADOWED 1
@@ -46,6 +50,10 @@
 
 #ifndef SEABED
 #define SEABED 0
+#endif
+
+#ifndef GLINT
+#define GLINT (BUMP || LIGHTS || SEABED)
 #endif
 
 #define CONCAT_(a, b) a##b
@@ -87,7 +95,7 @@ sampler2D ShadowMap : register(s4);
 
 #endif
 
-#if BUMP || LIGHTS || SEABED
+#if BUMP || LIGHTS || SEABED || GLINT
 
 // Stage numbers, spelled out because register names need a literal digit.
 #if NOISE_COUNT + SHADOWED == 0
@@ -107,13 +115,13 @@ sampler2D ShadowMap : register(s4);
 #endif
 
 #if LIGHTS
-// Nine fill c5 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_PIXEL_LIGHTS must match.
-// The seabed's constants take the last three lights' room, which W3DShaderManager::SEABED_PIXEL_LIGHTS matches.
+// Eight fill c5 to c22 before the glint's c23 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_PIXEL_LIGHTS must match.
+// The seabed keeps four, whose room ends at c13, which W3DShaderManager::SEABED_PIXEL_LIGHTS matches.
 #define POINT_LIGHT_REGISTER c5
 #if SEABED
-#define POINT_LIGHT_COUNT 6
+#define POINT_LIGHT_COUNT 4
 #else
-#define POINT_LIGHT_COUNT 9
+#define POINT_LIGHT_COUNT 8
 #endif
 #include "pointlights.hlsli"
 #endif
@@ -123,11 +131,11 @@ sampler2D ShadowMap : register(s4);
 sampler2D ClassMap  : register(s8);   // per atlas slot, its texture block's first slot column and row and its width in tiles, over 255
 sampler2D WaterMask : register(s9);   // standing water's coverage in alpha, its level at 1/16 unit in red and green times coverage
 
-float4 SeabedAtlas : register(c19);   // xy = atlas size in texels, zw = 1 / that
-float4 SeabedWorld : register(c20);   // x = atlas texels per world unit, y = texels of the map border, z = 1 / fade depth under the waterline
-float4 SeabedHex   : register(c21);   // x = 1 / hex cell spacing, y = weight exponent, z = how far cells shift, w = twice the tangent of half the widest turn
-float4 SeabedMask  : register(c22);   // world xy to water mask texcoords: xy scale, zw offset
-float4 SeabedSlot  : register(c23);   // atlas texels to lookup texcoords: x scale, y offset; z = 255 times the slot's texels, w = the atlas border's
+float4 SeabedAtlas : register(c14);   // xy = atlas size in texels, zw = 1 / that
+float4 SeabedWorld : register(c15);   // x = atlas texels per world unit, y = texels of the map border, z = 1 / fade depth under the waterline
+float4 SeabedHex   : register(c16);   // x = 1 / hex cell spacing, y = weight exponent, z = how far cells shift, w = twice the tangent of half the widest turn
+float4 SeabedMask  : register(c17);   // world xy to water mask texcoords: xy scale, zw offset
+float4 SeabedSlot  : register(c18);   // atlas texels to lookup texcoords: x scale, y offset; z = 255 times the slot's texels, w = the atlas border's
 
 struct HexCells
 {
@@ -182,9 +190,10 @@ HexCells FindHexCells(float2 world)
     return cells;
 }
 
+// A mul and a mad, as two dot products would be two dp2adds, which the runtime counts as two slots each against ps_2_a's 512.
 float2 Turn(float2 texel, float2 turn)
 {
-    return float2(dot(texel, float2(turn.x, -turn.y)), dot(texel, turn.yx));
+    return texel.x * turn + texel.y * float2(-turn.y, turn.x);
 }
 
 // A texel position wrapped into its block, as atlas texcoords.
@@ -216,12 +225,21 @@ float4 SeabedSample(sampler2D atlas, float4 plain, float2 uv, float2 texel, floa
 
 #endif
 
+#if BUMP || GLINT
+float4 ToSun      : register(c1);   // world space, w = normal map strength
+float4 SunColor   : register(c2);   // the sun's diffuse colour in the vertex lighting, w = 1 for the debug view
+#endif
+
+#if GLINT
+#include "terrainglint.hlsli"
+
+// Point sampled, since each texture's block holds one value. Red is the strength over GlintAlbedo's scale, green the gloss over GlintEye.w.
+sampler2D GlintMaterials : register(s12);
+#endif
+
 #if BUMP
 
 sampler2D NormalAtlas : register(CONCAT(s, NORMAL_INDEX));
-
-float4 ToSun      : register(c1);   // world space, w = normal map strength
-float4 SunColor   : register(c2);   // the sun's diffuse colour in the vertex lighting, w = 1 for the debug view
 
 // The atlas holds x in luminance and y in alpha, and z comes back from unit length.
 float3 AtlasNormal(float2 uv)
@@ -261,7 +279,7 @@ struct PsIn
 #if SHADOWED
     float4 ShadowPos : SHADOW_TEXCOORD;
 #endif
-#if BUMP || LIGHTS || SEABED
+#if BUMP || LIGHTS || SEABED || GLINT
     float3 WorldPos  : CONCAT(TEXCOORD, POSITION_INDEX);
 #endif
 };
@@ -290,6 +308,11 @@ float4 main(PsIn input) : COLOR
 
     float weight = HeightBlendWeight(input.Diffuse.a, tex2D(HeightAtlas, input.BaseUV).r, tex2D(HeightAtlas, input.BlendUV).r);
     float4 color = lerp(base, blend, weight);
+#if GLINT
+    float2 material = lerp(tex2D(GlintMaterials, input.BaseUV).rg, tex2D(GlintMaterials, input.BlendUV).rg, weight);
+    float glintStrength = (dot(color.rgb, GlintAlbedo.xyz) + GlintAlbedo.w) * material.r;
+    float glintGloss = max(material.g * GlintEye.w, 1.0f);
+#endif
 
 #if SHADOWED
     float lit = ShadowLit(input.ShadowPos);
@@ -335,7 +358,8 @@ float4 main(PsIn input) : COLOR
 #endif
 
 #if NOISE_COUNT >= 1
-    color *= tex2D(Noise1Texture, input.Noise1UV);
+    float4 cloud = tex2D(Noise1Texture, input.Noise1UV);
+    color *= cloud;
 #endif
 #if NOISE_COUNT >= 2
     color.rgb *= GroundNoise(Noise2Texture, input.Noise2UV);
@@ -343,6 +367,24 @@ float4 main(PsIn input) : COLOR
 
 #if SHADOWED
     color.rgb *= lerp(ShadowColor.rgb, float3(1.0f, 1.0f, 1.0f), lit);
+#endif
+
+#if GLINT
+    // The bump tilts the smooth normal as far as it tilts the facet's.
+#if BUMP
+    float3 glintNormal = normalize(GlintNormal(input.WorldPos) + bumped - normal);
+#else
+    float3 glintNormal = GlintNormal(input.WorldPos);
+#endif
+    float glint = Glint(input.WorldPos, glintNormal, glintStrength * lit, glintGloss);
+#if SEABED
+    glint *= 1.0f - seabed;
+#endif
+#if NOISE_COUNT >= 1
+    color.rgb += SunColor.rgb * cloud.rgb * glint;
+#else
+    color.rgb += SunColor.rgb * glint;
+#endif
 #endif
 
 #if BUMP
