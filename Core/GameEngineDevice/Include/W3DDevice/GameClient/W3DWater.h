@@ -299,10 +299,21 @@ protected:
 	Int m_radialRingTriangles;
 	DWORD m_shaderWaterRadialVertexShader;	///< lays the levels under the camera and lifts them by the swell
 	DWORD m_shaderWaterRadialPixelShader[2];
+	DWORD m_shaderWaterFlatVertexShader;	///< passes flat water and rivers unlifted to the ps_3_0 shaders
+	DWORD m_shaderWaterRichPixelShader[2];
+	DWORD m_shaderRiverRichPixelShader[2];
+	Bool m_shaderWaterRichActive;		///< flat water and rivers use the ps_3_0 shaders
 	TextureClass *m_waterMaskTexture;	///< flat standing water per map cell, coverage in alpha and level in red and green
 	UnsignedInt m_waterMaskSignature;	///< hash of the water polygons the mask was built from
 	const WorldHeightMap *m_waterMaskMap;
 	UnsignedByte *m_waterMaskCells;		///< the mask's coverage kept on the CPU, 1 per standing water point
+	UnsignedInt *m_waterCells;			///< the mask's water before growing, flat water as the texture stores it and 1 for other water
+	TextureClass *m_openWaterTexture;	///< each map cell's distance to dry ground, in cells
+	UnsignedInt m_openWaterSignature;	///< mask signature the distances were measured from
+	const WorldHeightMap *m_openWaterMap;
+	UnsignedInt m_openWaterHeightVersion;	///< height texture version the distances were measured on
+	UnsignedInt m_heightTextureVersion;	///< counts rebuilds of the height texture
+	Bool m_vertexTextureFetch;			///< vertex shaders can read A8R8G8B8 textures
 	Int m_waterMaskCellsWidth;
 	Int m_waterMaskCellsHeight;
 	Bool m_drawingRadial;				///< the standing water being drawn is the camera-centred grid
@@ -321,6 +332,8 @@ protected:
 	Int standingWaterDiffuse() const;
 	Bool buildRadialGrid();
 	void updateWaterMask();
+	TextureClass *updateOpenWater();
+	void setupOpenWater(Bool river);
 	void drawRadialWater(Real planeZ);
 	void createNormalTexture();
 	void createFoamTexture();

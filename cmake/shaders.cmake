@@ -263,10 +263,16 @@ rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderriver.p
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderriverpacked.pso        RIVER=1 PACKED=1)
 # Vertex waves read a texture in the vertex shader, which needs shader model 3 on both ends.
 rts_add_shader("${RTS_SHADER_DIR}/shaderwaterswell.hlsl" vs_3_0 main shaderwaterswell.vso)
-rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterswell.pso         RIVER=0 SWELL=1 PACKED=0)
-rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterswellpacked.pso   RIVER=0 SWELL=1 PACKED=1)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterswell.pso         RIVER=0 SWELL=1 RICH=1 PACKED=0)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterswellpacked.pso   RIVER=0 SWELL=1 RICH=1 PACKED=1)
 rts_add_shader("${RTS_SHADER_DIR}/shaderwaterswell.hlsl" vs_3_0 main shaderwaterradial.vso RADIAL=1)
-rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterradial.pso        RIVER=0 SWELL=1 RADIAL=1 PACKED=0)
-rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterradialpacked.pso  RIVER=0 SWELL=1 RADIAL=1 PACKED=1)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterradial.pso        RIVER=0 SWELL=1 RADIAL=1 RICH=1 PACKED=0)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterradialpacked.pso  RIVER=0 SWELL=1 RADIAL=1 RICH=1 PACKED=1)
+# Flat water and rivers in shader model 3, for the layered waves and sparkles.
+rts_add_shader("${RTS_SHADER_DIR}/shaderwaterswell.hlsl" vs_3_0 main shaderwaterflat.vso FLAT=1)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterrich.pso          RIVER=0 RICH=1 PACKED=0)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterrichpacked.pso    RIVER=0 RICH=1 PACKED=1)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderriverrich.pso          RIVER=1 RICH=1 PACKED=0)
+rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderriverrichpacked.pso    RIVER=1 RICH=1 PACKED=1)
 
 add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})

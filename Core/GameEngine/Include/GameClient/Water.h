@@ -103,6 +103,19 @@ class WaterTransparencySetting : public Overridable
 		Real m_shaderWaterFoamStrength;	///< scales the foam's brightness
 		Real m_shaderWaterClarity;		///< scales TransparentWaterDepth, higher sees deeper
 		Real m_shaderWaterOpacity;		///< opacity of deep water, 0 takes TransparentWaterMinOpacity
+		RGBColor m_shaderWaterDeepColor;	///< colour of deep water, negative takes the water texture's average
+		RGBColor m_shaderWaterShallowColor;	///< tints the seabed seen through the water
+		Real m_shaderWaterWaveShading;	///< how much the waves light and shade the water's own colour
+		Real m_shaderWaterSparkle;		///< brightness of the small sun sparkles, 0 turns them off
+		Real m_shaderWaterSparkleSize;	///< size of each sparkle
+		Real m_shaderWaterSparkleSpread;	///< how much of the surface sparkles
+		Real m_shaderWaterTexturePattern;	///< how much of the water texture's pattern shows over the water colour, 0 to 1
+		Bool m_shaderWaterAutoMeasure;	///< calms water by its distance from shore, as ponds and harbours are calmer than open sea
+		Real m_shaderWaterOpenReach;		///< world units from shore at which water counts as open
+		Real m_shaderWaterEnclosedWaves;	///< wave strength and sparkle spread kept in enclosed water, 0 to 1
+		Real m_shaderWaterEnclosedWaveScale;	///< broad wave layers kept in enclosed water, 0 to 1
+		Real m_shaderWaterEnclosedSwell;	///< swell height kept in enclosed water, 0 to 1
+		RGBColor m_shaderWaterEnclosedColor;	///< deep colour of enclosed water, negative keeps the open water's
 		Real m_shaderWaterSwellHeight;	///< height of the vertex waves, 0 turns them off
 		Real m_shaderWaterSwellScale;	///< world units one swell tile covers
 		Real m_shaderWaterSwellSpeed;	///< world units a second the swell drifts
@@ -150,6 +163,25 @@ class WaterTransparencySetting : public Overridable
 			m_shaderWaterFoamStrength = 0.5f;
 			m_shaderWaterClarity = 1.0f;
 			m_shaderWaterOpacity = 0.95f;
+			m_shaderWaterDeepColor.red = -1.0f;
+			m_shaderWaterDeepColor.green = -1.0f;
+			m_shaderWaterDeepColor.blue = -1.0f;
+			m_shaderWaterShallowColor.red = 1.0f;
+			m_shaderWaterShallowColor.green = 1.0f;
+			m_shaderWaterShallowColor.blue = 1.0f;
+			m_shaderWaterWaveShading = 1.0f;
+			m_shaderWaterSparkle = 2.0f;
+			m_shaderWaterSparkleSize = 1.0f;
+			m_shaderWaterSparkleSpread = 1.0f;
+			m_shaderWaterTexturePattern = 0.0f;
+			m_shaderWaterAutoMeasure = TRUE;
+			m_shaderWaterOpenReach = 400.0f;
+			m_shaderWaterEnclosedWaves = 0.4f;
+			m_shaderWaterEnclosedWaveScale = 0.5f;
+			m_shaderWaterEnclosedSwell = 0.2f;
+			m_shaderWaterEnclosedColor.red = -1.0f;
+			m_shaderWaterEnclosedColor.green = -1.0f;
+			m_shaderWaterEnclosedColor.blue = -1.0f;
 			m_shaderWaterSwellHeight = 3.0f;
 			m_shaderWaterSwellScale = 700.0f;
 			m_shaderWaterSwellSpeed = 30.0f;
