@@ -19,6 +19,7 @@
 #include "StdAfx.h"
 
 #include "DrawObject.h"
+#include "WBPerf.h"
 
 // This is used to allow sounds to be played via PlaySound
 #include <mmsystem.h>
@@ -3453,6 +3454,7 @@ bool _skip_drawobject_render = false;
 /** Render draws into the current 3d context. */
 void DrawObject::Render(RenderInfoClass & rinfo)
 {
+	WBPerfScope perfDraw("drawobj");
 //DEBUG!
 if (_skip_drawobject_render) {
 	return;
@@ -3695,6 +3697,7 @@ if (_skip_drawobject_render) {
 	}
 #if defined(BUILD_WITH_D3D9)
 	if (m_drawPolygonAreas) {
+		WBPerfScope perfTriggers("triggers");
 		renderPolygonTriggersBatched(rinfo);
 		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 	}
@@ -3817,6 +3820,7 @@ if (_skip_drawobject_render) {
 	DX8Wrapper::Set_Transform(D3DTS_WORLD,tmReset);
 
 	if (m_drawWaypoints) {
+		WBPerfScope perfWaypoints("waypoints");
 		updateWaypointVB(rinfo);
 		if (m_feedbackIndexCount>0) {
  			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);

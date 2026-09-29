@@ -146,6 +146,7 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 #else
 #include <d3dx8.h>
 #endif
+#include "WBPerf.h"
 
 
 // ----------------------------------------------------------------------------
@@ -745,6 +746,7 @@ WbView3d::WbView3d() :
 	}
 #endif
 	m_labelCull = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
+	WBPerf::setEnabled(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "PerfLog", 0) != 0);
 	m_snapCameraAngle45 = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", 0) != 0);
 
 	int msaaMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "MSAAMode", 0);
@@ -4964,6 +4966,7 @@ static void drawFrameRect2D(IDirect3DDevice8 *dev, const RECT &box, UnsignedInt 
 // ----------------------------------------------------------------------------
 void WbView3d::render()
 {
+	WBPerfScope perfRender("render");
 	++m_updateCount;
 
 	if (WW3D::Begin_Render(true,true,Vector3(0.5f,0.5f,0.5f), TheWaterTransparency->m_minWaterOpacity) == WW3D_ERROR_OK)
@@ -5201,6 +5204,7 @@ void WbView3d::render()
 		// vs ~11ms/frame of per-string ID3DXFont::DrawText with names on (measured;
 		// see wbbench). HUD text (cash/timer/tooltip) still draws via m3DFont so it
 		// can never go stale.
+		const double labelsStart = WBPerf::nowMs();
 		if (m_labelRenderer == 2 && m_fontAtlas.isValid()) {
 			IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
 			// Use the back-buffer dimensions (m_actualWinSize), not the client rect;
@@ -5224,6 +5228,9 @@ void WbView3d::render()
 #else
 			drawLabels(NULL);
 #endif
+		}
+		if (WBPerf::isEnabled()) {
+			WBPerf::addSection("labels", WBPerf::nowMs() - labelsStart);
 		}
 
 		// Drag-select box, in-frame so it shows in every label mode and on D3D9.
@@ -5267,6 +5274,7 @@ void WbView3d::render()
 		WW3D::End_Render();
 	}
 	--m_updateCount;
+	WBPerf::frameEnd();
 }
 
 // ----------------------------------------------------------------------------
