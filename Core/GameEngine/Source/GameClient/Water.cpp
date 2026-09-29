@@ -38,6 +38,15 @@ WaterSetting WaterSettings[ TIME_OF_DAY_COUNT ];
 OVERRIDE<WaterTransparencySetting> TheWaterTransparency = nullptr;
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
+
+// Keys whose tuning is fixed in the renderer still load, so older Water.ini and map.ini files keep working.
+static void parseRetiredKey( INI *ini, void * /*instance*/, void * /*store*/, const void * /*userData*/ )
+{
+	while( ini->getNextTokenOrNull() != nullptr )
+	{
+	}
+}
+
 const FieldParse WaterSetting::m_waterSettingFieldParseTable[] =
 {
 
@@ -81,34 +90,36 @@ const FieldParse WaterTransparencySetting::m_waterTransparencySettingFieldParseT
 	{ "ShaderWaterWaveScale",				INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterWaveScale ) },
 	{ "ShaderWaterWaveStrength",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterWaveStrength ) },
 	{ "ShaderWaterFoamDepth",				INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterFoamDepth ) },
-	{ "ShaderWaterFoamReach",				INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterFoamReach ) },
-	{ "ShaderWaterFoamScale",				INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterFoamScale ) },
+	{ "ShaderWaterFoamReach",				parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterFoamScale",				parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterFoamStrength",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterFoamStrength ) },
 	{ "ShaderWaterClarity",					INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterClarity ) },
 	{ "ShaderWaterOpacity",					INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterOpacity ) },
 	{ "ShaderWaterDeepColor",				INI::parseRGBColor,			nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterDeepColor ) },
-	{ "ShaderWaterShallowColor",		INI::parseRGBColor,			nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterShallowColor ) },
+	{ "ShaderWaterShallowColor",		parseRetiredKey,			nullptr,			0 },
 	{ "ShaderWaterWaveShading",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterWaveShading ) },
 	{ "ShaderWaterSparkle",					INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSparkle ) },
-	{ "ShaderWaterSparkleSize",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSparkleSize ) },
-	{ "ShaderWaterSparkleSpread",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSparkleSpread ) },
+	{ "ShaderWaterSparkleSize",			parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterSparkleSpread",		parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterTexturePattern",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterTexturePattern ) },
 	{ "ShaderWaterAutoMeasure",			INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterAutoMeasure ) },
 	{ "ShaderWaterOpenReach",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterOpenReach ) },
-	{ "ShaderWaterEnclosedWaves",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedWaves ) },
-	{ "ShaderWaterEnclosedWaveScale",	INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedWaveScale ) },
-	{ "ShaderWaterEnclosedSwell",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedSwell ) },
-	{ "ShaderWaterEnclosedColor",		INI::parseRGBColor,			nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedColor ) },
+	{ "ShaderWaterEnclosedCalm",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedCalm ) },
+	{ "ShaderWaterZoomCompensation",	INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterZoomCompensation ) },
+	{ "ShaderWaterEnclosedWaves",		parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterEnclosedWaveScale",	parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterEnclosedSwell",		parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterEnclosedColor",		parseRetiredKey,			nullptr,			0 },
 	{ "ShaderWaterSwellHeight",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSwellHeight ) },
 	{ "ShaderWaterSwellScale",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSwellScale ) },
 	{ "ShaderWaterSwellSpeed",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSwellSpeed ) },
 	{ "ShaderWaterPlanarDistortion",	INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterPlanarDistortion ) },
-	{ "ShaderWaterPlanarFade",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterPlanarFade ) },
+	{ "ShaderWaterPlanarFade",			parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterPlanarStrength",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterPlanarStrength ) },
 	{ "ShaderWaterStochasticSize",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterStochasticSize ) },
-	{ "ShaderWaterStochasticSharpness",	INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterStochasticSharpness ) },
-	{ "ShaderWaterStochasticRandom",	INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterStochasticRandom ) },
-	{ "ShaderWaterStochasticRotation",	INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterStochasticRotation ) },
+	{ "ShaderWaterStochasticSharpness",	parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterStochasticRandom",	parseRetiredKey,				nullptr,			0 },
+	{ "ShaderWaterStochasticRotation",	parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterStochasticSeabed",	INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterStochasticSeabed ) },
 	{ "IsWater",						INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_isWater ) },
 	{ "WaterAnimationFps",				INI::parseInt,				nullptr,			offsetof( WaterTransparencySetting, m_waterAnimationFps ) },

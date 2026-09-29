@@ -28,7 +28,7 @@
 // RICH marks the ps_3_0 builds. They colour the water by the water texture's average, or
 // ShaderWaterDeepColor, deepened by depth, with ShaderWaterTexturePattern bringing back the texture's
 // pattern. Four wave layers light that colour and add small sun sparkles beside the broad glint.
-// The vertex shader's openness calms the waves, swell and sparkles of enclosed water and can recolour it.
+// The vertex shader's openness calms the waves, swell and sparkles of enclosed water.
 
 #define DEPTH_TEST (!RIVER && (RICH || !PACKED))
 #define HEX_TURN (DEPTH_TEST && RICH)
@@ -91,11 +91,11 @@ float4 DepthMapping  : register(c25);  // xy = stored scene depth of a point at 
 #endif
 #if RICH
 float4 DeepColor     : register(c26);  // w = 1 where it replaces the water texture's average colour
-float4 ShallowTint   : register(c27);  // tints the seabed seen through the water, w = wave shading
+float4 WaveShading   : register(c27);  // x = how much the waves light the water colour
 float4 SparkleColor  : register(c28);  // sun colour times sparkle strength, w = specular power
-float4 RichParams    : register(c29);  // x = steepness of the fine waves the sparkles catch on, y = how much of the texture's pattern shows
-float4 Enclosed      : register(c30);  // kept in enclosed water: x = wave strength, y = broad waves, z = swell, w = 1 where EnclosedColor applies
-float4 EnclosedColor : register(c31);
+float4 RichParams    : register(c29);  // x = 1 / world units a pixel at which the waves keep their size, 0 keeps it always, y = how much of the texture's pattern shows
+float4 Enclosed      : register(c30);  // kept in enclosed water: x = wave strength, y = broad waves, z = swell
+float4 SparkleSun    : register(c31);  // a sun ahead of the camera at the map sun's height, w = how far below the view to set it instead, 0 keeps the map's
 #endif
 
 #include "shadowreceive.hlsli"
@@ -228,6 +228,19 @@ float2 HexSlopeTurned(HexCells cells, float2 uv, float2 drift, float2 dx, float2
     sum += cells.weight.z * Unturn(tex2Dgrad(NormalMap, Turn(uv, cells.turn2) + cells.offset2, dx, dy).rg - mean.rg, cells.turn2);
     return 2.0f * sum * cells.norm;
 }
+
+// The four wave layers at one size, about their mean: broad swells to fine chop, each drifting its own way.
+// The fine two skip the hex cells, since they repeat too small and move too fast to show a pattern.
+float2 RichWaves(HexCells cells, float2 uv, float2 dx, float2 dy, float time, float4 mean, float broadGain)
+{
+    float2 meanSlope = mean.rg * 2.0f - 1.0f;
+    float2 slope = 0.45f * HexSlopeTurned(cells, uv * 0.37f, time * float2(0.009f, -0.013f), dx * 0.37f, dy * 0.37f, mean);
+    slope += 0.35f * HexSlopeTurned(cells, uv, time * float2(0.031f, 0.017f), dx, dy, mean);
+    slope *= broadGain;
+    slope += 0.35f * (tex2Dgrad(NormalMap, uv * 2.7f + time * float2(-0.023f, 0.037f), dx * 2.7f, dy * 2.7f).rg * 2.0f - 1.0f - meanSlope);
+    slope += 0.25f * (tex2Dgrad(NormalMap, uv * 6.1f + time * float2(0.047f, 0.029f), dx * 6.1f, dy * 6.1f).rg * 2.0f - 1.0f - meanSlope);
+    return slope;
+}
 #endif
 
 // A world-space tilt as a screen offset, with the view's right along u and ahead up the screen.
@@ -295,18 +308,20 @@ float4 main(PsIn input) : COLOR
     float2 waveDy = ddy(waveUV);
     float4 waveMean = TextureMean(NormalMap);
 #if RICH
-    // Broad swells to fine chop, each layer drifting its own way. The fine two skip the hex cells as the old fine layer does.
-    float2 meanSlope = waveMean.rg * 2.0f - 1.0f;
-    float2 fine = WaveSlope(waveUV * 2.7f + time * float2(-0.023f, 0.037f)) - meanSlope;
-    float2 finest = WaveSlope(waveUV * 6.1f + time * float2(0.047f, 0.029f)) - meanSlope;
+    // Zoomed out, the waves double in size each time a pixel covers twice the ground, fading between sizes,
+    // so their detail never shrinks below a pixel and filters away.
     float open = input.Openness;
     float waveGain = lerp(Enclosed.x, 1.0f, open);
-    float2 slope = 0.45f * HexSlopeTurned(cells, waveUV * 0.37f, time * float2(0.009f, -0.013f), waveDx * 0.37f, waveDy * 0.37f, waveMean);
-    slope += 0.35f * HexSlopeTurned(cells, waveUV, time * float2(0.031f, 0.017f), waveDx, waveDy, waveMean);
-    slope *= lerp(Enclosed.y, 1.0f, open);
-    slope += 0.35f * fine + 0.25f * finest;
+    float broadGain = lerp(Enclosed.y, 1.0f, open);
+    float2 groundDx = ddx(world.xy);
+    float2 groundDy = ddy(world.xy);
+    float waveOctave = max(0.5f * log2(max(dot(groundDx, groundDx), dot(groundDy, groundDy)) * RichParams.x * RichParams.x), 0.0f);
+    float waveZoom = exp2(-floor(waveOctave));
+    float2 slope = lerp(RichWaves(cells, waveUV * waveZoom, waveDx * waveZoom, waveDy * waveZoom, time, waveMean, broadGain),
+        RichWaves(cells, waveUV * (0.5f * waveZoom), waveDx * (0.5f * waveZoom), waveDy * (0.5f * waveZoom), time, waveMean, broadGain),
+        frac(waveOctave));
 #if RIVER
-    slope = 0.8f * slope + 0.4f * (WaveSlope(input.BaseUV * float2(1.0f, 2.0f)) - meanSlope);
+    slope = 0.8f * slope + 0.4f * (WaveSlope(input.BaseUV * float2(1.0f, 2.0f)) - (waveMean.rg * 2.0f - 1.0f));
 #endif
     slope *= waveGain;
     float2 ripple = slope;
@@ -378,9 +393,8 @@ float4 main(PsIn input) : COLOR
 #endif
     // The pattern rides on the water colour as its ratio to the texture's average, so the average alone gives the plain colour.
     float3 pattern = lerp(1.0f, water.rgb / max(waterMean.rgb, 0.01f), RichParams.y);
-    float3 waterColor = lerp(waterMean.rgb, DeepColor.rgb, DeepColor.w);
-    waterColor = lerp(waterColor, EnclosedColor.rgb, Enclosed.w * (1.0f - open)) * pattern;
-    float3 body = waterColor * input.Diffuse.rgb * shade * lerp(1.0f, waveLight, ShallowTint.w);
+    float3 waterColor = lerp(waterMean.rgb, DeepColor.rgb, DeepColor.w) * pattern;
+    float3 body = waterColor * input.Diffuse.rgb * shade * lerp(1.0f, waveLight, WaveShading.x);
 #else
     float3 body = water.rgb * input.Diffuse.rgb * shade;
 #endif
@@ -405,13 +419,12 @@ float4 main(PsIn input) : COLOR
     float highlight = dot(normal, halfway);
     float glint = (pow(saturate(highlight), ToSun.w) + 0.08f * pow(saturate(highlight), ToSun.w * 0.06f)) * lit;
 #if RICH
-    // The fine chop alone, steepened, catches the sun in small points that twinkle as its layers cross.
-#if SWELL
-    float3 sparkleNormal = normalize(float3((fine + finest) * (RichParams.x * waveGain) + swellSlope, 1.0f));
-#else
-    float3 sparkleNormal = normalize(float3((fine + finest) * (RichParams.x * waveGain), 1.0f));
-#endif
-    float3 sparkle = SparkleColor.rgb * pow(saturate(dot(sparkleNormal, halfway)), SparkleColor.w) * lit;
+    // A narrow second highlight catches the ripples in small specks, off a sun ahead of the camera so they show from every view.
+    // Set just below the view's own height, the sun's mirror falls on ripples tilted slightly towards the camera at any pitch.
+    float2 across = -toEye.xy / max(length(toEye.xy), 0.0001f);
+    float sunHeight = asin(saturate(toEye.z)) - SparkleSun.w;
+    float3 sparkleSun = (SparkleSun.w > 0.0f) ? float3(across * cos(sunHeight), sin(sunHeight)) : SparkleSun.xyz;
+    float3 sparkle = SparkleColor.rgb * pow(saturate(dot(normal, normalize(sparkleSun + toEye))), SparkleColor.w) * lit;
 #endif
 
     // Land within reach counts as shallow, so walls and jetties rising out of deep water gather foam too.
@@ -462,11 +475,7 @@ float4 main(PsIn input) : COLOR
 
     // The scene copy is already shrouded, so the shroud only darkens the water's own light.
     float3 shroud = tex2D(ShroudTexture, world.xy * ShroudMapping.xy + ShroudMapping.zw).rgb;
-#if RICH
-    float3 under = scene * (1.0f - opacity) * lerp(1.0f, ShallowTint.rgb, edge) + body * opacity * shroud;
-#else
     float3 under = scene * (1.0f - opacity) + body * opacity * shroud;
-#endif
     float3 color = lerp(under, sky * shroud, reflection);
     color += (SunColor.rgb * glint + input.Diffuse.rgb * shade * foam) * shroud;
 #if RICH

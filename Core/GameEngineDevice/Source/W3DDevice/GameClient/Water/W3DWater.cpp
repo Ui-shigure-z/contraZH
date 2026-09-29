@@ -183,6 +183,7 @@ static ShaderClass shaderWaterShader(SC_SHADER_WATER);
 #define SKYBOX_FACE_COUNT 5
 #define SWELL_CELL_SIZE (4*MAP_XY_FACTOR)	// two opposite sides summed, so the grid spacing is half this
 #define NORMAL_WAVE_COUNT 96
+#define NORMAL_RIPPLE_COUNT 200
 #define FOAM_TEXTURE_SIZE 256
 #define FOAM_CELLS 12
 #define FOAM_CLUMPS 4
@@ -190,6 +191,16 @@ static ShaderClass shaderWaterShader(SC_SHADER_WATER);
 #define WATER_MASK_SAMPLER 14
 #define WATER_SWELL_SAMPLER 15
 #define OPEN_WATER_CHAMFER 3		// distance field step along a row, with 4 on the diagonal
+
+// Water tunings with no Water.ini key.
+#define WATER_HEX_SHARPNESS 3.0f		// weight exponent of the hex cell blend
+#define WATER_HEX_TURN 85.0f			// half the widest turn of a hex cell, in degrees
+#define WATER_FOAM_REACH 15.0f			// world units from land within which water foams as at the shore
+#define WATER_FOAM_SCALE 150.0f			// world units one foam pattern covers up close
+#define WATER_PLANAR_FADE 4.0f			// height difference over which other water fades from the mirror to the skybox
+#define WATER_SPARKLE_POWER 600.0f		// specular power of the sparkles
+#define WATER_ZOOM_REFERENCE 0.3f		// world units a pixel covers at the zoom where the waves keep their ShaderWaterWaveScale size
+#define WATER_SPARKLE_DIP 12.0f			// degrees below the view's height the zoom compensated sparkle sun sits
 #define CLIPMAP_CELLS 64			// cells along each side of one level, a multiple of 4
 #define CLIPMAP_FINEST_CELL 8.0f	// world units per cell of the finest level
 #define CLIPMAP_REACH 8000.0f		// world units the coarsest level reaches from the camera
@@ -643,6 +654,36 @@ Bool WaterRenderObjClass::pickReflectionPlane(CameraClass *camera, Real &planeZ)
 	return found;
 }
 
+// Integer wave vectors keep a sum of waves tiling. Frequencies bunch towards the low end, headings spread
+// about the wind both ways, and amplitude falls as frequency to the given power.
+static void Make_Tiling_Waves(UnsignedInt seed, Int count, Real lowest, Real highest, Real spread, Real falloff,
+	Real *waveX, Real *waveY, Real *amplitude, Real *phase)
+{
+	for (Int w=0; w<count; w++)
+	{
+		Int kx;
+		Int ky;
+		do
+		{
+			seed = seed * 1664525 + 1013904223;
+			const Real frequency = lowest + (highest - lowest) * powf((Real)(seed >> 8) / 16777216.0f, 2.0f);
+			seed = seed * 1664525 + 1013904223;
+			const Real turn = ((Real)(seed >> 8) / 16777216.0f - 0.5f) * spread;
+			seed = seed * 1664525 + 1013904223;
+			const Real heading = 0.6f + turn + (((seed >> 8) & 1) ? PI : 0.0f);
+			kx = REAL_TO_INT(frequency * cosf(heading));
+			ky = REAL_TO_INT(frequency * sinf(heading));
+		}
+		while (kx == 0 && ky == 0);
+
+		seed = seed * 1664525 + 1013904223;
+		waveX[w] = (Real)kx;
+		waveY[w] = (Real)ky;
+		amplitude[w] = powf((Real)(kx*kx + ky*ky), -0.5f * falloff);
+		phase[w] = (Real)(seed >> 8) * (2.0f * PI / 16777216.0f);
+	}
+}
+
 void WaterRenderObjClass::createNormalTexture()
 {
 #if defined(BUILD_WITH_D3D9)
@@ -654,65 +695,77 @@ void WaterRenderObjClass::createNormalTexture()
 		return;
 	}
 
-	// Integer wave vectors spread around the wind keep the sum tiling, and height falls with frequency squared.
+	// Smooth waves give the height the vertex waves read, and height falls with frequency squared.
+	// Sharp-crested ripples in every direction give the slopes, so the sun catches them in small specks.
 	Real waveX[NORMAL_WAVE_COUNT];
 	Real waveY[NORMAL_WAVE_COUNT];
 	Real waveAmplitude[NORMAL_WAVE_COUNT];
 	Real wavePhase[NORMAL_WAVE_COUNT];
-	UnsignedInt seed = 0x2545F491;
-	for (Int w=0; w<NORMAL_WAVE_COUNT; w++)
-	{
-		Int kx;
-		Int ky;
-		Real frequency;
-		do
-		{
-			seed = seed * 1664525 + 1013904223;
-			frequency = 2.0f + 22.0f * powf((Real)(seed >> 8) / 16777216.0f, 2.0f);
-			seed = seed * 1664525 + 1013904223;
-			const Real spread = ((Real)(seed >> 8) / 16777216.0f - 0.5f) * 1.8f;
-			seed = seed * 1664525 + 1013904223;
-			const Real heading = 0.6f + spread + (((seed >> 8) & 1) ? PI : 0.0f);
-			kx = REAL_TO_INT(frequency * cosf(heading));
-			ky = REAL_TO_INT(frequency * sinf(heading));
-		}
-		while (kx == 0 && ky == 0);
+	Make_Tiling_Waves(0x2545F491, NORMAL_WAVE_COUNT, 2.0f, 24.0f, 1.8f, 2.0f, waveX, waveY, waveAmplitude, wavePhase);
+	Real rippleX[NORMAL_RIPPLE_COUNT];
+	Real rippleY[NORMAL_RIPPLE_COUNT];
+	Real rippleAmplitude[NORMAL_RIPPLE_COUNT];
+	Real ripplePhase[NORMAL_RIPPLE_COUNT];
+	Make_Tiling_Waves(0x9E3779B9, NORMAL_RIPPLE_COUNT, 3.0f, 36.0f, 3.0f, 1.2f, rippleX, rippleY, rippleAmplitude, ripplePhase);
 
-		seed = seed * 1664525 + 1013904223;
-		waveX[w] = (Real)kx;
-		waveY[w] = (Real)ky;
-		waveAmplitude[w] = 1.0f / (Real)(kx*kx + ky*ky);
-		wavePhase[w] = (Real)(seed >> 8) * (2.0f * PI / 16777216.0f);
-	}
-
-	// Negated slopes of the summed height field give the normal's x and y, and the height feeds the vertex waves.
+	// Each wave's sine splits into a row and a column factor, so no pixel calls a trigonometric function.
 	const Int size = NORMAL_TEXTURE_SIZE;
 	Real *texels = NEW Real[size * size * 3];
+	Real *sinU = NEW Real[size];
+	Real *cosU = NEW Real[size];
+	Real *sinV = NEW Real[size];
+	Real *cosV = NEW Real[size];
+	for (Int i=0; i<size * size * 3; i++)
+	{
+		texels[i] = 0.0f;
+	}
+	for (Int w=0; w<NORMAL_WAVE_COUNT + NORMAL_RIPPLE_COUNT; w++)
+	{
+		const Bool ripple = w >= NORMAL_WAVE_COUNT;
+		const Int index = ripple ? w - NORMAL_WAVE_COUNT : w;
+		const Real kx = ripple ? rippleX[index] : waveX[index];
+		const Real ky = ripple ? rippleY[index] : waveY[index];
+		const Real amplitude = ripple ? rippleAmplitude[index] : waveAmplitude[index];
+		const Real phase = ripple ? ripplePhase[index] : wavePhase[index];
+		for (Int i=0; i<size; i++)
+		{
+			const Real along = 2.0f * PI * (Real)i / (Real)size;
+			sinU[i] = sinf(kx * along);
+			cosU[i] = cosf(kx * along);
+			sinV[i] = sinf(ky * along + phase);
+			cosV[i] = cosf(ky * along + phase);
+		}
+		for (Int y=0; y<size; y++)
+		{
+			for (Int x=0; x<size; x++)
+			{
+				Real *texel = texels + (y * size + x) * 3;
+				const Real sine = sinU[x] * cosV[y] + cosU[x] * sinV[y];
+				if (!ripple)
+				{
+					texel[2] += amplitude * sine;
+					continue;
+				}
+				// A ripple's profile is ((1 + sin) / 2) ^ 3, whose slope is 1.5 ((1 + sin) / 2) ^ 2 cos.
+				const Real cosine = cosU[x] * cosV[y] - sinU[x] * sinV[y];
+				const Real base = 0.5f + 0.5f * sine;
+				const Real slope = amplitude * 1.5f * base * base * cosine;
+				texel[0] -= slope * kx;
+				texel[1] -= slope * ky;
+			}
+		}
+	}
+	delete [] sinU;
+	delete [] cosU;
+	delete [] sinV;
+	delete [] cosV;
+
 	Real slopeSquares = 0.0f;
 	Real heightSquares = 0.0f;
-	for (Int y=0; y<size; y++)
+	for (Int i=0; i<size * size; i++)
 	{
-		for (Int x=0; x<size; x++)
-		{
-			const Real u = (Real)x / (Real)size;
-			const Real v = (Real)y / (Real)size;
-			Real dx = 0.0f;
-			Real dy = 0.0f;
-			Real h = 0.0f;
-			for (Int w=0; w<NORMAL_WAVE_COUNT; w++)
-			{
-				const Real angle = 2.0f * PI * (waveX[w] * u + waveY[w] * v) + wavePhase[w];
-				const Real c = waveAmplitude[w] * cosf(angle);
-				dx += c * waveX[w];
-				dy += c * waveY[w];
-				h += waveAmplitude[w] * sinf(angle);
-			}
-			texels[(y * size + x) * 3] = -dx;
-			texels[(y * size + x) * 3 + 1] = -dy;
-			texels[(y * size + x) * 3 + 2] = h;
-			slopeSquares += dx * dx + dy * dy;
-			heightSquares += h * h;
-		}
+		slopeSquares += texels[i * 3] * texels[i * 3] + texels[i * 3 + 1] * texels[i * 3 + 1];
+		heightSquares += texels[i * 3 + 2] * texels[i * 3 + 2];
 	}
 
 	// Two and a half deviations fill the texel range.
@@ -999,12 +1052,7 @@ TextureClass *WaterRenderObjClass::getTerrainHeightTexture(Vector4 &mapping, Vec
 static Vector4 Get_Hex_Params()
 {
 	const Real size = TheWaterTransparency->m_shaderWaterStochasticSize;
-
-	// Below 1 the exponent eases towards 0.7, where a cell leaving the blend still fades out unseen. Past 64 a centroid's weights underflow to 0 / 0.
-	const Real sharpness = WWMath::Clamp(TheWaterTransparency->m_shaderWaterStochasticSharpness, -15.0f, 64.0f);
-	const Real turn = WWMath::Clamp(TheWaterTransparency->m_shaderWaterStochasticRotation, 0.0f, 1.0f) * DEG_TO_RADF(85.0f);
-	return Vector4((size > 0.0f) ? 1.0f / size : 0.0f, (sharpness >= 1.0f) ? sharpness : 0.7f + 0.3f * powf(2.0f, sharpness - 1.0f),
-		(size > 0.0f) ? WWMath::Clamp(TheWaterTransparency->m_shaderWaterStochasticRandom, 0.0f, 1.0f) : 0.0f, 2.0f * tanf(turn));
+	return Vector4((size > 0.0f) ? 1.0f / size : 0.0f, WATER_HEX_SHARPNESS, (size > 0.0f) ? 1.0f : 0.0f, 2.0f * tanf(DEG_TO_RADF(WATER_HEX_TURN)));
 }
 
 TextureClass *WaterRenderObjClass::getSeabedMask(Vector4 &mapping, Vector4 &hex)
@@ -1082,7 +1130,7 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 	}
 	// The receiver leaves z unused, so the foam's world to texcoord scale rides there.
 	Vector4 shadowParams = shadowed ? TheW3DShadowMap->getReceiverParams() : Vector4(1.0f, 0.0f, 0.0f, 1.0f);
-	shadowParams.Z = 1.0f / max(TheWaterTransparency->m_shaderWaterFoamScale, 1.0f);
+	shadowParams.Z = 1.0f / WATER_FOAM_SCALE;
 	const Vector4 shadowColor = shadowed ? TheW3DShadowMap->getReceiverColor() : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// A <water texture>_nrm.dds replaces the generated waves.
@@ -1199,11 +1247,17 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 	toSun.Normalize();
 
 	// The virtual sun keeps the real one's height but sits ahead of the camera, where clip-space w grows.
+	// The sparkles always glint off it, and the broad glint does with ShaderWaterVirtualSun.
+	Vector3 aheadSun = toSun;
 	const Real forwardLength = sqrtf(clip.m[0][3] * clip.m[0][3] + clip.m[1][3] * clip.m[1][3]);
-	if (TheWaterTransparency->m_shaderWaterVirtualSun && forwardLength > 0.001f)
+	if (forwardLength > 0.001f)
 	{
 		const Real sunCos = sqrtf(max(1.0f - toSun.Z * toSun.Z, 0.0f));
-		toSun.Set(clip.m[0][3] / forwardLength * sunCos, clip.m[1][3] / forwardLength * sunCos, toSun.Z);
+		aheadSun.Set(clip.m[0][3] / forwardLength * sunCos, clip.m[1][3] / forwardLength * sunCos, toSun.Z);
+	}
+	if (TheWaterTransparency->m_shaderWaterVirtualSun)
+	{
+		toSun = aheadSun;
 	}
 	const Vector4 sunDirection(toSun.X, toSun.Y, toSun.Z, 256.0f / max(TheWaterTransparency->m_shaderWaterSpecularSpread, 0.1f));
 	// The map's whole light colours the glint, sparkles and skybox, since some maps light mostly by ambient and tint a dim sun.
@@ -1211,7 +1265,7 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 	const RGBColor &ambient = TheGlobalData->m_terrainAmbient[0];
 	const Vector3 sceneLight(WWMath::Clamp(ambient.red + sunDiffuse.red), WWMath::Clamp(ambient.green + sunDiffuse.green), WWMath::Clamp(ambient.blue + sunDiffuse.blue));
 	const Real specular = TheWaterTransparency->m_shaderWaterSpecular;
-	const Vector4 sunColor(sceneLight.X * specular, sceneLight.Y * specular, sceneLight.Z * specular, max(TheWaterTransparency->m_shaderWaterFoamReach, 0.0f));
+	const Vector4 sunColor(sceneLight.X * specular, sceneLight.Y * specular, sceneLight.Z * specular, WATER_FOAM_REACH);
 	const Vector4 skyTint(sceneLight.X, sceneLight.Y, sceneLight.Z, TheWaterTransparency->m_shaderWaterReflection);
 
 	Vector4 heightMapping(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1279,7 +1333,7 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 		// The mirror is a scaled-down copy of the scene, so only the texel centre moves.
 		D3DSURFACE_DESC reflectionDesc;
 		m_reflectionTexture->GetLevelDesc(0, &reflectionDesc);
-		planar.Set(m_reflectionPlaneZ, 1.0f / max(TheWaterTransparency->m_shaderWaterPlanarFade, 0.01f), TheWaterTransparency->m_shaderWaterPlanarDistortion, foamStrength);
+		planar.Set(m_reflectionPlaneZ, 1.0f / WATER_PLANAR_FADE, TheWaterTransparency->m_shaderWaterPlanarDistortion, foamStrength);
 		planarMapping.Set(0.5f / reflectionDesc.Width - 0.5f / copyDesc.Width, 0.5f / reflectionDesc.Height - 0.5f / copyDesc.Height,
 			TheWaterTransparency->m_shaderWaterSwellHeight + 1.0f, TheWaterTransparency->m_shaderWaterPlanarStrength);
 	}
@@ -1300,25 +1354,23 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 
 	// The ps_3_0 water's colour, texture pattern, wave shading and sparkles. A negative deep colour keeps the water texture's average.
 	const RGBColor &deepColor = TheWaterTransparency->m_shaderWaterDeepColor;
-	const RGBColor &shallowColor = TheWaterTransparency->m_shaderWaterShallowColor;
 	const Real sparkle = max(TheWaterTransparency->m_shaderWaterSparkle, 0.0f);
 	const Vector4 richDeep(max(deepColor.red, 0.0f), max(deepColor.green, 0.0f), max(deepColor.blue, 0.0f), (deepColor.red >= 0.0f) ? 1.0f : 0.0f);
-	const Vector4 richShallow(shallowColor.red, shallowColor.green, shallowColor.blue, max(TheWaterTransparency->m_shaderWaterWaveShading, 0.0f));
-	const Vector4 sparkleColor(sceneLight.X * sparkle, sceneLight.Y * sparkle, sceneLight.Z * sparkle,
-		2000.0f / max(TheWaterTransparency->m_shaderWaterSparkleSize, 0.1f));
-	const Vector4 richParams(max(TheWaterTransparency->m_shaderWaterSparkleSpread, 0.0f), WWMath::Clamp(TheWaterTransparency->m_shaderWaterTexturePattern), 0.0f, 0.0f);
+	const Vector4 waveShading(max(TheWaterTransparency->m_shaderWaterWaveShading, 0.0f), 0.0f, 0.0f, 0.0f);
+	const Vector4 sparkleColor(sceneLight.X * sparkle, sceneLight.Y * sparkle, sceneLight.Z * sparkle, WATER_SPARKLE_POWER);
+	const Bool zoomCompensation = TheWaterTransparency->m_shaderWaterZoomCompensation;
+	const Vector4 richParams(zoomCompensation ? 1.0f / WATER_ZOOM_REFERENCE : 0.0f, WWMath::Clamp(TheWaterTransparency->m_shaderWaterTexturePattern), 0.0f, 0.0f);
+	const Vector4 sparkleSun(aheadSun.X, aheadSun.Y, aheadSun.Z, zoomCompensation ? DEG_TO_RADF(WATER_SPARKLE_DIP) : 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(26, &richDeep, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(27, &richShallow, 1);
+	DX8Wrapper::Set_Pixel_Shader_Constant(27, &waveShading, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(28, &sparkleColor, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(29, &richParams, 1);
+	DX8Wrapper::Set_Pixel_Shader_Constant(31, &sparkleSun, 1);
 
-	// What enclosed water keeps of the open water's look. Openness is 1 everywhere with the measure off.
-	const RGBColor &enclosedColor = TheWaterTransparency->m_shaderWaterEnclosedColor;
-	const Vector4 enclosed(WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedWaves), WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedWaveScale),
-		WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedSwell), (enclosedColor.red >= 0.0f) ? 1.0f : 0.0f);
-	const Vector4 enclosedColour(max(enclosedColor.red, 0.0f), max(enclosedColor.green, 0.0f), max(enclosedColor.blue, 0.0f), 0.0f);
+	// What enclosed water keeps of the open water's waves, broad layers and swell. Openness is 1 everywhere with the measure off.
+	const Real calm = WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedCalm);
+	const Vector4 enclosed(1.0f - 0.6f * calm, 1.0f - 0.5f * calm, 1.0f - 0.8f * calm, 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(30, &enclosed, 1);
-	DX8Wrapper::Set_Pixel_Shader_Constant(31, &enclosedColour, 1);
 
 	// Standing water reads the scene's depth on stage 1 where the edge texture would be, and the white texture passes every test.
 	if (!river)
@@ -1940,7 +1992,7 @@ void WaterRenderObjClass::setupOpenWater(Bool river)
 
 	const Real reach = max(TheWaterTransparency->m_shaderWaterOpenReach, 1.0f);
 	const Vector4 openParams(255.0f * MAP_XY_FACTOR / reach, (openTexture != nullptr) ? 1.0f : 0.0f, (measure && river) ? 0.0f : 1.0f,
-		WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedSwell));
+		1.0f - 0.8f * WWMath::Clamp(TheWaterTransparency->m_shaderWaterEnclosedCalm));
 	DX8Wrapper::Set_Vertex_Shader_Constant(15, &openParams, 1);
 #else
 	(void)river;
