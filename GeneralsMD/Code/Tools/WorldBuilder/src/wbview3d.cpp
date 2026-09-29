@@ -5351,7 +5351,7 @@ void WbView3d::OnDraw(CDC* pDC)
 // ----------------------------------------------------------------------------
 // WbView3d diagnostics
 
-#ifdef _DEBUG
+#ifdef RTS_DEBUG
 // ----------------------------------------------------------------------------
 void WbView3d::AssertValid() const
 {
@@ -5363,7 +5363,7 @@ void WbView3d::Dump(CDumpContext& dc) const
 {
 	WbView::Dump(dc);
 }
-#endif //_DEBUG
+#endif //RTS_DEBUG
 
 // ----------------------------------------------------------------------------
 void WbView3d::initWW3D()
