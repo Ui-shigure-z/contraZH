@@ -286,6 +286,8 @@ protected:
 	Bool m_shaderWaterSwellActive;		///< the standing water being drawn has vertex waves
 	TextureClass *m_swellTexture;		///< <water texture>_hgt.dds, or null
 	TextureClass *m_swellSource;		///< water texture m_swellTexture was looked up for
+	TextureClass *m_foamFile;			///< <water texture>_foam.dds or WaterFoam.dds, or null
+	TextureClass *m_foamSource;			///< water texture m_foamFile was looked up for
 	IDirect3DTexture8 *m_reflectionTexture;	///< the scene mirrored in the water plane, alpha 1 where anything drew
 	IDirect3DSurface8 *m_reflectionDepth;
 	CameraClass *m_reflectionCamera;
@@ -342,6 +344,7 @@ protected:
 	void setupShaderWater(Bool river);
 	void setupSwell(const D3DMATRIX &clip);
 	TextureClass *findSwellTexture();
+	TextureClass *findFoamTexture();
 	TextureClass *peekSkyboxFace(Int face);
 	void cleanupShaderWater();
 

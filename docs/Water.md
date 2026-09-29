@@ -248,7 +248,7 @@ types and the animated water grid, which shader water does not use.
 
 # Textures
 
-Both sit beside the water texture in `Art\Textures` itself, not in a subfolder.
+All sit in `Art\Textures` itself, not in a subfolder.
 
 * `TWWater01_nrm.dds` for `TWWater01.tga` - (Normal map that replaces the built-in waves, named like
 unit normal maps. It tiles every `ShaderWaterWaveScale` units, in the DirectX convention. DXT
@@ -257,7 +257,12 @@ compressed with mipmaps; the game reads no other DDS layout.)
 The height is read from alpha in a DXT5 file whose alpha varies, and from green otherwise. Without
 it the swell uses the built-in waves.)
 
-`scripts/water_maps.py` builds both textures from any image (needs Python with numpy and Pillow).
+* `WaterFoam.dds` - (Foam for every water texture, replacing the built-in cell web. Greyscale, read
+from red, bright where foam is dense; a tiling DXT with mipmaps. One pattern covers 150 world units up
+close. `TWWater01_foam.dds` beside a water texture overrides it for that texture alone.)
+
+`scripts/water_maps.py` builds the normal and swell textures from any image (needs Python with numpy
+and Pillow).
 
 # Notes
 

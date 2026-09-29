@@ -1144,7 +1144,7 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 		m_heightTexture,
 		nullptr,
 		nullptr,
-		(m_foamTexture != nullptr) ? m_foamTexture : m_waterSparklesTexture
+		findFoamTexture()
 	};
 	const Bool repeat[6] = { TRUE, FALSE, FALSE, FALSE, FALSE, TRUE };
 	const Bool mipmapped[6] = { TRUE, FALSE, FALSE, FALSE, FALSE, TRUE };
@@ -1577,6 +1577,43 @@ TextureClass *WaterRenderObjClass::findSwellTexture()
 #else
 	return m_normalTexture;
 #endif
+}
+
+// Looks for <water texture>_foam.dds, then WaterFoam.dds for every water texture, once per water texture.
+TextureClass *WaterRenderObjClass::findFoamTexture()
+{
+#if defined(BUILD_WITH_D3D9)
+	if (m_foamSource != m_riverTexture)
+	{
+		REF_PTR_RELEASE(m_foamFile);
+		m_foamSource = m_riverTexture;
+
+		StringClass own(m_riverTexture->Get_Texture_Name());
+		const char *dot = strrchr(own.Peek_Buffer(), '.');
+		if (dot != nullptr)
+		{
+			const Int start = (Int)(dot - own.Peek_Buffer());
+			own.Erase(start, own.Get_Length() - start);
+		}
+		own += "_foam.dds";
+
+		// A missing file would load as the missing-texture placeholder, so each is checked first.
+		const char *names[2] = { own.Peek_Buffer(), "WaterFoam.dds" };
+		for (Int i=0; i<2 && m_foamFile == nullptr; i++)
+		{
+			file_auto_ptr file(_TheFileFactory, names[i]);
+			if (file->Is_Available())
+			{
+				m_foamFile = WW3DAssetManager::Get_Instance()->Get_Texture(names[i]);
+			}
+		}
+	}
+	if (m_foamFile != nullptr)
+	{
+		return m_foamFile;
+	}
+#endif
+	return (m_foamTexture != nullptr) ? m_foamTexture : m_waterSparklesTexture;
 }
 
 void WaterRenderObjClass::cleanupShaderWater()
@@ -2430,6 +2467,8 @@ WaterRenderObjClass::WaterRenderObjClass()
 	m_shaderWaterSwellActive=FALSE;
 	m_swellTexture=nullptr;
 	m_swellSource=nullptr;
+	m_foamFile=nullptr;
+	m_foamSource=nullptr;
 	m_iniTimestamp=0;
 	m_iniCheckTime=0;
 	m_animationPendingStep=0.0f;
@@ -2963,6 +3002,8 @@ void WaterRenderObjClass::ReleaseResources()
 	m_openWaterMap=nullptr;
 	REF_PTR_RELEASE(m_swellTexture);
 	m_swellSource=nullptr;
+	REF_PTR_RELEASE(m_foamFile);
+	m_foamSource=nullptr;
 	SAFE_RELEASE(m_refractionTexture);
 	SAFE_RELEASE(m_reflectionTexture);
 	SAFE_RELEASE(m_reflectionDepth);
@@ -3323,9 +3364,11 @@ void WaterRenderObjClass::updateMapOverrides()
 		REF_PTR_RELEASE(m_riverTexture);
 		m_riverTexture = WW3DAssetManager::Get_Instance()->Get_Texture(TheWaterTransparency->m_standingWaterTexture.str());
 
-		// The new texture may reuse the old one's address, which findSwellTexture keys on.
+		// The new texture may reuse the old one's address, which findSwellTexture and findFoamTexture key on.
 		REF_PTR_RELEASE(m_swellTexture);
 		m_swellSource = nullptr;
+		REF_PTR_RELEASE(m_foamFile);
+		m_foamSource = nullptr;
 	}
 }
 
