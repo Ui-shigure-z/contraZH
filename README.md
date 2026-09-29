@@ -53,14 +53,12 @@ before editing one.
 Quick version (inside an x86 MSVC environment, `vcvarsall.bat x86`):
 
 ```
-cmake --preset win32-internal ^
-  -DRTS_ENABLE_WORLDBUILDER_QT=ON ^
-  -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
+cmake --preset win32-qt -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
 
-cmake --build --preset win32-internal --target z_worldbuilder
+cmake --build --preset win32-qt --target z_worldbuilder
 ```
 
-Output: `build/win32-internal/GeneralsMD/Release/WorldBuilderZH.exe`
+Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
 
 ## About this repository
 

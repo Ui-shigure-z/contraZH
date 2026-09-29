@@ -22,19 +22,17 @@ the Qt version you must install a 32-bit Qt5 and turn the option on.
 
 ## Configure + build (Ninja, recommended)
 
-The project ships `CMakePresets.json`. Use the **`win32`** preset (or `win32-internal` for the
-internal/debug-menu build) and add the two Qt flags. Run inside an **x86** MSVC environment
-(`vcvarsall.bat x86`):
+The project ships `CMakePresets.json`. Use the **`win32-qt`** preset (the `win32` preset with
+`RTS_ENABLE_WORLDBUILDER_QT=ON`) and point CMake at your Qt install. Run inside an **x86** MSVC
+environment (`vcvarsall.bat x86`):
 
 ```
-cmake --preset win32-internal ^
-  -DRTS_ENABLE_WORLDBUILDER_QT=ON ^
-  -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
+cmake --preset win32-qt -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
 
-cmake --build --preset win32-internal --target z_worldbuilder
+cmake --build --preset win32-qt --target z_worldbuilder
 ```
 
-Output: `build/win32-internal/GeneralsMD/Release/WorldBuilderZH.exe`
+Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
 
 The build automatically deploys the needed Qt runtime DLLs (via `windeployqt`) next to the exe.
 
@@ -58,9 +56,8 @@ as a command or passed to a Qt widget) can be traced with an opt-in facility. Co
 `-DWB_QT_KEYDEBUG=ON` and rebuild:
 
 ```
-cmake --preset win32-internal -DWB_QT_KEYDEBUG=ON ^
-  -DRTS_ENABLE_WORLDBUILDER_QT=ON -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
-cmake --build --preset win32-internal --target z_worldbuilder
+cmake --preset win32-qt -DWB_QT_KEYDEBUG=ON -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
+cmake --build --preset win32-qt --target z_worldbuilder
 ```
 
 It emits `[WBDBG] ...` lines via `OutputDebugString` -- read them with DebugView, cdb, or the
