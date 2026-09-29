@@ -5,7 +5,7 @@ build is **off by default** -- a plain configure gives you the classic MFC World
 the Qt version you must install a 32-bit Qt5 and turn the option on.
 
 > For the base game/tools prerequisites (DirectX SDK, STLport, Miles, Bink, GameSpy, ZLib, etc.)
-> and the general Win32 build, see **[README.md](README.md)** first. This document only covers the
+> and the general Win32 build, see **[README.md](../../../../../README.md)** first. This document only covers the
 > Qt-specific delta on top of that.
 
 ## Prerequisites (Qt-specific)

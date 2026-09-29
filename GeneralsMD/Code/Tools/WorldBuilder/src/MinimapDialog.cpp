@@ -1448,8 +1448,6 @@ void MinimapDialog::drawRoads()
 	Real xSpan, ySpan, originCell;
 	if (!mapSpans(&xSpan, &ySpan, &originCell)) return;
 
-	// Scale factor: world units -> buffer pixels (use the smaller axis to be conservative).
-	Real worldToPixel = (Real)m_resolution / (xSpan < ySpan ? xSpan : ySpan);
 
 	// The buffer (m_resolution) is StretchDIBits-shrunk to the dialog client, so a width
 	// measured in BUFFER pixels shrinks on screen as resolution rises -- at 2048 a road

@@ -947,7 +947,6 @@ void CAboutDlg::OnExpand()
 
 	int currentWidth = rect.Width();
 	int newWidth = min(currentWidth + expandBy, maxWidth); // Clamp to maxWidth
-	int delta = newWidth - currentWidth;
 
 	// Expand the window to the left
 	// MoveWindow expects coordinates relative to parent, convert
