@@ -36,6 +36,31 @@ Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
 
 The build automatically deploys the needed Qt runtime DLLs (via `windeployqt`) next to the exe.
 
+## D3D9 backend (experimental, side by side)
+
+The engine can render through Direct3D 9 (`RTS_D3D_BACKEND=D3D9`, D3D9Ex + FLIPEX where
+available). The `win32-qt-d3d9` preset builds that variant as **`WorldBuilderZH_Qt_D3D9.exe`**,
+which ships next to the D3D8 exe and shares its Qt runtime:
+
+```
+cmake --preset win32-qt-d3d9 -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
+
+cmake --build --preset win32-qt-d3d9 --target z_worldbuilder
+cmake --build --preset win32-qt-d3d9 --target rts_shaders
+```
+
+Output: `build/win32-qt-d3d9/GeneralsMD/Release/WorldBuilderZH_Qt_D3D9.exe`
+
+The D3D9 renderer loads its shader blobs at runtime from `shaders\*.pso|*.vso` in the game
+folder. `rts_shaders` compiles them into `build/win32-qt-d3d9/shaders/`; copy that folder into the
+install you run the exe from (a vanilla install has none of them). The tree shader is not part of
+that set: copy `GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/Shaders/Trees.vso`
+alongside too, otherwise the D3D8 blob from `ShadersZH.big` is used and trees draw black.
+
+Differences from the D3D8 build: no D3DX, so the "Old" label renderer (ID3DXFont) is unavailable
+and maps to the atlas renderer; HUD/ruler/tooltip text draws from a glyph atlas; PNG tracing
+overlays are decoded with `stb_image`.
+
 ## Configure + build (Visual Studio generator, alternative)
 
 ```

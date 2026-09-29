@@ -60,6 +60,10 @@ cmake --build --preset win32-qt --target z_worldbuilder
 
 Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
 
+An experimental **Direct3D 9** variant builds with the `win32-qt-d3d9` preset as
+`WorldBuilderZH_Qt_D3D9.exe` (needs the compiled `shaders/` folder next to it; see
+[QT-BUILD.md](QT-BUILD.md)).
+
 ## About this repository
 
 This is a fork of the open-sourced *Command & Conquer: Generals + Zero Hour* source. The work here
