@@ -427,7 +427,7 @@ void INI::loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer)
             readLine();
             AsciiString currentLine = m_buffer;
 
-            const char* token = strtok(m_buffer, m_seps);
+            const char* token = strtok(m_buffer, getSeps());
             if (!token) 
                 continue; // empty line
 
@@ -452,7 +452,7 @@ void INI::loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer)
                     while (!skipDone && !m_endOfFile)
                     {
                         readLine();
-                        const char* endToken = strtok(m_buffer, m_seps);
+                        const char* endToken = strtok(m_buffer, getSeps());
                         if (endToken && strcmp(endToken, blockEnd) == 0)
                             skipDone = true;
                     }
@@ -466,7 +466,7 @@ void INI::loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer)
                 while (!skipDone && !m_endOfFile)
                 {
                     readLine();
-                    const char* endToken = strtok(m_buffer, m_seps);
+                    const char* endToken = strtok(m_buffer, getSeps());
                     if (endToken && strcmp(endToken, blockEnd) == 0)
                         skipDone = true;
                 }
@@ -530,7 +530,7 @@ void INI::loadObjectsOnly(AsciiString filename, Xfer* pXfer = NULL)
             readLine();
             AsciiString currentLine = m_buffer;
 
-            const char* token = strtok(m_buffer, m_seps);
+            const char* token = strtok(m_buffer, getSeps());
             if (!token) 
                 continue; // empty line
 
@@ -556,7 +556,7 @@ void INI::loadObjectsOnly(AsciiString filename, Xfer* pXfer = NULL)
                 while (!skipDone && !m_endOfFile)
                 {
                     readLine();
-                    const char* endToken = strtok(m_buffer, m_seps);
+                    const char* endToken = strtok(m_buffer, getSeps());
                     if (endToken && strcmp(endToken, blockEnd) == 0)
                         skipDone = true;
                 }

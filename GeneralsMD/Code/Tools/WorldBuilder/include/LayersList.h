@@ -32,8 +32,6 @@
 /*---------------------------------------------------------------------------*/
 
 #pragma once
-#ifndef _H_LAYERSLIST_
-#define _H_LAYERSLIST_
 #define LAYERS_LIST_SECTION "LayersList"
 
 // INCLUDES ///////////////////////////////////////////////////////////////////

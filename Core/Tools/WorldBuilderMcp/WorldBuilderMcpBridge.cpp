@@ -1862,19 +1862,19 @@ CommandResult AddObjects(const RequestFields &fields)
 		if (template_it == fields.end() || template_it->second.empty()
 			|| x_it == fields.end() || y_it == fields.end()
 			|| !ParseReal(x_it->second, &x) || !ParseReal(y_it->second, &y)) {
-			if (first != nullptr) first->deleteInstance();
+			if (first != nullptr) deleteInstance(first);
 			return Error("invalid_arguments", "Every object needs template, x, and y.");
 		}
 		if (x < 0.0f || y < 0.0f
 			|| x > (height_map->getXExtent() - 1) * MAP_XY_FACTOR
 			|| y > (height_map->getYExtent() - 1) * MAP_XY_FACTOR) {
-			if (first != nullptr) first->deleteInstance();
+			if (first != nullptr) deleteInstance(first);
 			return Error("out_of_bounds", "An object location is outside the map.");
 		}
 		const ThingTemplate *thing =
 			TheThingFactory->findTemplate(AsciiString(template_it->second.c_str()), false);
 		if (thing == nullptr) {
-			if (first != nullptr) first->deleteInstance();
+			if (first != nullptr) deleteInstance(first);
 			return Error("template_not_found", "An object references an unknown ThingTemplate.");
 		}
 		Real z = MAGIC_GROUND_Z;
@@ -1883,14 +1883,14 @@ CommandResult AddObjects(const RequestFields &fields)
 		RequestFields::const_iterator angle_it = fields.find(IndexedField("item", i, "angle"));
 		if ((z_it != fields.end() && !ParseReal(z_it->second, &z))
 			|| (angle_it != fields.end() && !ParseReal(angle_it->second, &angle))) {
-			if (first != nullptr) first->deleteInstance();
+			if (first != nullptr) deleteInstance(first);
 			return Error("invalid_arguments", "Object z and angle values must be finite numbers.");
 		}
 		AsciiString owner("team");
 		RequestFields::const_iterator owner_it = fields.find(IndexedField("item", i, "owner"));
 		if (owner_it != fields.end()) owner.set(owner_it->second.c_str());
 		if (!IsValidOwner(owner)) {
-			if (first != nullptr) first->deleteInstance();
+			if (first != nullptr) deleteInstance(first);
 			return Error("owner_not_found", "An object references an unknown map or runtime player team.");
 		}
 		Coord3D location = { x, y, z };
@@ -3528,13 +3528,13 @@ ScriptAction *BuildActions(const RequestFields &fields, const char *collection, 
 		Int type = 0;
 		if (type_it == fields.end() || !ParseInt(type_it->second, &type)
 			|| type < 0 || type >= ScriptAction::NUM_ITEMS) {
-			head->deleteInstance();
+			deleteInstance(head);
 			return nullptr;
 		}
 		ScriptAction *action = newInstance(ScriptAction)(static_cast<ScriptAction::ScriptActionType>(type));
 		if (!ApplyParameters(fields, prefix, action)) {
-			action->deleteInstance();
-			head->deleteInstance();
+			deleteInstance(action);
+			deleteInstance(head);
 			return nullptr;
 		}
 		if (tail != nullptr) tail->setNextAction(action); else head = action;
@@ -3566,7 +3566,7 @@ OrCondition *BuildConditions(const RequestFields &fields, Bool *ok)
 			|| !ParseInt(type_it->second, &type) || type < 0 || type >= Condition::NUM_ITEMS
 			|| !ParseInt(group_it->second, &group) || group < current_group
 			|| !ParseInt(custom_it->second, &custom)) {
-			head->deleteInstance();
+			deleteInstance(head);
 			return nullptr;
 		}
 		if (head == nullptr || group != current_group) {
@@ -3579,8 +3579,8 @@ OrCondition *BuildConditions(const RequestFields &fields, Bool *ok)
 		Condition *condition = newInstance(Condition)(static_cast<Condition::ConditionType>(type));
 		condition->setCustomData(custom);
 		if (!ApplyParameters(fields, prefix, condition)) {
-			condition->deleteInstance();
-			head->deleteInstance();
+			deleteInstance(condition);
+			deleteInstance(head);
 			return nullptr;
 		}
 		if (and_tail != nullptr) and_tail->setNextCondition(condition); else or_tail->setFirstAndCondition(condition);
@@ -3610,9 +3610,9 @@ CommandResult UpsertScript(const RequestFields &fields)
 	ScriptAction *actions = BuildActions(fields, "action", &actions_ok);
 	ScriptAction *false_actions = BuildActions(fields, "false_action", &false_actions_ok);
 	if (!conditions_ok || !actions_ok || !false_actions_ok) {
-		conditions->deleteInstance();
-		actions->deleteInstance();
-		false_actions->deleteInstance();
+		deleteInstance(conditions);
+		deleteInstance(actions);
+		deleteInstance(false_actions);
 		return Error("invalid_script", "A condition/action type or parameter is invalid for its native template.");
 	}
 	Script *replacement = newInstance(Script);
@@ -3626,14 +3626,14 @@ CommandResult UpsertScript(const RequestFields &fields)
 	text_it = fields.find("condition_comment"); if (text_it != fields.end() && Utf8ToAsciiString(text_it->second, &text)) replacement->setConditionComment(text);
 	text_it = fields.find("action_comment"); if (text_it != fields.end() && Utf8ToAsciiString(text_it->second, &text)) replacement->setActionComment(text);
 	Bool flag = false;
-	if (!GetOptionalBool(fields, "active", true, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "active must be boolean."); } replacement->setActive(flag);
-	if (!GetOptionalBool(fields, "one_shot", true, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "one_shot must be boolean."); } replacement->setOneShot(flag);
-	if (!GetOptionalBool(fields, "subroutine", false, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "subroutine must be boolean."); } replacement->setSubroutine(flag);
-	if (!GetOptionalBool(fields, "easy", true, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "easy must be boolean."); } replacement->setEasy(flag);
-	if (!GetOptionalBool(fields, "normal", true, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "normal must be boolean."); } replacement->setNormal(flag);
-	if (!GetOptionalBool(fields, "hard", true, &flag)) { replacement->deleteInstance(); return Error("invalid_arguments", "hard must be boolean."); } replacement->setHard(flag);
+	if (!GetOptionalBool(fields, "active", true, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "active must be boolean."); } replacement->setActive(flag);
+	if (!GetOptionalBool(fields, "one_shot", true, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "one_shot must be boolean."); } replacement->setOneShot(flag);
+	if (!GetOptionalBool(fields, "subroutine", false, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "subroutine must be boolean."); } replacement->setSubroutine(flag);
+	if (!GetOptionalBool(fields, "easy", true, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "easy must be boolean."); } replacement->setEasy(flag);
+	if (!GetOptionalBool(fields, "normal", true, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "normal must be boolean."); } replacement->setNormal(flag);
+	if (!GetOptionalBool(fields, "hard", true, &flag)) { deleteInstance(replacement); return Error("invalid_arguments", "hard must be boolean."); } replacement->setHard(flag);
 	Int delay = 0;
-	if (!GetOptionalInt(fields, "delay_seconds", 0, 0, INT_MAX, &delay)) { replacement->deleteInstance(); return Error("invalid_arguments", "delay_seconds is invalid."); }
+	if (!GetOptionalInt(fields, "delay_seconds", 0, 0, INT_MAX, &delay)) { deleteInstance(replacement); return Error("invalid_arguments", "delay_seconds is invalid."); }
 	replacement->setDelayEvalSeconds(delay);
 
 	SidesList updated(*TheSidesList);
@@ -3646,12 +3646,12 @@ CommandResult UpsertScript(const RequestFields &fields)
 	AsciiString requested_group;
 	RequestFields::const_iterator group_it = fields.find("group");
 	if (group_it != fields.end() && !Utf8ToAsciiString(group_it->second, &requested_group)) {
-		replacement->deleteInstance();
+		deleteInstance(replacement);
 		return Error("invalid_arguments", "group is not representable by WorldBuilder.");
 	}
 	ScriptGroup *group = group_it == fields.end() ? nullptr : FindScriptGroup(list, requested_group);
 	if (group_it != fields.end() && group == nullptr) {
-		replacement->deleteInstance();
+		deleteInstance(replacement);
 		return Error("script_group_not_found", "Script group was not found.");
 	}
 	Script *existing = FindScriptScoped(list, name, group_it == fields.end() ? nullptr : &requested_group);

@@ -454,7 +454,7 @@ AsciiString TheThingTemplateBeingParsedName;
 			// nothing else can reference an override that was only just created, and its own
 			// m_nextOverride is NULL (it was the tail).
 			overrideParent->setNextOverride( NULL );
-			thingTemplate->deleteInstance();
+			deleteInstance(thingTemplate);
 		}
 		throw;
 	}

@@ -18,9 +18,9 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
-#include "assetmgr.h"
-#include "rendobj.h"		// RenderObjClass::Get_Bone_Transform
-#include "matrix3d.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/rendobj.h"		// RenderObjClass::Get_Bone_Transform
+#include "WWMath/matrix3d.h"
 #include "Common/MapObject.h"
 
 namespace
@@ -70,6 +70,8 @@ namespace
 				TheWritableGlobalData->m_debugIgnoreAsserts = saved;
 			}
 		}
+#else
+		AssertQuiet() {}	// non-trivial so the guard object is never an "unreferenced local"
 #endif
 	};
 
@@ -89,7 +91,8 @@ namespace
 		// --- pure-virtual stubs (never reached: we never call init(), never create drawables) ---
 		virtual void createRayEffectByTemplate( const Coord3D *, const Coord3D *, const ThingTemplate * ) {}
 		virtual void addScorch( const Coord3D *, Real, Scorches ) {}
-		virtual Drawable *friend_createDrawable( const ThingTemplate *, DrawableStatus = DRAWABLE_STATUS_NONE ) { return NULL; }
+		virtual Drawable *friend_createDrawable( const ThingTemplate *, DrawableStatusBits = DRAWABLE_STATUS_DEFAULT ) { return NULL; }
+		virtual void setTextureLOD( Int ) {}
 		virtual void setTeamColor( Int, Int, Int ) {}
 		virtual void adjustLOD( Int ) {}
 		virtual void notifyTerrainObjectMoved( Object * ) {}

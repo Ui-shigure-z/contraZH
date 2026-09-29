@@ -29,7 +29,7 @@
 #ifndef WB_MAP_GEN_SETTINGS_H
 #define WB_MAP_GEN_SETTINGS_H
 
-#include "always.h"
+#include "WWLib/always.h"
 
 /// How much of a road network to lay down.
 enum WBMapGenRoadMode

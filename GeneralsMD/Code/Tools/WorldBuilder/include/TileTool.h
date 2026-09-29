@@ -22,8 +22,6 @@
 
 #pragma once
 
-#ifndef TILETOOL_H
-#define TILETOOL_H
 
 #define TILE_OPTION_PANEL "TileOptionPanel"
 

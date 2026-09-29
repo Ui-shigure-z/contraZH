@@ -127,6 +127,14 @@
             }
         },
         {
+            "name": "win32-qt",
+            "inherits": "win32",
+            "displayName": "Windows 32bit Release + WorldBuilder Qt",
+            "cacheVariables": {
+                "RTS_ENABLE_WORLDBUILDER_QT": "ON"
+            }
+        },
+        {
             "name": "win32-vcpkg",
             "inherits": "default-vcpkg",
             "hidden": false,
@@ -249,6 +257,12 @@
             "displayName": "Build Windows 32bit Debug",
             "description": "Build Windows 32bit Debug",
             "configuration": "Debug"
+        },
+        {
+            "name": "win32-qt",
+            "configurePreset": "win32-qt",
+            "displayName": "Build Windows 32bit Release + WorldBuilder Qt",
+            "description": "Build Windows 32bit Release with the Qt WorldBuilder"
         },
         {
             "name": "win32-vcpkg",

@@ -20,7 +20,7 @@
 #include "WBFontAtlas.h"
 
 #include <d3d8.h>
-#include "dx8wrapper.h"
+#include "WW3D2/dx8wrapper.h"
 
 // Atlas layout: glyphs are packed left-to-right into rows of fixed cell height.
 // We keep a small inter-glyph margin so bilinear sampling never bleeds a

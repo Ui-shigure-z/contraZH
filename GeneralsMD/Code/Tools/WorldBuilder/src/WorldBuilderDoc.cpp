@@ -2661,6 +2661,13 @@ Bool CWorldBuilderDoc::ParseWaypointDataChunk(DataChunkInput &file, DataChunkInf
 Bool CWorldBuilderDoc::ParseWaypointData(DataChunkInput &file, DataChunkInfo *info, void *userData)
 {
 	m_numWaypointLinks = file.readInt();
+	// Bounds-check the file-supplied count before the read loop: a corrupt or desynced chunk
+	// must not overrun the fixed m_waypointLinks array. Abort the chunk cleanly instead.
+	if (m_numWaypointLinks < 0 || m_numWaypointLinks > MAX_WAYPOINTS) {
+		DEBUG_CRASH(("Bad waypoint link count %d in map file.", m_numWaypointLinks));
+		m_numWaypointLinks = 0;
+		return false;
+	}
 	Int i;
 	for (i=0; i<m_numWaypointLinks; i++) {
 		this->m_waypointLinks[i].waypoint1 = file.readInt();

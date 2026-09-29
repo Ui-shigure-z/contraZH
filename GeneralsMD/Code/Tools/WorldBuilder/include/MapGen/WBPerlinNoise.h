@@ -29,7 +29,7 @@
 #ifndef WB_PERLIN_NOISE_H
 #define WB_PERLIN_NOISE_H
 
-#include "always.h"
+#include "WWLib/always.h"
 
 /*************************************************************************/
 /**                            WBRandom

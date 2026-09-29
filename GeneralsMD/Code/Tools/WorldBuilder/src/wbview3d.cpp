@@ -22,16 +22,16 @@
 // #include "Common/GameLOD.h"
 #include "StdAfx.h"
 #include "resource.h"
-#include "wwmath.h"
-#include "ww3d.h"
+#include "WWMath/wwmath.h"
+#include "WW3D2/ww3d.h"
 #include <vector>
-#include "texturefilter.h"
-#include "scene.h"
-#include "rendobj.h"
-#include "camera.h"
-#include "intersec.h"
-#include "colmath.h"		// CollisionMath::Collide, for the ray-vs-tree-box pick
-#include "aabox.h"			// AABoxClass
+#include "WW3D2/texturefilter.h"
+#include "WW3D2/scene.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/camera.h"
+#include "WW3D2/intersec.h"
+#include "WWMath/colmath.h"		// CollisionMath::Collide, for the ray-vs-tree-box pick
+#include "WWMath/aabox.h"			// AABoxClass
 // Show Full Model reads these two modules' data straight off the template (no GameLogic involved).
 #include "Common/GameCommon.h"		// LOGICFRAMES_PER_SECOND, which SpawnBehavior.h uses unqualified
 #include "GameLogic/Module/SpawnBehavior.h"
@@ -733,7 +733,7 @@ WbView3d::WbView3d() :
 	m_snapCameraAngle45 = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", 0) != 0);
 
 	int msaaMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "MSAAMode", 0);
-	DX8Wrapper::Set_Multi_Sample_Type((D3DMULTISAMPLE_TYPE)msaaMode);
+	WW3D::Set_MSAA_Mode((WW3D::MultiSampleModeEnum)msaaMode);
 
 	m_cameraOffset.x = m_cameraOffset.y = m_cameraOffset.z = 1;
 
@@ -5358,7 +5358,7 @@ void WbView3d::initWW3D()
 
 		int texFilterMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TexFilterMode", 0);
 		if (texFilterMode == 1) {
-			TextureFilterClass::Set_Max_Anisotropy(16);
+			WW3D::Set_Anisotropy_Level(16);
 			WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
 		}
 
@@ -8309,7 +8309,7 @@ void WbView3d::OnResetDevice()
 
 void WbView3d::setMSAA(D3DMULTISAMPLE_TYPE type)
 {
-	DX8Wrapper::Set_Multi_Sample_Type(type);
+	WW3D::Set_MSAA_Mode((WW3D::MultiSampleModeEnum)type);
 	DX8Wrapper::Reset_Device(true);
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "MSAAMode", (int)type);
 }
@@ -8319,18 +8319,18 @@ void WbView3d::OnMSAA2X()   { setMSAA(D3DMULTISAMPLE_2_SAMPLES); }
 void WbView3d::OnMSAA4X()   { setMSAA(D3DMULTISAMPLE_4_SAMPLES); }
 void WbView3d::OnMSAA8X()   { setMSAA(D3DMULTISAMPLE_8_SAMPLES); }
 
-void WbView3d::OnUpdateMSAANone(CCmdUI* pCmdUI) { pCmdUI->SetCheck(DX8Wrapper::Get_Multi_Sample_Type() == D3DMULTISAMPLE_NONE); }
-void WbView3d::OnUpdateMSAA2X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(DX8Wrapper::Get_Multi_Sample_Type() == D3DMULTISAMPLE_2_SAMPLES); }
-void WbView3d::OnUpdateMSAA4X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(DX8Wrapper::Get_Multi_Sample_Type() == D3DMULTISAMPLE_4_SAMPLES); }
-void WbView3d::OnUpdateMSAA8X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(DX8Wrapper::Get_Multi_Sample_Type() == D3DMULTISAMPLE_8_SAMPLES); }
+void WbView3d::OnUpdateMSAANone(CCmdUI* pCmdUI) { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_NONE); }
+void WbView3d::OnUpdateMSAA2X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_2X); }
+void WbView3d::OnUpdateMSAA4X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_4X); }
+void WbView3d::OnUpdateMSAA8X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_8X); }
 
 void WbView3d::setTextureFilter(int mode)
 {
 	if (mode == 1) {
-		TextureFilterClass::Set_Max_Anisotropy(16);
+		WW3D::Set_Anisotropy_Level(16);
 		WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
 	} else {
-		TextureFilterClass::Set_Max_Anisotropy(2);
+		WW3D::Set_Anisotropy_Level(2);
 		WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_BILINEAR);
 	}
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TexFilterMode", mode);

@@ -18,7 +18,7 @@
 
 // WBParallel.cpp -- persistent fork-join thread pool. See WBParallel.h.
 
-#include "WBParallel.h"
+#include "WWLib/WBParallel.h"
 
 #include <algorithm>
 #include <atomic>

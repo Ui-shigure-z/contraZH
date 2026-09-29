@@ -196,4 +196,3 @@ protected:
 
 extern WaterTracksRenderSystem *TheWaterTracksRenderSystem;	///< singleton for track drawing system.
 
-#endif  //__W3DWaterTracks_H_

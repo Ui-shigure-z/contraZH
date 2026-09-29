@@ -36,9 +36,9 @@
 #include "Common/FileSystem.h"
 #include "Common/MapReaderWriterInfo.h"
 #include "W3DDevice/GameClient/TileData.h"
-#include "ddsfile.h"
-#include "ww3dformat.h"
-#include "WBParallel.h"		// parallel fork-join pool for the terrain resample
+#include "WW3D2/ddsfile.h"
+#include "WW3D2/ww3dformat.h"
+#include "WWLib/WBParallel.h"		// parallel fork-join pool for the terrain resample
 
 Bool localIsUnderwater(Real x, Real y);
 static void clearRoadTexCache();

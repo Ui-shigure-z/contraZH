@@ -15,7 +15,7 @@
 #include "WorldBuilder.h"
 #include "WorldBuilderDoc.h"
 
-#include "rendobj.h"
+#include "WW3D2/rendobj.h"
 #include "Compression.h"
 #include "Common/GlobalData.h"
 #include "Common/FileSystem.h"

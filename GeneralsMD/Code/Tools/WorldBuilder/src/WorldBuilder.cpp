@@ -54,7 +54,7 @@
 #include "Common/GlobalData.h"
 #include "Common/MapData.h"
 #include "WHeightMapEdit.h"
-#include "WBParallel.h"
+#include "WWLib/WBParallel.h"
 //#include "Common/GameFileSystem.h"
 #include "Common/FileSystem.h"
 #include "Common/ArchiveFileSystem.h"
@@ -493,16 +493,16 @@ BOOL CWorldBuilderApp::InitInstance()
 	initSubsystem(ThePlayerTemplateStore, new PlayerTemplateStore(), "Data\\INI\\Default\\PlayerTemplate", "Data\\INI\\PlayerTemplate");
 	initSubsystem(TheSpecialPowerStore, new SpecialPowerStore(), "Data\\INI\\Default\\SpecialPower", "Data\\INI\\SpecialPower" );
 	initSubsystem(TheParticleSystemManager, (ParticleSystemManager*)(new W3DParticleSystemManager()));
-	initSubsystem(TheFXListStore, new FXListStore(), "Data\INI\Default\FXList", "Data\INI\FXList");
-	initSubsystem(TheWeaponStore, new WeaponStore(), nullptr, "Data\INI\Weapon");
-	initSubsystem(TheObjectCreationListStore, new ObjectCreationListStore(), "Data\INI\Default\ObjectCreationList", "Data\INI\ObjectCreationList");
-	initSubsystem(TheLocomotorStore, new LocomotorStore(), nullptr, "Data\INI\Locomotor");
-	initSubsystem(TheDamageFXStore, new DamageFXStore(), nullptr, "Data\INI\DamageFX");
-	initSubsystem(TheArmorStore, new ArmorStore(), nullptr, "Data\INI\Armor");
+	initSubsystem(TheFXListStore, new FXListStore(), "Data\\INI\\Default\\FXList", "Data\\INI\\FXList");
+	initSubsystem(TheWeaponStore, new WeaponStore(), nullptr, "Data\\INI\\Weapon");
+	initSubsystem(TheObjectCreationListStore, new ObjectCreationListStore(), "Data\\INI\\Default\\ObjectCreationList", "Data\\INI\\ObjectCreationList");
+	initSubsystem(TheLocomotorStore, new LocomotorStore(), nullptr, "Data\\INI\\Locomotor");
+	initSubsystem(TheDamageFXStore, new DamageFXStore(), nullptr, "Data\\INI\\DamageFX");
+	initSubsystem(TheArmorStore, new ArmorStore(), nullptr, "Data\\INI\\Armor");
 	loadWindow.setProgress("Loading objects...");
-	initSubsystem(TheThingFactory, new ThingFactory(), "Data\INI\Default\Object", "Data\INI\Object");
-	initSubsystem(TheCrateSystem, new CrateSystem(), "Data\INI\Default\Crate", "Data\INI\Crate");
-	initSubsystem(TheUpgradeCenter, new UpgradeCenter, "Data\INI\Default\Upgrade", "Data\INI\Upgrade");
+	initSubsystem(TheThingFactory, new ThingFactory(), "Data\\INI\\Default\\Object", "Data\\INI\\Object");
+	initSubsystem(TheCrateSystem, new CrateSystem(), "Data\\INI\\Default\\Crate", "Data\\INI\\Crate");
+	initSubsystem(TheUpgradeCenter, new UpgradeCenter, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
 	initSubsystem(TheAnim2DCollection, new Anim2DCollection ); //Init's itself.
 
 	loadWindow.setProgress("Finalizing...");

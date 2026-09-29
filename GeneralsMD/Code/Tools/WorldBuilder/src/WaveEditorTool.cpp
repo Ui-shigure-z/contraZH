@@ -38,7 +38,7 @@
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "W3DDevice/GameClient/BaseHeightMap.h"	// TheTerrainRenderObject for shore-aware paint
 #include "Lib/BaseType.h"
-#include "vector2.h"
+#include "WWMath/vector2.h"
 #include <float.h>	// FLT_MAX sentinel from getWaterHeightIfUnderwater / shoreline cache
 
 // Forward decl: shore-facing direction sampler (defined below; used by the Paint hover

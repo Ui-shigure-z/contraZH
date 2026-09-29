@@ -2434,7 +2434,7 @@ void ScriptDialog::OnNewFolder()
 					MB_OK | MB_ICONERROR
 				);
 
-				pNewGroup->deleteInstance();
+				deleteInstance(pNewGroup);
 				return;
 			}
 
@@ -2484,7 +2484,7 @@ void ScriptDialog::OnNewScript()
 					MB_OK | MB_ICONERROR
 				);
 
-				pNewScript->deleteInstance();
+				deleteInstance(pNewScript);
 				return;
 			}
 
@@ -2492,7 +2492,7 @@ void ScriptDialog::OnNewScript()
 		}
 		else
 		{
-			pNewScript->deleteInstance();
+			deleteInstance(pNewScript);
 		}
 		updateIcons(TVI_ROOT);
 		return;
@@ -2526,7 +2526,7 @@ void ScriptDialog::OnNewScript()
 				MB_OK | MB_ICONERROR
 			);
 
-			pNewScript->deleteInstance();
+			deleteInstance(pNewScript);
 			return;
 		}
 
@@ -2640,7 +2640,7 @@ void ScriptDialog::OnEditScript()
 			}
 		}
 		updateIcons(TVI_ROOT);
-		pDup->deleteInstance();
+		deleteInstance(pDup);
 		return;
 	}
 #endif
@@ -2972,7 +2972,7 @@ void ScriptDialog::OnRemoveDebug()
 
             // Delete the action
             toDelete->setNextAction(NULL);
-            toDelete->deleteInstance();
+            deleteInstance(toDelete);
             
             removedCount++;
         } else {

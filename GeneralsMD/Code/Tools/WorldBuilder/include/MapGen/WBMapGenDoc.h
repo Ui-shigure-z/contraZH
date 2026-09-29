@@ -24,7 +24,7 @@
 #ifndef WB_MAP_GEN_DOC_H
 #define WB_MAP_GEN_DOC_H
 
-#include "always.h"
+#include "WWLib/always.h"
 #include "MapGen/WBMapGenSettings.h"
 
 class CWorldBuilderDoc;

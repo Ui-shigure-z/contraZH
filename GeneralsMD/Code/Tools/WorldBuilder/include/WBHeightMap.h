@@ -18,8 +18,6 @@
 
 #pragma once
 
-#ifndef __WBHEIGHTMAP_H_
-#define __WBHEIGHTMAP_H_
 
 #include "W3DDevice/GameClient/FlatHeightMap.h"	
 #include <vector>

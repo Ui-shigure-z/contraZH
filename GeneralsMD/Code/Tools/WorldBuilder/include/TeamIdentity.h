@@ -16,11 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#if !defined(AFX_TEAMIDENTITY_H__B37DB2FD_297F_4D0E_AACD_193BE30C6C85__INCLUDED_)
-#define AFX_TEAMIDENTITY_H__B37DB2FD_297F_4D0E_AACD_193BE30C6C85__INCLUDED_
 #define UNIT_LOAD_TIMER 1001
 
-#if _MSC_VER > 1000
 #pragma once
 
 // TeamIdentity.h : header file

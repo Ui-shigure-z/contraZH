@@ -861,11 +861,13 @@ void CMainFrame::OnUpdateViewBrushfeedback(CCmdUI* pCmdUI)
 // WorldBuilder.ini and re-applied at startup (CWorldBuilderApp::InitInstance).
 void CMainFrame::OnShowAssertDialogs() 
 {
+#ifdef DEBUG_CRASHING
 	if (TheWritableGlobalData) {
 		TheWritableGlobalData->m_debugIgnoreAsserts = !TheGlobalData->m_debugIgnoreAsserts;
 		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowAssertDialogs",
 			TheGlobalData->m_debugIgnoreAsserts ? 0 : 1);
 	}
+#endif
 }
 
 void CMainFrame::OnUpdateShowAssertDialogs(CCmdUI* pCmdUI) 

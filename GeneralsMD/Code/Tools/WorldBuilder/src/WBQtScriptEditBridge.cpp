@@ -455,7 +455,7 @@ extern "C" int WBQtScriptEdit_ConditionNew(void *script, int row)
 		}
 		return qtFindConditionRow(pScript, pSelOr, pCond);
 	}
-	pCond->deleteInstance();
+	deleteInstance(pCond);
 	return -1;
 }
 
@@ -544,7 +544,7 @@ extern "C" int WBQtScriptEdit_ConditionCopyToClipboard(void *script, int row)
 	}
 	if (s_clipCondition != NULL)
 	{
-		s_clipCondition->deleteInstance();
+		deleteInstance(s_clipCondition);
 	}
 	s_clipCondition = pSelCond->duplicate();
 	return 1;
@@ -915,7 +915,7 @@ extern "C" int WBQtScriptEdit_ActionNew(void *script, int isFalse, int index)
 		}
 		return qtClampActionIndex(pScript, isFalse, index + 1);
 	}
-	pAct->deleteInstance();
+	deleteInstance(pAct);
 	return -1;
 }
 
@@ -971,7 +971,7 @@ extern "C" int WBQtScriptEdit_ActionCopyToClipboard(void *script, int isFalse, i
 	}
 	if (s_clipAction != NULL)
 	{
-		s_clipAction->deleteInstance();
+		deleteInstance(s_clipAction);
 	}
 	s_clipAction = pSel->duplicate();
 	return 1;

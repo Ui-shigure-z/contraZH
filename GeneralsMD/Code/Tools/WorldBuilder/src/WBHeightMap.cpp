@@ -411,7 +411,8 @@ void WBHeightMap::applyPathfindTint(Int x0, Int y0, Int x1, Int y1, WorldHeightM
 			}
 
 			DX8VertexBufferClass *pVB = *(m_vertexBufferTiles+j*m_numVBTilesX+i);
-			char *pData = *(m_vertexBufferBackup+j*m_numVBTilesX+i);
+			// The backup is one flat vertex array now (tile-major, HEIGHTMAP_VERTEX_NUM per tile).
+			char *pData = (char *)(m_vertexBufferBackup + (j*m_numVBTilesX + i)*HEIGHTMAP_VERTEX_NUM);
 			if (pVB == NULL || pData == NULL) {
 				continue;
 			}

@@ -22,6 +22,12 @@
 
 #pragma once
 
+// Gap between tiles in the terrain texture atlas. Used to live in TerrainTex.h before the
+// Core unification renamed it; WorldBuilder's palette code still lays tiles out with it.
+#ifndef TILE_OFFSET
+#define TILE_OFFSET 8
+#endif
+
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 
 class DataChunkOutput;

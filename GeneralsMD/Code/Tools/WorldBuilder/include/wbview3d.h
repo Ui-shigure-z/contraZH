@@ -21,13 +21,10 @@
 // Class to encapsulate height map.
 // Author: Steven Johnson, Aug 2001
 
-#if !defined(AFX_WBVIEW3D_H__832D8241_87F6_11D5_8CE0_00010297BBAC__INCLUDED_)
-#define AFX_WBVIEW3D_H__832D8241_87F6_11D5_8CE0_00010297BBAC__INCLUDED_
 
 #define OBJECT_OPTION_PANEL "ObjectOptionPanel"
 #define BUILDLIST_OPTION_PANEL "BuildListOptionPanel"
 
-#if _MSC_VER > 1000
 #pragma once
 
 // wbview3d.h : header file
@@ -41,7 +38,7 @@
 #include "Common/GlobalData.h"
 #include "Common/ModelState.h"
 #include "Common/GameAudio.h"		// AudioHandle, for the Listen To Map handle map
-#include "dx8wrapper.h"
+#include "WW3D2/dx8wrapper.h"
 #include "WBFontAtlas.h"
 
 #include <map>

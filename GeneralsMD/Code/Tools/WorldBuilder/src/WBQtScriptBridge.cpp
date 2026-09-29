@@ -372,7 +372,7 @@ void ScriptDialog::qtMNewFolder(void)
 					"Please enter a valid name.",
 					MB_OK | MB_ICONERROR
 				);
-				pNewGroup->deleteInstance();
+				deleteInstance(pNewGroup);
 				return;
 			}
 			qtPushUndoSnapshot();
@@ -383,7 +383,7 @@ void ScriptDialog::qtMNewFolder(void)
 		}
 		else
 		{
-			pNewGroup->deleteInstance();
+			deleteInstance(pNewGroup);
 		}
 	}
 }
@@ -417,7 +417,7 @@ void ScriptDialog::qtMNewScript(void)
 				"Please enter a valid name.",
 				MB_OK | MB_ICONERROR
 			);
-			pNewScript->deleteInstance();
+			deleteInstance(pNewScript);
 			return;
 		}
 		qtPushUndoSnapshot();
@@ -425,7 +425,7 @@ void ScriptDialog::qtMNewScript(void)
 	}
 	else
 	{
-		pNewScript->deleteInstance();
+		deleteInstance(pNewScript);
 	}
 }
 
@@ -462,7 +462,7 @@ void ScriptDialog::qtMEditScript(void)
 		pScript->setDirty(true);
 		updateWarnings();
 	}
-	pDup->deleteInstance();
+	deleteInstance(pDup);
 }
 
 // == OnCopyScript minus the tree refresh.
@@ -792,7 +792,7 @@ void ScriptDialog::qtMRemoveDebug(void)
 				pScript->setAction(currentAction);
 			}
 			toDelete->setNextAction(NULL);
-			toDelete->deleteInstance();
+			deleteInstance(toDelete);
 			removedCount++;
 		}
 		else

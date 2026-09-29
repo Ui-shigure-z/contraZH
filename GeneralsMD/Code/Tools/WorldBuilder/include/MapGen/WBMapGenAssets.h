@@ -24,7 +24,7 @@
 #ifndef WB_MAP_GEN_ASSETS_H
 #define WB_MAP_GEN_ASSETS_H
 
-#include "always.h"
+#include "WWLib/always.h"
 #include "Lib/BaseType.h"
 #include "Common/AsciiString.h"
 #include <vector>

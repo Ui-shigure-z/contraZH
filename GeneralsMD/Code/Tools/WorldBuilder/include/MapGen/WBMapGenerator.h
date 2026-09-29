@@ -32,7 +32,7 @@
 #ifndef WB_MAP_GENERATOR_H
 #define WB_MAP_GENERATOR_H
 
-#include "always.h"
+#include "WWLib/always.h"
 #include "MapGen/WBMapGenSettings.h"
 #include <vector>
 
