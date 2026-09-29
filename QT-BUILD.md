@@ -57,6 +57,12 @@ install you run the exe from (a vanilla install has none of them). The tree shad
 that set: copy `GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/Shaders/Trees.vso`
 alongside too, otherwise the D3D8 blob from `ShadersZH.big` is used and trees draw black.
 
+The blobs and the engine share one constant-register layout, so they must come from the same
+source tree as the exe. This repo tracks contraZH's `feat/d3d9-port`, the branch the Contra D3D9
+game build ships with, and the blobs it produces are byte-identical to that install's `shaders/`.
+Blobs from another branch still load, but every shader whose layout moved (lit, bump and seabed
+terrain, lit roads, point lights, water swell) renders wrong while the rest look fine.
+
 Differences from the D3D8 build: no D3DX, so the "Old" label renderer (ID3DXFont) is unavailable
 and maps to the atlas renderer; HUD/ruler/tooltip text draws from a glyph atlas; PNG tracing
 overlays are decoded with `stb_image`.
