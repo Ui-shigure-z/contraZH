@@ -140,10 +140,10 @@ class GameTextManager : public GameTextInterface
 		GameTextManager();
 		virtual ~GameTextManager() override;
 
-		virtual void					init( void );						///< Initlaizes the text system
-		virtual void					deinit( void );					///< De-initlaizes the text system
-		virtual void					update( void ) {};			///< update text manager
-		virtual void					reset( void );					///< Resets the text system
+		virtual void					init() override;						///< Initializes the text system
+		virtual void					deinit();					///< Shuts down the text system
+		virtual void					update() override {};			///< update text manager
+		virtual void					reset() override;					///< Resets the text system
     	virtual void                    reloadMapStrings(const AsciiString& filename);  // Adriane/Deathscythe
 
 		virtual UnicodeString fetch( const Char *label, Bool *exists = nullptr ) override;		///< Returns the associated labeled unicode text
