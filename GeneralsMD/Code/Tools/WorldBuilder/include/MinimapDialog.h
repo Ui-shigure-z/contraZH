@@ -22,6 +22,11 @@
 #define __MINIMAP_DIALOG_H_
 
 #include "Lib/BaseType.h"
+#include "Common/AsciiString.h"
+#include <map>
+#include <set>
+
+class MapObject;
 
 #define MINIMAP_SECTION "MinimapDialog"
 
@@ -107,6 +112,23 @@ private:
 	void centerViewAtClient(CPoint point);
 	void allocBuffer();				///< (Re)allocate the buffers for the current resolution.
 	void drawObjects();				///< Overlay map objects (units/structures) onto the buffer.
+
+	// Blip sizes in buffer pixels for the current resolution and client size, the
+	// shared colors and toggles, and the owner -> house color memo for one blip pass.
+	struct BlipStyle
+	{
+		Int unitSize, structSize, outlineWidth, haloPad, clientPx;
+		Bool showSelection;
+		UnsignedInt black, gold, darkGray, cyan;
+		std::map<AsciiString, Int> ownerColors;
+	};
+	void blipStyle(BlipStyle &style);
+	Bool blipCell(MapObject *pObj, Int *mx, Int *my);	///< buffer cell of an object's blip; FALSE when it draws none.
+	void drawBlip(MapObject *pObj, Int mx, Int my, BlipStyle &style);
+	Int  blipHalfExtent(const BlipStyle &style) const;	///< largest half size any blip or halo can reach.
+	void refreshSelectionBlips();	///< Redraw only the blips whose halo changed, under a clip, over the cached terrain+roads.
+	void setClip(Int x0, Int y0, Int x1, Int y1);		///< Fill helpers write only inside [x0,x1) x [y0,y1).
+	void resetClip();
 	void drawRoads();				///< Rasterize road/bridge segments into the buffer (drawn under objects).
 	void drawThickLine(Int x0, Int y0, Int x1, Int y1, Int halfW, UnsignedInt color,
 		struct RoadTex *tex = NULL, Real segLenPx = 0.0f,
@@ -151,6 +173,17 @@ private:
 
 	UnsignedInt m_lastSelectionSig;	///< signature of the selection set at the last halo refresh,
 									///< so notifySelectionChanged() can skip no-op clicks.
+	std::set<MapObject*> m_lastSelected;	///< objects drawn with a halo in the last blip pass.
+
+	// Clip window for the fill helpers, in buffer pixels; the whole buffer unless a
+	// selection refresh narrows it to the dirty rects.
+	Int m_clipX0, m_clipY0, m_clipX1, m_clipY1;
+
+	// The composited buffer stretched to the client size, kept between paints so a
+	// camera move only blits it and redraws the overlays.
+	HBITMAP m_stretchBmp;
+	Int  m_stretchW, m_stretchH;
+	Bool m_stretchValid;
 };
 
 extern MinimapDialog *TheMinimapDialog;

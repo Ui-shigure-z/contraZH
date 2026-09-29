@@ -39,6 +39,12 @@
 #include "WW3D2/ddsfile.h"
 #include "WW3D2/ww3dformat.h"
 #include "WWLib/WBParallel.h"		// parallel fork-join pool for the terrain resample
+#include "WBPerf.h"
+#include "GameLogic/PolygonTrigger.h"
+#include "W3DDevice/GameClient/BaseHeightMap.h"
+#include <algorithm>
+#include <float.h>
+#include <vector>
 
 Bool localIsUnderwater(Real x, Real y);
 static void clearRoadTexCache();
@@ -91,7 +97,11 @@ MinimapDialog::MinimapDialog(CWnd *pParent)
 	  m_showBorder(true),
 	  m_fullExtent(false),
 	  m_refreshDelayMs(250),
-	  m_lastSelectionSig(0)
+	  m_lastSelectionSig(0),
+	  m_clipX0(0), m_clipY0(0), m_clipX1(0), m_clipY1(0),
+	  m_stretchBmp(NULL),
+	  m_stretchW(0), m_stretchH(0),
+	  m_stretchValid(false)
 {
 	// Load persisted config (clamp to valid ranges).
 	m_resolution     = ::AfxGetApp()->GetProfileInt(MINIMAP_SECTION, "Resolution", MINIMAP_RES_DEFAULT);
@@ -115,6 +125,8 @@ MinimapDialog::~MinimapDialog()
 	delete [] m_pixelBuffer;
 	delete [] m_terrainBuffer;
 	delete [] m_terrainRoadsBuffer;
+	if (m_stretchBmp)
+		::DeleteObject(m_stretchBmp);
 	clearRoadTexCache();
 }
 
@@ -133,6 +145,22 @@ void MinimapDialog::allocBuffer()
 	m_terrainBuilt = false;
 	m_terrainValid = false;
 	m_roadsValid   = false;
+	m_stretchValid = false;
+	m_lastSelected.clear();
+	resetClip();
+}
+
+void MinimapDialog::setClip(Int x0, Int y0, Int x1, Int y1)
+{
+	m_clipX0 = x0 < 0 ? 0 : x0;
+	m_clipY0 = y0 < 0 ? 0 : y0;
+	m_clipX1 = x1 > m_resolution ? m_resolution : x1;
+	m_clipY1 = y1 > m_resolution ? m_resolution : y1;
+}
+
+void MinimapDialog::resetClip()
+{
+	setClip(0, 0, m_resolution, m_resolution);
 }
 
 BOOL MinimapDialog::OnInitDialog()
@@ -391,7 +419,7 @@ void MinimapDialog::requestSelectionRefresh()
 	if (!m_terrainValid)			// no cached terrain yet -- let the normal path resample
 		return;
 
-	refreshObjects();
+	refreshSelectionBlips();
 }
 
 // Cheap order-sensitive signature of the current selection set (FNV-1a over the selected
@@ -481,6 +509,7 @@ void MinimapDialog::OnTimer(UINT_PTR nIDEvent)
 
 void MinimapDialog::OnPaint()
 {
+	WBPerfEvent perf("minimap paint");
 	CPaintDC dc(this);
 
 	if (!m_terrainBuilt)
@@ -495,15 +524,43 @@ void MinimapDialog::OnPaint()
 	bmi.bmiHeader.biBitCount = 32;
 	bmi.bmiHeader.biCompression = BI_RGB;
 
-	// Stretch the terrain buffer to fill the dialog's client area.
 	CRect clientRect;
 	GetClientRect(&clientRect);
+	const Int clientW = clientRect.Width();
+	const Int clientH = clientRect.Height();
+	if (clientW <= 0 || clientH <= 0)
+		return;
 
-	SetStretchBltMode(dc.m_hDC, COLORONCOLOR);
-	StretchDIBits(dc.m_hDC,
-		0, 0, clientRect.Width(), clientRect.Height(),
-		0, 0, m_resolution, m_resolution,
-		m_pixelBuffer, &bmi, DIB_RGB_COLORS, SRCCOPY);
+	// The stretch from the buffer (up to 2048 square) to the client is the expensive
+	// part of a paint, and a camera move only moves the view box, so keep the stretched
+	// result in a client-sized bitmap and redo it only when the buffer or size changed.
+	if (m_stretchBmp && (m_stretchW != clientW || m_stretchH != clientH))
+	{
+		::DeleteObject(m_stretchBmp);
+		m_stretchBmp = NULL;
+		m_stretchValid = false;
+	}
+	if (!m_stretchBmp)
+	{
+		m_stretchBmp = ::CreateCompatibleBitmap(dc.m_hDC, clientW, clientH);
+		m_stretchW = clientW;
+		m_stretchH = clientH;
+		m_stretchValid = false;
+	}
+	HDC memDC = ::CreateCompatibleDC(dc.m_hDC);
+	HGDIOBJ oldBmp = ::SelectObject(memDC, m_stretchBmp);
+	if (!m_stretchValid)
+	{
+		SetStretchBltMode(memDC, COLORONCOLOR);
+		StretchDIBits(memDC,
+			0, 0, clientW, clientH,
+			0, 0, m_resolution, m_resolution,
+			m_pixelBuffer, &bmi, DIB_RGB_COLORS, SRCCOPY);
+		m_stretchValid = true;
+	}
+	::BitBlt(dc.m_hDC, 0, 0, clientW, clientH, memDC, 0, 0, SRCCOPY);
+	::SelectObject(memDC, oldBmp);
+	::DeleteDC(memDC);
 
 	// Orange playable-area boundary, drawn first so the yellow camera view box sits on
 	// top of it. Only meaningful in full-extent mode, where the non-playable margin is
@@ -658,8 +715,86 @@ void MinimapDialog::interpolateColorForHeight(RGBColor *color,
 	if (color->blue  > 1.0f) color->blue  = 1.0f;
 }
 
+// Fills level[y * res + x] with the water height of the first water trigger that
+// contains sample (x, y), or -FLT_MAX. Samples are rounded to integer map coords the
+// way localIsUnderwater rounds them, and each row is tested against the trigger's
+// edges with pointInTrigger's crossing rule, so the result matches it sample for sample.
+static void rasterizeWaterLevels(Real *level, Int res, const Real *mapX, const Real *mapY)
+{
+	for (Int i = 0; i < res * res; ++i)
+		level[i] = -FLT_MAX;
+
+	std::vector<Real> crossings;
+	for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext())
+	{
+		if (!pTrig->isWaterArea() || pTrig->getNumPoints() < 1)
+			continue;
+		const Int numPoints = pTrig->getNumPoints();
+		const Real waterZ = pTrig->getPoint(0)->z;
+
+		Int loX = pTrig->getPoint(0)->x, hiX = loX;
+		Int loY = pTrig->getPoint(0)->y, hiY = loY;
+		for (Int p = 1; p < numPoints; ++p)
+		{
+			const ICoord3D *pt = pTrig->getPoint(p);
+			if (pt->x < loX) loX = pt->x;
+			if (pt->x > hiX) hiX = pt->x;
+			if (pt->y < loY) loY = pt->y;
+			if (pt->y > hiY) hiY = pt->y;
+		}
+
+		for (Int y = 0; y < res; ++y)
+		{
+			const Int py = (Int)floor(mapY[y] + 0.5f);
+			if (py < loY || py > hiY)
+				continue;
+
+			crossings.clear();
+			for (Int p = 0; p < numPoints; ++p)
+			{
+				const ICoord3D pt1 = *pTrig->getPoint(p);
+				const ICoord3D pt2 = *pTrig->getPoint(p == numPoints - 1 ? 0 : p + 1);
+				if (pt1.y == pt2.y)
+					continue;
+				if (pt1.y < py && pt2.y < py)
+					continue;
+				if (pt1.y >= py && pt2.y >= py)
+					continue;
+				const Int dy = pt2.y - pt1.y;
+				const Int dx = pt2.x - pt1.x;
+				crossings.push_back(pt1.x + (dx * (py - pt1.y)) / ((Real)dy));
+			}
+			if (crossings.empty())
+				continue;
+			std::sort(crossings.begin(), crossings.end());
+
+			Real *row = level + y * res;
+			for (Int x = 0; x < res; ++x)
+			{
+				if (row[x] > -FLT_MAX)
+					continue;
+				const Int px = (Int)floor(mapX[x] + 0.5f);
+				if (px < loX || px > hiX)
+					continue;
+				// Inside when an odd number of edge crossings lie at or right of the sample.
+				Int right = 0;
+				for (size_t c = crossings.size(); c > 0; --c)
+				{
+					if (crossings[c - 1] >= px)
+						++right;
+					else
+						break;
+				}
+				if (right & 1)
+					row[x] = waterZ;
+			}
+		}
+	}
+}
+
 void MinimapDialog::rebuildTerrain()
 {
+	WBPerfEvent perf("minimap rebuildTerrain");
 	// Suppress while a map load/teardown is in progress (setLoading(false) clears the
 	// flag before kicking the one intended post-load rebuild, so that call passes).
 	if (s_loading)
@@ -770,9 +905,16 @@ void MinimapDialog::rebuildTerrain()
 	}
 	if (count > 0) avgHeight /= count;
 
-	// Most maps have no water areas; if so, skip every localIsUnderwater scan (each
-	// of which loops all polygon triggers) — the single biggest per-pixel cost.
-	const Bool hasWater = localHasWaterAreas();
+	// Water areas as a per-sample mask: each water trigger is scanline-rasterized once
+	// with the same crossing rule and first-trigger-wins order as pointInTrigger, in
+	// place of testing every trigger for every sample. A sample is under water when the
+	// ground there is below the level of the first trigger that contains it.
+	Real *waterLevel = NULL;
+	if (localHasWaterAreas())
+	{
+		waterLevel = new Real[sampleRes * sampleRes];
+		rasterizeWaterLevels(waterLevel, sampleRes, mapX, mapY);
+	}
 
 	// Resample into a sampleRes x sampleRes scratch buffer (top-down, world-row y ->
 	// row (sampleRes-1 - y)). Single sample per pixel.
@@ -794,7 +936,8 @@ void MinimapDialog::rebuildTerrain()
 
 				RGBColor color;
 
-				if (hasWater && localIsUnderwater(mapX[x], mapY[y]))
+				if (waterLevel != NULL && waterLevel[y * sampleRes + x] > -FLT_MAX &&
+					TheTerrainRenderObject->getHeightMapHeight(mapX[x], mapY[y], NULL) < waterLevel[y * sampleRes + x])
 				{
 					color = waterColor;
 					interpolateColorForHeight(&color, z,
@@ -838,6 +981,7 @@ void MinimapDialog::rebuildTerrain()
 	}
 
 	delete [] sample;
+	delete [] waterLevel;
 	delete [] cellX;
 	delete [] cellY;
 	delete [] mapX;
@@ -855,6 +999,7 @@ void MinimapDialog::rebuildTerrain()
 // without resampling the terrain. Used when only objects changed.
 void MinimapDialog::refreshObjects()
 {
+	WBPerfEvent perf("minimap refreshObjects");
 	Int n = m_resolution * m_resolution;
 
 	// Roads are camera-invariant, but drawRoads() (per-segment lookup + oriented-quad
@@ -880,6 +1025,7 @@ void MinimapDialog::refreshObjects()
 
 	memcpy(m_pixelBuffer, m_terrainRoadsBuffer, sizeof(UnsignedInt) * n);
 
+	m_lastSelected.clear();
 	if (m_showObjects)
 		drawObjects();
 
@@ -887,6 +1033,7 @@ void MinimapDialog::refreshObjects()
 	// not baked into the buffer.
 
 	m_terrainBuilt = true;
+	m_stretchValid = false;
 	if (IsWindow(m_hWnd))
 		Invalidate(FALSE);
 }
@@ -895,14 +1042,9 @@ void MinimapDialog::refreshObjects()
 // radar effectively does): originalOwner -> team -> side -> explicit playerColor
 // override, else the faction PlayerTemplate's preferred color. Returns 0x00RRGGBB.
 // 0xFFFFFF (white) for neutral / unowned.
-static Int getMapObjectHouseColor(MapObject *pObj)
+static Int getHouseColorForOwner(const AsciiString &owner)
 {
 	Int playerColor = 0xFFFFFF;
-	Bool exists = false;
-	AsciiString owner = pObj->getProperties()->getAsciiString(TheKey_originalOwner, &exists);
-	if (!exists)
-		return playerColor;
-
 	TeamsInfo *teamInfo = TheSidesList->findTeamInfo(owner);
 	if (!teamInfo)
 		return playerColor;
@@ -922,6 +1064,19 @@ static Int getMapObjectHouseColor(MapObject *pObj)
 	if (pt)
 		playerColor = pt->getPreferredColor()->getAsInt();
 	return playerColor;
+}
+
+// Objects share a handful of owners, so each owner resolves once per blip pass.
+static Int getMapObjectHouseColor(MapObject *pObj, std::map<AsciiString, Int> &ownerColors)
+{
+	Bool exists = false;
+	AsciiString owner = pObj->getProperties()->getAsciiString(TheKey_originalOwner, &exists);
+	if (!exists)
+		return 0xFFFFFF;
+	std::map<AsciiString, Int>::iterator it = ownerColors.find(owner);
+	if (it == ownerColors.end())
+		it = ownerColors.insert(std::make_pair(owner, getHouseColorForOwner(owner))).first;
+	return it->second;
 }
 
 // 0x00RRGGBB -> the buffer's BGRA word (opaque).
@@ -953,10 +1108,10 @@ void MinimapDialog::fillRect(Int cx, Int cy, Int w, Int h, UnsignedInt color)
 	Int top  = cy - h / 2;
 	for (Int yy = top; yy < top + h; ++yy)
 	{
-		if (yy < 0 || yy >= m_resolution) continue;
+		if (yy < m_clipY0 || yy >= m_clipY1) continue;
 		for (Int xx = left; xx < left + w; ++xx)
 		{
-			if (xx < 0 || xx >= m_resolution) continue;
+			if (xx < m_clipX0 || xx >= m_clipX1) continue;
 			pixel(xx, yy) = color;
 		}
 	}
@@ -983,10 +1138,10 @@ void MinimapDialog::fillCheckerRect(Int cx, Int cy, Int w, Int h,
 	Int top  = cy - h / 2;
 	for (Int yy = top; yy < top + h; ++yy)
 	{
-		if (yy < 0 || yy >= m_resolution) continue;
+		if (yy < m_clipY0 || yy >= m_clipY1) continue;
 		for (Int xx = left; xx < left + w; ++xx)
 		{
-			if (xx < 0 || xx >= m_resolution) continue;
+			if (xx < m_clipX0 || xx >= m_clipX1) continue;
 			Int parity = (((xx - left) / cell) + ((yy - top) / cell)) & 1;
 			pixel(xx, yy) = parity ? colorA : colorB;
 		}
@@ -1003,7 +1158,7 @@ void MinimapDialog::fillDiamond(Int cx, Int cy, Int size, UnsignedInt color)
 	if (r < 1)
 	{
 		// Single pixel for tiny blips so it doesn't vanish at low resolution.
-		if (cx >= 0 && cx < m_resolution && cy >= 0 && cy < m_resolution)
+		if (cx >= m_clipX0 && cx < m_clipX1 && cy >= m_clipY0 && cy < m_clipY1)
 			pixel(cx, cy) = color;
 		return;
 	}
@@ -1011,12 +1166,12 @@ void MinimapDialog::fillDiamond(Int cx, Int cy, Int size, UnsignedInt color)
 	for (Int dy = -r; dy <= r; ++dy)
 	{
 		Int yy = cy + dy;
-		if (yy < 0 || yy >= m_resolution) continue;
+		if (yy < m_clipY0 || yy >= m_clipY1) continue;
 		Int span = r - (dy < 0 ? -dy : dy);		// |dx| + |dy| <= r
 		for (Int dx = -span; dx <= span; ++dx)
 		{
 			Int xx = cx + dx;
-			if (xx < 0 || xx >= m_resolution) continue;
+			if (xx < m_clipX0 || xx >= m_clipX1) continue;
 			pixel(xx, yy) = color;
 		}
 	}
@@ -1526,11 +1681,8 @@ void MinimapDialog::drawRoads()
 //   - structures: black-outlined box with house-color fill (distinct from units)
 //   - resource structures (supply/oil): solid black marker
 // Buffer is top-down, so world-row maps to (m_resolution-1 - row).
-void MinimapDialog::drawObjects()
+void MinimapDialog::blipStyle(BlipStyle &style)
 {
-	// (Roads are drawn separately in refreshObjects, before this, so they sit under
-	// the object dots and are independently toggleable.)
-
 	// Blips are rasterized into the buffer (m_resolution) but the buffer is stretched to
 	// the dialog client, so a fixed BUFFER size looks huge at 128 and like specks at 2048.
 	// Size them by a target in DISPLAY (client) pixels and convert to buffer pixels:
@@ -1561,109 +1713,213 @@ void MinimapDialog::drawObjects()
 	if (outlineWidth > maxOutline) outlineWidth = maxOutline;
 	if (outlineWidth < 1) outlineWidth = 1;
 
-	const UnsignedInt black    = packBGRA(0x000000);
-	const UnsignedInt gold     = packBGRA(0xFFD700);	// resource checkerboard accent
-	const UnsignedInt darkGray = packBGRA(0x404040);	// resource-marker outline
-	const UnsignedInt cyan     = packBGRA(0x33FFFF);	// selection halo (matches 3D view)
+	style.clientPx     = clientPx;
+	style.unitSize     = unitSize;
+	style.structSize   = structSize;
+	style.outlineWidth = outlineWidth;
+	style.black    = packBGRA(0x000000);
+	style.gold     = packBGRA(0xFFD700);	// resource checkerboard accent
+	style.darkGray = packBGRA(0x404040);	// resource-marker outline
+	style.cyan     = packBGRA(0x33FFFF);	// selection halo (matches 3D view)
 
 	// Selection overlay shares the 3D view's toggle (View > Show Object Selection
 	// Overlay). When on, selected objects get a cyan halo drawn behind their blip.
 	// Read the 3D view's cached member instead of GetProfileInt so a recomposite never
 	// hits the registry (drawObjects runs on every object/selection refresh).
 	WbView3d *p3ViewSel = CWorldBuilderDoc::GetActive3DView();
-	Bool showSelection = p3ViewSel ? p3ViewSel->getShowSelectionOverlay() : false;
+	style.showSelection = p3ViewSel ? p3ViewSel->getShowSelectionOverlay() : false;
 	// Halo is ~2 display px larger on each side than the blip; floor so it stays visible.
-	Int haloPad = unitSize / 3;
-	if (haloPad < 1) haloPad = 1;
+	style.haloPad = unitSize / 3;
+	if (style.haloPad < 1) style.haloPad = 1;
+	style.ownerColors.clear();
+}
+
+Int MinimapDialog::blipHalfExtent(const BlipStyle &style) const
+{
+	Int ext = style.unitSize + style.haloPad * 2;
+	if (style.structSize + style.haloPad * 2 > ext) ext = style.structSize + style.haloPad * 2;
+	if ((style.structSize * 7) / 6 + 1 > ext) ext = (style.structSize * 7) / 6 + 1;
+	return ext / 2 + 2;
+}
+
+Bool MinimapDialog::blipCell(MapObject *pObj, Int *mx, Int *my)
+{
+	if (pObj->isWaypoint())
+		return false;
+	const ThingTemplate *t = pObj->getThingTemplate();
+	if (!t)
+		return false;
+
+	EditorSortingType es = t->getEditorSorting();
+	Bool isStructure = (es == ES_STRUCTURE);
+	Bool isUnit      = (es == ES_INFANTRY || es == ES_VEHICLE);
+	if (!isStructure && !isUnit)
+		return false;								// skip props/trees/debris/system/audio
+
+	// World position -> minimap cell (top-down, row flipped). Skip if off-map.
+	const Coord3D *loc = pObj->getLocation();
+
+	// Optional cull: only blips inside the 3D view frustum (what the 3D viewer sees).
+	if (m_cullObjects && !isInViewFrustum(loc->x, loc->y))
+		return false;
+
+	return worldToMinimap(loc->x, loc->y, mx, my);
+}
+
+void MinimapDialog::drawBlip(MapObject *pObj, Int mx, Int cy, BlipStyle &style)
+{
+	const ThingTemplate *t = pObj->getThingTemplate();
+	const Bool isUnit = (t->getEditorSorting() == ES_INFANTRY || t->getEditorSorting() == ES_VEHICLE);
+	const Int unitSize = style.unitSize;
+	const Int structSize = style.structSize;
+	const Int outlineWidth = style.outlineWidth;
+	const Int haloPad = style.haloPad;
+	const Int clientPx = style.clientPx;
+
+	// Selection halo: a larger cyan shape drawn first; the normal blip overpaints
+	// the center, leaving a cyan rim so the object's house color stays readable.
+	Bool selected = style.showSelection && pObj->isSelected();
+
+	if (isUnit)
+	{
+		// Units/infantry render as diamonds to distinguish them from buildings.
+		if (selected)
+			fillDiamond(mx, cy, unitSize + haloPad * 2, style.cyan);
+		fillDiamond(mx, cy, unitSize, packBGRA(getMapObjectHouseColor(pObj, style.ownerColors)));
+		return;
+	}
+
+	if (selected)
+		fillRect(mx, cy, structSize + haloPad * 2, structSize + haloPad * 2, style.cyan);
+
+	// Structure.
+	if (isResourceStructure(t))
+	{
+		// Gold/black checkerboard marker with a dark-gray outline, slightly larger
+		// than a normal structure, so resource buildings (supply docks + oil
+		// derricks) read as distinct and don't blend into any single terrain tone.
+		Int rs = (structSize * 7) / 6;		// ~7 display px (structSize is ~6)
+		if (rs <= structSize) rs = structSize + 1;
+		// Dark-gray rim: fill the full marker gray, then inset the checker by the
+		// outline width on every side so a gray border remains. Use the same thin
+		// rim width as the house-color boxes; clamp so the checker keeps most of
+		// the marker (and never inverts to nothing at low res).
+		Int rim = outlineWidth;
+		Int inner = rs - rim * 2;
+		if (inner < rs / 2) { rim = 1; inner = rs - 2; }	// keep checker dominant
+		if (inner < 1) { rim = 0; inner = rs; }				// too small for a rim
+		if (rim > 0)
+			fillRect(mx, cy, rs, rs, style.darkGray);
+		// Checker cell size in buffer px. The buffer is StretchDIBits'd to the
+		// client with COLORONCOLOR (decimation), so a cell must be at least a
+		// couple of DISPLAY px or the pattern aliases to a solid color. Convert a
+		// ~2 display-px target to buffer px (= 2*m_resolution/clientPx), floor 2,
+		// then cap so the marker still holds at least a 2x2 checker (else it's solid).
+		Int cell = (2 * m_resolution + clientPx / 2) / clientPx;
+		if (cell < 2) cell = 2;
+		if (cell > inner / 2) cell = inner / 2;
+		if (cell < 1) cell = 1;					// inner<2 (extreme low res): 1px is all we have
+		fillCheckerRect(mx, cy, inner, inner, style.gold, style.black, cell);
+		return;
+	}
+
+	// Outlined box: black outer rect, house-color inner fill -- but only when the
+	// box is big enough that the rim stays a minority (inner fill at least as wide
+	// as the two borders combined). At very low resolution (e.g. 128) the box is
+	// only ~3 buffer px, where a 1px rim leaves a 1px center and the outline looks
+	// "super thick"; there, just draw a solid house-color box (still a square, so
+	// it stays distinct from the diamond units).
+	UnsignedInt houseColor = packBGRA(getMapObjectHouseColor(pObj, style.ownerColors));
+	Int innerW = structSize - outlineWidth * 2;
+	if (innerW >= outlineWidth * 2)
+	{
+		fillRect(mx, cy, structSize, structSize, style.black);
+		fillRect(mx, cy, innerW, innerW, houseColor);
+	}
+	else
+	{
+		fillRect(mx, cy, structSize, structSize, houseColor);
+	}
+}
+
+void MinimapDialog::drawObjects()
+{
+	// (Roads are drawn separately in refreshObjects, before this, so they sit under
+	// the object dots and are independently toggleable.)
+	BlipStyle style;
+	blipStyle(style);
+	m_lastSelected.clear();
 
 	for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext())
 	{
-		if (pObj->isWaypoint())
-			continue;
-		const ThingTemplate *t = pObj->getThingTemplate();
-		if (!t)
-			continue;
-
-		EditorSortingType es = t->getEditorSorting();
-		Bool isStructure = (es == ES_STRUCTURE);
-		Bool isUnit      = (es == ES_INFANTRY || es == ES_VEHICLE);
-		if (!isStructure && !isUnit)
-			continue;								// skip props/trees/debris/system/audio
-
-		// World position -> minimap cell (top-down, row flipped). Skip if off-map.
-		const Coord3D *loc = pObj->getLocation();
-
-		// Optional cull: only blips inside the 3D view frustum (what the 3D viewer sees).
-		if (m_cullObjects && !isInViewFrustum(loc->x, loc->y))
-			continue;
-
 		Int mx, cy;
-		if (!worldToMinimap(loc->x, loc->y, &mx, &cy))
+		if (!blipCell(pObj, &mx, &cy))
 			continue;
+		drawBlip(pObj, mx, cy, style);
+		if (style.showSelection && pObj->isSelected())
+			m_lastSelected.insert(pObj);
+	}
+}
 
-		// Selection halo: a larger cyan shape drawn first; the normal blip overpaints
-		// the center, leaving a cyan rim so the object's house color stays readable.
-		Bool selected = showSelection && pObj->isSelected();
+// A selection change only moves halos. Restore the cached terrain+roads pixels under
+// each blip whose halo appeared or vanished, then redraw every blip touching that
+// rect under a clip, so overlapping neighbours come out as a full pass would draw them.
+void MinimapDialog::refreshSelectionBlips()
+{
+	WBPerfEvent perf("minimap refreshSelectionBlips");
+	// Anything else pending gets the full pass, which also drops stale pointers.
+	if (!m_terrainBuilt || !m_roadsValid || !m_showObjects || m_rebuildPending)
+	{
+		refreshObjects();
+		return;
+	}
 
-		if (isUnit)
-		{
-			// Units/infantry render as diamonds to distinguish them from buildings.
-			if (selected)
-				fillDiamond(mx, cy, unitSize + haloPad * 2, cyan);
-			fillDiamond(mx, cy, unitSize, packBGRA(getMapObjectHouseColor(pObj)));
+	BlipStyle style;
+	blipStyle(style);
+	const Int half = blipHalfExtent(style);
+
+	std::set<MapObject*> nowSelected;
+	std::vector<RECT> dirty;
+	for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext())
+	{
+		const Bool isSel = style.showSelection && pObj->isSelected();
+		if (isSel)
+			nowSelected.insert(pObj);
+		const Bool wasSel = m_lastSelected.find(pObj) != m_lastSelected.end();
+		if (isSel == wasSel)
 			continue;
-		}
-
-		if (selected)
-			fillRect(mx, cy, structSize + haloPad * 2, structSize + haloPad * 2, cyan);
-
-		// Structure.
-		if (isResourceStructure(t))
-		{
-			// Gold/black checkerboard marker with a dark-gray outline, slightly larger
-			// than a normal structure, so resource buildings (supply docks + oil
-			// derricks) read as distinct and don't blend into any single terrain tone.
-			Int rs = (structSize * 7) / 6;		// ~7 display px (structSize is ~6)
-			if (rs <= structSize) rs = structSize + 1;
-			// Dark-gray rim: fill the full marker gray, then inset the checker by the
-			// outline width on every side so a gray border remains. Use the same thin
-			// rim width as the house-color boxes; clamp so the checker keeps most of
-			// the marker (and never inverts to nothing at low res).
-			Int rim = outlineWidth;
-			Int inner = rs - rim * 2;
-			if (inner < rs / 2) { rim = 1; inner = rs - 2; }	// keep checker dominant
-			if (inner < 1) { rim = 0; inner = rs; }				// too small for a rim
-			if (rim > 0)
-				fillRect(mx, cy, rs, rs, darkGray);
-			// Checker cell size in buffer px. The buffer is StretchDIBits'd to the
-			// client with COLORONCOLOR (decimation), so a cell must be at least a
-			// couple of DISPLAY px or the pattern aliases to a solid color. Convert a
-			// ~2 display-px target to buffer px (= 2*m_resolution/clientPx), floor 2,
-			// then cap so the marker still holds at least a 2x2 checker (else it's solid).
-			Int cell = (2 * m_resolution + clientPx / 2) / clientPx;
-			if (cell < 2) cell = 2;
-			if (cell > inner / 2) cell = inner / 2;
-			if (cell < 1) cell = 1;					// inner<2 (extreme low res): 1px is all we have
-			fillCheckerRect(mx, cy, inner, inner, gold, black, cell);
+		Int mx, cy;
+		if (!blipCell(pObj, &mx, &cy))
 			continue;
-		}
+		RECT r = { mx - half, cy - half, mx + half + 1, cy + half + 1 };
+		dirty.push_back(r);
+	}
+	m_lastSelected = nowSelected;
+	if (dirty.empty())
+		return;
 
-		// Outlined box: black outer rect, house-color inner fill -- but only when the
-		// box is big enough that the rim stays a minority (inner fill at least as wide
-		// as the two borders combined). At very low resolution (e.g. 128) the box is
-		// only ~3 buffer px, where a 1px rim leaves a 1px center and the outline looks
-		// "super thick"; there, just draw a solid house-color box (still a square, so
-		// it stays distinct from the diamond units).
-		UnsignedInt houseColor = packBGRA(getMapObjectHouseColor(pObj));
-		Int innerW = structSize - outlineWidth * 2;
-		if (innerW >= outlineWidth * 2)
+	for (size_t d = 0; d < dirty.size(); ++d)
+	{
+		setClip(dirty[d].left, dirty[d].top, dirty[d].right, dirty[d].bottom);
+		for (Int yy = m_clipY0; yy < m_clipY1; ++yy)
 		{
-			fillRect(mx, cy, structSize, structSize, black);
-			fillRect(mx, cy, innerW, innerW, houseColor);
+			memcpy(m_pixelBuffer + yy * m_resolution + m_clipX0,
+				m_terrainRoadsBuffer + yy * m_resolution + m_clipX0,
+				sizeof(UnsignedInt) * (m_clipX1 - m_clipX0));
 		}
-		else
+		for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext())
 		{
-			fillRect(mx, cy, structSize, structSize, houseColor);
+			Int mx, cy;
+			if (!blipCell(pObj, &mx, &cy))
+				continue;
+			if (mx + half < m_clipX0 || mx - half >= m_clipX1 || cy + half < m_clipY0 || cy - half >= m_clipY1)
+				continue;
+			drawBlip(pObj, mx, cy, style);
 		}
 	}
+	resetClip();
+
+	m_stretchValid = false;
+	if (IsWindow(m_hWnd))
+		Invalidate(FALSE);
 }
