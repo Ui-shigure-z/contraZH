@@ -503,7 +503,6 @@ void WbView3d::setObjTracking(MapObject *pMapObj,  Coord3D pos, Real angle, Bool
 
 	m_validTerrain = true; // always true
 	if(getShowBuildZoneFeedBack()){
-		const Coord3D *loc = pMapObj->getLocation();
 		const ThingTemplate *t = pMapObj->getThingTemplate();
 		Real objectAngle = pMapObj->getAngle();
 
@@ -521,14 +520,12 @@ void WbView3d::setObjTracking(MapObject *pMapObj,  Coord3D pos, Real angle, Bool
 		// halfSizeX += 10.0f;
 		
 		const int numSamples = 5;
-		Bool terrainValid = true;
 		
 		Real cosA = (Real)cos(angle);
 		Real sinA = (Real)sin(angle);
 		bool anyCliff = false;
 		bool anyBadBuild = false;
 
-		Real objectSize = max(halfSizeX, halfSizeY); // or use a better approximation
 
 		for (int i = -numSamples; i <= numSamples && !anyCliff; ++i) {
 			for (int j = -numSamples; j <= numSamples && !anyCliff; ++j) {

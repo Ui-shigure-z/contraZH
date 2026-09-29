@@ -290,7 +290,6 @@ AsciiString parseLineBreaks(const AsciiString& input)
 bool alreadyListed(const AsciiString& usedByTag, const AsciiString& scriptName)
 {
 	const char* tagStr = usedByTag.str();
-	const char* nameStr = scriptName.str();
 
 	// simple substring search with comma or bracket after
 	AsciiString pattern(", ");

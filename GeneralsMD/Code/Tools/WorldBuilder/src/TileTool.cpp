@@ -686,7 +686,6 @@ void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
     pView->viewToDocCoords(viewPt, &cpt);
     getCenterIndex(&cpt, width, &ndx, pDoc);
 
-	Int rotation = TerrainMaterial::getCopyRotation();
 
 	if (TerrainMaterial::isTogglePaintMode()) {
 		Int radius = getWidth();
@@ -701,8 +700,6 @@ void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 		Int mode = TerrainMaterial::getPaintMode();
 
 		// Build mirror centers — same logic as mouseMoved
-		const Int mapW = m_htMapEditCopy->getXExtent();
-		const Int mapH = m_htMapEditCopy->getYExtent();
 
 		CPoint centers[4];
 		Int centerCount = 0;
@@ -727,7 +724,6 @@ void TileTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 		// 	}
 		// }
 
-		unsigned int shapeSeed = (unsigned int)(ndx.x * 73856093 ^ ndx.y * 19349663);
 
 		// Paint all mirrored centers
 		for (Int c = 0; c < centerCount; c++) {

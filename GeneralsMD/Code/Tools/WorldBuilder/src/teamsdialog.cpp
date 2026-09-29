@@ -238,7 +238,6 @@ void CTeamsDialog::OnExpandOrShrink()
         GetDlgItem(IDC_EXPAND_SHRINK_TEAM)->SetWindowText("Expand Window");
     }
 
-    int deltaHeight = newHeight - oldHeight;
 
     // Resize window
     SetWindowPos(NULL, 0, 0, wndRect.Width(), newHeight, SWP_NOMOVE | SWP_NOZORDER);

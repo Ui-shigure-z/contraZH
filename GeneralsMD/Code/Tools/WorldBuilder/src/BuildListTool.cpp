@@ -353,9 +353,6 @@ void BuildListTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 		setCursor();
 		return;
 	}
-	// always check hysteresis in view coords.
-	enum {HYSTERESIS = 3};
-	Bool justAClick = (abs(viewPt.x - m_downPt2d.x)<HYSTERESIS || abs(viewPt.x - m_downPt2d.x)<HYSTERESIS);
 
 	Coord3D cpt;
 	pView->viewToDocCoords(viewPt, &cpt, false); // Don't constrain.
