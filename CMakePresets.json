@@ -135,6 +135,14 @@
             }
         },
         {
+            "name": "win32-qt-d3d9",
+            "inherits": "win32-qt",
+            "displayName": "Windows 32bit Release + WorldBuilder Qt (D3D9 backend)",
+            "cacheVariables": {
+                "RTS_D3D_BACKEND": "D3D9"
+            }
+        },
+        {
             "name": "win32-vcpkg",
             "inherits": "default-vcpkg",
             "hidden": false,
@@ -263,6 +271,12 @@
             "configurePreset": "win32-qt",
             "displayName": "Build Windows 32bit Release + WorldBuilder Qt",
             "description": "Build Windows 32bit Release with the Qt WorldBuilder"
+        },
+        {
+            "name": "win32-qt-d3d9",
+            "configurePreset": "win32-qt-d3d9",
+            "displayName": "Build Windows 32bit Release + WorldBuilder Qt (D3D9)",
+            "description": "Build Windows 32bit Release with the Qt WorldBuilder on the D3D9 backend"
         },
         {
             "name": "win32-vcpkg",

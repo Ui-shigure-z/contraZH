@@ -136,7 +136,9 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 // #include "CUndoable.h"
 
 
+#if !defined(BUILD_WITH_D3D9)
 #include <d3dx8.h>
+#endif
 
 
 // ----------------------------------------------------------------------------
@@ -729,6 +731,11 @@ WbView3d::WbView3d() :
 	m_textAntialias = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextAntialias", 1) != 0;
 	m_labelAnchorMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 0);
 	m_labelRenderer = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
+#if defined(BUILD_WITH_D3D9)
+	if (m_labelRenderer == 0) {
+		m_labelRenderer = 2;	// the Old (D3DX) renderer does not exist on D3D9; Atlas is its in-frame equivalent
+	}
+#endif
 	m_labelCull = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
 	m_snapCameraAngle45 = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", 0) != 0);
 
@@ -790,7 +797,7 @@ void WbView3d::shutdownWW3D()
 	m_buildLayer = nullptr;
 
 	if (m3DFont) {
-		m3DFont->Release();
+		releaseD3DXFont();
 		m3DFont = nullptr;
 	}
 	m_fontAtlas.releaseTexture();	// drop the GPU atlas with the device; CPU bits stay
@@ -848,7 +855,7 @@ void WbView3d::ReleaseResources()
 		TheTerrainRenderObject->ReleaseResources();
 	}
 	if (m3DFont) {
-		m3DFont->Release();
+		releaseD3DXFont();
 	}
 	m3DFont = nullptr;
 	if (m_drawObject) {
@@ -5073,7 +5080,7 @@ void WbView3d::render()
 		// Ruler length/diameter readout, drawn next to the ruler. Done here (inside the
 		// D3D frame, via m3DFont) so it doesn't strobe -- the ruler line itself is drawn
 		// in DrawObject::drawRulerFeedback(). Independent of the label-renderer mode.
-		if (m3DFont && m_doRulerFeedback != RULER_NONE) {
+		if (hasFrameFont() && m_doRulerFeedback != RULER_NONE) {
 			CString rulerText;
 			Coord3D labelWorld;
 			const TCHAR *rulerUnits = RulerTool::getUseMeters() ? _T("m") : _T("ft");
@@ -5092,7 +5099,7 @@ void WbView3d::render()
 			docToViewCoords(labelWorld, &labelPt);
 			// Nudge up a little so the text sits above the line, not on it.
 			RECT rct = { labelPt.x + 6, labelPt.y - 22, labelPt.x + 306, labelPt.y + 8 };
-			m3DFont->DrawText(
+			fontDrawText(
 				rulerText,
 				rulerText.GetLength(),
 				&rct,
@@ -5778,12 +5785,12 @@ void WbView3d::drawStatusLabels(CPoint basePt, int offset, const char* text, voi
 	} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
 		if (m_textShadow) {
 			RECT shadowRct = { labelPt.x + 2, labelPt.y + 1, labelPt.x + 2, labelPt.y + 1 };
-			((ID3DXFont*)m3DFont)->DrawText(label.str(), label.getLength(), &shadowRct,
+			fontDrawText(label.str(), label.getLength(), &shadowRct,
 				DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
 		}
 		DWORD textColor = 0xFF000000 | (red << 16) | (green << 8) | blue;
 		RECT rct = { labelPt.x + 1, labelPt.y, labelPt.x + 1, labelPt.y };
-		((ID3DXFont*)m3DFont)->DrawText(label.str(), label.getLength(), &rct,
+		fontDrawText(label.str(), label.getLength(), &rct,
 			DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, textColor);
 	} else if (m_labelRenderer == 1 && hdc) {
 		::SetBkMode(hdc, TRANSPARENT);
@@ -6198,12 +6205,12 @@ void WbView3d::drawLabels(HDC hdc)
 				} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
 					if (m_textShadow) {
 						RECT shadowRct = { labelPt.x + 2, labelPt.y + 1, labelPt.x + 2, labelPt.y + 1 };
-						m3DFont->DrawText(label.str(), label.getLength(), &shadowRct,
+						fontDrawText(label.str(), label.getLength(), &shadowRct,
 							DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
 					}
 					DWORD textColor = 0xFF000000 | (red << 16) | (green << 8) | blue;
 					RECT rct = { labelPt.x + 1, labelPt.y, labelPt.x + 1, labelPt.y };
-					m3DFont->DrawText(label.str(), label.getLength(), &rct,
+					fontDrawText(label.str(), label.getLength(), &rct,
 						DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, textColor);
 				} else if (m_labelRenderer == 1 && hdc) {
 					::SetBkMode(hdc, TRANSPARENT);
@@ -6286,11 +6293,11 @@ void WbView3d::drawLabels(HDC hdc)
 					} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
 						if (m_textShadow) {
 							RECT shadowRct = { pt.x + 2, pt.y + 1, pt.x + 2, pt.y + 1 };
-							m3DFont->DrawText(label.str(), label.getLength(), &shadowRct,
+							fontDrawText(label.str(), label.getLength(), &shadowRct,
 								DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
 						}
 						RECT rct = { pt.x + 1, pt.y, pt.x + 1, pt.y };
-						m3DFont->DrawText(label.str(), label.getLength(), &rct,
+						fontDrawText(label.str(), label.getLength(), &rct,
 							DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, argb);
 					} else if (m_labelRenderer == 1 && hdc) {
 						::SetBkMode(hdc, TRANSPARENT);
@@ -6349,14 +6356,14 @@ void WbView3d::drawLabels(HDC hdc)
 							RECT shadowRct;
 							shadowRct.top = shadowRct.bottom = pt.y + 1;
 							shadowRct.left = shadowRct.right = pt.x + 1;
-							m3DFont->DrawText(triggerName.str(), triggerName.getLength(), &shadowRct,
+							fontDrawText(triggerName.str(), triggerName.getLength(), &shadowRct,
 											DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE,
 											0xFF000000);
 						}
 						RECT rct;
 						rct.top = rct.bottom = pt.y;
 						rct.left = rct.right = pt.x;
-						m3DFont->DrawText(triggerName.str(), triggerName.getLength(), &rct,
+						fontDrawText(triggerName.str(), triggerName.getLength(), &rct,
 										DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE,
 										0xAFFF8800);
 					} else if (m_labelRenderer == 1 && hdc) {
@@ -6395,7 +6402,7 @@ void WbView3d::drawLabels(HDC hdc)
 		) {
 		const CString text = _T(PointerTool::getLastPointerInfoString());
 		// DEBUG_LOG(("PointerTool::getLastPointerInfoString() returned: \"%s\"\n", (LPCTSTR)text));
-		if (text.IsEmpty() || ((m_labelRenderer == 0 || m_labelRenderer == 2) && !m3DFont))
+		if (text.IsEmpty() || ((m_labelRenderer == 0 || m_labelRenderer == 2) && !hasFrameFont()))
 			return;
 
 		// Get mouse position
@@ -6431,12 +6438,12 @@ void WbView3d::drawLabels(HDC hdc)
 		// HUD text below stays on m3DFont in Atlas mode (2) too: it changes without
 		// the labels changing (tooltip follows the mouse, timer ticks), and a handful
 		// of DrawText calls cost ~0.1ms -- only the O(N) object labels need batching.
-		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && m3DFont && !hdc) {
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
 			// Draw outline
 			for (int i = 0; i < 4; ++i) {
 				RECT outlineRect = baseRect;
 				OffsetRect(&outlineRect, outlineOffsets[i][0], outlineOffsets[i][1]);
-				m3DFont->DrawText(
+				fontDrawText(
 					text,
 					text.GetLength(),
 					&outlineRect,
@@ -6446,7 +6453,7 @@ void WbView3d::drawLabels(HDC hdc)
 			}
 
 			// Draw main text
-			m3DFont->DrawText(
+			fontDrawText(
 				text,
 				text.GetLength(),
 				&baseRect,
@@ -6471,9 +6478,9 @@ void WbView3d::drawLabels(HDC hdc)
 	const int offsetX = 10;
 	const int offsetY = 10;
 
-	if ((m_labelRenderer == 0 || m_labelRenderer == 2) && m3DFont && !hdc) {
+	if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
 		RECT rct = { offsetX, offsetY, offsetX + 400, offsetY + 30 };
-		m3DFont->DrawText(
+		fontDrawText(
 			text,
 			text.GetLength(),
 			&rct,
@@ -6495,9 +6502,9 @@ void WbView3d::drawLabels(HDC hdc)
 		const int offsetX = 10;
 		const int offsetY = rClient.bottom + 70;
 
-		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && m3DFont && !hdc) {
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
 			RECT rct = { offsetX, offsetY, offsetX + 400, offsetY + 30 };
-			m3DFont->DrawText(
+			fontDrawText(
 				editTimeStr.str(),
 				editTimeStr.getLength(),
 				&rct,
@@ -6514,9 +6521,9 @@ void WbView3d::drawLabels(HDC hdc)
 	if (CMainFrame::GetMainFrame()->showAutoSaveMessage()){
 		CString autoSaveText = _T("Auto-saving in 10 seconds...");
 
-		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && m3DFont && !hdc) {
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
 			RECT rct = { offsetX, offsetY + 20, offsetX + 400, offsetY + 50 };
-			m3DFont->DrawText(
+			fontDrawText(
 				autoSaveText,
 				autoSaveText.GetLength(),
 				&rct,
@@ -8363,7 +8370,7 @@ void WbView3d::OnUpdateTextShadow(CCmdUI* pCmdUI)
 void WbView3d::createLabelFont()
 {
 	if (m3DFont) {
-		((ID3DXFont*)m3DFont)->Release();
+		releaseD3DXFont();
 		m3DFont = NULL;
 	}
 
@@ -8389,7 +8396,9 @@ void WbView3d::createLabelFont()
 
 	HFONT hFont = CreateFontIndirect(&logFont);
 	if (hFont) {
+#if !defined(BUILD_WITH_D3D9)
 		D3DXCreateFont(pDev, hFont, &m3DFont);
+#endif
 		DeleteObject(hFont);
 	}
 
@@ -8397,6 +8406,68 @@ void WbView3d::createLabelFont()
 	// D3DX font above (Arial 20, regular) so the modes look comparable. Honors
 	// the same antialias toggle.
 	m_fontAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
+#if defined(BUILD_WITH_D3D9)
+	// D3D9 has no ID3DXFont; the HUD text draws from its own atlas so its per-frame
+	// mini batches never disturb the label batch that reissue() replays.
+	m_hudAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
+#endif
+}
+
+// Drops the D3DX label font (D3D8 only; the D3D9 build never creates one).
+void WbView3d::releaseD3DXFont()
+{
+#if !defined(BUILD_WITH_D3D9)
+	if (m3DFont) {
+		((ID3DXFont*)m3DFont)->Release();
+	}
+#endif
+	m3DFont = NULL;
+}
+
+Bool WbView3d::hasFrameFont() const
+{
+#if defined(BUILD_WITH_D3D9)
+	return m_hudAtlas.isValid();
+#else
+	return m3DFont != NULL;
+#endif
+}
+
+// In-frame text for the HUD and ruler: the D3DX font on D3D8, the HUD glyph atlas on
+// D3D9 (no D3DX there). The atlas path honors DT_LEFT|DT_TOP placement only and splits
+// DT_WORDBREAK text on newlines, which is how the tooltip strings are laid out.
+void WbView3d::fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color)
+{
+	if (str == NULL || len <= 0 || rct == NULL) {
+		return;
+	}
+#if defined(BUILD_WITH_D3D9)
+	(void)flags;
+	if (!m_hudAtlas.isValid()) {
+		return;
+	}
+	IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
+	if (dev == NULL) {
+		return;
+	}
+	m_hudAtlas.begin(dev, m_actualWinSize.x, m_actualWinSize.y);
+	Int y = rct->top;
+	Int lineStart = 0;
+	for (Int i = 0; i <= len; ++i) {
+		if (i == len || str[i] == '\n') {
+			if (i > lineStart) {
+				m_hudAtlas.drawText(rct->left, y, str + lineStart, i - lineStart, color, false);
+			}
+			y += m_hudAtlas.lineHeight();
+			lineStart = i + 1;
+		}
+	}
+	m_hudAtlas.end();
+#else
+	if (m3DFont != NULL) {
+		((ID3DXFont*)m3DFont)->DrawText(str, len, (RECT*)rct, flags, color);
+	}
+#endif
 }
 
 void WbView3d::OnTextAntialias()
@@ -8446,14 +8517,23 @@ void WbView3d::OnUpdateTextAnchorNew(CCmdUI* pCmdUI)
 // Rendering.
 void WbView3d::OnTextRendererOld()
 {
+#if defined(BUILD_WITH_D3D9)
+	OnTextRendererAtlas();	// no D3DX font on D3D9
+#else
 	m_labelRenderer = 0;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
 	Invalidate();
+#endif
 }
 
 void WbView3d::OnUpdateTextRendererOld(CCmdUI* pCmdUI)
 {
+#if defined(BUILD_WITH_D3D9)
+	pCmdUI->Enable(FALSE);
+	pCmdUI->SetCheck(0);
+#else
 	pCmdUI->SetCheck(m_labelRenderer == 0);
+#endif
 }
 
 void WbView3d::OnTextRendererNew()

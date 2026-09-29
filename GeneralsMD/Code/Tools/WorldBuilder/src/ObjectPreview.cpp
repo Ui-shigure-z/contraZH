@@ -89,9 +89,28 @@ static UnsignedByte * saveSurface(IDirect3DSurface8 *surface)
 
 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
+#if defined(BUILD_WITH_D3D9)
+	// D3D9 dropped CreateImageSurface/CopyRects: read the render target back through a
+	// system-memory surface instead.
+	tempSurface=nullptr;
+	HRESULT hr=m_pDev->CreateOffscreenPlainSurface(desc.Width,desc.Height,desc.Format,D3DPOOL_SYSTEMMEM,&tempSurface,nullptr);
+	if (SUCCEEDED(hr))
+	{
+		hr=m_pDev->GetRenderTargetData(surface,tempSurface);
+	}
+	if (FAILED(hr))
+	{
+		if (tempSurface)
+		{
+			tempSurface->Release();
+		}
+		return nullptr;
+	}
+#else
 	HRESULT hr=m_pDev->CreateImageSurface(  desc.Width,desc.Height,desc.Format, &tempSurface);
 
 	hr=m_pDev->CopyRects(surface,nullptr,0,tempSurface,nullptr);
+#endif
 
 	D3DLOCKED_RECT lrect;
 

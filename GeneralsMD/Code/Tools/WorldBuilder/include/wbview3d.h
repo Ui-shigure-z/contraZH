@@ -497,11 +497,17 @@ protected:
 	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
 	void setMSAA(D3DMULTISAMPLE_TYPE type);
 	void setTextureFilter(int mode);
+	void releaseD3DXFont();				///< drop m3DFont (D3D8 only)
 	void createLabelFont();					///< (re)create m3DFont honoring m_textAntialias
 
 
 	ID3DXFont*							m3DFont;		// in-frame label font (Old renderer mode)
 	WBFontAtlas							m_fontAtlas;	// GDI-built glyph atlas -> D3D quads
+#if defined(BUILD_WITH_D3D9)
+	WBFontAtlas							m_hudAtlas;		// D3D9 has no ID3DXFont: HUD/ruler text draws from this atlas instead
+#endif
+	Bool hasFrameFont() const;				///< true when fontDrawText() can draw in-frame text
+	void fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color);	///< ID3DXFont on D3D8, the HUD atlas on D3D9
 
 	// --- viewport-label change-detection key --------------------------------
 	// Snapshot of everything that affects label geometry/colour. Built per frame

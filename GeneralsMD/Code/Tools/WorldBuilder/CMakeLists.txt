@@ -108,6 +108,7 @@ set(WORLDBUILDER_SRC
     "src/WaypointOptions.cpp"
     "src/WaypointTool.cpp"
     "src/WBFontAtlas.cpp"
+"src/WBPngTexture.cpp"
     "src/WBFrameWnd.cpp"
     "src/WBHeightMap.cpp"
     "src/WBParticleRuntime.cpp"
@@ -306,6 +307,7 @@ target_precompile_headers(z_worldbuilder PRIVATE
 
 target_link_libraries(z_worldbuilder PRIVATE
     d3d8lib
+    stb
     imm32
     vfw32
     winmm
@@ -332,7 +334,13 @@ if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
     # don't clobber each other. The Qt build is named for what it is (WorldBuilderZH_Qt.exe);
     # the plain MFC build keeps the historical _d/_r scheme. Other configs (Internal/Profile
     # are Release-config; MinSizeRel/RelWithDebInfo) keep the base name.
-    if(RTS_ENABLE_WORLDBUILDER_QT)
+    if(RTS_ENABLE_WORLDBUILDER_QT AND RTS_D3D_BACKEND STREQUAL "D3D9")
+        # The D3D9 build ships side by side with the D3D8 one.
+        set_target_properties(z_worldbuilder PROPERTIES
+            OUTPUT_NAME WorldBuilderZH_Qt_D3D9
+            OUTPUT_NAME_DEBUG WorldBuilderZH_Qt_D3D9_d
+            OUTPUT_NAME_RELEASE WorldBuilderZH_Qt_D3D9)
+    elseif(RTS_ENABLE_WORLDBUILDER_QT)
         set_target_properties(z_worldbuilder PROPERTIES
             OUTPUT_NAME WorldBuilderZH_Qt
             OUTPUT_NAME_DEBUG WorldBuilderZH_Qt_d

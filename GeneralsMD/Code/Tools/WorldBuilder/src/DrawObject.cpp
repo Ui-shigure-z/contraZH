@@ -63,7 +63,11 @@
 #include "WW3D2/render2d.h"
 #include "GameLogic/Weapon.h"
 #include "Common/AudioEventInfo.h"
+#if defined(BUILD_WITH_D3D9)
+#include "WBPngTexture.h"		// stb_image PNG decode for tracing overlays (no D3DX on D3D9)
+#else
 #include <d3dx8tex.h>		// D3DXCreateTextureFromFileExA, for PNG tracing overlays
+#endif
 
 #ifdef RTS_DEBUG
 #define NO_INTENSE_DEBUG 1
@@ -3888,11 +3892,13 @@ if (_skip_drawobject_render) {
 
 		if (!overlayPath.isEmpty()) {
 			if (isPng) {
+#if !defined(BUILD_WITH_D3D9)
 				// The resize interpolation is baked in at decode time, so picking
 				// the D3DX filter from the current setting (1=nearest -> POINT,
 				// else LINEAR for both the resize and the mip chain).
 				DWORD d3dxFilter = (m_tracingOverlayFilter == 1)
 					? D3DX_FILTER_POINT : D3DX_FILTER_LINEAR;
+#endif
 
 				// (Re)load the PNG when the resolved path OR the filter changes.
 				if (m_tracingOverlayTexture == NULL ||
@@ -3902,6 +3908,16 @@ if (_skip_drawobject_render) {
 					m_tracingOverlayLoadedPath.clear();
 					m_tracingOverlayLoadedFilter = -1;
 
+#if defined(BUILD_WITH_D3D9)
+					// No D3DX on the D3D9 backend: decode with stb_image and build the mip
+					// chain ourselves (nearest or box filtered, mirroring the D3DX choice).
+					TextureClass *pngTex = WBPngTexture_Load(overlayPath.str(), m_tracingOverlayFilter == 1);
+					if (pngTex != NULL) {
+						m_tracingOverlayTexture = pngTex;
+						m_tracingOverlayLoadedPath = overlayPath;
+						m_tracingOverlayLoadedFilter = m_tracingOverlayFilter;
+					}
+#else
 					IDirect3DTexture8 *d3dTex = NULL;
 					HRESULT hr = D3DXCreateTextureFromFileExA(
 						DX8Wrapper::_Get_D3D_Device8(),
@@ -3921,6 +3937,7 @@ if (_skip_drawobject_render) {
 						// TextureClass AddRefs the D3D texture; drop our extra ref.
 						d3dTex->Release();
 					}
+#endif
 				}
 				overlayTex = m_tracingOverlayTexture;
 			} else {

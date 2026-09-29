@@ -19,7 +19,7 @@
 #include "StdAfx.h"
 #include "WBFontAtlas.h"
 
-#include <d3d8.h>
+#include "WW3D2/dx8wrapper.h"	// d3d8.h or, on the D3D9 backend, d3d9.h + the DX8_* compat macros
 #include "WW3D2/dx8wrapper.h"
 
 // Atlas layout: glyphs are packed left-to-right into rows of fixed cell height.
@@ -297,8 +297,17 @@ void WBFontAtlas::ensureTexture()
 
 	if (m_texture) { m_texture->Release(); m_texture = NULL; }
 
+#if defined(BUILD_WITH_D3D9)
+	// A D3D9Ex device has no managed pool: a dynamic default-pool texture is lockable and
+	// survives ResetEx. Plain D3D9 keeps the managed pool.
+	const DWORD texUsage = DX8Wrapper::Is_Ex() ? D3DUSAGE_DYNAMIC : 0;
+	const D3DPOOL texPool = DX8Wrapper::Is_Ex() ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED;
+	if (FAILED(DX8_CREATE_TEXTURE(m_dev, m_atlasW, m_atlasH, 1, texUsage, D3DFMT_A8R8G8B8,
+			texPool, &m_texture)) || !m_texture) {
+#else
 	if (FAILED(m_dev->CreateTexture(m_atlasW, m_atlasH, 1, 0, D3DFMT_A8R8G8B8,
 			D3DPOOL_MANAGED, &m_texture)) || !m_texture) {
+#endif
 		m_texture = NULL;
 		return;
 	}
@@ -418,11 +427,20 @@ void WBFontAtlas::flushBatch()
 	dev->GetTextureStageState(0, D3DTSS_ALPHAARG2, &oldAlphaArg2);
 
 	DWORD oldMin, oldMag, oldMip, oldAddrU, oldAddrV;
+#if defined(BUILD_WITH_D3D9)
+	// D3D9 moved the filter/address states from the texture stage to the sampler.
+	dev->GetSamplerState(0, D3DSAMP_MINFILTER, &oldMin);
+	dev->GetSamplerState(0, D3DSAMP_MAGFILTER, &oldMag);
+	dev->GetSamplerState(0, D3DSAMP_MIPFILTER, &oldMip);
+	dev->GetSamplerState(0, D3DSAMP_ADDRESSU,  &oldAddrU);
+	dev->GetSamplerState(0, D3DSAMP_ADDRESSV,  &oldAddrV);
+#else
 	dev->GetTextureStageState(0, D3DTSS_MINFILTER, &oldMin);
 	dev->GetTextureStageState(0, D3DTSS_MAGFILTER, &oldMag);
 	dev->GetTextureStageState(0, D3DTSS_MIPFILTER, &oldMip);
 	dev->GetTextureStageState(0, D3DTSS_ADDRESSU,  &oldAddrU);
 	dev->GetTextureStageState(0, D3DTSS_ADDRESSV,  &oldAddrV);
+#endif
 
 	IDirect3DBaseTexture8 *oldTex = NULL;
 	dev->GetTexture(0, &oldTex);
@@ -444,14 +462,22 @@ void WBFontAtlas::flushBatch()
 	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   D3DTOP_MODULATE);
 	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
 	dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+#if defined(BUILD_WITH_D3D9)
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU,  D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV,  D3DTADDRESS_CLAMP);
+#else
 	dev->SetTextureStageState(0, D3DTSS_MINFILTER, D3DTEXF_POINT);
 	dev->SetTextureStageState(0, D3DTSS_MAGFILTER, D3DTEXF_POINT);
 	dev->SetTextureStageState(0, D3DTSS_MIPFILTER, D3DTEXF_NONE);
 	dev->SetTextureStageState(0, D3DTSS_ADDRESSU,  D3DTADDRESS_CLAMP);
 	dev->SetTextureStageState(0, D3DTSS_ADDRESSV,  D3DTADDRESS_CLAMP);
+#endif
 
 	dev->SetTexture(0, m_texture);
-	dev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8_SET_FVF(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
 	dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, m_vertCount / 3, m_verts, sizeof(TLVertex));
 
@@ -465,11 +491,19 @@ void WBFontAtlas::flushBatch()
 	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   oldAlphaOp);
 	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, oldAlphaArg1);
 	dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, oldAlphaArg2);
+#if defined(BUILD_WITH_D3D9)
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, oldMin);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, oldMag);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, oldMip);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU,  oldAddrU);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV,  oldAddrV);
+#else
 	dev->SetTextureStageState(0, D3DTSS_MINFILTER, oldMin);
 	dev->SetTextureStageState(0, D3DTSS_MAGFILTER, oldMag);
 	dev->SetTextureStageState(0, D3DTSS_MIPFILTER, oldMip);
 	dev->SetTextureStageState(0, D3DTSS_ADDRESSU,  oldAddrU);
 	dev->SetTextureStageState(0, D3DTSS_ADDRESSV,  oldAddrV);
+#endif
 
 	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlphaBlend);
 	dev->SetRenderState(D3DRS_SRCBLEND,         oldSrcBlend);

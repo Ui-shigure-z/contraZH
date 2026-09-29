@@ -23,8 +23,17 @@
 
 #include "Lib/BaseType.h"
 
+#if defined(BUILD_WITH_D3D9)
+// The D3D9 backend spells the D3D8 names as typedefs (WW3D2/dx8compat.h); repeat them
+// here so this header stays self-contained without dragging d3d9.h in.
+struct IDirect3DDevice9;
+struct IDirect3DTexture9;
+typedef IDirect3DDevice9 IDirect3DDevice8;
+typedef IDirect3DTexture9 IDirect3DTexture8;
+#else
 struct IDirect3DDevice8;
 struct IDirect3DTexture8;
+#endif
 
 // ----------------------------------------------------------------------------
 // WBFontAtlas
@@ -59,6 +68,7 @@ public:
 	void releaseTexture();
 
 	Bool isValid() const { return m_atlasBits != NULL; }
+	Int lineHeight() const { return m_lineHeight; }
 
 	/// Line height (font cell height) in pixels, for stacking label rows.
 	Int  getLineHeight() const { return m_lineHeight; }
