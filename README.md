@@ -1,81 +1,111 @@
-[![Download WorldBuilder ZH](https://img.shields.io/badge/DOWNLOAD_WORLDBUILDER_ZH-555?style=for-the-badge)](https://github.com/triatomic/worldbuilderQT/releases/latest)&nbsp;[![Latest release](https://img.shields.io/github/v/release/triatomic/worldbuilderQT?style=for-the-badge&label=&color=44cc11)](https://github.com/triatomic/worldbuilderQT/releases/latest)&nbsp;![Released](https://img.shields.io/github/release-date/triatomic/worldbuilderQT?style=for-the-badge&label=Released&labelColor=222&color=44cc11)
+[![GitHub Release](https://img.shields.io/github/v/release/TheSuperHackers/GeneralsGameCode?include_prereleases&sort=date&display_name=tag&style=flat&label=Release)](https://github.com/TheSuperHackers/GeneralsGameCode/releases)
+![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/3)
+![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/1)
+![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/4)
+![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/5)
+![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/6)
 
-# Qt WorldBuilder (Zero Hour)
+[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/bug?style=flat&label=Bug%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ABug)
+[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/enhancement?style=flat&label=Enhancement%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3AEnhancement)
+[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/major?style=flat&label=Major%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3AMajor)
+[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/critical?style=flat&label=Critical%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ACritical)
+[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/blocker?style=flat&label=Blocker%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ABlocker)
 
-A modern **Qt** port of the *Command & Conquer: Generals — Zero Hour* **WorldBuilder** map editor:
-a full MFC→Qt inversion of the original tool, keeping the classic workflow while replacing the
-aging MFC UI with a native Qt front end.
+# Welcome to the Generals Game Code Project
 
-### ⬇️ [**Download the latest release**](https://github.com/triatomic/worldbuilderQT/releases/latest)
+GeneralsGameCode is a community-driven project aimed at fixing and improving the classic RTS game, *Command &
+Conquer: Generals* and its expansion *Zero Hour*. This repository contains the source code for both games, with a
+primary focus on *Zero Hour*.
 
-Grab `WorldBuilderZH-Qt-*.zip` from the [releases page](https://github.com/triatomic/worldbuilderQT/releases/latest),
-unzip it, and run **`WorldBuilderZH.exe`** from inside a Zero Hour install. The Qt runtime is
-bundled — no separate Qt install is required to run it.
+Additionally, there is a complementary project repository for fixing and improving game data and assets such as
+INI scripts, GUI, AI, maps, models, textures, audio, localization. You can find it
+[here](https://github.com/TheSuperHackers/GeneralsGamePatch/) and contribute to it as well.
 
-## Running
+## Project Overview
 
-WorldBuilder loads game data from its own folder, so it must sit inside a Zero Hour install (it
-`SetCurrentDirectory`s to its own exe folder at startup). Unzip the release into your Zero Hour
-directory (or copy the exe + the bundled Qt DLLs there) and launch **`WorldBuilderZH.exe`**.
+The game was originally developed using Visual Studio 6 and C++98. We've updated the code to be compatible with Visual
+Studio 2022 and C++20.
 
-You must own the game. The C&C Ultimate Collection is available on
-[EA App](https://www.ea.com/en-gb/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc)
-or [Steam](https://store.steampowered.com/bundle/39394/Command__Conquer_The_Ultimate_Collection/).
+The initial goal of this project is to fix critical bugs and implement improvements while maintaining compatibility with
+the original *Generals* version 1.08 and *Zero Hour* version 1.04. Once we can break retail compatibility, more fixes
+and features will be possible to implement.
 
-## New usage
+## Current Focus and Future Plans
 
-The Qt WorldBuilder adds a batch of Script Editor quality-of-life features — live tree search and
-state filters, F2 rename / Ctrl+D duplicate, a fuller right-click menu, copy/paste of conditions
-and actions between scripts, clickable reference links (including jump-to-entity in the 3D view),
-a find/replace bar for renaming parameter values across all scripts (or just the selected one),
-and a repair flow for maps from other mods: clickable **[Missing]** object references that jump to
-the broken condition/action, with the object picker auto-suggesting the closest existing name.
+Here's an overview of our current focus and future plans
 
-See **[ScriptEditor-QoL-Guide.md](ScriptEditor-QoL-Guide.md)** for how to use each of them, with a
-worked example.
+- **Modernizing the Codebase**: Transitioning to modern C++ standards and refactoring old code.
+- **Critical Bug Fixes**: Fixing game-breaking issues (e.g., fullscreen crash).
+- **Minor Bug Fixes**: Addressing minor bugs (e.g., UI issues, graphical glitches).
+- **Cross-Platform Support**: Adding support for more platforms (e.g., Linux, macOS).
+- **Engine Improvements**: Enhancing the game engine to improve performance and stability.
+- **Client-Side Features**: Enhancing the game's client with features such as an improved replay viewer and UI updates.
+- **Multiplayer Improvements**: Implementing a new game server and an upgraded matchmaking lobby.
+- **Tooling Improvements**: Developing new or improving existing tools for modding and game development.
+- **Community-Driven Improvements**: Once the community grows, we plan to incorporate more features, updates, and
+  changes based on player feedback.
 
-## Building
+## Running the Game
 
-WorldBuilder is a **32-bit** app built with **Visual Studio 2022 (MSVC v14x x86)**, **Qt 5.15.2
-32-bit (`msvc2019`)**, **Ninja**, and **CMake 3.25+**. The Qt build is **off by default** — a plain
-configure gives you the classic MFC WorldBuilder; enable it with
-`-DRTS_ENABLE_WORLDBUILDER_QT=ON`.
+To run *Generals* or *Zero Hour* using this project, you need to have the original *Command & Conquer: Generals and Zero Hour* game
+installed. The easiest way to get it is through *Command & Conquer The Ultimate Collection*
+on [Steam](https://store.steampowered.com/bundle/39394). Once the game is ready, download the latest version of the
+project from [GitHub Releases](https://github.com/TheSuperHackers/GeneralsGameCode/releases), extract the necessary 
+files, and follow the instructions in the [Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki).
 
-See **[QT-BUILD.md](QT-BUILD.md)** for the full step-by-step setup, the Qt install options, the
-CMake preset commands, runtime deployment (`windeployqt`), and the optional keyboard/focus debug
-facility.
 
-The dialogs' layouts live in Qt Designer `.ui` files — see
-**[qt/UI_FILES.md](GeneralsMD/Code/Tools/WorldBuilder/qt/UI_FILES.md)** for how they're split from
-the C++ logic, which dialogs are only partly editable in Designer and why, and the gotchas to know
-before editing one.
+## Joining the Community
 
-Quick version (inside an x86 MSVC environment, `vcvarsall.bat x86`):
+You can chat and discuss the development of the project on our [Discord channel](https://www.community-outpost.com/discord) to get the latest updates,
+report bugs, and contribute to the project!
 
+## Building the Game Yourself
+
+We provide support for building the project on Windows and Linux. For detailed build instructions, check the
+[Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki/build_guides), which includes guides for VS6, VS2022,
+Docker, CLion, and links to forks supporting additional versions.
+
+### Quick Start
+
+**Windows (Visual Studio 2022)**
+```bash
+cmake --preset win32
+cmake --build build/win32 --config Release
 ```
-cmake --preset win32-qt -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019"
 
-cmake --build --preset win32-qt --target z_worldbuilder
+**Linux (via Docker)**
+```bash
+./scripts/docker-build.sh              # Build using Docker
+./scripts/docker-install.sh --detect # Install to your game
 ```
 
-Output: `build/win32-qt/GeneralsMD/Release/WorldBuilderZH_Qt.exe`
+### Dependency management
 
-An experimental **Direct3D 9** variant builds with the `win32-qt-d3d9` preset as
-`WorldBuilderZH_Qt_D3D9.exe` (needs the compiled `shaders/` folder next to it; see
-[QT-BUILD.md](QT-BUILD.md)).
+The repository uses a vcpkg manifest (`vcpkg.json`) paired with a lockfile (`vcpkg-lock.json`). When you add or upgrade
+dependencies, run `vcpkg install --x-manifest-root . --triplet <triplet>` with `VCPKG_FEATURE_FLAGS=versions` so the
+lockfile picks up the new versions and include the updated lockfile in your change. GitHub Actions consumes these ports
+through `VCPKG_BINARY_SOURCES=clear;files,<workspace>/vcpkg-bincache,readwrite` (paired with an `actions/cache` entry for
+that folder), so the first CI build warms the cache and subsequent builds pull prebuilt binaries instead of
+re-compiling everything.
 
-## About this repository
+### Profiling
 
-This is a fork of the open-sourced *Command & Conquer: Generals + Zero Hour* source. The work here
-is focused on the **WorldBuilder Qt inversion** under `Tools/WorldBuilder`; the rest of the game
-engine and tools sources are carried along unchanged as the WorldBuilder's build dependencies.
+Tracy profiling is supported in the CMake preset `win32-profile`.
+Use `tracy-profiler.exe` from [Tracy v0.13.1](https://github.com/wolfpld/tracy/releases/tag/v0.13.1).
+If you get an error when using Tracy, try removing `dbghelp.dll` from the game binary directory.
 
-Building the full game/tools from source requires several third-party SDKs (DirectX, STLport,
-Miles, Bink, GameSpy, ZLib, and others) that are not included in this repository. Those are only
-needed for a from-scratch source build — the [release download](https://github.com/triatomic/worldbuilderQT/releases/latest)
-is a ready-to-run binary.
+## Contributing
 
-## License
+We welcome contributions to the project! If you’re interested in contributing, you need to have knowledge of C++. Join
+the developer chat on Discord for more information on how to get started. Please make sure to read our
+[Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request. You can also check out 
+the [Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki) for more detailed documentation.
 
-This repository and its contents are licensed under the GPL v3 license, with additional terms
-applied. Please see [LICENSE.md](LICENSE.md) for details.
+
+## License & Legal Disclaimer
+
+EA has not endorsed and does not support this product. All trademarks are the property of their respective owners.
+
+This project is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.html), which allows you to
+freely modify and distribute the source code under the terms of this license. Please see [LICENSE.md](LICENSE.md) 
+for details.
