@@ -27,6 +27,7 @@
 #include "WHeightMapEdit.h"
 #include "wbview3d.h"
 #include "ToastDialog.h"
+#include "WBTutorialPrompts.h"
 #ifdef RTS_HAS_QT
 #include "qt/WBQtBridge.h"
 #include "qt/WBQtPanelBridge.h"

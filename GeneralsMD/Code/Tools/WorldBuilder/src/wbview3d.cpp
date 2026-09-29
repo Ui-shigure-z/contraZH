@@ -134,6 +134,7 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 #include "qt/panels/WBQtTracingOverlayBridge.h"
 #include "qt/WBQtToast.h"
 #endif
+#include "WBTutorialPrompts.h"
 #include "MinimapDialog.h"
 #include "ImpassableOptions.h"
 #include "GameLogic/Module/SupplyWarehouseDockUpdate.h"

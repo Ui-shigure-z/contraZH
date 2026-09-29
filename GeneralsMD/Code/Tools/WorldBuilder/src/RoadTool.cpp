@@ -37,6 +37,7 @@
 #include "Common/ThingFactory.h"
 #include "GameClient/Line2D.h"
 #include "ToastDialog.h"
+#include "WBTutorialPrompts.h"
 #ifdef RTS_HAS_QT
 #include "qt/WBQtToast.h"
 #endif

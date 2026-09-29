@@ -113,6 +113,7 @@
 #include "qt/panels/WBQtEntityFinderBridge.h"
 #include "qt/WBQtToast.h"
 #endif
+#include "WBTutorialPrompts.h"
 
 
 static SubsystemInterfaceList TheSubsystemListRecord;

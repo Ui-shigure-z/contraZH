@@ -255,6 +255,7 @@ set(WORLDBUILDER_SRC
     "include/WaypointTool.h"
     "include/WBFrameWnd.h"
     "include/WBHeightMap.h"
+    "include/WBTutorialPrompts.h"
     "include/wbview.h"
     "include/wbview3d.h"
     "include/WHeightMapEdit.h"

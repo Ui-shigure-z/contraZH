@@ -495,31 +495,6 @@ int WBQtObject_GetUseWaterHeight(void)
 	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "UseWaterHeight", 1);
 }
 
-// Render Particles: a STARTUP-only opt-in. The particle runtime stands up during WbView3d
-// init (OnCreate) when the flag is set; toggling it live proved fragile, so this only persists
-// the choice -- it takes effect on the next WB launch. Persisted OFF by default.
-void WBQtObject_SetRenderParticles(int on)
-{
-	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "RenderParticles", on ? 1 : 0);
-}
-int WBQtObject_GetRenderParticles(void)
-{
-	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "RenderParticles", 0);
-}
-
-// Tutorial prompts: the one-time hint toasts (F11 full screen, Ctrl-click waypoint/road,
-// group-rotate) and the Ctrl+A "did you mean to show the whole map?" confirm. Handy at first, but
-// experienced users don't need them -- this gates all of them. Persisted ON by default; read live
-// at each prompt site so the checkbox takes effect immediately.
-void WBQtObject_SetTutorialPrompts(int on)
-{
-	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "TutorialPrompts", on ? 1 : 0);
-}
-int WBQtObject_GetTutorialPrompts(void)
-{
-	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "TutorialPrompts", 1);
-}
-
 // Place-all-in-category: the checkbox drives the ObjectOptions static that ObjectTool
 // reads on mouse-up; the setter persists it (same profile section as the other toggles).
 void WBQtObject_SetPlaceAll(int on)
@@ -571,3 +546,28 @@ void WBQtConfig_SetBuildListFollow(int on)
 
 }
 #endif
+
+// Render Particles: a STARTUP-only opt-in. The particle runtime stands up during WbView3d
+// init (OnCreate) when the flag is set; toggling it live proved fragile, so this only persists
+// the choice -- it takes effect on the next WB launch. Persisted OFF by default.
+void WBQtObject_SetRenderParticles(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "RenderParticles", on ? 1 : 0);
+}
+int WBQtObject_GetRenderParticles(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "RenderParticles", 0);
+}
+
+// Tutorial prompts: the one-time hint toasts (F11 full screen, Ctrl-click waypoint/road,
+// group-rotate) and the Ctrl+A "did you mean to show the whole map?" confirm. Handy at first, but
+// experienced users don't need them -- this gates all of them. Persisted ON by default; read live
+// at each prompt site so the checkbox takes effect immediately.
+void WBQtObject_SetTutorialPrompts(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "TutorialPrompts", on ? 1 : 0);
+}
+int WBQtObject_GetTutorialPrompts(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "TutorialPrompts", 1);
+}
