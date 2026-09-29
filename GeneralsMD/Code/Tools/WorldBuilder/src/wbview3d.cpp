@@ -94,6 +94,10 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/Common/W3DConvert.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
+#include "W3DDevice/GameClient/W3DSoftParticles.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "DrawObject.h"
 #include "RulerTool.h"
 #include "TracingOverlayOptions.h"
@@ -742,6 +746,8 @@ WbView3d::WbView3d() :
 	int msaaMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "MSAAMode", 0);
 	WW3D::Set_MSAA_Mode((WW3D::MultiSampleModeEnum)msaaMode);
 
+	loadFxShaderSettings();
+
 	m_cameraOffset.x = m_cameraOffset.y = m_cameraOffset.z = 1;
 
 	for (Int i=0; i<MAX_GLOBAL_LIGHTS; i++)
@@ -782,6 +788,16 @@ WbView3d::~WbView3d()
 	REF_PTR_RELEASE(m_drawObject) ;
 	REF_PTR_RELEASE(m_heightMapRenderObj);
 	W3DShaderManager::shutdown();
+	// FX Shaders: same order as the game (W3DDisplay / W3DTerrainVisual), the shadow map after the
+	// shader manager and everything before WW3D::Shutdown.
+	delete TheW3DShadowMap;
+	TheW3DShadowMap = nullptr;
+	delete TheW3DBloom;
+	TheW3DBloom = nullptr;
+	delete TheW3DSoftParticles;
+	TheW3DSoftParticles = nullptr;
+	delete TheW3DSkyClouds;
+	TheW3DSkyClouds = nullptr;
 	shutdownWW3D();
 }
 // ----------------------------------------------------------------------------
@@ -4941,6 +4957,10 @@ void WbView3d::render()
 		}
 
 		WW3D::Render(m_scene,m_camera);	
+		// Only the main scene fills the sun shadow map. RTS3DScene redoes the depth pass on every
+		// render, so keep it off for the build-list, wireframe, tracking and overlay passes below.
+		const Bool wantShadowMap = TheGlobalData->m_useShadowMap;
+		TheWritableGlobalData->m_useShadowMap = false;
 		Vector3 amb = m_baseBuildScene->Get_Ambient_Light();
 		Vector3 newAmb(amb);
 		Real mul = m_buildRedMultiplier;
@@ -5056,6 +5076,7 @@ void WbView3d::render()
 
 		// Draw the 3d obj icons on top of the rest of the data.
 		WW3D::Render(m_overlayScene,m_camera);
+		TheWritableGlobalData->m_useShadowMap = wantShadowMap;
 
 		// Viewport labels, Old (D3DX) mode: draw directly with m3DFont inside the
 		// frame (flicker-free). drawLabels(NULL) takes the m3DFont->DrawText path.
@@ -5277,6 +5298,20 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_UPDATE_COMMAND_UI(ID_TEXFILTER_DEFAULT, OnUpdateTexFilterDefault)
 	ON_COMMAND(ID_TEXFILTER_ANISO16X, OnTexFilterAniso16X)
 	ON_UPDATE_COMMAND_UI(ID_TEXFILTER_ANISO16X, OnUpdateTexFilterAniso16X)
+	ON_COMMAND(ID_FX_SHADOWMAP, OnFxShadowMap)
+	ON_UPDATE_COMMAND_UI(ID_FX_SHADOWMAP, OnUpdateFxShadowMap)
+	ON_COMMAND(ID_FX_BLOOM, OnFxBloom)
+	ON_UPDATE_COMMAND_UI(ID_FX_BLOOM, OnUpdateFxBloom)
+	ON_COMMAND(ID_FX_EFFECTSHADERS, OnFxEffectShaders)
+	ON_UPDATE_COMMAND_UI(ID_FX_EFFECTSHADERS, OnUpdateFxEffectShaders)
+	ON_COMMAND(ID_FX_HQSKY, OnFxHQSky)
+	ON_UPDATE_COMMAND_UI(ID_FX_HQSKY, OnUpdateFxHQSky)
+	ON_COMMAND(ID_FX_NORMALMAPS, OnFxNormalMaps)
+	ON_UPDATE_COMMAND_UI(ID_FX_NORMALMAPS, OnUpdateFxNormalMaps)
+	ON_COMMAND(ID_FX_HEIGHTBLEND, OnFxHeightBlend)
+	ON_UPDATE_COMMAND_UI(ID_FX_HEIGHTBLEND, OnUpdateFxHeightBlend)
+	ON_COMMAND(ID_FX_SPECULAR, OnFxSpecular)
+	ON_UPDATE_COMMAND_UI(ID_FX_SPECULAR, OnUpdateFxSpecular)
 	ON_COMMAND(ID_TEXT_SHADOW, OnTextShadow)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_SHADOW, OnUpdateTextShadow)
 	ON_COMMAND(ID_TEXT_ANTIALIAS, OnTextAntialias)
@@ -5373,7 +5408,29 @@ void WbView3d::initWW3D()
 		WW3D::Set_Thumbnail_Enabled(false);
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
 
+		// FX Shaders: the game creates these in W3DDisplay::init / W3DTerrainVisual::init, which
+		// WorldBuilder never runs. The shadow map comes first because the shader manager picks its
+		// depth shaders from the map's format. Shockwaves, laser glow and ambient occlusion are left
+		// out: the first two only come from game Drawables / FXLists, and the occlusion pass would
+		// darken every one of the extra scene renders below.
+		if (TheW3DShadowMap == nullptr)
+		{
+			TheW3DShadowMap = new W3DShadowMap;
+			TheW3DShadowMap->init();
+		}
 		W3DShaderManager::init();
+		if (TheW3DBloom == nullptr)
+		{
+			TheW3DBloom = new W3DBloom;
+		}
+		if (TheW3DSoftParticles == nullptr)
+		{
+			TheW3DSoftParticles = new W3DSoftParticles;
+		}
+		if (TheW3DSkyClouds == nullptr)
+		{
+			TheW3DSkyClouds = new W3DSkyClouds;
+		}
 		init3dScene();
 		m_layer = new LayerClass( m_scene, m_camera );
 		m_buildLayer = new LayerClass( m_baseBuildScene, m_camera );
@@ -8348,6 +8405,144 @@ void WbView3d::OnTexFilterAniso16X() { setTextureFilter(1); }
 
 void WbView3d::OnUpdateTexFilterDefault(CCmdUI* pCmdUI)  { pCmdUI->SetCheck(WW3D::Get_Texture_Filter() != TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC); }
 void WbView3d::OnUpdateTexFilterAniso16X(CCmdUI* pCmdUI) { pCmdUI->SetCheck(WW3D::Get_Texture_Filter() == TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC); }
+
+// ----------------------------------------------------------------------------
+// FX Shaders (Level Of Detail menu): the D3D9 effects the game switches through Options.ini.
+// The game's values, loaded with GameData, are the defaults; WorldBuilder.ini overrides them.
+static Bool readFxSetting(const char *key, Bool gameDefault)
+{
+	return ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, key, gameDefault ? 1 : 0) != 0;
+}
+
+static void writeFxSetting(const char *key, Bool value)
+{
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, key, value ? 1 : 0);
+}
+
+// Effects the backend or the hardware cannot draw stay greyed out. SetCheck always runs so the
+// Qt menu bar treats the item as checkable.
+static void updateFxItem(CCmdUI* pCmdUI, Bool checked, Bool available)
+{
+	pCmdUI->Enable(available ? TRUE : FALSE);
+	pCmdUI->SetCheck((checked && available) ? 1 : 0);
+}
+
+static Bool fxD3D9Available()
+{
+#if defined(BUILD_WITH_D3D9)
+	return true;
+#else
+	return false;
+#endif
+}
+
+void WbView3d::loadFxShaderSettings()
+{
+	TheWritableGlobalData->m_useShadowMap = readFxSetting("FxShadowMap", TheGlobalData->m_useShadowMap);
+	TheWritableGlobalData->m_useBloom = readFxSetting("FxBloom", TheGlobalData->m_useBloom);
+	setEffectShaders(readFxSetting("FxEffectShaders",
+		TheGlobalData->m_useFlameShaders || TheGlobalData->m_useElectricShaders ||
+		TheGlobalData->m_useLaserShaders || TheGlobalData->m_useCryoShaders));
+	TheWritableGlobalData->m_useHQSky = readFxSetting("FxHQSky", TheGlobalData->m_useHQSky);
+	TheWritableGlobalData->m_useNormalMaps = readFxSetting("FxNormalMaps", TheGlobalData->m_useNormalMaps);
+	TheWritableGlobalData->m_useHeightBlend = readFxSetting("FxHeightBlend", TheGlobalData->m_useHeightBlend);
+	TheWritableGlobalData->m_useSpecular = readFxSetting("FxSpecular", TheGlobalData->m_useSpecular);
+}
+
+void WbView3d::setEffectShaders(Bool on)
+{
+	TheWritableGlobalData->m_useSoftParticles = on;
+	TheWritableGlobalData->m_useFlameShaders = on;
+	TheWritableGlobalData->m_useElectricShaders = on;
+	TheWritableGlobalData->m_useLaserShaders = on;
+	TheWritableGlobalData->m_useCryoShaders = on;
+}
+
+void WbView3d::OnFxShadowMap()
+{
+	TheWritableGlobalData->m_useShadowMap = !TheGlobalData->m_useShadowMap;
+	writeFxSetting("FxShadowMap", TheGlobalData->m_useShadowMap);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxShadowMap(CCmdUI* pCmdUI)
+{
+	// The map only fills when Show Shadows is on, like the game's 3D/2D shadow options.
+	updateFxItem(pCmdUI, TheGlobalData->m_useShadowMap, TheW3DShadowMap != nullptr && TheW3DShadowMap->isAvailable());
+}
+
+void WbView3d::OnFxBloom()
+{
+	TheWritableGlobalData->m_useBloom = !TheGlobalData->m_useBloom;
+	writeFxSetting("FxBloom", TheGlobalData->m_useBloom);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxBloom(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useBloom, TheW3DBloom != nullptr);
+}
+
+void WbView3d::OnFxEffectShaders()
+{
+	setEffectShaders(!TheGlobalData->m_useFlameShaders);
+	writeFxSetting("FxEffectShaders", TheGlobalData->m_useFlameShaders);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxEffectShaders(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useFlameShaders, fxD3D9Available() && TheW3DSoftParticles != nullptr);
+}
+
+void WbView3d::OnFxHQSky()
+{
+	TheWritableGlobalData->m_useHQSky = !TheGlobalData->m_useHQSky;
+	writeFxSetting("FxHQSky", TheGlobalData->m_useHQSky);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxHQSky(CCmdUI* pCmdUI)
+{
+	// Draws through the cloud map, so View > Show Clouds has to be on as well.
+	updateFxItem(pCmdUI, TheGlobalData->m_useHQSky, fxD3D9Available() && TheW3DSkyClouds != nullptr);
+}
+
+void WbView3d::OnFxNormalMaps()
+{
+	TheWritableGlobalData->m_useNormalMaps = !TheGlobalData->m_useNormalMaps;
+	writeFxSetting("FxNormalMaps", TheGlobalData->m_useNormalMaps);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxNormalMaps(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useNormalMaps, fxD3D9Available());
+}
+
+void WbView3d::OnFxHeightBlend()
+{
+	TheWritableGlobalData->m_useHeightBlend = !TheGlobalData->m_useHeightBlend;
+	writeFxSetting("FxHeightBlend", TheGlobalData->m_useHeightBlend);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxHeightBlend(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useHeightBlend, W3DShaderManager::supportsTerrainHeightBlend());
+}
+
+void WbView3d::OnFxSpecular()
+{
+	TheWritableGlobalData->m_useSpecular = !TheGlobalData->m_useSpecular;
+	writeFxSetting("FxSpecular", TheGlobalData->m_useSpecular);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxSpecular(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useSpecular, fxD3D9Available());
+}
 
 void WbView3d::OnTextShadow()
 {

@@ -916,6 +916,13 @@
 #define ID_DEBUG_PATHFIND_PASSABILITY   33429
 #define ID_MAPGEN_GENERATE              33430
 #define ID_MAPGEN_RANDOMIZE             33431
+#define ID_FX_SHADOWMAP                 33432
+#define ID_FX_BLOOM                     33433
+#define ID_FX_EFFECTSHADERS             33434
+#define ID_FX_HQSKY                     33435
+#define ID_FX_NORMALMAPS                33436
+#define ID_FX_HEIGHTBLEND               33437
+#define ID_FX_SPECULAR                  33438
 #define IDS_NEW                         61446
 #define IDS_RESIZE                      61447
 #define IDS_REMOVING_INUSE_TEAM         61448
@@ -994,7 +1001,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         33432
+#define _APS_NEXT_COMMAND_VALUE         33439
 #define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

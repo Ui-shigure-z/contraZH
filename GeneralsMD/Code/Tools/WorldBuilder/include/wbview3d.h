@@ -271,6 +271,20 @@ protected:
 	afx_msg void OnTexFilterAniso16X();
 	afx_msg void OnUpdateTexFilterDefault(CCmdUI* pCmdUI);
 	afx_msg void OnUpdateTexFilterAniso16X(CCmdUI* pCmdUI);
+	afx_msg void OnFxShadowMap();
+	afx_msg void OnUpdateFxShadowMap(CCmdUI* pCmdUI);
+	afx_msg void OnFxBloom();
+	afx_msg void OnUpdateFxBloom(CCmdUI* pCmdUI);
+	afx_msg void OnFxEffectShaders();
+	afx_msg void OnUpdateFxEffectShaders(CCmdUI* pCmdUI);
+	afx_msg void OnFxHQSky();
+	afx_msg void OnUpdateFxHQSky(CCmdUI* pCmdUI);
+	afx_msg void OnFxNormalMaps();
+	afx_msg void OnUpdateFxNormalMaps(CCmdUI* pCmdUI);
+	afx_msg void OnFxHeightBlend();
+	afx_msg void OnUpdateFxHeightBlend(CCmdUI* pCmdUI);
+	afx_msg void OnFxSpecular();
+	afx_msg void OnUpdateFxSpecular(CCmdUI* pCmdUI);
 	afx_msg void OnTextShadow();
 	afx_msg void OnUpdateTextShadow(CCmdUI* pCmdUI);
 	afx_msg void OnTextAntialias();
@@ -497,6 +511,8 @@ protected:
 	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
 	void setMSAA(D3DMULTISAMPLE_TYPE type);
 	void setTextureFilter(int mode);
+	void loadFxShaderSettings();			///< FX Shaders menu: WorldBuilder.ini overrides the game's Options.ini values
+	void setEffectShaders(Bool on);			///< soft particles + flame/electric/laser/cryo particle shaders as one switch
 	void releaseD3DXFont();				///< drop m3DFont (D3D8 only)
 	void createLabelFont();					///< (re)create m3DFont honoring m_textAntialias
 

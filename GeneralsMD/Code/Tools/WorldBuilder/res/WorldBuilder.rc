@@ -379,6 +379,17 @@ BEGIN
             MENUITEM "Default",                     ID_TEXFILTER_DEFAULT
             MENUITEM "Anisotropic 16x",             ID_TEXFILTER_ANISO16X
         END
+        POPUP "FX Shaders"
+        BEGIN
+            MENUITEM "Shadow Mapping",              ID_FX_SHADOWMAP
+            MENUITEM "Bloom",                       ID_FX_BLOOM
+            MENUITEM "Effect Shaders (Flame, Electric, Laser, Cryo)", ID_FX_EFFECTSHADERS
+            MENUITEM "HQ Sky Cloud Shadows",        ID_FX_HQSKY
+            MENUITEM SEPARATOR
+            MENUITEM "Terrain Normal Maps",         ID_FX_NORMALMAPS
+            MENUITEM "Terrain Height Blend",        ID_FX_HEIGHTBLEND
+            MENUITEM "Specular && Glint",           ID_FX_SPECULAR
+        END
         POPUP "Minimap"
         BEGIN
             MENUITEM "Show Objects",                ID_MINIMAP_SHOWOBJECTS

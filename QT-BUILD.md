@@ -67,6 +67,14 @@ Differences from the D3D8 build: no D3DX, so the "Old" label renderer (ID3DXFont
 and maps to the atlas renderer; HUD/ruler/tooltip text draws from a glyph atlas; PNG tracing
 overlays are decoded with `stb_image`.
 
+The game's D3D9 effects are switched from **Level Of Detail > FX Shaders**: shadow mapping,
+bloom, the particle effect shaders (flame, electric, laser, cryo, with soft particles), HQ sky
+cloud shadows, terrain normal maps, terrain height blend, and specular/glint. Each item starts
+from the value in the player's `Options.ini` and is remembered in `WorldBuilder.ini`. Shadow
+mapping still needs View > Show Shadows, and HQ sky needs View > Show Clouds. Objects cast into
+the shadow map and the terrain receives it; the objects themselves keep their classic shadows.
+In the D3D8 exe only Bloom is available.
+
 ## Configure + build (Visual Studio generator, alternative)
 
 ```
