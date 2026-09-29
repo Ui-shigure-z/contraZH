@@ -93,7 +93,8 @@ float4 DepthMapping  : register(c25);  // xy = stored scene depth of a point at 
 float4 DeepColor     : register(c26);  // w = 1 where it replaces the water texture's average colour
 float4 WaveShading   : register(c27);  // x = how much the waves light the water colour
 float4 SparkleColor  : register(c28);  // sun colour times sparkle strength, w = specular power
-float4 RichParams    : register(c29);  // x = 1 / world units a pixel at which the waves keep their size, 0 keeps it always, y = how much of the texture's pattern shows
+float4 RichParams    : register(c29);  // x = 1 / world units a pixel at which the waves keep their size, 0 keeps it always, y = how much of the texture's pattern shows,
+                                       // z = 1 where shadows leave the reflections alone, w = 1 where shadows soften with depth and sway with the ripples
 float4 Enclosed      : register(c30);  // kept in enclosed water: x = wave strength, y = broad waves, z = swell
 float4 SparkleSun    : register(c31);  // a sun ahead of the camera at the map sun's height, w = how far below the view to set it instead, 0 keeps the map's
 #endif
@@ -369,8 +370,26 @@ float4 main(PsIn input) : COLOR
 #endif
     float3 scene = lerp(straight, bent, bendable);
 
+#if RICH
+    // Sunlight scatters through the water, so a shadow in it blurs with depth and sways with the ripples.
+    // Four spots around the point average out; with the softening off they all fall on the point itself.
+    float2 shadowSway = ripple * (1.5f * RichParams.w);
+    float shadowSpread = min(depth * 0.25f, 4.0f) * RichParams.w;
+    const float2 shadowTaps[4] = { float2(-0.7f, -0.7f), float2(0.7f, -0.7f), float2(-0.7f, 0.7f), float2(0.7f, 0.7f) };
+    float shadowSum = 0.0f;
+    [unroll] for (int tap=0; tap<4; tap++)
+    {
+        float4 tapPoint = float4(world.xy + shadowTaps[tap] * shadowSpread + shadowSway, world.z, 1.0f);
+        shadowSum += ShadowLit(float4(dot(tapPoint, ShadowU), dot(tapPoint, ShadowV), dot(tapPoint, ShadowZ), dot(tapPoint, ShadowW)));
+    }
+    float lit = lerp(1.0f, 0.25f * shadowSum, Absorption.w);
+    // A shadow takes the sun's light away, not the sky's, so the reflections stay as bright as around it.
+    float reflectLit = lerp(0.6f, 1.0f, max(lit, RichParams.z));
+#else
     float4 shadowPos = float4(dot(worldPoint, ShadowU), dot(worldPoint, ShadowV), dot(worldPoint, ShadowZ), dot(worldPoint, ShadowW));
     float lit = lerp(1.0f, ShadowLit(shadowPos), Absorption.w);
+    float reflectLit = lerp(0.6f, 1.0f, lit);
+#endif
     float3 shade = lerp(ShadowColor.rgb, float3(1.0f, 1.0f, 1.0f), lit);
 
 #if RIVER
@@ -404,13 +423,13 @@ float4 main(PsIn input) : COLOR
     float3 toEye = normalize(Camera.xyz - world);
     float facing = saturate(dot(normal, toEye));
     float fresnel = 0.02f + 0.98f * pow(1.0f - facing, 5.0f);
-    float3 sky = SkyboxColor(reflect(-toEye, normal)) * SkyTint.rgb * lerp(0.6f, 1.0f, lit);
+    float3 sky = SkyboxColor(reflect(-toEye, normal)) * SkyTint.rgb * reflectLit;
 
     // Water off the mirror plane, as on other lakes or sloping rivers, keeps the skybox.
     float4 mirror = tex2D(Reflection, screen + PlanarMap.xy + TiltOnScreen(ripple * HeightDecode.w, ahead) * Planar.z);
     float onPlane = saturate(1.0f - max(abs(world.z - Planar.x) - PlanarMap.z, 0.0f) * Planar.y);
     float mirrored = mirror.a * onPlane;
-    sky = lerp(sky, mirror.rgb * lerp(0.6f, 1.0f, lit), mirrored);
+    sky = lerp(sky, mirror.rgb * reflectLit, mirrored);
 
     // Some water colour always shows through.
     float reflection = min(fresnel * SkyTint.w + mirrored * PlanarMap.w, 0.8f);

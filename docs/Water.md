@@ -154,6 +154,14 @@ flat.
 
 ![Planar reflection](images/water-reflection.svg)
 
+* `ShaderWaterClearReflections = Yes` - (Unit, building and cliff shadows leave the sky and mirrored
+scene in the water as bright as around them, as a shadow takes only the sun's light away. They still
+darken the water's own colour and hide the glint and specks. No dims the reflections in shadow too.
+Shader model 3 only.)
+* `ShaderWaterSoftShadows = Yes` - (Shadows in the water blur with depth, up to 4 world units, and
+sway with the ripples, as sunlight scatters through the water. No keeps them as sharp as on the
+ground. Shader model 3 only.)
+
 * `ShaderWaterPlanarStrength = 0.3` - (Reflection the mirrored scene adds on top of the sky's. 0
 leaves the mirror only at grazing angles. Water at another height than the one under the view fades
 to the skybox over 4 world units.)
@@ -226,6 +234,8 @@ One block. `map.ini` can override any of these keys for its map.
 | `ShaderWaterSwellSpeed` | number | `30` | `-200` - `200` | World units a second the swell drifts. `0` holds it still. Negative reverses it. |
 | `ShaderWaterPlanarStrength` | number | `0.3` | `0` - `1` | Reflection the mirrored scene adds on top of the sky's. The 80% cap applies to the sum. |
 | `ShaderWaterPlanarDistortion` | number | `0.02` | `0` - `0.1` | Fraction of the screen the waves bend the mirrored scene by. `0` keeps it sharp. |
+| `ShaderWaterClearReflections` | Yes/No | `Yes` | - | Shadows leave the reflections as bright as around them. Shader model 3 only. |
+| `ShaderWaterSoftShadows` | Yes/No | `Yes` | - | Shadows in the water blur with depth and sway with the ripples. Shader model 3 only. |
 | `WaterAnimationFps` | whole number | `0` | `0`, or `30` - `60` **(hard)** | Moves the water as if the game ran at that rate. `0` moves it every frame. Values from `1` to `29` count as `30`, and above `60` as `60`. |
 
 ## WaterSet

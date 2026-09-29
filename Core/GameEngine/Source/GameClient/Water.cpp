@@ -106,6 +106,8 @@ const FieldParse WaterTransparencySetting::m_waterTransparencySettingFieldParseT
 	{ "ShaderWaterOpenReach",			INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterOpenReach ) },
 	{ "ShaderWaterEnclosedCalm",		INI::parseReal,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterEnclosedCalm ) },
 	{ "ShaderWaterZoomCompensation",	INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterZoomCompensation ) },
+	{ "ShaderWaterClearReflections",	INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterClearReflections ) },
+	{ "ShaderWaterSoftShadows",			INI::parseBool,				nullptr,			offsetof( WaterTransparencySetting, m_shaderWaterSoftShadows ) },
 	{ "ShaderWaterEnclosedWaves",		parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterEnclosedWaveScale",	parseRetiredKey,				nullptr,			0 },
 	{ "ShaderWaterEnclosedSwell",		parseRetiredKey,				nullptr,			0 },

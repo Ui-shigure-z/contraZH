@@ -1359,7 +1359,8 @@ void WaterRenderObjClass::setupShaderWater(Bool river)
 	const Vector4 waveShading(max(TheWaterTransparency->m_shaderWaterWaveShading, 0.0f), 0.0f, 0.0f, 0.0f);
 	const Vector4 sparkleColor(sceneLight.X * sparkle, sceneLight.Y * sparkle, sceneLight.Z * sparkle, WATER_SPARKLE_POWER);
 	const Bool zoomCompensation = TheWaterTransparency->m_shaderWaterZoomCompensation;
-	const Vector4 richParams(zoomCompensation ? 1.0f / WATER_ZOOM_REFERENCE : 0.0f, WWMath::Clamp(TheWaterTransparency->m_shaderWaterTexturePattern), 0.0f, 0.0f);
+	const Vector4 richParams(zoomCompensation ? 1.0f / WATER_ZOOM_REFERENCE : 0.0f, WWMath::Clamp(TheWaterTransparency->m_shaderWaterTexturePattern),
+		TheWaterTransparency->m_shaderWaterClearReflections ? 1.0f : 0.0f, TheWaterTransparency->m_shaderWaterSoftShadows ? 1.0f : 0.0f);
 	const Vector4 sparkleSun(aheadSun.X, aheadSun.Y, aheadSun.Z, zoomCompensation ? DEG_TO_RADF(WATER_SPARKLE_DIP) : 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(26, &richDeep, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(27, &waveShading, 1);

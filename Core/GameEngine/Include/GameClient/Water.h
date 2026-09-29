@@ -109,6 +109,8 @@ class WaterTransparencySetting : public Overridable
 		Real m_shaderWaterOpenReach;		///< world units from shore at which water counts as open
 		Real m_shaderWaterEnclosedCalm;	///< how much calmer enclosed water is than open water, 0 to 1
 		Bool m_shaderWaterZoomCompensation;	///< keeps the ripples and sun specks as they look up close at any zoom and camera pitch
+		Bool m_shaderWaterClearReflections;	///< shadows leave the sky and mirrored scene in the water as bright as around them
+		Bool m_shaderWaterSoftShadows;	///< shadows in the water blur with depth and sway with the ripples
 		Real m_shaderWaterSwellHeight;	///< height of the vertex waves, 0 turns them off
 		Real m_shaderWaterSwellScale;	///< world units one swell tile covers
 		Real m_shaderWaterSwellSpeed;	///< world units a second the swell drifts
@@ -160,6 +162,8 @@ class WaterTransparencySetting : public Overridable
 			m_shaderWaterOpenReach = 400.0f;
 			m_shaderWaterEnclosedCalm = 1.0f;
 			m_shaderWaterZoomCompensation = TRUE;
+			m_shaderWaterClearReflections = TRUE;
+			m_shaderWaterSoftShadows = TRUE;
 			m_shaderWaterSwellHeight = 3.0f;
 			m_shaderWaterSwellScale = 700.0f;
 			m_shaderWaterSwellSpeed = 30.0f;
