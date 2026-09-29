@@ -266,7 +266,13 @@ protected:
 	Bool drawRulerFeedback(CameraClass* camera);
 	Bool drawBucketBrushFeedback(CameraClass* camera);	///< cyan brush circle at the cursor while the wave editor's Bucket mode is active
 	Int updateVB(DX8VertexBufferClass	*vertexBufferTile, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring = true);
+	static void fillIconVertices(VertexFormatXYZDUV1 *vb, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring);	///< the icon updateVB writes, into any 6*NUM_TRI vertex array
+	static Int polygonTriggerColor(const PolygonTrigger *pTrig, Bool selected);
+	static void emitOutlineSegment(const Coord3D &loc1, const Coord3D &loc2, Int diffuse, VertexFormatXYZDUV1 *&curVb, UnsignedShort *&curIb, Int &vertexCount, Int &indexCount);
 	void updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOpen);
+#if defined(BUILD_WITH_D3D9)
+	void renderPolygonTriggersBatched(RenderInfoClass &rinfo);	///< every trigger's diamonds and outline in one buffer fill and draw
+#endif
 	void updateFeedbackVB(void);
 	void updateMeshVB(void);
 	void updateRampVB(void);

@@ -1846,33 +1846,17 @@ void DrawObject::updateWaypointVB(RenderInfoClass & rinfo)
 	}
 }
 
-/** updateMeshVB puts polygon trigger triangles into m_vertexFeedback. */
-
-/** updateMeshVB puts polygon trigger triangles into m_vertexFeedback. */
-void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOpen)
+/** Outline color of a polygon trigger: by name prefix, water, and the selection pulse. */
+Int DrawObject::polygonTriggerColor(const PolygonTrigger *pTrig, Bool selected)
 {
 	Int green = 0;
 	if (selected) {
 		green = (255 * curHighlight) / (NUM_HIGHLIGHT - 1);
 	}
 	green = green << 8;
-	m_feedbackVertexCount = 0;
-	m_feedbackIndexCount = 0;
 
-	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
-	UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
-	UnsignedShort *curIb = ib;
-
-	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
-	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
-	VertexFormatXYZDUV1 *curVb = vb;
-
-	AsciiString triggerName = pTrig->getTriggerName();
-	// DEBUG_LOG(("triggername %s\n", triggerName.str()));
-
-	// Determine base color depending on trigger name
 	unsigned int baseColor = 0xFFFF0000; // default red
-	const char *tstr = triggerName.str();
+	const char *tstr = pTrig->getTriggerName().str();
 	if (_strnicmp(tstr, "inner", 5) == 0) {
 		// e.g. InnerPerimeter*
 		baseColor = 0xFFFF0000; // red
@@ -1888,7 +1872,74 @@ void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOp
 	else if (pTrig->isWaterArea()) {
 		baseColor = 0xFF0000FF; // blue for water
 	}
-	
+	return baseColor + green;
+}
+
+/** One outline segment as a thin quad: 4 vertices and 6 indices, which the caller has room for. */
+void DrawObject::emitOutlineSegment(const Coord3D &loc1, const Coord3D &loc2, Int diffuse, VertexFormatXYZDUV1 *&curVb, UnsignedShort *&curIb, Int &vertexCount, Int &indexCount)
+{
+	Vector3 normal(loc2.x - loc1.x, loc2.y - loc1.y, loc2.z - loc1.z);
+	normal.Normalize();
+	normal *= 0.5f;
+	normal.Rotate_Z(PI / 2);
+
+	// First vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc1.x + normal.X;
+	curVb->y = loc1.y + normal.Y;
+	curVb->z = loc1.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Second vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc1.x - normal.X;
+	curVb->y = loc1.y - normal.Y;
+	curVb->z = loc1.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Third vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc2.x + normal.X;
+	curVb->y = loc2.y + normal.Y;
+	curVb->z = loc2.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Fourth vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc2.x - normal.X;
+	curVb->y = loc2.y - normal.Y;
+	curVb->z = loc2.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	*curIb++ = vertexCount - 3;
+	*curIb++ = vertexCount - 1;
+	*curIb++ = vertexCount - 2;
+	*curIb++ = vertexCount - 4;
+	*curIb++ = vertexCount - 3;
+	*curIb++ = vertexCount - 2;
+	indexCount += 6;
+}
+
+/** updatePolygonVB puts one polygon trigger's outline into m_vertexFeedback. */
+void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOpen)
+{
+	m_feedbackVertexCount = 0;
+	m_feedbackIndexCount = 0;
+
+	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+	UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
+	UnsignedShort *curIb = ib;
+
+	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+	VertexFormatXYZDUV1 *curVb = vb;
+
+	Int diffuse = polygonTriggerColor(pTrig, selected);
+
 	for (Int i = 0; i < pTrig->getNumPoints(); i++) {
 		Coord3D loc1;
 		Coord3D loc2;
@@ -1908,62 +1959,160 @@ void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOp
 		loc2.y = iLoc.y;
 		loc2.z = TheTerrainRenderObject->getHeightMapHeight(loc2.x, loc2.y, NULL);
 
-		Vector3 normal(loc2.x - loc1.x, loc2.y - loc1.y, loc2.z - loc1.z);
-		normal.Normalize();
-		normal *= 0.5f;
-		normal.Rotate_Z(PI / 2);
-
 		if (m_feedbackVertexCount + 9 >= NUM_FEEDBACK_VERTEX) {
 			return;
 		}
-
-		Int diffuse = baseColor + green;
-
-		// First vertex
-		curVb->u1 = 0; curVb->v1 = 0;
-		curVb->x = loc1.x + normal.X;
-		curVb->y = loc1.y + normal.Y;
-		curVb->z = loc1.z;
-		curVb->diffuse = diffuse;
-		curVb++; m_feedbackVertexCount++;
-
-		// Second vertex
-		curVb->u1 = 0; curVb->v1 = 0;
-		curVb->x = loc1.x - normal.X;
-		curVb->y = loc1.y - normal.Y;
-		curVb->z = loc1.z;
-		curVb->diffuse = diffuse;
-		curVb++; m_feedbackVertexCount++;
-
-		// Third vertex
-		curVb->u1 = 0; curVb->v1 = 0;
-		curVb->x = loc2.x + normal.X;
-		curVb->y = loc2.y + normal.Y;
-		curVb->z = loc2.z;
-		curVb->diffuse = diffuse;
-		curVb++; m_feedbackVertexCount++;
-
-		// Fourth vertex
-		curVb->u1 = 0; curVb->v1 = 0;
-		curVb->x = loc2.x - normal.X;
-		curVb->y = loc2.y - normal.Y;
-		curVb->z = loc2.z;
-		curVb->diffuse = diffuse;
-		curVb++; m_feedbackVertexCount++;
-
 		if (m_feedbackIndexCount + 12 >= NUM_FEEDBACK_INDEX) {
 			return;
 		}
 
-		*curIb++ = m_feedbackVertexCount - 3;
-		*curIb++ = m_feedbackVertexCount - 1;
-		*curIb++ = m_feedbackVertexCount - 2;
-		*curIb++ = m_feedbackVertexCount - 4;
-		*curIb++ = m_feedbackVertexCount - 3;
-		*curIb++ = m_feedbackVertexCount - 2;
-		m_feedbackIndexCount += 6;
+		emitOutlineSegment(loc1, loc2, diffuse, curVb, curIb, m_feedbackVertexCount, m_feedbackIndexCount);
 	}
 }
+
+#if defined(BUILD_WITH_D3D9)
+
+// Fills m_vertexFeedback/m_indexFeedback in chunks: when an item would not fit,
+// the chunk so far is drawn and the buffers are discarded and reopened.
+class FeedbackBatch
+{
+public:
+	FeedbackBatch(DX8VertexBufferClass *vb, DX8IndexBufferClass *ib, Int maxVertex, Int maxIndex) :
+		m_vbuf(vb), m_ibuf(ib), m_maxVertex(maxVertex), m_maxIndex(maxIndex),
+		m_vlock(NULL), m_ilock(NULL), curVb(NULL), curIb(NULL), vertexCount(0), indexCount(0)
+	{
+		open();
+	}
+	~FeedbackBatch()
+	{
+		close();
+	}
+
+	// Draws and reopens when the next item needs more room than is left.
+	void reserve(Int vertices, Int indices)
+	{
+		if (vertexCount + vertices > m_maxVertex || indexCount + indices > m_maxIndex) {
+			close();
+			open();
+		}
+	}
+
+	VertexFormatXYZDUV1 *curVb;
+	UnsignedShort *curIb;
+	Int vertexCount;
+	Int indexCount;
+
+private:
+	void open()
+	{
+		m_ilock = new DX8IndexBufferClass::WriteLockClass(m_ibuf, D3DLOCK_DISCARD);
+		m_vlock = new DX8VertexBufferClass::WriteLockClass(m_vbuf, D3DLOCK_DISCARD);
+		curIb = m_ilock->Get_Index_Array();
+		curVb = (VertexFormatXYZDUV1*)m_vlock->Get_Vertex_Array();
+		vertexCount = 0;
+		indexCount = 0;
+	}
+	void close()
+	{
+		delete m_vlock;
+		delete m_ilock;
+		m_vlock = NULL;
+		m_ilock = NULL;
+		if (indexCount > 0) {
+			DX8Wrapper::Set_Vertex_Buffer(m_vbuf);
+			DX8Wrapper::Set_Index_Buffer(m_ibuf, 0);
+			DX8Wrapper::Draw_Triangles(0, indexCount / 3, 0, vertexCount);
+		}
+		curVb = NULL;
+		curIb = NULL;
+		vertexCount = 0;
+		indexCount = 0;
+	}
+
+	DX8VertexBufferClass *m_vbuf;
+	DX8IndexBufferClass *m_ibuf;
+	Int m_maxVertex;
+	Int m_maxIndex;
+	DX8VertexBufferClass::WriteLockClass *m_vlock;
+	DX8IndexBufferClass::WriteLockClass *m_ilock;
+};
+
+/** Every trigger's point diamonds and outline go into one feedback batch, unselected
+    triggers first so a selected one draws on top, instead of a buffer rewrite and a
+    draw call per point and per trigger. */
+void DrawObject::renderPolygonTriggersBatched(RenderInfoClass &rinfo)
+{
+	const Int RED = 0x0000FF; // red in BGR.
+	const Int BLUE = 0xFF7f00; // bright blue.
+	const Int ICON_TRI = NUM_TRI - (NUM_ARROW_TRI + NUM_SELECT_TRI);
+
+	// Same icon updateVB builds, including this frame's pulse on the selection part.
+	VertexFormatXYZDUV1 iconRed[6 * NUM_TRI];
+	VertexFormatXYZDUV1 iconBlue[6 * NUM_TRI];
+	fillIconVertices(iconRed, RED, false, true, true);
+	fillIconVertices(iconBlue, BLUE, false, true, true);
+
+	Matrix3D tmReset(Transform);
+	DX8Wrapper::Set_Transform(D3DTS_WORLD, tmReset);
+
+	FeedbackBatch batch(m_vertexFeedback, m_indexFeedback, NUM_FEEDBACK_VERTEX, NUM_FEEDBACK_INDEX);
+	for (Int selected = 0; selected < 2; selected++) {
+		for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+			if (!pTrig->getShouldRender()) {
+				continue;
+			}
+			Bool polySelected = PolygonTool::isSelected(pTrig);
+			if (polySelected != (selected != 0)) {
+				continue;
+			}
+			const VertexFormatXYZDUV1 *icon = pTrig->isWaterArea() ? iconBlue : iconRed;
+			const Int numPoints = pTrig->getNumPoints();
+			Coord3D prev;
+			prev.x = prev.y = prev.z = 0.0f;
+			Coord3D first = prev;
+			for (Int i = 0; i < numPoints; i++) {
+				ICoord3D iLoc = *pTrig->getPoint(i);
+				Coord3D loc;
+				loc.x = iLoc.x;
+				loc.y = iLoc.y;
+				loc.z = TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, nullptr);
+
+				SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS);
+				if (!rinfo.Camera.Cull_Sphere(bounds)) {
+					Bool pointSelected = polySelected && PolygonTool::getSelectedPointNdx() == i;
+					Int vertices = 3 * (pointSelected ? NUM_TRI : ICON_TRI);
+					batch.reserve(vertices, vertices);
+					for (Int v = 0; v < vertices; v++) {
+						*batch.curVb = icon[v];
+						batch.curVb->x += loc.x;
+						batch.curVb->y += loc.y;
+						batch.curVb->z += loc.z;
+						batch.curVb++;
+						*batch.curIb++ = batch.vertexCount++;
+					}
+					batch.indexCount += vertices;
+				}
+
+				if (i == 0) {
+					first = loc;
+				} else {
+					batch.reserve(4, 6);
+					emitOutlineSegment(prev, loc, polygonTriggerColor(pTrig, polySelected),
+						batch.curVb, batch.curIb, batch.vertexCount, batch.indexCount);
+				}
+				prev = loc;
+			}
+			Bool isOpen = polySelected && PolygonTool::isSelectedOpen();
+			if (numPoints > 1 && !isOpen) {
+				batch.reserve(4, 6);
+				emitOutlineSegment(prev, first, polygonTriggerColor(pTrig, polySelected),
+					batch.curVb, batch.curIb, batch.vertexCount, batch.indexCount);
+			}
+		}
+	}
+}
+
+#endif // BUILD_WITH_D3D9
 
 
 /** updateFeedbackVB puts brush feedback triangles into m_vertexFeedback. */
@@ -2159,7 +2308,7 @@ but doesn't, really.
 
 /** updateVB puts a circle with an arrow into the vertex buffer. */
 
-Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring)
+void DrawObject::fillIconVertices(VertexFormatXYZDUV1 *vb, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring)
 {
 	Int i, k;
 
@@ -2199,12 +2348,7 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 		highlightColors[2] = (255) + (255<<8) + (255<<16) + (255<<24); // White
 	}
 	Int diffuse =  b + (g<<8) + (r<<16) + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
-	if (pVB )
 	{
-
-		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB, D3DLOCK_DISCARD);
-		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
-
 		const Real theZ = 0.0f;
 		Real theRadius = THE_RADIUS;
 		Real halfLineWidth = 0.03f*MAP_XY_FACTOR;
@@ -2421,6 +2565,15 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb++;
 		}
 #endif
+	}
+}
+
+Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring)
+{
+	if (pVB )
+	{
+		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB, D3DLOCK_DISCARD);
+		fillIconVertices((VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array(), color, doArrow, doDiamond, disableColoring);
 		return 0; //success.
 	}
 	return -1;
@@ -3540,6 +3693,12 @@ if (_skip_drawobject_render) {
 			count++;
 		}
 	}
+#if defined(BUILD_WITH_D3D9)
+	if (m_drawPolygonAreas) {
+		renderPolygonTriggersBatched(rinfo);
+		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
+	}
+#else
 	if (m_drawPolygonAreas) {
  		DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferWater);
 		Int selected;
@@ -3604,6 +3763,7 @@ if (_skip_drawobject_render) {
 			DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 		}
 	}
+#endif
 
 
  	if (BuildListTool::isActive()) for (i=0; i<TheSidesList->getNumSides(); i++) {
