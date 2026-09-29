@@ -158,7 +158,7 @@ int WBQtTerrainMaterial_GetTexClassEntry(int texClass, char *pathOut, char *leaf
 		return 0;
 	}
 
-	Int tilesPerRow = TEXTURE_WIDTH / (2 * TILE_PIXEL_EXTENT + TILE_OFFSET);
+	Int tilesPerRow = TEXTURE_WIDTH / (2 * TILE_PIXEL_EXTENT + 2 * WorldHeightMap::getAtlasBorderSetting());
 	Int availableTiles = 4 * tilesPerRow * tilesPerRow;
 	Int percent = (WorldHeightMapEdit::getTexClassNumTiles(texClass) * 100 + availableTiles / 2) / availableTiles;
 
