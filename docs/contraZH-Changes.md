@@ -7,6 +7,7 @@ Everything here is additional to upstream; the rest of this wiki still applies.
 untouched `Options.ini` plays exactly as before.
 * [Gameplay Fixes](#gameplay-fixes) are always on and fix retail simulation bugs.
 * A few simulation rules are read from the mod's `GameData.ini`; each states its default.
+* The map editor has its own page, [WorldBuilder Qt](WorldBuilder-Qt.md).
 * Synced with TheSuperHackers/GeneralsGameCode and GeneralsGameCode_Modding as of August 2026. The
 only casualty was the texture filter option, replaced by TheSuperHackers' version - see
 [Rendering](#rendering) for the renamed `AnisotropyLevel` key.
@@ -327,7 +328,7 @@ square:
 A 512-texel texture takes the room of four 256-texel ones. A texture that does not fit draws wrong, and the
 render log names it, so a map with many large textures needs a smaller border.
 
-Shadow mapping, specular, terrain glint, HQ sky cloud shadows, normal and glow maps, per-pixel lights, soft particles, flame
+Shadow mapping, specular, terrain glint, HQ sky cloud shadows, stochastic terrain, normal and glow maps, per-pixel lights, soft particles, flame
 and laser shading and the other features that need the Direct3D 9 build are on [Direct3D 9 Features](dx9feat.md).
 
 ### Bloom
