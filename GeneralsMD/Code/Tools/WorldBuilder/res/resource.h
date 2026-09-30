@@ -131,6 +131,7 @@
 #define IDC_OBJECT_SEARCH_EDIT          243
 #define IDD_MINIMAP                     243
 #define IDD_WAVE_EDITOR_OPTIONS         244
+#define IDD_STOCHASTIC_OPTIONS          257
 #define IDC_OBJECT_SEARCH_BUTTON        244
 #define IDC_OBJECT_SEARCH_RESET_BTN     245
 #define IDC_OBJECT_EDIT                 246
@@ -890,6 +891,7 @@
 #define ID_MINIMAP_SHOWBORDER           33387
 #define ID_MINIMAP_FULLEXTENT           33388
 #define ID_WAVE_EDITOR_TOOL             33389
+#define ID_STOCHASTIC_TOOL              33445
 #define ID_VIEW_SHOWWAVELINES           33390
 #define ID_VIEW_SHOWFULLWIREFRAME       33391
 #define ID_VIEW_SHOWSELECTIONOVERLAY    33392
@@ -1005,8 +1007,8 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         33444
+#define _APS_NEXT_RESOURCE_VALUE        258
+#define _APS_NEXT_COMMAND_VALUE         33446
 #define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

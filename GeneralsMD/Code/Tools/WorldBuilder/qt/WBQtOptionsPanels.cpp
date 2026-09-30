@@ -28,6 +28,7 @@
 #include "panels/WBQtMeshMoldPanel.h"
 #include "panels/WBQtObjectPropsPanel.h"
 #include "panels/WBQtWavePanel.h"
+#include "panels/WBQtStochasticPanel.h"
 #include "resource.h"
 
 #include <QApplication>
@@ -105,6 +106,7 @@ static QWidget *wbQtPanelFor(int dialogID, QWidget *owner)
 	static WBQtMeshMoldPanel        *meshMoldPanel = NULL;
 	static WBQtObjectPropsPanel     *objectPropsPanel = NULL;
 	static WBQtWavePanel            *wavePanel = NULL;
+	static WBQtStochasticPanel      *stochasticPanel = NULL;
 
 	switch (dialogID)
 	{
@@ -233,6 +235,13 @@ static QWidget *wbQtPanelFor(int dialogID, QWidget *owner)
 				wavePanel = new WBQtWavePanel(owner);
 			}
 			return wavePanel;
+
+		case IDD_STOCHASTIC_OPTIONS:
+			if (stochasticPanel == NULL)
+			{
+				stochasticPanel = new WBQtStochasticPanel(owner);
+			}
+			return stochasticPanel;
 
 		default:
 			return NULL;

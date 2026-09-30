@@ -120,6 +120,7 @@ public: // Editing methods.
 	Bool setTextureClass(Int xIndex, Int yIndex, Int textureClass);
 	void setHeight(Int xIndex, Int yIndex, UnsignedByte height);
 	void setCliff(Int xIndex, Int yIndex, Bool impassable) {setCliffState(xIndex, yIndex, impassable);}
+	void setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate);
 	Bool setTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile);
 	Bool floodFill(Int xIndex, Int yIndex, Int textureClass, Bool doReplace);
 	static Int getNumTexClasses() {return m_numGlobalTextureClasses;};

@@ -313,6 +313,7 @@ CWorldBuilderApp::CWorldBuilderApp() :
 	m_tools[23] = &m_borderTool;
 	m_tools[24] = &m_rulerTool;
 	m_tools[25] = &m_waveEditorTool;
+	m_tools[26] = &m_stochasticTool;
 
 	// set up initial values.
 	m_brushTool.setHeight(16);

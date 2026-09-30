@@ -53,6 +53,7 @@
 #include "ScorchTool.h"
 #include "RulerTool.h"
 #include "WaveEditorTool.h"
+#include "StochasticTool.h"
 #include "Common/Debug.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -96,7 +97,7 @@ public:
 
 protected:
 
-	enum {NUM_VIEW_TOOLS=26};
+	enum {NUM_VIEW_TOOLS=27};
 
 	Tool							*m_tools[NUM_VIEW_TOOLS]; ///< array of tool pointers.
 	Tool							*m_curTool;   ///< Currently active tool.
@@ -127,6 +128,7 @@ protected:
 	BorderTool				m_borderTool;				///< Border tool.
 	RulerTool					m_rulerTool;				///< Ruler tool.
 	WaveEditorTool		m_waveEditorTool;		///< Wave editor tool.
+	StochasticTool		m_stochasticTool;		///< Stochastic terrain brush.
 
 	Int								m_lockCurTool;
 

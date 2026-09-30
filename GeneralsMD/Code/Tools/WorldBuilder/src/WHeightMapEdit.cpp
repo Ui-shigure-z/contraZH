@@ -251,6 +251,10 @@ m_warnTooManyBlend(false)
 			m_cellFlipState[i] = pThis->m_cellFlipState[i];
 			m_cellCliffState[i] = pThis->m_cellCliffState[i];
 		}
+		if (pThis->m_stochasticData != nullptr) {
+			m_stochasticData = new UnsignedByte[m_dataSize*STOCHASTIC_BYTES];
+			memcpy(m_stochasticData, pThis->m_stochasticData, m_dataSize*STOCHASTIC_BYTES);
+		}
 	}
 
 	m_boundaries = pThis->m_boundaries;
@@ -703,6 +707,20 @@ void WorldHeightMapEdit::saveToFile(DataChunkOutput &chunkWriter)
 			chunkWriter.writeByte(m_cliffInfo[i].mutant);
 		}
 	chunkWriter.closeDataChunk();
+
+	/***************STOCHASTIC TERRAIN ***************/
+	// Only a map with paint on it writes the chunk, which older builds skip.
+	Bool painted = false;
+	for (i=0; m_stochasticData != nullptr && i<m_dataSize && !painted; i++) {
+		painted = m_stochasticData[i*STOCHASTIC_BYTES] != 0;
+	}
+	if (painted) {
+		chunkWriter.openDataChunk("StochasticTerrain", K_STOCHASTIC_VERSION_1);
+		chunkWriter.writeInt(m_width);
+		chunkWriter.writeInt(m_height);
+		chunkWriter.writeArrayOfBytes((char*)m_stochasticData, m_dataSize*STOCHASTIC_BYTES);
+		chunkWriter.closeDataChunk();
+	}
 
 #ifdef EVAL_TILING_MODES
 	chunkWriter.openDataChunk("FUNKY_TILING", 1);
@@ -2204,6 +2222,7 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	Short *extraBlendTileNdxes = new Short[newDataSize];
 	HeightSampleType *data = new HeightSampleType[newDataSize];
 	Short  *cliffInfoNdxes = new Short[newDataSize];
+	UnsignedByte *stochasticData = (m_stochasticData != nullptr) ? new UnsignedByte[newDataSize*STOCHASTIC_BYTES] : nullptr;
 
 	Int i, j;
 	for (i=0; i<newXSize; i++) {
@@ -2242,6 +2261,11 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 				extraBlendTileNdxes[newNdx] = 0;
 				cliffInfoNdxes[newNdx] = 0;
 			}
+			if (stochasticData != nullptr) {
+				for (Int k=0; k<STOCHASTIC_BYTES; k++) {
+					stochasticData[newNdx*STOCHASTIC_BYTES + k] = inRange ? m_stochasticData[oldNdx*STOCHASTIC_BYTES + k] : 0;
+				}
+			}
 		}
 	}
 
@@ -2255,6 +2279,10 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	m_extraBlendTileNdxes = extraBlendTileNdxes;
 	m_cliffInfoNdxes = cliffInfoNdxes;
 	m_data = data;
+	delete[] m_stochasticData;
+	m_stochasticData = stochasticData;
+	m_stochasticTexDirty = true;
+	REF_PTR_RELEASE(m_stochasticTex);
 	m_width = newXSize;
 	m_height = newYSize;
 	m_borderSize = newBorder;
@@ -2285,6 +2313,29 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	return(true);
 }
 
+
+/**
+	setStochastic
+		Paints a cell's stochastic terrain, making room for it on the first stroke.
+*/
+void WorldHeightMapEdit::setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate)
+{
+	if (xIndex < 0 || yIndex < 0 || xIndex >= m_width || yIndex >= m_height) {
+		return;
+	}
+	if (m_stochasticData == nullptr) {
+		if (strength == 0) {
+			return;
+		}
+		m_stochasticData = new UnsignedByte[m_dataSize*STOCHASTIC_BYTES];
+		memset(m_stochasticData, 0, m_dataSize*STOCHASTIC_BYTES);
+	}
+	UnsignedByte *cell = m_stochasticData + (yIndex*m_width + xIndex)*STOCHASTIC_BYTES;
+	cell[0] = strength;
+	cell[1] = (strength != 0) ? seed : 0;
+	cell[2] = (strength != 0) ? rate : 0;
+	m_stochasticTexDirty = true;
+}
 
 /** Returns true if the texture class is used in the current
 map.  If false, the texture is not used or loaded in the

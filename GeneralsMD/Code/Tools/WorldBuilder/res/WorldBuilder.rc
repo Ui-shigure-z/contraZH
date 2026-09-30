@@ -136,6 +136,7 @@ BEGIN
     BUTTON      ID_AUTO_EDGE_OUT_TOOL
     BUTTON      ID_AUTO_EDGE_IN_TOOL
     BUTTON      ID_BLEND_EDGE_TOOL
+    BUTTON      ID_STOCHASTIC_TOOL
     SEPARATOR
     BUTTON      ID_PLACE_OBJECT_TOOL
     BUTTON      ID_ROAD_TOOL
@@ -526,6 +527,7 @@ BEGIN
         MENUITEM "Flood Fill\tD",               ID_TILE_FLOOD_FILL
         MENUITEM "Edge Out\tF",                 ID_AUTO_EDGE_OUT_TOOL
         MENUITEM "Single Edge\tG",              ID_BLEND_EDGE_TOOL
+        MENUITEM "Stochastic Terrain",          ID_STOCHASTIC_TOOL
         MENUITEM SEPARATOR
         MENUITEM "Place Object\tZ",             ID_PLACE_OBJECT_TOOL
         MENUITEM "Road\tX",                     ID_ROAD_TOOL
@@ -3203,6 +3205,11 @@ END
 STRINGTABLE
 BEGIN
     ID_WAVE_EDITOR_TOOL     "Place and save water waves on the map.\nWave Editor"
+END
+
+STRINGTABLE
+BEGIN
+    ID_STOCHASTIC_TOOL      "Paints hex-cell texture breakup that hides terrain tiling.  Shift erases.\nStochastic Terrain"
 END
 
 STRINGTABLE
