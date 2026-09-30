@@ -100,6 +100,13 @@ Options, applied on Accept. Needs `CheckShadowMap` in `OptionsMenu.wnd` for the 
 `3D Shadows` and `2D Shadows` still pick the casters: 3D for volume-shadow objects (vehicles,
 buildings, trees), 2D for decal-shadow objects (mostly infantry). Both off means no shadows.
 
+* `ShadowsAlwaysOn = No` - (Yes lets objects with no `Shadow` in their Draw module, such as chain
+link fences, cast into the shadow map. Needs `3D Shadows`. With shadow mapping off they stay
+shadowless. Set in the mod's `GameData.ini`, read at launch.)
+
+Models that only have alpha or translucent meshes, or too many vertices for a stencil volume, now
+cast into the shadow map instead of casting nothing.
+
 Notes:
 * Only decals whose texture name starts with `shadow` are replaced; other shadow-type decals keep
 drawing.

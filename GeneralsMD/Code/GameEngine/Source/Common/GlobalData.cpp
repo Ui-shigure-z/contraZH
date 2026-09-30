@@ -251,6 +251,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "UseShadowVolumes",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_useShadowVolumes ) },
 	{ "UseShadowDecals",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_useShadowDecals ) },
 	{ "ShadowMapMinSunElevation",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_shadowMapMinSunElevation ) },
+	{ "ShadowsAlwaysOn",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_shadowsAlwaysOn ) },
 	{ "UnitSpecularIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularIntensity ) },
 	{ "UnitSpecularPower",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularPower ) },
 	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
@@ -984,6 +985,7 @@ GlobalData::GlobalData()
 	m_useShadowVolumes = FALSE;
 	m_useShadowDecals = FALSE;
 	m_shadowMapMinSunElevation = 30.0f;
+	m_shadowsAlwaysOn = FALSE;
 	m_unitSpecularIntensity = 0.35f;
 	m_unitSpecularPower = 24.0f;
 	m_unitBumpHeight = 0.15f;

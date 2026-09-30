@@ -1829,6 +1829,14 @@ void WbView3d::invalBuildListItemInView(BuildListInfo *pBuildToInval)
 						shadowInfo.m_offsetY=tTemplate->getShadowOffsetY();
 						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
 					}
+					else if (m_showShadows && TheGlobalData->m_shadowsAlwaysOn)
+					{
+						// Matches the game's ShadowsAlwaysOn, which casts only into the shadow map.
+						Shadow::ShadowTypeInfo shadowInfo;
+						shadowInfo.m_type = SHADOW_VOLUME;
+						shadowInfo.m_shadowMapOnly = true;
+						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
+					}
 				}
 			}
 			if (renderObj) {

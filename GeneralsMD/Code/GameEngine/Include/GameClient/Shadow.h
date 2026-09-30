@@ -93,6 +93,7 @@ public:
 						m_offsetY = 0.0f;
 						m_hasDynamicLength = false;
 						m_waterRenderMode = SHADOW_WATER_DEFAULT;
+						m_shadowMapOnly = false;
 				}
 
 				char	m_ShadowName[64];	//when set, overrides the default model shadow (used mostly for Decals).
@@ -105,6 +106,7 @@ public:
 				Real	m_offsetY;			//world shift along y axis
 				Bool  m_hasDynamicLength;   ///< determines shadow angle based on object height
 				Int		m_waterRenderMode;	//ShadowWaterMode: above/below/default water ordering
+				Bool	m_shadowMapOnly;	//casts into the shadow map only, with no legacy shadow
 		};
 
 		Shadow(void) : m_diffuse(0xffffffff), m_color(0xffffffff), m_opacity (0x000000ff), m_localAngle(0.0f), m_waterRenderMode(SHADOW_WATER_DEFAULT) {}

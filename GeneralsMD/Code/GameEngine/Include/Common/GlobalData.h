@@ -246,6 +246,7 @@ public:
 	Bool m_useShadowVolumes;
 	Bool m_useShadowDecals;
 	Real m_shadowMapMinSunElevation;	///< GameData ShadowMapMinSunElevation: lowest sun, in degrees, the shadow map uses
+	Bool m_shadowsAlwaysOn;	///< GameData ShadowsAlwaysOn: objects without a Shadow still cast into the shadow map
 	Real m_unitSpecularIntensity;	///< GameData UnitSpecularIntensity: brightness of the sun highlight on vehicles and structures, 0 for none
 	Real m_unitSpecularPower;		///< GameData UnitSpecularPower: tightness of that highlight, higher is smaller and sharper
 	Real m_unitBumpHeight;			///< GameData UnitBumpHeight: rise, in world units, of full brightness on textures without a normal map, 0 for flat

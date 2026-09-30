@@ -52,6 +52,7 @@
 #include "Common/DrawModule.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "WW3D2/statistics.h"
 #include "GameLogic/TerrainLogic.h"
 #include "WW3D2/dx8caps.h"
@@ -3847,14 +3848,23 @@ W3DVolumetricShadow* W3DVolumetricShadowManager::addShadow(RenderObjClass *robj,
 	if (!name)
 		return nullptr;
 
-	sg=m_W3DShadowGeometryManager->Get_Geom(name);
+	const Bool shadowMapAvailable = TheW3DShadowMap != nullptr && TheW3DShadowMap->isAvailable();
+	const Bool mapOnly = shadowInfo != nullptr && shadowInfo->m_shadowMapOnly;
+	if (mapOnly && !shadowMapAvailable)
+		return nullptr;
 
-	if (sg==nullptr)
+	if (!mapOnly)
+		sg=m_W3DShadowGeometryManager->Get_Geom(name);
+
+	if (sg==nullptr && !mapOnly)
 	{	//did not find a cached copy of the shadow geometry, create a new one
 		m_W3DShadowGeometryManager->Load_Geom(robj,name);
 		//try loading again
 		sg=m_W3DShadowGeometryManager->Get_Geom(name);
-		if (sg==nullptr)
+
+		// Cutout and oversized models build no volume, but the shadow map draws them as they are, so they
+		// stay listed as casters without geometry, which the volume passes skip.
+		if (sg==nullptr && !shadowMapAvailable)
 			return nullptr;	//could not create the shadow geometry
 	}
 
@@ -3865,7 +3875,8 @@ W3DVolumetricShadow* W3DVolumetricShadowManager::addShadow(RenderObjClass *robj,
 		return nullptr;
 
 	shadow->setRenderObject(robj);
-	shadow->SetGeometry(sg);
+	if (sg != nullptr)
+		shadow->SetGeometry(sg);
  	SphereClass sphere;
  	robj->Get_Obj_Space_Bounding_Sphere(sphere);
  	shadow->setRenderObjExtent(sphere.Radius*MAX_SHADOW_LENGTH_SCALE_FACTOR);
