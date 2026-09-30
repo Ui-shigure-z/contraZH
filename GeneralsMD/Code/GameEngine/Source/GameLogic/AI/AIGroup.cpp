@@ -3251,7 +3251,7 @@ void AIGroup::groupToggleTunnelAutoPop(CommandSourceType cmdSource)
 	TunnelTracker *tunnelSystem;
 	Bool hasAutoExit = false;
 
-	// first pass -- are they all holding fire already?
+	// ShigureUi first pass -- is there any auto-pop tunnel?
 	for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
 	{
 		obj = *i;
