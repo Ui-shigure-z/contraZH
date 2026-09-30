@@ -3256,10 +3256,6 @@ void AIGroup::groupToggleTunnelAutoPop(CommandSourceType cmdSource)
 	{
 		obj = *i;
 
-		AIUpdateInterface* ai = obj->getAI();
-		if (ai == nullptr)
-			continue;
-
 		tunnelSystem = obj->getControllingPlayer()->getTunnelSystem();
 		if (tunnelSystem)
 		{
