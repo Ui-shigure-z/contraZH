@@ -301,6 +301,8 @@ protected:
 	afx_msg void OnTextRendererAtlas();
 	afx_msg void OnUpdateTextRendererAtlas(CCmdUI* pCmdUI);
 	afx_msg void OnTextLabelCullOff();
+	afx_msg void OnFpsCap(UINT id);
+	afx_msg void OnUpdateFpsCap(CCmdUI* pCmdUI);
 	afx_msg void OnUpdateTextLabelCullOff(CCmdUI* pCmdUI);
 	afx_msg void OnTextLabelCullNear();
 	afx_msg void OnUpdateTextLabelCullNear(CCmdUI* pCmdUI);
@@ -353,6 +355,7 @@ private:
 	Real										m_cameraGroundZ;						// terrain height (world Z) under the camera center; for the minimap view-box projection
 	Real										m_cameraBorderWorld;					// border size * MAP_XY_FACTOR; subtracted to put frustum corners in border-relative (object) world
 	Int											m_time;
+	LONGLONG										m_lastAnimTick;	///< QPC tick of the last animation advance, 0 before the first
 	Int											m_updateCount;
 	UINT										m_timer;
 	DrawObject							*m_drawObject;
@@ -509,6 +512,9 @@ protected:
 	Bool m_textAntialias;					///< grayscale antialiasing for viewport labels
 	Int  m_labelAnchorMode;					///< 0 = Default (ground), 1 = New (object center-height)
 	Int  m_labelRenderer;					///< 0 = Old (D3DX m3DFont, in-frame), 1 = New (raw GDI TextOut on the window after present, strobes; D3D8 only, the D3D9 flip model never shows it), 2 = Atlas (batched glyph quads, in-frame)
+	Int  m_fpsCap;							///< repaint cap in frames per second, 0 = uncapped
+	Bool m_fpsCapTimerSet;					///< a deferred repaint is scheduled on the cap timer
+	Bool deferPaintForFpsCap();				///< TRUE when this paint comes too soon and was rescheduled
 	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
 	void setMSAA(D3DMULTISAMPLE_TYPE type);
 	void setTextureFilter(int mode);

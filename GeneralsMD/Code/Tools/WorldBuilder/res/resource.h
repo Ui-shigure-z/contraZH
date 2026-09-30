@@ -994,6 +994,10 @@
 #define ID_QTTHEME_LIGHT                61602
 #define ID_MCP_SERVER_ENABLED           61610
 #define ID_MCP_SERVER_INFORMATION       61611
+#define ID_FPSCAP_30                    33439
+#define ID_FPSCAP_60                    33440
+#define ID_FPSCAP_120                   33441
+#define ID_FPSCAP_UNCAPPED              33442
 
 // Next default values for new objects
 //
@@ -1001,7 +1005,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         33439
+#define _APS_NEXT_COMMAND_VALUE         33443
 #define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

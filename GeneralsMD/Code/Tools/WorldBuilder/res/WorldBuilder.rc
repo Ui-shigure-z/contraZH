@@ -379,6 +379,13 @@ BEGIN
             MENUITEM "Default",                     ID_TEXFILTER_DEFAULT
             MENUITEM "Anisotropic 16x",             ID_TEXFILTER_ANISO16X
         END
+        POPUP "FPS Cap"
+        BEGIN
+            MENUITEM "30",                          ID_FPSCAP_30
+            MENUITEM "60",                          ID_FPSCAP_60
+            MENUITEM "120",                         ID_FPSCAP_120
+            MENUITEM "Uncapped",                    ID_FPSCAP_UNCAPPED
+        END
         POPUP "FX Shaders"
         BEGIN
             MENUITEM "Shadow Mapping",              ID_FX_SHADOWMAP

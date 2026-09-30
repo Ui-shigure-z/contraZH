@@ -673,6 +673,7 @@ WbView3d::WbView3d() :
 	m_doPitch(false),
 	m_theta(0.0),
 	m_time(0),
+	m_lastAnimTick(0),
 	m_updateCount(0),
 	m_labelEpoch(0),
 	m_labelAnchorMode(0),
@@ -746,6 +747,8 @@ WbView3d::WbView3d() :
 	}
 #endif
 	m_labelCull = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
+	m_fpsCap = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "FpsCap", 60);
+	m_fpsCapTimerSet = false;
 	WBPerf::setEnabled(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "PerfLog", 0) != 0);
 	m_snapCameraAngle45 = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", 0) != 0);
 
@@ -4831,7 +4834,22 @@ void WbView3d::redraw(void)
 		);
 	}
 
-	WW3D::Update_Logic_Frame_Time(TheFramePacer->getLogicTimeStepMilliseconds());
+	// Animations advance by the time that actually passed, not a fixed step per redraw,
+	// so the extra repaints a mouse move triggers do not speed them up. The cap keeps a
+	// long stall from jumping them forward.
+	LARGE_INTEGER animFreq;
+	LARGE_INTEGER animNow;
+	::QueryPerformanceFrequency(&animFreq);
+	::QueryPerformanceCounter(&animNow);
+	Real animStepMs = TheFramePacer->getLogicTimeStepMilliseconds();
+	if (m_lastAnimTick != 0) {
+		animStepMs = (Real)((double)(animNow.QuadPart - m_lastAnimTick) * 1000.0 / (double)animFreq.QuadPart);
+		if (animStepMs > 100.0f) {
+			animStepMs = 100.0f;
+		}
+	}
+	m_lastAnimTick = animNow.QuadPart;
+	WW3D::Update_Logic_Frame_Time(animStepMs);
 	WW3D::Sync(WW3D::Get_Fractional_Sync_Milliseconds() >= WWSyncMilliseconds);
 
 	m_buildRedMultiplier += (GetTickCount()-m_time)/500.0f;
@@ -5470,6 +5488,8 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_COMMAND(ID_TEXT_RENDERER_ATLAS, OnTextRendererAtlas)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_RENDERER_ATLAS, OnUpdateTextRendererAtlas)
 	ON_COMMAND(ID_TEXT_LABELCULL_OFF, OnTextLabelCullOff)
+	ON_COMMAND_RANGE(ID_FPSCAP_30, ID_FPSCAP_UNCAPPED, OnFpsCap)
+	ON_UPDATE_COMMAND_UI_RANGE(ID_FPSCAP_30, ID_FPSCAP_UNCAPPED, OnUpdateFpsCap)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_OFF, OnUpdateTextLabelCullOff)
 	ON_COMMAND(ID_TEXT_LABELCULL_NEAR, OnTextLabelCullNear)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_NEAR, OnUpdateTextLabelCullNear)
@@ -5736,6 +5756,10 @@ void WbView3d::OnPaint()
 
 	PAINTSTRUCT ps;
 	HDC hdc = ::BeginPaint(m_hWnd, &ps);
+	if (!m_firstPaint && deferPaintForFpsCap()) {
+		::EndPaint(m_hWnd, &ps);
+		return;
+	}
 	if (!m_firstPaint) {
 		redraw();
 	}
@@ -6983,8 +7007,70 @@ Real WbView3d::getCurrentZoom(void)
 }
 
 // ----------------------------------------------------------------------------
+static const UINT WB_FPSCAP_TIMER = 0xF9C;
+
+// Repaints requested faster than the cap (mouse moves invalidate on every event) are
+// folded into one repaint at the end of the current frame slot. Nothing sleeps, so
+// input stays responsive and the last presented frame stays on screen meanwhile.
+Bool WbView3d::deferPaintForFpsCap()
+{
+	if (m_fpsCap <= 0 || m_lastAnimTick == 0) {
+		return false;
+	}
+	LARGE_INTEGER freq;
+	LARGE_INTEGER now;
+	::QueryPerformanceFrequency(&freq);
+	::QueryPerformanceCounter(&now);
+	const double elapsedMs = (double)(now.QuadPart - m_lastAnimTick) * 1000.0 / (double)freq.QuadPart;
+	const double slotMs = 1000.0 / (double)m_fpsCap;
+	// Timers fire late, so a repaint within 10% of its slot goes through, or the cap undershoots.
+	if (elapsedMs >= slotMs * 0.9) {
+		return false;
+	}
+	if (!m_fpsCapTimerSet) {
+		UINT waitMs = (UINT)(slotMs - elapsedMs + 0.5);
+		if (waitMs < 1) {
+			waitMs = 1;
+		}
+		SetTimer(WB_FPSCAP_TIMER, waitMs, NULL);
+		m_fpsCapTimerSet = true;
+	}
+	return true;
+}
+
+void WbView3d::OnFpsCap(UINT id)
+{
+	switch (id) {
+		case ID_FPSCAP_30:  m_fpsCap = 30;  break;
+		case ID_FPSCAP_60:  m_fpsCap = 60;  break;
+		case ID_FPSCAP_120: m_fpsCap = 120; break;
+		default:            m_fpsCap = 0;   break;
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "FpsCap", m_fpsCap);
+	Invalidate(false);
+}
+
+void WbView3d::OnUpdateFpsCap(CCmdUI* pCmdUI)
+{
+	Int cap = 0;
+	switch (pCmdUI->m_nID) {
+		case ID_FPSCAP_30:  cap = 30;  break;
+		case ID_FPSCAP_60:  cap = 60;  break;
+		case ID_FPSCAP_120: cap = 120; break;
+		default:            cap = 0;   break;
+	}
+	pCmdUI->SetCheck(m_fpsCap == cap);
+}
+
 void WbView3d::OnTimer(UINT nIDEvent)
 {
+	if (nIDEvent == WB_FPSCAP_TIMER) {
+		KillTimer(WB_FPSCAP_TIMER);
+		m_fpsCapTimerSet = false;
+		Invalidate(false);
+		return;
+	}
+
 	// View > Listen To Map: the audio engine only starts/updates queued events inside
 	// TheAudio->update(), which WB otherwise never pumps. Gated on an active listen mode so a
 	// session with the feature off behaves exactly as before and never runs the engine's audio
