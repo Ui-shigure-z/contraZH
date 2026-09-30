@@ -689,9 +689,11 @@ shows no seam.)
 * Blending Rate - (How softly the cells blend. Low gives visible patches of turned texture, high a
 smooth mix. Also stamped per stroke.)
 
-Painting only raises the effect, and holding Shift while dragging erases it. The paint saves in the
-map's own `StochasticTerrain` chunk. Older builds and the retail game skip the chunk and draw the
-terrain as before, and saving the map in an older WorldBuilder drops the paint.
+Painting only raises the effect, and holding Shift while dragging erases it. Painting over ground
+that is already fully painted keeps its strength but stamps the new stroke's seed and blending rate,
+so repainting a spot changes its look. The paint saves in the map's own `StochasticTerrain` chunk.
+Older builds and the retail game skip the chunk and draw the terrain as before, and saving the map in
+an older WorldBuilder drops the paint.
 
 The cell spacing is `ShaderWaterStochasticSize` in `Water.ini`, 100 when that is 0.
 

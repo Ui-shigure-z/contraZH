@@ -190,6 +190,8 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 			m_htMapEditCopy->getStochastic(i, j, strength, seed, oldRate);
 
 			// Painting only raises a cell, which then takes this stroke's look; erasing only lowers it.
+			// A cell the stroke already matches, such as full paint under the brush's core, still
+			// takes the look so repainting a spot changes it.
 			const Int amount = REAL_TO_INT_FLOOR(blend * 255.0f + 0.5f);
 			if (erase)
 			{
@@ -199,7 +201,7 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 					m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)lowered, seed, oldRate);
 				}
 			}
-			else if (amount > strength)
+			else if (amount > strength || (amount == strength && amount > 0 && (seed != m_strokeSeed || oldRate != rate)))
 			{
 				m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)amount, (UnsignedByte)m_strokeSeed, rate);
 			}
