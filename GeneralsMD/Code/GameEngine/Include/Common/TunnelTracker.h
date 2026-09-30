@@ -94,7 +94,7 @@ private:
 	Int m_containListSize;									///< size of the contain list
 	UnsignedInt m_heroUnitsContained;				///< cached hero count
 	UnsignedInt m_tunnelCount;							///< How many tunnels have registered so we know when we should kill our contain list
-	UnsignedInt m_tunnelAutoExitCount;			///< How many tunnels in the system are auto-pop exit
+	UnsignedInt m_tunnelAutoExitCount;			///< How many tunnels in the system are auto-pop exit not disabled
 	UnsignedInt m_framesForFullHeal;				///< How many frames it takes to fully heal a unit
 	Bool m_needsFullHealTimeUpdate;					///< Set to true when needing to recalc full heal time to batch the operation
 

@@ -208,14 +208,28 @@ Bool TunnelTracker::isNextTunnelToPop(Object *tunnel, UnsignedInt frame)
 	if (frame <= m_curFrame)
 		return false;
 
+
+
 	std::list<ObjectID>::iterator it = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), m_nextTunnelToPop);
 
 	if (it == m_autoExitIDs.end())
 	{
 		if (m_autoExitIDs.empty())
 			return false;
-		m_nextTunnelToPop = *m_autoExitIDs.begin();
+		it = m_autoExitIDs.begin();
+		m_nextTunnelToPop = *it;
 	}
+
+	while (TheGameLogic->findObjectByID(*it)->isDisabled())
+	{
+		it++;
+		if (it == m_autoExitIDs.end())
+			it = m_autoExitIDs.begin();
+		if (*it == m_nextTunnelToPop)
+			return false;
+	}
+
+	m_nextTunnelToPop = *it;
 
 	if (tunnel && tunnel->getID() == m_nextTunnelToPop)
 	{
