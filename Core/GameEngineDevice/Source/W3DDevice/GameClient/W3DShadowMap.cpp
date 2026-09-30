@@ -43,6 +43,7 @@
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
+#include "W3DDevice/GameClient/W3DBridgeBuffer.h"
 #endif
 
 W3DShadowMap* TheW3DShadowMap = nullptr;
@@ -687,6 +688,12 @@ void W3DShadowMap::renderDepthPass(RenderInfoClass& rinfo)
 	if (TheTerrainRenderObject != nullptr)
 	{
 		TheTerrainRenderObject->renderShadowMapCaster();
+
+		// Bridges draw from the terrain's own buffer rather than as scene objects, so no caster list holds them.
+		if (TheTerrainRenderObject->getBridgeBuffer() != nullptr)
+		{
+			TheTerrainRenderObject->getBridgeBuffer()->renderShadowMapCaster();
+		}
 	}
 
 	W3DShaderManager::resetShader(W3DShaderManager::ST_SHADOW_DEPTH);

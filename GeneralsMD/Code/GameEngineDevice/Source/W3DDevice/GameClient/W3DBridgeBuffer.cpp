@@ -1282,4 +1282,32 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 	}
 }
 
+//=============================================================================
+// W3DBridgeBuffer::renderShadowMapCaster
+//=============================================================================
+/** Draws the bridges with their own texture and alpha shader, so railings and
+trusses cast their cut-out shape. The depth pass overrides the rest of the state. */
+//=============================================================================
+void W3DBridgeBuffer::renderShadowMapCaster()
+{
+	if (m_curNumBridgeIndices == 0)
+	{
+		return;
+	}
+
+	DX8Wrapper::Set_Transform(D3DTS_WORLD, Matrix3D(true));
+	DX8Wrapper::Set_Material(m_vertexMaterial);
+	DX8Wrapper::Set_Index_Buffer(m_indexBridge,0);
+	DX8Wrapper::Set_Vertex_Buffer(m_vertexBridge);
+	DX8Wrapper::Set_Shader(detailAlphaShader);
+
+	for (Int curBridge=0; curBridge<m_numBridges; curBridge++)
+	{
+		if (m_bridges[curBridge].isEnabled() && m_bridges[curBridge].isVisible())
+		{
+			m_bridges[curBridge].renderBridge(FALSE);
+		}
+	}
+}
+
 
