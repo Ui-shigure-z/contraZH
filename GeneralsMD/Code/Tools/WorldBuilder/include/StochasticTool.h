@@ -41,6 +41,13 @@ protected:
 	static Int m_seed;
 	static Int m_rate;
 
+	static StochasticTool *m_staticThis;
+	static Coord3D m_cursor;	///< where the brush overlay centres, in world units
+	static Bool m_cursorValid;
+
+	static Bool takesStroke(Int amount, Int strength);
+	static void redrawOverlay();
+
 public:
 	enum { RANDOM_SEED = 0, MAX_SEED = 255, MAX_RATE = 100 };
 
@@ -57,6 +64,12 @@ public:
 	static void setSeed(Int seed);
 	static void setRate(Int rate);
 	static void randomizeSeed();
+
+	/// The brush overlay while this is the selected tool: the centre in world units, and the radii in world units
+	/// out to which the brush paints at full strength and at all. False when no overlay should show.
+	static Bool getBrushOverlay(Coord3D &center, Real &coreRadius, Real &outerRadius);
+	/// Whether a stroke from the overlay's position leaves its seed on height map point (xIndex, yIndex).
+	static Bool overlayStampsSeedAt(Int xIndex, Int yIndex);
 
 public:
 	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;

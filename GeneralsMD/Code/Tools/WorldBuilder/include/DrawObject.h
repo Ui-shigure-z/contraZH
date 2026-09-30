@@ -265,6 +265,8 @@ protected:
   void addCircleToLineRenderer( const Coord3D & center, Real radius, Real width, unsigned long color, CameraClass* camera );
 	Bool drawRulerFeedback(CameraClass* camera);
 	Bool drawBucketBrushFeedback(CameraClass* camera);	///< cyan brush circle at the cursor while the wave editor's Bucket mode is active
+	Bool drawStochasticBrushFeedback(CameraClass* camera);	///< the stochastic terrain brush's reach and the hex cells its stroke seeds
+	void addTerrainLineToLineRenderer(const Coord3D &from, const Coord3D &to, Int steps, Real width, unsigned long color, CameraClass* camera);
 	Int updateVB(DX8VertexBufferClass	*vertexBufferTile, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring = true);
 	static void fillIconVertices(VertexFormatXYZDUV1 *vb, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring);	///< the icon updateVB writes, into any 6*NUM_TRI vertex array
 	static Int polygonTriggerColor(const PolygonTrigger *pTrig, Bool selected);

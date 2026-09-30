@@ -689,6 +689,11 @@ shows no seam.)
 * Blending Rate - (How softly the cells blend. Low gives visible patches of turned texture, high a
 smooth mix. Also stamped per stroke.)
 
+The brush shows its own overlay: a blue circle where it paints at full strength, a green one where its
+feather ends, and yellow outlines round the hex cells the stroke's seed takes over. Each cell takes the
+seed painted nearest its centre, so a seed changes whole cells, which can reach past the brush or miss
+a small one entirely.
+
 Painting only raises the effect, and holding Shift while dragging erases it. Painting over ground
 that is already fully painted keeps its strength but stamps the new stroke's seed and blending rate,
 so repainting a spot changes its look. The paint saves in the map's own `StochasticTerrain` chunk.

@@ -29,23 +29,99 @@
 #include "WorldBuilderDoc.h"
 #include "WorldBuilderView.h"
 #include "DrawObject.h"
+#include "WorldBuilder.h"
+#include "wbview3d.h"
 #include "qt/panels/WBQtStochasticBridge.h"
 
 Int StochasticTool::m_width = 8;
 Int StochasticTool::m_feather = 4;
 Int StochasticTool::m_seed = 0;
 Int StochasticTool::m_rate = 50;
+StochasticTool *StochasticTool::m_staticThis = nullptr;
+Coord3D StochasticTool::m_cursor;
+Bool StochasticTool::m_cursorValid = false;
 
 StochasticTool::StochasticTool() :
 	Tool(ID_STOCHASTIC_TOOL, IDC_BRUSH_CROSS)
 {
 	m_htMapEditCopy = nullptr;
 	m_strokeSeed = 0;
+	m_staticThis = this;
 }
 
 StochasticTool::~StochasticTool()
 {
 	REF_PTR_RELEASE(m_htMapEditCopy);
+	if (m_staticThis == this)
+	{
+		m_staticThis = nullptr;
+	}
+}
+
+// Painting raises a point to the stroke's amount and stamps its look, including where the point already sits at that
+// amount, such as full paint under the brush's core.
+Bool StochasticTool::takesStroke(Int amount, Int strength)
+{
+	return amount > strength || (amount == strength && amount > 0);
+}
+
+// The overlay follows the width and feather, so a change redraws it without waiting for the mouse.
+void StochasticTool::redrawOverlay()
+{
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WbView3d *pView = (pDoc != nullptr) ? pDoc->Get3DView() : nullptr;
+	if (pView != nullptr)
+	{
+		pView->Invalidate(false);
+	}
+}
+
+Bool StochasticTool::getBrushOverlay(Coord3D &center, Real &coreRadius, Real &outerRadius)
+{
+	// deactivate() is not reliably called, so the overlay asks whether this is still the selected tool.
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!m_cursorValid || m_staticThis == nullptr || pDoc == nullptr || pDoc->GetHeightMap() == nullptr ||
+		WbApp() == nullptr || WbApp()->getSelTool() != (Tool *)m_staticThis)
+	{
+		return false;
+	}
+
+	// The centre and radii calcRoundBlendFactor paints with: odd widths centre on a cell, even ones on a point.
+	CPoint ndx;
+	getCenterIndex(&m_cursor, m_width, &ndx, pDoc);
+	const Real offset = (m_width & 1) ? 0.5f : 0.0f;
+	const Int border = pDoc->GetHeightMap()->getBorderSize();
+	center.x = (ndx.x + offset - border) * MAP_XY_FACTOR;
+	center.y = (ndx.y + offset - border) * MAP_XY_FACTOR;
+	center.z = 0.0f;
+	coreRadius = (m_width / 2.0f) * MAP_XY_FACTOR;
+	outerRadius = (m_width / 2.0f + m_feather) * MAP_XY_FACTOR;
+	return true;
+}
+
+Bool StochasticTool::overlayStampsSeedAt(Int xIndex, Int yIndex)
+{
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!m_cursorValid || m_staticThis == nullptr || pDoc == nullptr || (0x8000 & ::GetAsyncKeyState(VK_SHIFT)) != 0)
+	{
+		return false;
+	}
+	// Mid-stroke the tool's own copy holds what the stroke has painted so far.
+	WorldHeightMapEdit *pMap = (m_staticThis->m_htMapEditCopy != nullptr) ? m_staticThis->m_htMapEditCopy : pDoc->GetHeightMap();
+	if (pMap == nullptr || xIndex < 0 || yIndex < 0 || xIndex >= pMap->getXExtent() || yIndex >= pMap->getYExtent())
+	{
+		return false;
+	}
+	CPoint ndx;
+	getCenterIndex(&m_cursor, m_width, &ndx, pDoc);
+	const Real blend = calcRoundBlendFactor(ndx, xIndex, yIndex, m_width, m_feather);
+	if (blend <= 0.0f)
+	{
+		return false;
+	}
+	UnsignedByte strength, seed, rate;
+	pMap->getStochastic(xIndex, yIndex, strength, seed, rate);
+	return takesStroke(REAL_TO_INT_FLOOR(blend * 255.0f + 0.5f), strength);
 }
 
 void StochasticTool::setWidth(Int width)
@@ -57,6 +133,7 @@ void StochasticTool::setWidth(Int width)
 		WBQtStochastic_PushWidth(width);
 #endif
 		DrawObject::setBrushFeedbackParms(false, m_width, m_feather);
+		redrawOverlay();
 	}
 }
 
@@ -69,6 +146,7 @@ void StochasticTool::setFeather(Int feather)
 		WBQtStochastic_PushFeather(feather);
 #endif
 		DrawObject::setBrushFeedbackParms(false, m_width, m_feather);
+		redrawOverlay();
 	}
 }
 
@@ -105,7 +183,8 @@ void StochasticTool::randomizeSeed()
 void StochasticTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_STOCHASTIC_OPTIONS);
-	DrawObject::setDoBrushFeedback(true);
+	// The tool draws its own overlay, see DrawObject::drawStochasticBrushFeedback, so the shared brush grid stays off.
+	DrawObject::setDoBrushFeedback(false);
 	DrawObject::setBrushFeedbackParms(false, m_width, m_feather);
 }
 
@@ -151,6 +230,8 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 	Coord3D cpt;
 	pView->viewToDocCoords(viewPt, &cpt);
 	DrawObject::setFeedbackPos(cpt);
+	m_cursor = cpt;
+	m_cursorValid = true;
 	pView->Invalidate();
 	pDoc->updateAllViews();
 	if (m != TRACK_L || m_htMapEditCopy == nullptr)
@@ -189,9 +270,7 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 			UnsignedByte strength, seed, oldRate;
 			m_htMapEditCopy->getStochastic(i, j, strength, seed, oldRate);
 
-			// Painting only raises a cell, which then takes this stroke's look; erasing only lowers it.
-			// A cell the stroke already matches, such as full paint under the brush's core, still
-			// takes the look so repainting a spot changes it.
+			// Painting only raises a cell, which then takes this stroke's look (see takesStroke); erasing only lowers it.
 			const Int amount = REAL_TO_INT_FLOOR(blend * 255.0f + 0.5f);
 			if (erase)
 			{
@@ -201,7 +280,7 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 					m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)lowered, seed, oldRate);
 				}
 			}
-			else if (amount > strength || (amount == strength && amount > 0 && (seed != m_strokeSeed || oldRate != rate)))
+			else if (takesStroke(amount, strength) && (amount != strength || seed != m_strokeSeed || oldRate != rate))
 			{
 				m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)amount, (UnsignedByte)m_strokeSeed, rate);
 			}

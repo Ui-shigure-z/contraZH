@@ -41,6 +41,7 @@
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "WaveEditorTool.h"
+#include "StochasticTool.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
@@ -2999,6 +3000,105 @@ Bool DrawObject::drawBucketBrushFeedback(CameraClass* camera)
 	return true;
 }
 
+/** Draw a straight world segment into m_lineRenderer in steps that each follow the terrain, or the water where it is shown. */
+void DrawObject::addTerrainLineToLineRenderer(const Coord3D &from, const Coord3D &to, Int steps, Real width, unsigned long color, CameraClass* camera)
+{
+	ICoord2D screenPrev, screenCur;
+	bool havePrev = false;
+	for (Int i = 0; i <= steps; ++i) {
+		const Real t = (Real)i / steps;
+		Coord3D wp;
+		wp.x = from.x + t * (to.x - from.x);
+		wp.y = from.y + t * (to.y - from.y);
+		wp.z = TheTerrainRenderObject->getHeightMapHeight(wp.x, wp.y, NULL);
+		if (m_showWater) {
+			const Real waterZ = getWaterHeightIfUnderwater(wp.x, wp.y);
+			if (waterZ != -FLT_MAX) {
+				wp.z = waterZ + 4.5f;
+			}
+		}
+		const bool ok = worldToScreen(&wp, &screenCur, camera);
+		if (havePrev && ok) {
+			m_lineRenderer->Add_Line(Vector2(screenPrev.x, screenPrev.y), Vector2(screenCur.x, screenCur.y), width, color);
+		}
+		screenPrev = screenCur;
+		havePrev = ok;
+	}
+}
+
+#define STOCHASTIC_BRUSH_LINE_WIDTH 2.0f
+#define STOCHASTIC_HEX_LINE_WIDTH 1.0f
+// Past this many candidate hex cells the overlay leaves them out, to keep the line renderer in bounds.
+#define STOCHASTIC_MAX_HEX_CELLS 400
+/** Draw the stochastic terrain brush: a circle where it paints at full strength, one where its feather ends, and the
+	hex cells whose look the stroke's seed takes over. terrainshadow.hlsl gives each hex cell the seed painted on the
+	height map point nearest its centre, so the seed changes whole cells, which need not match the brush's circles.
+	Returns true if anything was added. */
+Bool DrawObject::drawStochasticBrushFeedback(CameraClass* camera)
+{
+	if (!m_lineRenderer || !camera || m_disableFeedback) {
+		return false;
+	}
+	Coord3D center;
+	Real coreRadius, outerRadius;
+	if (!StochasticTool::getBrushOverlay(center, coreRadius, outerRadius)) {
+		return false;
+	}
+
+	addCircleToLineRenderer(center, coreRadius, STOCHASTIC_BRUSH_LINE_WIDTH, 0xFF40A0FF, camera);
+	if (outerRadius > coreRadius) {
+		addCircleToLineRenderer(center, outerRadius, STOCHASTIC_BRUSH_LINE_WIDTH, 0xFF40E080, camera);
+	}
+
+	// The lattice as the shader walks it: points (a + b/2, b) times the spacing, each cell's corners at the centroids of
+	// the six triangles around it, where its blend weight stops leading.
+	const Vector4 hex = WaterRenderObjClass::getStochasticHex();
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WorldHeightMapEdit *pMap = (pDoc != nullptr) ? pDoc->GetHeightMap() : nullptr;
+	if (hex.X <= 0.0f || pMap == nullptr) {
+		return true;
+	}
+	const Real spacing = 1.0f / hex.X;
+	const Real reach = outerRadius + MAP_XY_FACTOR;
+	const Int bLo = (Int)floor((center.y - reach) / spacing);
+	const Int bHi = (Int)ceil((center.y + reach) / spacing);
+	const Int aSpan = (Int)ceil(2.0f * reach / spacing) + 3;
+	if ((bHi - bLo + 1) * aSpan > STOCHASTIC_MAX_HEX_CELLS) {
+		return true;
+	}
+
+	static const Real corners[6][2] = {
+		{ 0.5f, 1.0f / 3.0f }, { 0.0f, 2.0f / 3.0f }, { -0.5f, 1.0f / 3.0f },
+		{ -0.5f, -1.0f / 3.0f }, { 0.0f, -2.0f / 3.0f }, { 0.5f, -1.0f / 3.0f }
+	};
+	const Int border = pMap->getBorderSize();
+	for (Int b = bLo; b <= bHi; b++) {
+		const Int aLo = (Int)floor((center.x - reach) / spacing - 0.5f * b) - 1;
+		for (Int a = aLo; a < aLo + aSpan; a++) {
+			const Real cx = (a + 0.5f * b) * spacing;
+			const Real cy = b * spacing;
+			// The seed texture is point sampled, so the cell reads the nearest height map point.
+			const Int xIndex = (Int)floor(cx / MAP_XY_FACTOR + 0.5f) + border;
+			const Int yIndex = (Int)floor(cy / MAP_XY_FACTOR + 0.5f) + border;
+			if (!StochasticTool::overlayStampsSeedAt(xIndex, yIndex)) {
+				continue;
+			}
+			for (Int k = 0; k < 6; k++) {
+				const Int n = (k + 1) % 6;
+				Coord3D from, to;
+				from.x = cx + corners[k][0] * spacing;
+				from.y = cy + corners[k][1] * spacing;
+				from.z = 0.0f;
+				to.x = cx + corners[n][0] * spacing;
+				to.y = cy + corners[n][1] * spacing;
+				to.z = 0.0f;
+				addTerrainLineToLineRenderer(from, to, 4, STOCHASTIC_HEX_LINE_WIDTH, 0xFFFFC040, camera);
+			}
+		}
+	}
+	return true;
+}
+
 #define SIGHT_RANGE_LINE_WIDTH 2.0f
 /** Draw an object's sight range into the vertex buffer. **/
 // MLL C&C3
@@ -4191,6 +4291,11 @@ if (_skip_drawobject_render) {
 
 	// Wave bucket-fill brush circle (terrain-following, like the ruler circle).
 	if (drawBucketBrushFeedback(&rinfo.Camera)) {
+		linesToRender = true;
+	}
+
+	// Stochastic terrain brush overlay.
+	if (drawStochasticBrushFeedback(&rinfo.Camera)) {
 		linesToRender = true;
 	}
 
