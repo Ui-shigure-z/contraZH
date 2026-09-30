@@ -19,7 +19,12 @@
 #include "StdAfx.h"
 
 #include "DrawObject.h"
+#include "WBPerf.h"
 
+// This is used to allow sounds to be played via PlaySound
+#include <mmsystem.h>
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <WW3D2/assetmgr.h>
 #include <WW3D2/texture.h>
@@ -34,6 +39,9 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DWater.h"
+#include "W3DDevice/GameClient/W3DWaterTracks.h"
+#include "WaveEditorTool.h"
+#include "StochasticTool.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
@@ -47,6 +55,7 @@
 #include "WHeightMapEdit.h"
 #include "MeshMoldOptions.h"
 #include "WaterTool.h"
+#include "TileTool.h"
 #include "BuildListTool.h"
 #include "LayersList.h"
 #include "Common/WellKnownKeys.h"
@@ -56,6 +65,11 @@
 #include "WW3D2/render2d.h"
 #include "GameLogic/Weapon.h"
 #include "Common/AudioEventInfo.h"
+#if defined(BUILD_WITH_D3D9)
+#include "WBPngTexture.h"		// stb_image PNG decode for tracing overlays (no D3DX on D3D9)
+#else
+#include <d3dx8tex.h>		// D3DXCreateTextureFromFileExA, for PNG tracing overlays
+#endif
 
 #ifdef RTS_DEBUG
 #define NO_INTENSE_DEBUG 1
@@ -63,6 +77,10 @@
 
 const Real LINE_THICKNESS = 2.0f;
 const Real HANDLE_SIZE = (2.0f) * LINE_THICKNESS;
+const Real LINE_THICKNESS_GRID = 1.5f;
+#define ADJUST_FROM_INDEX_TO_REAL(k) ((k-pMap->getBorderSize())*MAP_XY_FACTOR)
+
+#define MAX_LINE_RENDER_SAFE_LIMIT 20000 // If we hit this dont do render at all
 
 
 // Texturing, no zbuffer, disabled zbuffer write, primary gradient, alpha blending
@@ -90,15 +108,34 @@ const Real HANDLE_SIZE = (2.0f) * LINE_THICKNESS;
 	ShaderClass::DETAILCOLOR_DISABLE, ShaderClass::DETAILALPHA_DISABLE) )
 
 
+int DrawObject::m_defaultIconColor = 0x00FFFF; // or whatever the default value is
+int DrawObject::m_waypointIconColor = 0x00FF00;
+int DrawObject::m_unitIconColor = 0xFF00FF;
+int DrawObject::m_treeIconColor = 0x00FF00;
+int DrawObject::m_roadIconColor = 0xFFFF00;
+
 Bool DrawObject::m_squareFeedback = false;
 Int	DrawObject::m_brushWidth = 3;
 Int	DrawObject::m_brushFeatherWidth = 3;
+Int DrawObject::m_brushHeight = 0;
 Bool	DrawObject::m_toolWantsFeedback = true;
 Bool	DrawObject::m_disableFeedback = false;
 Bool	DrawObject::m_meshFeedback = false;
 Bool	DrawObject::m_rampFeedback = false;
 Bool	DrawObject::m_boundaryFeedback = false;
+Bool	DrawObject::m_waveFeedback = true;	///< wave overlay lines on by default
+Bool	DrawObject::m_showShoreline = true;	///< red water/land boundary on by default (wave editor aid)
+Bool	DrawObject::m_shorelineDirty = true;	///< force a rebuild of the cached shoreline on first draw
+Int		DrawObject::m_shorelineSegCount = 0;
+float	*DrawObject::m_shorelineSeg = NULL;
+Bool	DrawObject::m_rulerGridFeedback = true;
+Bool	DrawObject::m_showTracingOverlay = false;
+Int		DrawObject::m_tracingOverlayOpacity = 255;	///< fully opaque by default
+Int		DrawObject::m_tracingOverlayFilter = 0;			///< 0 = default (linear)
 Bool	DrawObject::m_ambientSoundFeedback = false;
+Bool	DrawObject::m_playingSoundFeedback = false;
+Bool	DrawObject::m_baseRadiusFeedback = false;
+Bool	DrawObject::m_forceDrawArrow = false;
 Coord3D	DrawObject::m_feedbackPoint;
 CPoint DrawObject::m_cellCenter;
 
@@ -110,6 +147,10 @@ Real DrawObject::m_rampWidth = 0.0f;
 Bool DrawObject::m_dragWaypointFeedback = false;
 Coord3D DrawObject::m_dragWayStart;
 Coord3D DrawObject::m_dragWayEnd;
+
+Bool DrawObject::m_terrainPasteFeedback = false;
+Coord3D DrawObject::m_terrainPasteCenter;
+Int DrawObject::m_terrainPasteFeedbackRotation = 0;
 
 static Int curHighlight = 0;
 static const Int NUM_HIGHLIGHT = 3;
@@ -129,6 +170,81 @@ void DrawObject::stopWaypointDragFeedback()
 	m_dragWaypointFeedback = false;
 }
 
+// The tracing overlay is per-map. Its base name (no extension) is
+// "data\editor\<mapname>", where <mapname> is the loaded map's filename with
+// its directory and .map extension stripped. When no map is loaded/saved yet
+// (no path available) we fall back to the legacy "trace_overlay" name so the
+// feature still works on unsaved maps.
+AsciiString DrawObject::getTracingOverlayBaseName(void)
+{
+	const char *mapName = "trace_overlay";
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	CString mapPath = pDoc ? pDoc->getMapPath() : CString("");
+
+	// Pull just the filename out of the full path, then drop the extension.
+	char fname[_MAX_FNAME] = "";
+	if (!mapPath.IsEmpty()) {
+		_splitpath((const char *)mapPath, NULL, NULL, fname, NULL);
+	}
+	if (fname[0] != '\0') {
+		mapName = fname;
+	}
+
+	AsciiString base = "data\\editor\\";
+	base.concat(mapName);
+	return base;
+}
+
+// Round an integer up to the next power of two (1 stays 1, 192 -> 256, etc).
+static Int roundUpToPow2(Int v)
+{
+	if (v < 1) return 1;
+	Int p = 1;
+	while (p < v) p <<= 1;
+	return p;
+}
+
+// Recommended overlay texture size for the current map. PNG accepts any size so
+// it gets the exact cell extents; DDS requires power-of-two so it gets those
+// extents rounded up. Returns false when no map is loaded.
+Bool DrawObject::getTracingOverlayRecommendedSize(Int &outPngW, Int &outPngH,
+																									Int &outDdsW, Int &outDdsH)
+{
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WorldHeightMapEdit *pMap = pDoc ? pDoc->GetHeightMap() : NULL;
+	if (pMap == NULL) {
+		return false;
+	}
+	outPngW = pMap->getXExtent();
+	outPngH = pMap->getYExtent();
+	outDdsW = roundUpToPow2(outPngW);
+	outDdsH = roundUpToPow2(outPngH);
+	return true;
+}
+
+// Returns the path to the overlay file that actually exists on disk, preferring
+// the .png over the .dds. Returns an empty string if neither is present.
+AsciiString DrawObject::resolveTracingOverlayPath(void)
+{
+	AsciiString base = getTracingOverlayBaseName();
+
+	AsciiString pngPath = base;
+	pngPath.concat(".png");
+	CFileFind finder;
+	if (finder.FindFile(pngPath.str())) {
+		return pngPath;
+	}
+
+	AsciiString ddsPath = base;
+	ddsPath.concat(".dds");
+	if (finder.FindFile(ddsPath.str())) {
+		return ddsPath;
+	}
+
+	return AsciiString::TheEmptyString;
+}
+
 
 
 DrawObject::~DrawObject()
@@ -141,18 +257,25 @@ DrawObject::~DrawObject()
 DrawObject::DrawObject() :
 	m_drawObjects(true),
 	m_drawPolygonAreas(true),
-	m_indexBuffer(nullptr),
-	m_vertexMaterialClass(nullptr),
-	m_vertexBufferTile1(nullptr),
-	m_vertexBufferTile2(nullptr),
-	m_vertexBufferWater(nullptr),
-	m_vertexFeedback(nullptr),
-	m_indexFeedback(nullptr),
-	m_indexWater(nullptr),
-	m_moldMesh(nullptr),
-	m_lineRenderer(nullptr),
+	m_indexBuffer(NULL),
+	m_vertexMaterialClass(NULL),
+	m_vertexBufferTile1(NULL),
+	m_vertexBufferTile2(NULL),
+	m_vertexBufferWater(NULL),
+	m_vertexFeedback(NULL),
+	m_indexFeedback(NULL),
+	m_indexWater(NULL),
+	m_moldMesh(NULL),
+	m_lineRenderer(NULL),
+	m_tracingOverlayTexture(NULL),
+	m_tracingOverlayLoadedFilter(-1),
   m_drawSoundRanges(false)
 {
+	// m_roadIconColor     = 0xFFFF00; // yellow
+	// m_unitIconColor     = 0xFF00FF; // pink
+	// m_waypointIconColor = 0x00FF00; // green
+	// m_defaultIconColor  = 0x00FFFF; // cyan
+
 	m_feedbackPoint.x = 20;
 	m_feedbackPoint.y = 20;
 	initData();
@@ -225,9 +348,11 @@ Int DrawObject::freeMapResources()
 	REF_PTR_RELEASE(m_vertexBufferWater);
 	REF_PTR_RELEASE(m_vertexMaterialClass);
 	REF_PTR_RELEASE(m_vertexFeedback);
-	REF_PTR_RELEASE(m_indexFeedback);
+	REF_PTR_RELEASE(m_indexFeedback);	
 	REF_PTR_RELEASE(m_indexWater);
 	REF_PTR_RELEASE(m_moldMesh);
+	REF_PTR_RELEASE(m_tracingOverlayTexture);
+	m_tracingOverlayLoadedPath.clear();
 
 	delete m_lineRenderer;
 	m_lineRenderer = nullptr;
@@ -235,14 +360,17 @@ Int DrawObject::freeMapResources()
 	return 0;
 }
 
-// Total number of triangles
-#define NUM_TRI 26
+// Total number of triangles // Responsible for the middle point
+#define NUM_TRI 16	 // 18 is octagon // 26 is original
 // Number of triangles in the arrow.
 #define NUM_ARROW_TRI 4
-// Number of triangles in the selection pyramid.
-#define NUM_SELECT_TRI 16
+// Number of triangles in the selection pyramid. // The selection circle
+#define NUM_SELECT_TRI 6
 // Height of selection pyramid.
 #define SELECT_PYRAMID_HEIGHT (1.0f)
+
+// // Total number of triangles
+// #define NUM_TRI (3 + NUM_ARROW_TRI + NUM_SELECT_TRI)
 
 
 Int DrawObject::initData()
@@ -558,11 +686,33 @@ void DrawObject::updateRampVB()
 #endif
 }
 
-/** updateBoundaryVB puts boundaries into m_vertexFeedback. */
-void DrawObject::updateBoundaryVB()
+/** Returns the water height if the point is underwater, or -FLT_MAX if not */
+Real getWaterHeightIfUnderwater(Real x, Real y)
 {
-//	const Int theAlpha = 64;
+    ICoord3D iLoc;
+    iLoc.x = (floor(x + 0.5f));
+    iLoc.y = (floor(y + 0.5f));
+    iLoc.z = 0;
 
+    for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+        if (!pTrig->isWaterArea()) {
+            continue;
+        }
+
+        if (pTrig->pointInTrigger(iLoc)) {
+            Real waterZ = pTrig->getPoint(0)->z;
+            Real terrainZ = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+            if (terrainZ < waterZ) {
+                return waterZ;
+            }
+        }
+    }
+
+    return -FLT_MAX; // Not underwater
+}
+
+void DrawObject::updateBoundaryVB(void)
+{
 	m_feedbackVertexCount = 0;
 	m_feedbackIndexCount = 0;
 	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
@@ -576,151 +726,780 @@ void DrawObject::updateBoundaryVB()
  	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 	Int numBoundaries = pDoc->getNumBoundaries();
 
-	Int i, j;
-	for (i = 0; i < numBoundaries; ++i) {
+	const float stepSize = 10.0f * MAP_XY_FACTOR; // Adjust smoothness here
+
+	for (Int i = 0; i < numBoundaries; ++i) {
 		ICoord2D curBoundary;
 		pDoc->getBoundary(i, &curBoundary);
 		if (curBoundary.x == 0 || curBoundary.y == 0) {
-			// do not show feedback, this is a defunct boundary
+			continue; // Skip defunct boundaries
+		}
+
+		// Define the 4 corner points of the boundary rectangle in order:
+		// (0,0), (0, y), (x, y), (x, 0)
+		Coord3D corners[4];
+		// Corner 0: (0,0)
+		corners[0].x = 0 * MAP_XY_FACTOR;
+		corners[0].y = 0 * MAP_XY_FACTOR;
+		corners[0].z = TheTerrainRenderObject->getHeightMapHeight(corners[0].x, corners[0].y, NULL);
+		// Corner 1: (0, y)
+		corners[1].x = 0 * MAP_XY_FACTOR;
+		corners[1].y = curBoundary.y * MAP_XY_FACTOR;
+		corners[1].z = TheTerrainRenderObject->getHeightMapHeight(corners[1].x, corners[1].y, NULL);
+		// Corner 2: (x, y)
+		corners[2].x = curBoundary.x * MAP_XY_FACTOR;
+		corners[2].y = curBoundary.y * MAP_XY_FACTOR;
+		corners[2].z = TheTerrainRenderObject->getHeightMapHeight(corners[2].x, corners[2].y, NULL);
+		// Corner 3: (x, 0)
+		corners[3].x = curBoundary.x * MAP_XY_FACTOR;
+		corners[3].y = 0 * MAP_XY_FACTOR;
+		corners[3].z = TheTerrainRenderObject->getHeightMapHeight(corners[3].x, corners[3].y, NULL);
+
+		// Loop over edges (corner j → corner (j+1)%4)
+		for (int j = 0; j < 4; ++j) {
+			Coord3D startPt = corners[j];
+			Coord3D endPt = corners[(j + 1) % 4];
+
+			Vector3 edgeVec(endPt.x - startPt.x, endPt.y - startPt.y, 0);
+			float edgeLength = sqrtf(edgeVec.X * edgeVec.X + edgeVec.Y * edgeVec.Y);
+			int segments = max(1, (int)(edgeLength / stepSize));
+
+
+			for (int s = 0; s < segments; ++s) {
+				float t1 = (float)s / segments;
+				float t2 = (float)(s + 1) / segments;
+
+				Coord3D p1, p2;
+				p1.x = startPt.x + (endPt.x - startPt.x) * t1;
+				p1.y = startPt.y + (endPt.y - startPt.y) * t1;
+				p1.z = TheTerrainRenderObject->getHeightMapHeight(p1.x, p1.y, NULL);
+				if(m_showWater) {
+					Real waterHeight1 = getWaterHeightIfUnderwater(p1.x, p1.y);
+					if (waterHeight1 != -FLT_MAX) {
+						p1.z = waterHeight1 + 4.5f; // Draw slightly above water
+					}
+				}
+				p2.x = startPt.x + (endPt.x - startPt.x) * t2;
+				p2.y = startPt.y + (endPt.y - startPt.y) * t2;
+				p2.z = TheTerrainRenderObject->getHeightMapHeight(p2.x, p2.y, NULL);
+				if(m_showWater) {
+					Real waterHeight2 = getWaterHeightIfUnderwater(p2.x, p2.y);
+					if (waterHeight2 != -FLT_MAX) {
+						p2.z = waterHeight2 + 4.5f;
+					}
+				}
+				// Calculate perpendicular normal for thickness
+				Vector3 dir(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+				dir.Normalize();
+				dir *= LINE_THICKNESS;
+				dir.Rotate_Z(PI / 2);
+
+				// Check buffer capacity
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				DWORD color = BORDER_COLORS[i % BORDER_COLORS_SIZE].m_borderColor;
+
+				#define ADD_VERT(px, py, pz) \
+					curVb->x = px; curVb->y = py; curVb->z = pz; \
+					curVb->u1 = 0; curVb->v1 = 0; curVb->diffuse = color; ++curVb; ++m_feedbackVertexCount;
+
+				ADD_VERT(p1.x + dir.X, p1.y + dir.Y, p1.z);
+				ADD_VERT(p1.x - dir.X, p1.y - dir.Y, p1.z);
+				ADD_VERT(p2.x + dir.X, p2.y + dir.Y, p2.z);
+				ADD_VERT(p2.x - dir.X, p2.y - dir.Y, p2.z);
+
+				*curIb++ = m_feedbackVertexCount - 4;
+				*curIb++ = m_feedbackVertexCount - 2;
+				*curIb++ = m_feedbackVertexCount - 3;
+				*curIb++ = m_feedbackVertexCount - 4;
+				*curIb++ = m_feedbackVertexCount - 1;
+				*curIb++ = m_feedbackVertexCount - 2;
+				m_feedbackIndexCount += 6;
+			}
+			
+		}
+
+		// Optional: You can still draw the handles ("little nuggets") here if needed,
+		// but now the edges follow terrain better.
+
+	}
+}
+
+//-----------------------------------------------------------------------------
+// DrawObject::updateWaveVB
+//-----------------------------------------------------------------------------
+/** Build terrain-following overlay lines for every wave in the water-track
+	system: a start->end segment plus an arrowhead at the end showing travel
+	direction.  Same VB/IB + per-segment height sampling as updateBoundaryVB so
+	the lines hug the terrain/water and render inside the D3D frame. */
+//-----------------------------------------------------------------------------
+void DrawObject::updateWaveVB(void)
+{
+	m_feedbackVertexCount = 0;
+	m_feedbackIndexCount = 0;
+
+	if (!TheWaterTracksRenderSystem || !TheTerrainRenderObject)
+		return;
+
+	const DWORD WAVE_COLOR     = 0xFF00C8FF;	// ARGB cyan (normal)
+	const DWORD WAVE_COLOR_SEL = 0xFFFFFF00;	// ARGB yellow (selected)
+	const DWORD WAVE_COLOR_GHOST = 0xFFA0F0FF;	// ARGB light cyan (drag preview)
+	const float stepSize = 10.0f * MAP_XY_FACTOR;
+
+	// Append a ghost-preview wave (the one being dragged out) after the committed
+	// waves so it draws with the same crest-bar + arrow glyph in light cyan.
+	float ghCx, ghCy, ghDx, ghDy; Int ghType;
+	const Bool haveGhost = WaveEditorTool::getGhostWave(ghCx, ghCy, ghDx, ghDy, ghType);
+
+	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+	UnsignedShort *curIb = lockIdxBuffer.Get_Index_Array();
+
+	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+	VertexFormatXYZDUV1 *curVb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+
+	// Emit a terrain-following thick line from a->b as two triangles per segment.
+	#define WAVE_SAMPLE_Z(PT) \
+		PT.z = TheTerrainRenderObject->getHeightMapHeight(PT.x, PT.y, NULL); \
+		if (m_showWater) { Real wh = getWaterHeightIfUnderwater(PT.x, PT.y); if (wh != -FLT_MAX) PT.z = wh + 4.5f; }
+
+	DWORD waveColor = WAVE_COLOR;	// set per wave below
+
+	#define WAVE_ADD_VERT(px, py, pz) \
+		curVb->x = px; curVb->y = py; curVb->z = pz; \
+		curVb->u1 = 0; curVb->v1 = 0; curVb->diffuse = waveColor; ++curVb; ++m_feedbackVertexCount;
+
+	Int waveCount = TheWaterTracksRenderSystem->getWaveCount();
+	Int totalGlyphs = waveCount + (haveGhost ? 1 : 0);
+	for (Int w = 0; w < totalGlyphs; ++w)
+	{
+		// p0->p1 is the visible wave front (perpendicular to motion, m_finalWidth
+		// wide); 'tip' is a point off the front's center in the travel direction.
+		Vector2 p0, p1, tip;
+		const Bool isGhost = (w >= waveCount);
+		if (isGhost)
+		{
+			// Same front-line math as a committed wave, for the dragged direction.
+			TheWaterTracksRenderSystem->getWaveFrontLineForType(
+				Vector2(ghCx, ghCy), Vector2(ghDx, ghDy), ghType, p0, p1, tip);
+		}
+		else if (!TheWaterTracksRenderSystem->getWaveFrontLine(w, p0, p1, tip))
 			continue;
+
+		waveColor = isGhost ? WAVE_COLOR_GHOST
+											: (WaveEditorTool::isWaveSelected(w) ? WAVE_COLOR_SEL : WAVE_COLOR);
+
+		Vector2 center((p0.X + p1.X) * 0.5f, (p0.Y + p1.Y) * 0.5f);
+
+		// Pieces to draw: the front bar (p0->p1), a stem (center->tip) showing the
+		// travel direction, and two arrowhead barbs at the tip.
+		Coord3D pieces[4][2];
+		Int numPieces = 2;
+		pieces[0][0].x = p0.X;     pieces[0][0].y = p0.Y;
+		pieces[0][1].x = p1.X;     pieces[0][1].y = p1.Y;
+		pieces[1][0].x = center.X; pieces[1][0].y = center.Y;
+		pieces[1][1].x = tip.X;    pieces[1][1].y = tip.Y;
+
+		Vector2 dirv = tip - center;
+		Real dlen = dirv.Length();
+		if (dlen > 1.0f)
+		{
+			dirv *= (1.0f / dlen);
+			Vector2 perp(-dirv.Y, dirv.X);
+			Real ah = 6.0f * MAP_XY_FACTOR;	// arrowhead length
+			Real aw = 3.0f * MAP_XY_FACTOR;	// arrowhead half-width
+			Vector2 base = tip - dirv * ah;
+			Vector2 b1 = base + perp * aw;
+			Vector2 b2 = base - perp * aw;
+			pieces[2][0].x = tip.X; pieces[2][0].y = tip.Y;
+			pieces[2][1].x = b1.X;  pieces[2][1].y = b1.Y;
+			pieces[3][0].x = tip.X; pieces[3][0].y = tip.Y;
+			pieces[3][1].x = b2.X;  pieces[3][1].y = b2.Y;
+			numPieces = 4;
 		}
 
-		for (j = 0; j < 4; ++j) {
-			Coord3D startPt, endPt;
+		for (Int pc = 0; pc < numPieces; ++pc)
+		{
+			Coord3D a = pieces[pc][0];
+			Coord3D b = pieces[pc][1];
+			Vector3 edgeVec(b.x - a.x, b.y - a.y, 0);
+			Real edgeLength = sqrtf(edgeVec.X*edgeVec.X + edgeVec.Y*edgeVec.Y);
+			Int segments = max(1, (int)(edgeLength / stepSize));
 
-			if (j == 0) {
-				startPt.x = startPt.y = 0;
-				startPt.x *= MAP_XY_FACTOR;
-				startPt.y *= MAP_XY_FACTOR;
-				startPt.z = TheTerrainRenderObject->getHeightMapHeight(startPt.x, startPt.y, nullptr);
-				endPt.x = 0;
-				endPt.y = curBoundary.y;
-				endPt.x *= MAP_XY_FACTOR;
-				endPt.y *= MAP_XY_FACTOR;
-				endPt.z = TheTerrainRenderObject->getHeightMapHeight(endPt.x, endPt.y, nullptr);
-			} else if (j == 1) {
-				startPt = endPt;
-				endPt.x = curBoundary.x;
-				endPt.y = curBoundary.y;
-				endPt.x *= MAP_XY_FACTOR;
-				endPt.y *= MAP_XY_FACTOR;
-				endPt.z = TheTerrainRenderObject->getHeightMapHeight(endPt.x, endPt.y, nullptr);
-			} else if (j == 2) {
-				startPt = endPt;
-				endPt.x = curBoundary.x;
-				endPt.y = 0;
-				endPt.x *= MAP_XY_FACTOR;
-				endPt.y *= MAP_XY_FACTOR;
-				endPt.z = TheTerrainRenderObject->getHeightMapHeight(endPt.x, endPt.y, nullptr);
-			} else if (j == 3) {
-				startPt = endPt;
-				endPt.x = 0;
-				endPt.y = 0;
-				endPt.x *= MAP_XY_FACTOR;
-				endPt.y *= MAP_XY_FACTOR;
-				endPt.z = TheTerrainRenderObject->getHeightMapHeight(endPt.x, endPt.y, nullptr);
+			for (Int s = 0; s < segments; ++s)
+			{
+				Real t1 = (Real)s / segments;
+				Real t2 = (Real)(s + 1) / segments;
+				Coord3D p1, p2;
+				p1.x = a.x + (b.x - a.x) * t1; p1.y = a.y + (b.y - a.y) * t1;
+				p2.x = a.x + (b.x - a.x) * t2; p2.y = a.y + (b.y - a.y) * t2;
+				WAVE_SAMPLE_Z(p1);
+				WAVE_SAMPLE_Z(p2);
+
+				Vector3 dir(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+				dir.Normalize();
+				dir *= 1.0f;	// half-width: total wave line width = 2 world units (thin)
+				dir.Rotate_Z(PI / 2);
+
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				WAVE_ADD_VERT(p1.x + dir.X, p1.y + dir.Y, p1.z);
+				WAVE_ADD_VERT(p1.x - dir.X, p1.y - dir.Y, p1.z);
+				WAVE_ADD_VERT(p2.x + dir.X, p2.y + dir.Y, p2.z);
+				WAVE_ADD_VERT(p2.x - dir.X, p2.y - dir.Y, p2.z);
+
+				*curIb++ = m_feedbackVertexCount - 4;
+				*curIb++ = m_feedbackVertexCount - 2;
+				*curIb++ = m_feedbackVertexCount - 3;
+				*curIb++ = m_feedbackVertexCount - 4;
+				*curIb++ = m_feedbackVertexCount - 1;
+				*curIb++ = m_feedbackVertexCount - 2;
+				m_feedbackIndexCount += 6;
 			}
-
-			if (m_feedbackVertexCount + 8 > NUM_FEEDBACK_VERTEX) {
-				return;
-			}
-
-			if (m_feedbackIndexCount + 12 > NUM_FEEDBACK_INDEX) {
-				return;
-			}
-
-			Vector3 normal(endPt.x - startPt.x, endPt.y - startPt.y, endPt.z - startPt.z);
-			normal.Normalize();
-			normal *= LINE_THICKNESS;
-			normal.Rotate_Z(PI/2);
-
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x+normal.X;
-			curVb->y = startPt.y+normal.Y;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x-normal.X;
-			curVb->y = startPt.y-normal.Y;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = endPt.x+normal.X;
-			curVb->y = endPt.y+normal.Y;
-			curVb->z = endPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = endPt.x-normal.X;
-			curVb->y = endPt.y-normal.Y;
-			curVb->z = endPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-
-			*curIb++ = m_feedbackVertexCount-3;
-			*curIb++ = m_feedbackVertexCount-1;
-			*curIb++ = m_feedbackVertexCount-2;
-			*curIb++ = m_feedbackVertexCount-4;
-			*curIb++ = m_feedbackVertexCount-3;
-			*curIb++ = m_feedbackVertexCount-2;
-			m_feedbackIndexCount+=6;
-
-			// draw a little nugget
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x;
-			curVb->y = startPt.y - HANDLE_SIZE;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x - HANDLE_SIZE;
-			curVb->y = startPt.y;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x;
-			curVb->y = startPt.y + HANDLE_SIZE;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-
-			curVb->u1 = 0;
-			curVb->v1 = 0;
-			curVb->x = startPt.x + HANDLE_SIZE;
-			curVb->y = startPt.y;
-			curVb->z = startPt.z;
-			curVb->diffuse = BORDER_COLORS[i % BORDER_COLORS_SIZE ].m_borderColor;
-			curVb++;
-			m_feedbackVertexCount++;
-
-			*curIb++ = m_feedbackVertexCount - 4;
-			*curIb++ = m_feedbackVertexCount - 2;
-			*curIb++ = m_feedbackVertexCount - 3;
-			*curIb++ = m_feedbackVertexCount - 4;
-			*curIb++ = m_feedbackVertexCount - 1;
-			*curIb++ = m_feedbackVertexCount - 2;
-			m_feedbackIndexCount+=6;
 		}
-		// need to push handles in heie.
+	}
+
+	#undef WAVE_SAMPLE_Z
+	#undef WAVE_ADD_VERT
+}
+
+//-----------------------------------------------------------------------------
+// DrawObject::updateShorelineVB
+//-----------------------------------------------------------------------------
+/** Build a red overlay line tracing the water/land boundary, as an aid for the wave
+	editor (waves are painted along the shore).  We sample the heightmap on a regular
+	grid, classify each sample as underwater or not, and for every grid cell that
+	straddles the boundary we emit a short red segment where water meets land (a light
+	"marching squares": a segment per crossed pair of cell edges).  The verts sit at the
+	water surface height so the line hugs the shoreline. */
+//-----------------------------------------------------------------------------
+// Z_LIFT and HALF_W are shared by the cache scan and the per-frame expand.
+static const float SHORE_Z_LIFT = 4.5f;		// sit just above the water surface
+static const float SHORE_HALF_W = 1.0f;		// half line thickness (total 2 world units)
+
+//-----------------------------------------------------------------------------
+// DrawObject::rebuildShorelineCache
+//-----------------------------------------------------------------------------
+/** Run the (expensive) marching-squares scan over the whole heightmap once and store
+	the resulting boundary segments in m_shorelineSeg.  Called only when the cache is
+	dirty (toggle on / explicit invalidate); updateShorelineVB() then just re-expands
+	these cached segments into the shared VB each frame, which is cheap. */
+//-----------------------------------------------------------------------------
+void DrawObject::rebuildShorelineCache(void)
+{
+	m_shorelineDirty = false;
+	m_shorelineSegCount = 0;
+
+	if (!TheTerrainRenderObject)
+		return;
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!pDoc)
+		return;
+	WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
+	if (!pMap)
+		return;
+
+	if (!m_shorelineSeg)
+	{
+		m_shorelineSeg = new float[SHORELINE_SEG_MAX * 5];
+		if (!m_shorelineSeg)
+			return;
+	}
+
+	// One sample per heightmap cell.  MAP_XY_FACTOR world units per cell.
+	const float worldX0 = ADJUST_FROM_INDEX_TO_REAL(1);
+	const float worldY0 = ADJUST_FROM_INDEX_TO_REAL(1);
+	const float worldX1 = ADJUST_FROM_INDEX_TO_REAL(pMap->getXExtent() - 2);
+	const float worldY1 = ADJUST_FROM_INDEX_TO_REAL(pMap->getYExtent() - 2);
+	const float step    = MAP_XY_FACTOR;
+
+	// underwater test at a world point: true if the cell is under a water area.
+	#define SHORE_WET(X, Y) (getWaterHeightIfUnderwater((X), (Y)) != -FLT_MAX)
+
+	// Store one boundary segment a->b at water height, clipped to capacity.
+	#define SHORE_STORE_SEG(ax, ay, bx, by, wz) \
+	{ \
+		if (m_shorelineSegCount < SHORELINE_SEG_MAX) { \
+			float *_s = &m_shorelineSeg[m_shorelineSegCount * 5]; \
+			_s[0]=(ax); _s[1]=(ay); _s[2]=(bx); _s[3]=(by); _s[4]=(wz); \
+			++m_shorelineSegCount; \
+		} \
+	}
+
+	// Count the x sample points (cell corners at x and x+step for every cell).
+	Int nPts = 1;
+	for (float cx = worldX0; cx < worldX1; cx += step)
+		++nPts;
+
+	// Each grid point is shared by up to 4 cells; classify every point ONCE per row
+	// pair instead of 4 times per cell -- the wet test (a point-in-water-polygon
+	// lookup) dominates the scan, so this cuts the rebuild cost ~4x.
+	unsigned char *rowLo = new unsigned char[nPts];	// wetness of row y
+	unsigned char *rowHi = new unsigned char[nPts];	// wetness of row y+step
+	if (!rowLo || !rowHi)
+	{
+		delete [] rowLo;
+		delete [] rowHi;
+		return;
+	}
+
+	Int i;
+	for (i = 0; i < nPts; ++i)
+		rowLo[i] = SHORE_WET(worldX0 + i * step, worldY0) ? 1 : 0;
+
+	for (float y = worldY0; y < worldY1; y += step)
+	{
+		float yn = y + step;
+		for (i = 0; i < nPts; ++i)
+			rowHi[i] = SHORE_WET(worldX0 + i * step, yn) ? 1 : 0;
+
+		Int ix = 0;
+		for (float x = worldX0; x < worldX1; x += step, ++ix)
+		{
+			float xn = x + step;
+
+			// The cell's four corners (water = 1, land = 0), from the cached rows.
+			Bool w00 = rowLo[ix]     != 0;	// bottom-left
+			Bool w10 = rowLo[ix + 1] != 0;	// bottom-right
+			Bool w01 = rowHi[ix]     != 0;	// top-left
+			Bool w11 = rowHi[ix + 1] != 0;	// top-right
+
+			// Fully wet or fully dry -> no boundary in this cell.
+			Int wet = (w00?1:0) + (w10?1:0) + (w01?1:0) + (w11?1:0);
+			if (wet == 0 || wet == 4)
+				continue;
+
+			// Boundary crosses an edge wherever its two endpoints differ.  Take the
+			// midpoint of each crossed edge and connect them; for a single corner in/out
+			// that's one segment, for a split (two corners) it's two.  Keeping it to edge
+			// midpoints (no sub-cell interpolation) is plenty for an editor guide.
+			float mx = (x + xn) * 0.5f, my = (y + yn) * 0.5f;
+			float cpx[4]; float cpy[4]; Int nC = 0;
+			if (w00 != w10) { cpx[nC]=mx; cpy[nC]=y;  ++nC; }	// bottom edge
+			if (w01 != w11) { cpx[nC]=mx; cpy[nC]=yn; ++nC; }	// top edge
+			if (w00 != w01) { cpx[nC]=x;  cpy[nC]=my; ++nC; }	// left edge
+			if (w10 != w11) { cpx[nC]=xn; cpy[nC]=my; ++nC; }	// right edge
+
+			// Water surface height for the lift (use the cell center's water level).
+			float wz = getWaterHeightIfUnderwater(mx, my);
+			if (wz == -FLT_MAX)
+			{
+				// Center happens to be dry; borrow a wet corner's water level.
+				if      (w00) wz = getWaterHeightIfUnderwater(x,  y );
+				else if (w10) wz = getWaterHeightIfUnderwater(xn, y );
+				else if (w01) wz = getWaterHeightIfUnderwater(x,  yn);
+				else          wz = getWaterHeightIfUnderwater(xn, yn);
+			}
+			if (wz == -FLT_MAX)
+				continue;	// shouldn't happen given wet>0, but be safe
+			wz += SHORE_Z_LIFT;
+
+			if (nC >= 2)
+				SHORE_STORE_SEG(cpx[0], cpy[0], cpx[1], cpy[1], wz);
+			if (nC >= 4)	// saddle: two separate crossings
+				SHORE_STORE_SEG(cpx[2], cpy[2], cpx[3], cpy[3], wz);
+		}
+
+		// This row's top edge is the next row's bottom edge.
+		unsigned char *tmpRow = rowLo; rowLo = rowHi; rowHi = tmpRow;
+	}
+
+	delete [] rowLo;
+	delete [] rowHi;
+
+	#undef SHORE_WET
+	#undef SHORE_STORE_SEG
+}
+
+//-----------------------------------------------------------------------------
+// DrawObject::getShorelineForFill
+//-----------------------------------------------------------------------------
+/** Hand the cached water/land boundary to the wave bucket-fill.  Rebuilds the cache
+	if it is dirty or has never been built, so the caller always gets current data
+	(the user may have edited terrain/water since the red guide was last drawn). */
+//-----------------------------------------------------------------------------
+Int DrawObject::getShorelineForFill(const float **outSegs)
+{
+	if (m_shorelineDirty || m_shorelineSegCount == 0)
+		rebuildShorelineCache();
+	if (outSegs)
+		*outSegs = m_shorelineSeg;
+	return m_shorelineSegCount;
+}
+
+void DrawObject::updateShorelineVB(void)
+{
+	m_feedbackVertexCount = 0;
+	m_feedbackIndexCount = 0;
+
+	// Rescan the heightmap only when the cache is explicitly dirty. Terrain and water
+	// can't change while the wave editor is the selected tool (tools are exclusive), so
+	// the rescan triggers are all event-driven: tool activate, the Show-shoreline toggle,
+	// a bucket stroke, and heightmap reloads (updateHeightMapInView) all invalidate.
+	// (This used to also rescan on a 400ms timer "just in case" -- that full-map scan,
+	// with a point-in-water-polygon test per sample, ran 2.5x/sec on the render path and
+	// dropped the framerate while panning with the shoreline visible.)
+	if (m_shorelineDirty)
+		rebuildShorelineCache();
+
+	if (m_shorelineSegCount <= 0 || !m_shorelineSeg)
+		return;
+
+	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+	UnsignedShort *curIb = lockIdxBuffer.Get_Index_Array();
+
+	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+	VertexFormatXYZDUV1 *curVb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+
+	const DWORD SHORE_COLOR = 0xFFFF0000;	// ARGB red
+
+	// Expand each cached segment into a thick red quad.  No heightmap sampling here.
+	for (Int i = 0; i < m_shorelineSegCount; ++i)
+	{
+		if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+			break;
+
+		const float *s = &m_shorelineSeg[i * 5];
+		float ax = s[0], ay = s[1], bx = s[2], by = s[3], wz = s[4];
+
+		Vector3 d(bx - ax, by - ay, 0.0f);
+		d.Normalize(); d *= SHORE_HALF_W; d.Rotate_Z(PI / 2);
+
+		curVb->x=ax+d.X; curVb->y=ay+d.Y; curVb->z=wz; curVb->u1=0; curVb->v1=0; curVb->diffuse=SHORE_COLOR; ++curVb;
+		curVb->x=ax-d.X; curVb->y=ay-d.Y; curVb->z=wz; curVb->u1=0; curVb->v1=0; curVb->diffuse=SHORE_COLOR; ++curVb;
+		curVb->x=bx+d.X; curVb->y=by+d.Y; curVb->z=wz; curVb->u1=0; curVb->v1=0; curVb->diffuse=SHORE_COLOR; ++curVb;
+		curVb->x=bx-d.X; curVb->y=by-d.Y; curVb->z=wz; curVb->u1=0; curVb->v1=0; curVb->diffuse=SHORE_COLOR; ++curVb;
+
+		*curIb++ = m_feedbackVertexCount + 0; *curIb++ = m_feedbackVertexCount + 1; *curIb++ = m_feedbackVertexCount + 2;
+		*curIb++ = m_feedbackVertexCount + 2; *curIb++ = m_feedbackVertexCount + 1; *curIb++ = m_feedbackVertexCount + 3;
+		m_feedbackVertexCount += 4; m_feedbackIndexCount += 6;
+	}
+}
+
+void DrawObject::updateGridVB(void)
+{
+	m_feedbackVertexCount = 0;
+	m_feedbackIndexCount = 0;
+
+	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+	UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
+	UnsignedShort *curIb = ib;
+
+	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1 *)lockVtxBuffer.Get_Vertex_Array();
+	VertexFormatXYZDUV1 *curVb = vb;
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
+
+	const float stepSize = 10.0f * MAP_XY_FACTOR;
+
+	// #define ADJUST_FROM_INDEX_TO_REAL(k) ((k - pMap->getBorderSize()) * MAP_XY_FACTOR)
+	const float worldX0 = ADJUST_FROM_INDEX_TO_REAL(1);
+	const float worldY0 = ADJUST_FROM_INDEX_TO_REAL(1);
+	const float worldX1 = ADJUST_FROM_INDEX_TO_REAL(pMap->getXExtent() - 2);
+	const float worldY1 = ADJUST_FROM_INDEX_TO_REAL(pMap->getYExtent() - 2);
+
+	const int targetLines = 10;
+
+	float mapWidth  = worldX1 - worldX0;
+	float mapHeight = worldY1 - worldY0;
+
+	float spacingX = mapWidth / targetLines;
+	float spacingY = mapHeight / targetLines;
+
+	const float Z_OFFSET = 1.0f;
+	const float centerX = (worldX0 + worldX1) * 0.5f;
+	const float centerY = (worldY0 + worldY1) * 0.5f;
+	const float epsilon = 0.1f;
+
+	#define ADD_GRID_VERT(px, py, pz, clr) \
+		curVb->x = px; curVb->y = py; curVb->z = pz; \
+		curVb->u1 = 0; curVb->v1 = 0; curVb->diffuse = clr; ++curVb; ++m_feedbackVertexCount;
+
+	int i;
+
+	// --- Draw Concentric Circles (auto-scaled to map size) ---
+	const int NUM_CIRCLES = 3;
+	const int SEGMENTS_PER_CIRCLE = 96; // smooth circles
+
+	// use smaller dimension to fit within map bounds
+	float baseRadius = min(mapWidth, mapHeight) * 0.5f * 0.8f; // 80% of half-size
+	float circleRadii[NUM_CIRCLES];
+
+	// distribute evenly: inner = 1/3, mid = 2/3, outer = full
+	for (int ca = 0; ca < NUM_CIRCLES; ++ca)
+		circleRadii[ca] = baseRadius * ((ca + 1) / (float)NUM_CIRCLES);
+
+	for (int c = 0; c < NUM_CIRCLES; ++c)
+	{
+		float radius = circleRadii[c];
+		DWORD color;
+		if (c == 0) color = 0xFF00FFFF;    // inner - cyan
+		else if (c == 1) color = 0xFFFFFF00; // middle - yellow
+		else color = 0xFFFF00FF;             // outer - magenta
+
+		for (int s = 0; s < SEGMENTS_PER_CIRCLE; ++s)
+		{
+			float angle1 = (s / (float)SEGMENTS_PER_CIRCLE) * 2.0f * PI;
+			float angle2 = ((s + 1) / (float)SEGMENTS_PER_CIRCLE) * 2.0f * PI;
+
+			float x1 = centerX + cosf(angle1) * radius;
+			float y1 = centerY + sinf(angle1) * radius;
+			float x2 = centerX + cosf(angle2) * radius;
+			float y2 = centerY + sinf(angle2) * radius;
+
+			Real z1 = TheTerrainRenderObject->getHeightMapHeight(x1, y1, NULL);
+			Real z2 = TheTerrainRenderObject->getHeightMapHeight(x2, y2, NULL);
+			Real waterZ1 = getWaterHeightIfUnderwater(x1, y1);
+			Real waterZ2 = getWaterHeightIfUnderwater(x2, y2);
+
+			if (waterZ1 != -FLT_MAX && waterZ1 + 4.5f > z1 + Z_OFFSET)
+				z1 = waterZ1 + 4.5f;
+			else
+				z1 += Z_OFFSET;
+
+			if (waterZ2 != -FLT_MAX && waterZ2 + 4.5f > z2 + Z_OFFSET)
+				z2 = waterZ2 + 4.5f;
+			else
+				z2 += Z_OFFSET;
+
+			Coord3D a = { x1, y1, z1 };
+			Coord3D b = { x2, y2, z2 };
+
+			Vector3 dir(b.x - a.x, b.y - a.y, b.z - a.z);
+			dir.Normalize();
+			dir *= LINE_THICKNESS_GRID;
+			dir.Rotate_Z(PI / 2);
+
+			if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+				return;
+
+			ADD_GRID_VERT(a.x + dir.X, a.y + dir.Y, a.z, color);
+			ADD_GRID_VERT(a.x - dir.X, a.y - dir.Y, a.z, color);
+			ADD_GRID_VERT(b.x + dir.X, b.y + dir.Y, b.z, color);
+			ADD_GRID_VERT(b.x - dir.X, b.y - dir.Y, b.z, color);
+
+			*curIb++ = m_feedbackVertexCount - 4; // v0
+			*curIb++ = m_feedbackVertexCount - 3; // v1
+			*curIb++ = m_feedbackVertexCount - 2; // v2
+			*curIb++ = m_feedbackVertexCount - 2; // v2
+			*curIb++ = m_feedbackVertexCount - 3; // v1
+			*curIb++ = m_feedbackVertexCount - 1; // v3
+			m_feedbackIndexCount += 6;
+		}
+	}
+
+	// Vertical lines
+	for (i = 0;; ++i) {
+		bool didDraw = false;
+		float x1 = centerX + i * spacingX;
+		float x2 = centerX - i * spacingX;
+
+		if (x1 <= worldX1 + 0.001f) {
+			DWORD color = (fabs(x1 - centerX) < epsilon) ? 0xFFFF0000 : 0xFF808080;
+			float y;
+			for (y = worldY0; y < worldY1; y += stepSize) {
+				float nextY = y + stepSize;
+				if (nextY > worldY1) nextY = worldY1;
+
+				Real z1 = TheTerrainRenderObject->getHeightMapHeight(x1, y, NULL);
+				Real waterZ1 = getWaterHeightIfUnderwater(x1, y);
+				if (waterZ1 != -FLT_MAX && waterZ1 + 4.5f > z1 + Z_OFFSET)
+					z1 = waterZ1 + 4.5f;
+				else
+					z1 += Z_OFFSET;
+
+				Real z2 = TheTerrainRenderObject->getHeightMapHeight(x1, nextY, NULL);
+				Real waterZ2 = getWaterHeightIfUnderwater(x1, nextY);
+				if (waterZ2 != -FLT_MAX && waterZ2 + 4.5f > z2 + Z_OFFSET)
+					z2 = waterZ2 + 4.5f;
+				else
+					z2 += Z_OFFSET;
+
+				Coord3D a = { x1, y, z1 };
+				Coord3D b = { x1, nextY, z2 };
+
+				Vector3 dir(LINE_THICKNESS_GRID, 0, 0); // Extrude in +X and -X
+
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				ADD_GRID_VERT(a.x + dir.X, a.y + dir.Y, a.z, color);
+				ADD_GRID_VERT(a.x - dir.X, a.y - dir.Y, a.z, color);
+				ADD_GRID_VERT(b.x + dir.X, b.y + dir.Y, b.z, color);
+				ADD_GRID_VERT(b.x - dir.X, b.y - dir.Y, b.z, color);
+
+				*curIb++ = m_feedbackVertexCount - 4; // v0
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 1; // v3
+				m_feedbackIndexCount += 6;
+			}
+			didDraw = true;
+		}
+
+		if (i != 0 && x2 >= worldX0 - 0.001f) {
+			DWORD color = (fabs(x2 - centerX) < epsilon) ? 0xFFFF0000 : 0xFF808080;
+			float y;
+			for (y = worldY0; y < worldY1; y += stepSize) {
+				float nextY = y + stepSize;
+				if (nextY > worldY1) nextY = worldY1;
+
+				Real z1 = TheTerrainRenderObject->getHeightMapHeight(x2, y, NULL);
+				Real waterZ1 = getWaterHeightIfUnderwater(x2, y);
+				if (waterZ1 != -FLT_MAX && waterZ1 + 4.5f > z1 + Z_OFFSET)
+					z1 = waterZ1 + 4.5f;
+				else
+					z1 += Z_OFFSET;
+
+				Real z2 = TheTerrainRenderObject->getHeightMapHeight(x2, nextY, NULL);
+				Real waterZ2 = getWaterHeightIfUnderwater(x2, nextY);
+				if (waterZ2 != -FLT_MAX && waterZ2 + 4.5f > z2 + Z_OFFSET)
+					z2 = waterZ2 + 4.5f;
+				else
+					z2 += Z_OFFSET;
+
+				Coord3D a = { x2, y, z1 };
+				Coord3D b = { x2, nextY, z2 };
+
+				Vector3 dir(b.x - a.x, b.y - a.y, b.z - a.z);
+				dir.Normalize();
+				dir *= LINE_THICKNESS_GRID;
+				dir.Rotate_Z(PI / 2);
+
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				ADD_GRID_VERT(a.x + dir.X, a.y + dir.Y, a.z, color);
+				ADD_GRID_VERT(a.x - dir.X, a.y - dir.Y, a.z, color);
+				ADD_GRID_VERT(b.x + dir.X, b.y + dir.Y, b.z, color);
+				ADD_GRID_VERT(b.x - dir.X, b.y - dir.Y, b.z, color);
+
+				*curIb++ = m_feedbackVertexCount - 4; // v0
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 1; // v3
+				m_feedbackIndexCount += 6;
+			}
+			didDraw = true;
+		}
+
+		if (!didDraw)
+			break;
+	}
+
+	// Horizontal lines
+	for (i = 0;; ++i) {
+		bool didDraw = false;
+		float y1 = centerY + i * spacingY;
+		float y2 = centerY - i * spacingY;
+
+		if (y1 <= worldY1 + 0.001f) {
+			DWORD color = (fabs(y1 - centerY) < epsilon) ? 0xFFFF0000 : 0xFF808080;
+			float x;
+			for (x = worldX0; x < worldX1; x += stepSize) {
+				float nextX = x + stepSize;
+				if (nextX > worldX1) nextX = worldX1;
+
+				Real z1 = TheTerrainRenderObject->getHeightMapHeight(x, y1, NULL);
+				Real waterZ1 = getWaterHeightIfUnderwater(x, y1);
+				if (waterZ1 != -FLT_MAX && waterZ1 + 4.5f > z1 + Z_OFFSET)
+					z1 = waterZ1 + 4.5f;
+				else
+					z1 += Z_OFFSET;
+
+				Real z2 = TheTerrainRenderObject->getHeightMapHeight(nextX, y1, NULL);
+				Real waterZ2 = getWaterHeightIfUnderwater(nextX, y1);
+				if (waterZ2 != -FLT_MAX && waterZ2 + 4.5f > z2 + Z_OFFSET)
+					z2 = waterZ2 + 4.5f;
+				else
+					z2 += Z_OFFSET;
+
+				Coord3D a = { x, y1, z1 };
+				Coord3D b = { nextX, y1, z2 };
+
+				Vector3 dir(0, LINE_THICKNESS_GRID, 0); // Extrude in +Y and -Y
+
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				ADD_GRID_VERT(a.x + dir.X, a.y + dir.Y, a.z, color);
+				ADD_GRID_VERT(a.x - dir.X, a.y - dir.Y, a.z, color);
+				ADD_GRID_VERT(b.x + dir.X, b.y + dir.Y, b.z, color);
+				ADD_GRID_VERT(b.x - dir.X, b.y - dir.Y, b.z, color);
+
+				*curIb++ = m_feedbackVertexCount - 4; // v0
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 1; // v3
+				m_feedbackIndexCount += 6;
+			}
+			didDraw = true;
+		}
+
+		if (i != 0 && y2 >= worldY0 - 0.001f) {
+			DWORD color = (fabs(y2 - centerY) < epsilon) ? 0xFFFF0000 : 0xFF808080;
+			float x;
+			for (x = worldX0; x < worldX1; x += stepSize) {
+				float nextX = x + stepSize;
+				if (nextX > worldX1) nextX = worldX1;
+
+				Real z1 = TheTerrainRenderObject->getHeightMapHeight(x, y2, NULL);
+				Real waterZ1 = getWaterHeightIfUnderwater(x, y2);
+				if (waterZ1 != -FLT_MAX && waterZ1 + 4.5f > z1 + Z_OFFSET)
+					z1 = waterZ1 + 4.5f;
+				else
+					z1 += Z_OFFSET;
+
+				Real z2 = TheTerrainRenderObject->getHeightMapHeight(nextX, y2, NULL);
+				Real waterZ2 = getWaterHeightIfUnderwater(nextX, y2);
+				if (waterZ2 != -FLT_MAX && waterZ2 + 4.5f > z2 + Z_OFFSET)
+					z2 = waterZ2 + 4.5f;
+				else
+					z2 += Z_OFFSET;
+
+				Coord3D a = { x, y2, z1 };
+				Coord3D b = { nextX, y2, z2 };
+
+				Vector3 dir(b.x - a.x, b.y - a.y, b.z - a.z);
+				dir.Normalize();
+				dir *= LINE_THICKNESS_GRID;
+				dir.Rotate_Z(PI / 2);
+
+				if (m_feedbackVertexCount + 4 > NUM_FEEDBACK_VERTEX || m_feedbackIndexCount + 6 > NUM_FEEDBACK_INDEX)
+					return;
+
+				ADD_GRID_VERT(a.x + dir.X, a.y + dir.Y, a.z, color);
+				ADD_GRID_VERT(a.x - dir.X, a.y - dir.Y, a.z, color);
+				ADD_GRID_VERT(b.x + dir.X, b.y + dir.Y, b.z, color);
+				ADD_GRID_VERT(b.x - dir.X, b.y - dir.Y, b.z, color);
+
+				*curIb++ = m_feedbackVertexCount - 4; // v0
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+
+				*curIb++ = m_feedbackVertexCount - 2; // v2
+				*curIb++ = m_feedbackVertexCount - 3; // v1
+				*curIb++ = m_feedbackVertexCount - 1; // v3
+				m_feedbackIndexCount += 6;
+			}
+			didDraw = true;
+		}
+
+		if (!didDraw)
+			break;
 	}
 }
 
@@ -845,36 +1624,37 @@ void DrawObject::updateAmbientSoundVB()
 
 /** updateMeshVB puts waypoint path triangles into m_vertexFeedback. */
 
-void DrawObject::updateWaypointVB()
+void DrawObject::updateWaypointVB(RenderInfoClass & rinfo)
 {
-//	const Int theAlpha = 64;
-
 	m_feedbackVertexCount = 0;
 	m_feedbackIndexCount = 0;
 	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
-	UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
+	UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
 	UnsignedShort *curIb = ib;
 
 	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
 	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 	VertexFormatXYZDUV1 *curVb = vb;
 
- 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
-	Int i;
-	for (i = 0; i<=pDoc->getNumWaypointLinks(); i++) {
-		Bool gotLocation=false;
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+
+	// Map group label to color
+	std::map<AsciiString, uint32> groupColorMap;
+	int colorSeed = 0;
+
+	for (Int i = 0; i <= pDoc->getNumWaypointLinks(); i++) {
+		Bool gotLocation = false;
 		Coord3D loc1;
 		Coord3D loc2;
- 		Bool exists;
+		Bool exists;
 		Int waypointID1, waypointID2;
 
-		Int k;
-		for (k=0; k<2; k++) {
+		for (Int k = 0; k < 2; k++) {
 			Bool ok = false;
 			pDoc->getWaypointLink(i, &waypointID1, &waypointID2);
-			if (k==0 || i==pDoc->getNumWaypointLinks()) {
-				ok = (k==0);
-			}	else {
+			if (k == 0 || i == pDoc->getNumWaypointLinks()) {
+				ok = (k == 0);
+			} else {
 				MapObject *pWay = pDoc->getWaypointByID(waypointID1);
 				if (pWay) {
 					Bool biDirectional = pWay->getProperties()->getBool(TheKey_waypointPathBiDirectional, &exists);
@@ -885,295 +1665,456 @@ void DrawObject::updateWaypointVB()
 				}
 			}
 
-			if (i==pDoc->getNumWaypointLinks()) {
+			if (i == pDoc->getNumWaypointLinks()) {
 				if (m_dragWaypointFeedback) {
 					loc1 = m_dragWayStart;
 					loc2 = m_dragWayEnd;
 					gotLocation = true;
 				}
 			} else {
-				MapObject *pWay1, *pWay2;
-				pWay1 = pDoc->getWaypointByID(waypointID1);
-				pWay2 = pDoc->getWaypointByID(waypointID2);
+				MapObject *pWay1 = pDoc->getWaypointByID(waypointID1);
+				MapObject *pWay2 = pDoc->getWaypointByID(waypointID2);
 				if (pWay1 && pWay2) {
 					gotLocation = true;
 					loc1 = *pWay1->getLocation();
 					loc2 = *pWay2->getLocation();
 					AsciiString wayLayer;
+
 					wayLayer = pWay1->getProperties()->getAsciiString(TheKey_objectLayer, &exists);
-					if (exists && TheLayersList->isLayerHidden(wayLayer)) {
-						gotLocation = false;
-					}
+					if (exists && TheLayersList->isLayerHidden(wayLayer)) gotLocation = false;
 
 					wayLayer = pWay2->getProperties()->getAsciiString(TheKey_objectLayer, &exists);
-					if (exists && TheLayersList->isLayerHidden(wayLayer)) {
-						gotLocation = false;
-					}
+					if (exists && TheLayersList->isLayerHidden(wayLayer)) gotLocation = false;
 				}
 			}
-			if (gotLocation) {
 
-				Vector3 normal(loc2.x-loc1.x, loc2.y-loc1.y, loc2.z-loc1.z);
+			// if (gotLocation) {
+				//
+                // ✅ Cull the waypoint segment before adding vertices
+                //
+                // Vector3 center(
+                //     (loc1.x + loc2.x) * 0.5f,
+                //     (loc1.y + loc2.y) * 0.5f,
+                //     (loc1.z + loc2.z) * 0.5f
+                // );
+                // float radius = sqrtf(
+                //     (loc2.x - loc1.x) * (loc2.x - loc1.x) +
+                //     (loc2.y - loc1.y) * (loc2.y - loc1.y) +
+                //     (loc2.z - loc1.z) * (loc2.z - loc1.z)
+                // ) * 0.5f;
+
+                // SphereClass bounds(center, radius);
+                // if (rinfo.Camera.Cull_Sphere(bounds)) {
+                //     continue; // completely outside view, skip this segment
+                // }
+			if (gotLocation) {
+				// === GROUP COLOR SECTION ===
+				AsciiString groupLabel = "default";
+				MapObject* pWay1 = pDoc->getWaypointByID(waypointID1);
+				if (pWay1) {
+					groupLabel = pWay1->getProperties()->getAsciiString(TheKey_waypointPathLabel1, &exists);
+					if (!exists) groupLabel = "default";
+				}
+
+				uint32 groupColor = 0xFF00FF00; // default green
+
+				if (m_useFixedColoredWaypoints) {
+					AsciiString labelLower = groupLabel;
+					labelLower.toLower(); // assuming AsciiString has toLower(), else write helper
+
+					if (labelLower.startsWith("flank"))
+						groupColor = 0xFFFFFF00; // yellow
+					else if (labelLower.startsWith("center"))
+						groupColor = 0xFFFF6666; // red
+					else if (labelLower.startsWith("backdoor"))
+						groupColor = 0xFF00FFFF; // cyan
+					else if (labelLower.startsWith("special"))
+						groupColor = 0xFFCC66FF; // softer violet
+					else
+						groupColor = 0xFF00FF00; // fallback green
+				}
+				else {
+					if (groupLabel == "default") {
+						groupColor = 0xFF00FF00;
+						groupColorMap[groupLabel] = groupColor;
+					} else if (groupColorMap.find(groupLabel) == groupColorMap.end()) {
+						uint32 hue = (colorSeed * 137) % 360;
+						float s = 0.6f;
+						float v = 0.95f;
+
+						float c = v * s;
+						float x = c * (1 - fabs(fmod(hue / 60.0f, 2) - 1));
+						float m = v - c;
+
+						float rf, gf, bf;
+						if (hue < 60) { rf = c; gf = x; bf = 0; }
+						else if (hue < 120) { rf = x; gf = c; bf = 0; }
+						else if (hue < 180) { rf = 0; gf = c; bf = x; }
+						else if (hue < 240) { rf = 0; gf = x; bf = c; }
+						else if (hue < 300) { rf = x; gf = 0; bf = c; }
+						else { rf = c; gf = 0; bf = x; }
+
+						uint32 r = static_cast<uint32>((rf + m) * 255);
+						uint32 g = static_cast<uint32>((gf + m) * 255);
+						uint32 b = static_cast<uint32>((bf + m) * 255);
+
+						groupColor = (0xFF << 24) | (r << 16) | (g << 8) | b;
+						groupColorMap[groupLabel] = groupColor;
+						colorSeed++;
+					} else {
+						groupColor = groupColorMap[groupLabel];
+					}
+				}
+				// === END GROUP COLOR SECTION ===
+								
+
+				Vector3 normal(loc2.x - loc1.x, loc2.y - loc1.y, loc2.z - loc1.z);
 				normal.Normalize();
 				normal *= 0.5f;
-				// Rotate the normal 90 degrees.
-				normal.Rotate_Z(PI/2);
-				loc1.z = TheTerrainRenderObject->getHeightMapHeight(loc1.x, loc1.y, nullptr);
-				loc2.z = TheTerrainRenderObject->getHeightMapHeight(loc2.x, loc2.y, nullptr);
+				normal.Rotate_Z(PI / 2);
+				loc1.z = TheTerrainRenderObject->getHeightMapHeight(loc1.x, loc1.y, NULL);
+				loc2.z = TheTerrainRenderObject->getHeightMapHeight(loc2.x, loc2.y, NULL);
 
-				if (m_feedbackVertexCount+9>= NUM_FEEDBACK_VERTEX) {
-					return;
-				}
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x+normal.X;
-				curVb->y = loc1.y+normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFF000000;  // black.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x-normal.X;
-				curVb->y = loc1.y-normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFF000000;  // black.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x+normal.X;
-				curVb->y = loc2.y+normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x-normal.X;
-				curVb->y = loc2.y-normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
+				if (m_feedbackVertexCount + 9 >= NUM_FEEDBACK_VERTEX) return;
 
-				if (m_feedbackIndexCount+12 >= NUM_FEEDBACK_INDEX) {
-					return;
-				}
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-1;
-				*curIb++ = m_feedbackVertexCount-2;
-				*curIb++ = m_feedbackVertexCount-4;
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-2;
-				m_feedbackIndexCount+=6;
+				// Stem vertices - use group color
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = loc1.x + normal.X; curVb->y = loc1.y + normal.Y; curVb->z = loc1.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
 
-				// Do arrowhead.
-				Vector3 vec(loc2.x-loc1.x, loc2.y-loc1.y, loc2.z-loc1.z);
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = loc1.x - normal.X; curVb->y = loc1.y - normal.Y; curVb->z = loc1.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
+
+				// End vertices - stay red
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = loc2.x + normal.X; curVb->y = loc2.y + normal.Y; curVb->z = loc2.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
+
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = loc2.x - normal.X; curVb->y = loc2.y - normal.Y; curVb->z = loc2.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
+
+				if (m_feedbackIndexCount + 12 >= NUM_FEEDBACK_INDEX) return;
+
+				*curIb++ = m_feedbackVertexCount - 3;
+				*curIb++ = m_feedbackVertexCount - 1;
+				*curIb++ = m_feedbackVertexCount - 2;
+				*curIb++ = m_feedbackVertexCount - 4;
+				*curIb++ = m_feedbackVertexCount - 3;
+				*curIb++ = m_feedbackVertexCount - 2;
+				m_feedbackIndexCount += 6;
+
+				// Arrowhead
+				Vector3 vec(loc2.x - loc1.x, loc2.y - loc1.y, loc2.z - loc1.z);
 				vec.Normalize();
-				const Real ARROWHEAD_LEN = 10.0f;
-				const Real NORMAL_SHIFT = 6.0f;
+				const Real ARROWHEAD_LEN = 16.0f;
+				const Real NORMAL_SHIFT = 10.0f;
+				vec *= ARROWHEAD_LEN;
+				Coord3D arrowBase;
+				arrowBase.x = loc2.x - vec.X;
+				arrowBase.y = loc2.y - vec.Y;
+				arrowBase.z = loc2.z - vec.Z;
 
-				vec *=ARROWHEAD_LEN;
-				loc1.x = loc2.x - vec.X;
-				loc1.y = loc2.y - vec.Y;
-				loc1.z = loc2.z - vec.Z;
-				if (m_feedbackVertexCount+9>= NUM_FEEDBACK_VERTEX) {
-					return;
-				}
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x+NORMAL_SHIFT*normal.X+normal.X;
-				curVb->y = loc1.y+NORMAL_SHIFT*normal.Y+normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x+NORMAL_SHIFT*normal.X;
-				curVb->y = loc1.y+NORMAL_SHIFT*normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x+normal.X;
-				curVb->y = loc2.y+normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x-normal.X;
-				curVb->y = loc2.y-normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
+				if (m_feedbackVertexCount + 3 >= NUM_FEEDBACK_VERTEX) return;
 
-				if (m_feedbackIndexCount+12 >= NUM_FEEDBACK_INDEX) {
-					return;
-				}
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-1;
-				*curIb++ = m_feedbackVertexCount-2;
-				*curIb++ = m_feedbackVertexCount-4;
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-2;
-				m_feedbackIndexCount+=6;
+				// Arrow base vertex 1
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = arrowBase.x + NORMAL_SHIFT * normal.X;
+				curVb->y = arrowBase.y + NORMAL_SHIFT * normal.Y;
+				curVb->z = arrowBase.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
 
-				if (m_feedbackVertexCount+9>= NUM_FEEDBACK_VERTEX) {
-					return;
-				}
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x-NORMAL_SHIFT*normal.X;
-				curVb->y = loc1.y-NORMAL_SHIFT*normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc1.x-NORMAL_SHIFT*normal.X-normal.X;
-				curVb->y = loc1.y-NORMAL_SHIFT*normal.Y-normal.Y;
-				curVb->z = loc1.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x+normal.X;
-				curVb->y = loc2.y+normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
-				curVb->u1 = 0;
-				curVb->v1 = 0;
-				curVb->x = loc2.x-normal.X;
-				curVb->y = loc2.y-normal.Y;
-				curVb->z = loc2.z;
-				curVb->diffuse = 0xFFFF0000;  // red.
-				curVb++;
-				m_feedbackVertexCount++;
+				// Arrow base vertex 2
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = arrowBase.x - NORMAL_SHIFT * normal.X;
+				curVb->y = arrowBase.y - NORMAL_SHIFT * normal.Y;
+				curVb->z = arrowBase.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
 
-				if (m_feedbackIndexCount+12 >= NUM_FEEDBACK_INDEX) {
-					return;
-				}
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-1;
-				*curIb++ = m_feedbackVertexCount-2;
-				*curIb++ = m_feedbackVertexCount-4;
-				*curIb++ = m_feedbackVertexCount-3;
-				*curIb++ = m_feedbackVertexCount-2;
-				m_feedbackIndexCount+=6;
+				// Arrow tip vertex
+				curVb->u1 = 0; curVb->v1 = 0;
+				curVb->x = loc2.x; curVb->y = loc2.y; curVb->z = loc2.z;
+				curVb->diffuse = groupColor; curVb++; m_feedbackVertexCount++;
+
+				if (m_feedbackIndexCount + 3 >= NUM_FEEDBACK_INDEX) return;
+
+				*curIb++ = m_feedbackVertexCount - 3;
+				*curIb++ = m_feedbackVertexCount - 2;
+				*curIb++ = m_feedbackVertexCount - 1;
+				m_feedbackIndexCount += 3;
 			}
 		}
 	}
 }
 
-/** updateMeshVB puts polygon trigger triangles into m_vertexFeedback. */
-
-void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOpen)
+/** Outline color of a polygon trigger: by name prefix, water, and the selection pulse. */
+Int DrawObject::polygonTriggerColor(const PolygonTrigger *pTrig, Bool selected)
 {
-//	const Int theAlpha = 64;
-
 	Int green = 0;
 	if (selected) {
-		green = (255*curHighlight) / (NUM_HIGHLIGHT-1);
+		green = (255 * curHighlight) / (NUM_HIGHLIGHT - 1);
 	}
-	green = green<<8;
+	green = green << 8;
+
+	unsigned int baseColor = 0xFFFF0000; // default red
+	const char *tstr = pTrig->getTriggerName().str();
+	if (_strnicmp(tstr, "inner", 5) == 0) {
+		// e.g. InnerPerimeter*
+		baseColor = 0xFFFF0000; // red
+	}
+	else if (_strnicmp(tstr, "outer", 5) == 0) {
+		// e.g. OuterPerimeter*
+		baseColor = 0xFF00FF00; // green
+	}
+	else if (_strnicmp(tstr, "combat", 6) == 0) {
+		// e.g. CombatZone*
+		baseColor = 0xFFFFFF00; // yellow (A=FF,R=FF,G=FF,B=00)
+	}
+	else if (pTrig->isWaterArea()) {
+		baseColor = 0xFF0000FF; // blue for water
+	}
+	return baseColor + green;
+}
+
+/** One outline segment as a thin quad: 4 vertices and 6 indices, which the caller has room for. */
+void DrawObject::emitOutlineSegment(const Coord3D &loc1, const Coord3D &loc2, Int diffuse, VertexFormatXYZDUV1 *&curVb, UnsignedShort *&curIb, Int &vertexCount, Int &indexCount)
+{
+	Vector3 normal(loc2.x - loc1.x, loc2.y - loc1.y, loc2.z - loc1.z);
+	normal.Normalize();
+	normal *= 0.5f;
+	normal.Rotate_Z(PI / 2);
+
+	// First vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc1.x + normal.X;
+	curVb->y = loc1.y + normal.Y;
+	curVb->z = loc1.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Second vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc1.x - normal.X;
+	curVb->y = loc1.y - normal.Y;
+	curVb->z = loc1.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Third vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc2.x + normal.X;
+	curVb->y = loc2.y + normal.Y;
+	curVb->z = loc2.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	// Fourth vertex
+	curVb->u1 = 0; curVb->v1 = 0;
+	curVb->x = loc2.x - normal.X;
+	curVb->y = loc2.y - normal.Y;
+	curVb->z = loc2.z;
+	curVb->diffuse = diffuse;
+	curVb++; vertexCount++;
+
+	*curIb++ = vertexCount - 3;
+	*curIb++ = vertexCount - 1;
+	*curIb++ = vertexCount - 2;
+	*curIb++ = vertexCount - 4;
+	*curIb++ = vertexCount - 3;
+	*curIb++ = vertexCount - 2;
+	indexCount += 6;
+}
+
+/** updatePolygonVB puts one polygon trigger's outline into m_vertexFeedback. */
+void DrawObject::updatePolygonVB(PolygonTrigger *pTrig, Bool selected, Bool isOpen)
+{
 	m_feedbackVertexCount = 0;
 	m_feedbackIndexCount = 0;
+
 	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
-	UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
+	UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
 	UnsignedShort *curIb = ib;
 
 	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
 	VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 	VertexFormatXYZDUV1 *curVb = vb;
 
-	Int i;
-	for (i=0; i<pTrig->getNumPoints(); i++) {
+	Int diffuse = polygonTriggerColor(pTrig, selected);
+
+	for (Int i = 0; i < pTrig->getNumPoints(); i++) {
 		Coord3D loc1;
 		Coord3D loc2;
 		ICoord3D iLoc = *pTrig->getPoint(i);
 		loc1.x = iLoc.x;
 		loc1.y = iLoc.y;
-		loc1.z = TheTerrainRenderObject->getHeightMapHeight(loc1.x, loc1.y, nullptr);
-		if (i<pTrig->getNumPoints()-1) {
-			iLoc = *pTrig->getPoint(i+1);
+		loc1.z = TheTerrainRenderObject->getHeightMapHeight(loc1.x, loc1.y, NULL);
+
+		if (i < pTrig->getNumPoints() - 1) {
+			iLoc = *pTrig->getPoint(i + 1);
 		} else {
 			if (isOpen) break;
 			iLoc = *pTrig->getPoint(0);
 		}
+
 		loc2.x = iLoc.x;
 		loc2.y = iLoc.y;
-		loc2.z = TheTerrainRenderObject->getHeightMapHeight(loc2.x, loc2.y, nullptr);
-		Vector3 normal(loc2.x-loc1.x, loc2.y-loc1.y, loc2.z-loc1.z);
-		normal.Normalize();
-		normal *= 0.5f;
-		// Rotate the normal 90 degrees.
-		normal.Rotate_Z(PI/2);
-		// Put in the "center anchor"
+		loc2.z = TheTerrainRenderObject->getHeightMapHeight(loc2.x, loc2.y, NULL);
 
-		if (m_feedbackVertexCount+9>= NUM_FEEDBACK_VERTEX) {
+		if (m_feedbackVertexCount + 9 >= NUM_FEEDBACK_VERTEX) {
 			return;
 		}
-		Int diffuse = 0xFFFF0000+green;
-		if (pTrig->isWaterArea()) {
-			diffuse = 0xFF0000FF+green;
-		}
-		curVb->u1 = 0;
-		curVb->v1 = 0;
-		curVb->x = loc1.x+normal.X;
-		curVb->y = loc1.y+normal.Y;
-		curVb->z = loc1.z;
-		curVb->diffuse = diffuse;
-		curVb++;
-		m_feedbackVertexCount++;
-		curVb->u1 = 0;
-		curVb->v1 = 0;
-		curVb->x = loc1.x-normal.X;
-		curVb->y = loc1.y-normal.Y;
-		curVb->z = loc1.z;
-		curVb->diffuse = diffuse;
-		curVb++;
-		m_feedbackVertexCount++;
-		curVb->u1 = 0;
-		curVb->v1 = 0;
-		curVb->x = loc2.x+normal.X;
-		curVb->y = loc2.y+normal.Y;
-		curVb->z = loc2.z;
-		curVb->diffuse = diffuse;
-		curVb++;
-		m_feedbackVertexCount++;
-		curVb->u1 = 0;
-		curVb->v1 = 0;
-		curVb->x = loc2.x-normal.X;
-		curVb->y = loc2.y-normal.Y;
-		curVb->z = loc2.z;
-		curVb->diffuse = diffuse;
-		curVb++;
-		m_feedbackVertexCount++;
-
-		if (m_feedbackIndexCount+12 >= NUM_FEEDBACK_INDEX) {
+		if (m_feedbackIndexCount + 12 >= NUM_FEEDBACK_INDEX) {
 			return;
 		}
-		*curIb++ = m_feedbackVertexCount-3;
-		*curIb++ = m_feedbackVertexCount-1;
-		*curIb++ = m_feedbackVertexCount-2;
-		*curIb++ = m_feedbackVertexCount-4;
-		*curIb++ = m_feedbackVertexCount-3;
-		*curIb++ = m_feedbackVertexCount-2;
-		m_feedbackIndexCount+=6;
 
+		emitOutlineSegment(loc1, loc2, diffuse, curVb, curIb, m_feedbackVertexCount, m_feedbackIndexCount);
 	}
 }
+
+#if defined(BUILD_WITH_D3D9)
+
+// Fills m_vertexFeedback/m_indexFeedback in chunks: when an item would not fit,
+// the chunk so far is drawn and the buffers are discarded and reopened.
+class FeedbackBatch
+{
+public:
+	FeedbackBatch(DX8VertexBufferClass *vb, DX8IndexBufferClass *ib, Int maxVertex, Int maxIndex) :
+		m_vbuf(vb), m_ibuf(ib), m_maxVertex(maxVertex), m_maxIndex(maxIndex),
+		m_vlock(NULL), m_ilock(NULL), curVb(NULL), curIb(NULL), vertexCount(0), indexCount(0)
+	{
+		open();
+	}
+	~FeedbackBatch()
+	{
+		close();
+	}
+
+	// Draws and reopens when the next item needs more room than is left.
+	void reserve(Int vertices, Int indices)
+	{
+		if (vertexCount + vertices > m_maxVertex || indexCount + indices > m_maxIndex) {
+			close();
+			open();
+		}
+	}
+
+	VertexFormatXYZDUV1 *curVb;
+	UnsignedShort *curIb;
+	Int vertexCount;
+	Int indexCount;
+
+private:
+	void open()
+	{
+		m_ilock = new DX8IndexBufferClass::WriteLockClass(m_ibuf, D3DLOCK_DISCARD);
+		m_vlock = new DX8VertexBufferClass::WriteLockClass(m_vbuf, D3DLOCK_DISCARD);
+		curIb = m_ilock->Get_Index_Array();
+		curVb = (VertexFormatXYZDUV1*)m_vlock->Get_Vertex_Array();
+		vertexCount = 0;
+		indexCount = 0;
+	}
+	void close()
+	{
+		delete m_vlock;
+		delete m_ilock;
+		m_vlock = NULL;
+		m_ilock = NULL;
+		if (indexCount > 0) {
+			DX8Wrapper::Set_Vertex_Buffer(m_vbuf);
+			DX8Wrapper::Set_Index_Buffer(m_ibuf, 0);
+			DX8Wrapper::Draw_Triangles(0, indexCount / 3, 0, vertexCount);
+		}
+		curVb = NULL;
+		curIb = NULL;
+		vertexCount = 0;
+		indexCount = 0;
+	}
+
+	DX8VertexBufferClass *m_vbuf;
+	DX8IndexBufferClass *m_ibuf;
+	Int m_maxVertex;
+	Int m_maxIndex;
+	DX8VertexBufferClass::WriteLockClass *m_vlock;
+	DX8IndexBufferClass::WriteLockClass *m_ilock;
+};
+
+/** Every trigger's point diamonds and outline go into one feedback batch, unselected
+    triggers first so a selected one draws on top, instead of a buffer rewrite and a
+    draw call per point and per trigger. */
+void DrawObject::renderPolygonTriggersBatched(RenderInfoClass &rinfo)
+{
+	const Int RED = 0x0000FF; // red in BGR.
+	const Int BLUE = 0xFF7f00; // bright blue.
+	const Int ICON_TRI = NUM_TRI - (NUM_ARROW_TRI + NUM_SELECT_TRI);
+
+	// Same icon updateVB builds, including this frame's pulse on the selection part.
+	VertexFormatXYZDUV1 iconRed[6 * NUM_TRI];
+	VertexFormatXYZDUV1 iconBlue[6 * NUM_TRI];
+	fillIconVertices(iconRed, RED, false, true, true);
+	fillIconVertices(iconBlue, BLUE, false, true, true);
+
+	Matrix3D tmReset(Transform);
+	DX8Wrapper::Set_Transform(D3DTS_WORLD, tmReset);
+
+	FeedbackBatch batch(m_vertexFeedback, m_indexFeedback, NUM_FEEDBACK_VERTEX, NUM_FEEDBACK_INDEX);
+	for (Int selected = 0; selected < 2; selected++) {
+		for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+			if (!pTrig->getShouldRender()) {
+				continue;
+			}
+			Bool polySelected = PolygonTool::isSelected(pTrig);
+			if (polySelected != (selected != 0)) {
+				continue;
+			}
+			const VertexFormatXYZDUV1 *icon = pTrig->isWaterArea() ? iconBlue : iconRed;
+			const Int numPoints = pTrig->getNumPoints();
+			Coord3D prev;
+			prev.x = prev.y = prev.z = 0.0f;
+			Coord3D first = prev;
+			for (Int i = 0; i < numPoints; i++) {
+				ICoord3D iLoc = *pTrig->getPoint(i);
+				Coord3D loc;
+				loc.x = iLoc.x;
+				loc.y = iLoc.y;
+				loc.z = TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, nullptr);
+
+				SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS);
+				if (!rinfo.Camera.Cull_Sphere(bounds)) {
+					Bool pointSelected = polySelected && PolygonTool::getSelectedPointNdx() == i;
+					Int vertices = 3 * (pointSelected ? NUM_TRI : ICON_TRI);
+					batch.reserve(vertices, vertices);
+					for (Int v = 0; v < vertices; v++) {
+						*batch.curVb = icon[v];
+						batch.curVb->x += loc.x;
+						batch.curVb->y += loc.y;
+						batch.curVb->z += loc.z;
+						batch.curVb++;
+						*batch.curIb++ = batch.vertexCount++;
+					}
+					batch.indexCount += vertices;
+				}
+
+				if (i == 0) {
+					first = loc;
+				} else {
+					batch.reserve(4, 6);
+					emitOutlineSegment(prev, loc, polygonTriggerColor(pTrig, polySelected),
+						batch.curVb, batch.curIb, batch.vertexCount, batch.indexCount);
+				}
+				prev = loc;
+			}
+			Bool isOpen = polySelected && PolygonTool::isSelectedOpen();
+			if (numPoints > 1 && !isOpen) {
+				batch.reserve(4, 6);
+				emitOutlineSegment(prev, first, polygonTriggerColor(pTrig, polySelected),
+					batch.curVb, batch.curIb, batch.vertexCount, batch.indexCount);
+			}
+		}
+	}
+}
+
+#endif // BUILD_WITH_D3D9
 
 
 /** updateFeedbackVB puts brush feedback triangles into m_vertexFeedback. */
@@ -1215,7 +2156,6 @@ void DrawObject::updateFeedbackVB()
 
 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 	WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
-#define ADJUST_FROM_INDEX_TO_REAL(k) ((k-pMap->getBorderSize())*MAP_XY_FACTOR)
 
 	if (radius > MAX_RADIUS) radius = MAX_RADIUS;
 	Real offset = 0;
@@ -1370,14 +2310,17 @@ but doesn't, really.
 
 /** updateVB puts a circle with an arrow into the vertex buffer. */
 
-Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Bool doDiamond)
+void DrawObject::fillIconVertices(VertexFormatXYZDUV1 *vb, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring)
 {
 	Int i, k;
 
-	Real factor = TheGlobalData->m_terrainAmbient[0].red +
-								TheGlobalData->m_terrainAmbient[0].green +
-								TheGlobalData->m_terrainAmbient[0].blue;
-	if (factor > 1.0f) factor = 1.0f;
+	// Real factor = TheGlobalData->m_terrainAmbient[0].red +
+	// 			  TheGlobalData->m_terrainAmbient[0].green +
+	// 		      TheGlobalData->m_terrainAmbient[0].blue;
+	// if (factor > 1.0f) factor = 1.0f;
+
+	Real factor = 1.0f;
+	
 	Int r = color&0xFF;
 	Int g = (color&0x00FF00)>>8;
 	Int b = (color&0xFF0000)>>16;
@@ -1385,16 +2328,29 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 	r *= factor;
 	g *= factor;
 	b *= factor;
+
+
+	// r = 0;
+	// g = 255;
+	// b = 255; // cyan
+	// r = 255;
+	// g = 105;
+	// b = 180; // hot pink!
 	const Int theAlpha = 127;
-	static const Int highlightColors[NUM_HIGHLIGHT] = { ((255<<8) + (255<<16)) ,
-				((255<<16)), (255<<8) };
+
+	Int highlightColors[NUM_HIGHLIGHT] = {
+		(255<<8) + (255<<16),
+		(255<<16),
+		(255<<8)
+	};
+
+	if(disableColoring){
+		highlightColors[0] = (255) + (255<<8) + (255<<16) + (255<<24); // White
+		highlightColors[1] = (255) + (255<<8) + (255<<16) + (255<<24); // White
+		highlightColors[2] = (255) + (255<<8) + (255<<16) + (255<<24); // White
+	}
 	Int diffuse =  b + (g<<8) + (r<<16) + (theAlpha<<24);	 // b g<<8 r<<16 a<<24.
-	if (pVB )
 	{
-
-		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB, D3DLOCK_DISCARD);
-		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
-
 		const Real theZ = 0.0f;
 		Real theRadius = THE_RADIUS;
 		Real halfLineWidth = 0.03f*MAP_XY_FACTOR;
@@ -1460,6 +2416,15 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			theRadius /= 20;
 			halfLineWidth /= 20;
 		}
+
+		// int oldRadius = theRadius;
+
+		// Adriane [Deathscythe]
+		// We reset the radius for the arrow and selection parts.
+		// Why we need to do arrow here? coz normally doDiamond is false when doArrow is true.
+		// But ever since we support the force draw arrow we needed this part so the length of the arrow is correct
+		// theRadius = 10.0f; // reset to normal arrow size
+
 		/* Now do the arrow. */
 		for (k=0; k<3; k++) {
 			vb->x=	(k&1)?2*theRadius:0.0f;
@@ -1502,6 +2467,8 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb[3*NUM_TRI] = *vb;
 			vb++;
 		}
+
+		// theRadius = oldRadius;
 
 		if (!doArrow) {
 			theRadius *= 20;
@@ -1600,6 +2567,15 @@ Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Boo
 			vb++;
 		}
 #endif
+	}
+}
+
+Int DrawObject::updateVB(DX8VertexBufferClass	*pVB, Int color, Bool doArrow, Bool doDiamond, Bool disableColoring)
+{
+	if (pVB )
+	{
+		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB, D3DLOCK_DISCARD);
+		fillIconVertices((VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array(), color, doArrow, doDiamond, disableColoring);
 		return 0; //success.
 	}
 	return -1;
@@ -1614,10 +2590,45 @@ void DrawObject::updateVBWithBoundingBox(MapObject *pMapObj, CameraClass* camera
 		return;
 	}
 
-	unsigned long color = 0xFFAA00AA; // Purple
+	unsigned long color = 0xFFFFFF00; // Yellow
 
 	GeometryInfo ginfo = pMapObj->getThingTemplate()->getTemplateGeometryInfo();
 
+	// Skip the selection bounding box for objects whose footprint spans (nearly) the
+	// whole map -- e.g. the water/reflection object, which is map-sized -- BUT only when
+	// the 3D camera is at an angle. Map-sized box corners land at the map edges; in the
+	// angled perspective view they fan a huge yellow quad across the viewport that
+	// obscures everything. Looking straight down (top-down camera) the same box reads as
+	// a clean rectangle framing the map, which is fine, so we keep it there. A normal
+	// object's radius is tiny compared to the map, so this only affects the map-spanning
+	// case.
+	if (camera) {
+		CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+		WorldHeightMapEdit *pMap = pDoc ? pDoc->GetHeightMap() : NULL;
+		if (pMap) {
+			Real mapW = INT_TO_REAL(pMap->getXExtent() - 2 * pMap->getBorderSize()) * MAP_XY_FACTOR;
+			Real mapH = INT_TO_REAL(pMap->getYExtent() - 2 * pMap->getBorderSize()) * MAP_XY_FACTOR;
+			Real mapMin = (mapW < mapH) ? mapW : mapH;
+			Real objRadius = ginfo.getMajorRadius();
+			if (ginfo.getMinorRadius() > objRadius)
+				objRadius = ginfo.getMinorRadius();
+			Bool mapSized = (mapMin > 0.0f && (objRadius * 2.0f) >= (mapMin * 0.5f));
+
+			// How top-down the camera is: in W3D the camera looks down its -Z axis, so its
+			// Z-vector points backward (toward world +Z when looking straight down). That
+			// Z component is ~1.0 looking straight down and falls off as the view tilts.
+			Real camDownness = (Real)fabs(camera->Get_Transform().Get_Z_Vector().Z);
+			const Real TOPDOWN_THRESHOLD = 0.97f;	// ~14 degrees off straight-down still counts as top-down
+			Bool isTopDown = (camDownness >= TOPDOWN_THRESHOLD);
+
+			if (mapSized && !isTopDown)
+				return;
+		}
+	}
+
+	// Bool isSmall =  ginfo.getIsSmall() || pMapObj->getThingTemplate()->isKindOf(KINDOF_LOW_OVERLAPPABLE) || pMapObj->getThingTemplate()->isKindOf(KINDOF_STRUCTURE) ;
+	Bool isSmall =  !pMapObj->getThingTemplate()->isKindOf(KINDOF_STRUCTURE);
+		
 	Coord3D pos = *pMapObj->getLocation();
 	if (TheTerrainRenderObject) {
 		// Make sure that the position is on the terrain.
@@ -1632,10 +2643,12 @@ void DrawObject::updateVBWithBoundingBox(MapObject *pMapObj, CameraClass* camera
 			Real angle = pMapObj->getAngle();
 			Real c = (Real)cos(angle);
 			Real s = (Real)sin(angle);
-			Real exc = ginfo.getMajorRadius()*c;
-			Real eyc = ginfo.getMinorRadius()*c;
-			Real exs = ginfo.getMajorRadius()*s;
-			Real eys = ginfo.getMinorRadius()*s;
+			Real exc = ginfo.getMajorRadius() * c;
+			Real eyc = ginfo.getMinorRadius() * c;
+			Real exs = ginfo.getMajorRadius() * s;
+			Real eys = ginfo.getMinorRadius() * s;
+
+			// Original 4 corners (base)
 			Coord3D pts[4];
 			pts[0].x = pos.x - exc - eys;
 			pts[0].y = pos.y + eyc - exs;
@@ -1649,44 +2662,136 @@ void DrawObject::updateVBWithBoundingBox(MapObject *pMapObj, CameraClass* camera
 			pts[3].x = pos.x - exc + eys;
 			pts[3].y = pos.y - eyc - exs;
 			pts[3].z = 0;
-			Real z = pos.z;
-			for (int i = 0; i < 2; i++) {
-				for (int corner = 0; corner < 4; corner++) {
-					ICoord2D start, end;
-					pts[corner].z = z;
-					pts[(corner+1)&3].z = z;
-					bool shouldStart = worldToScreen(&pts[corner], &start, camera);
-					bool shouldEnd = worldToScreen(&pts[(corner+1)&3], &end, camera);
-					if (shouldStart && shouldEnd) {
-						m_lineRenderer->Add_Line(Vector2(start.x, start.y), Vector2(end.x, end.y), BOUNDING_BOX_LINE_WIDTH, color);
-					}
+		
+			// Margin size for outer box
+			const Real margin = 18.0f;
+		
+			// Expanded corners for the green box
+			Coord3D expandedPts[4];
+			Coord3D center = pos;
+		
+			for (int i = 0; i < 4; ++i) {
+				Coord3D dir;
+				dir.x = pts[i].x - center.x;
+				dir.y = pts[i].y - center.y;
+				Real len = (Real)sqrt(dir.x * dir.x + dir.y * dir.y);
+				if (len != 0) {
+					dir.x /= len;
+					dir.y /= len;
 				}
+				expandedPts[i].x = pts[i].x + dir.x * margin;
+				expandedPts[i].y = pts[i].y + dir.y * margin;
+				expandedPts[i].z = 0;
+			}
+		
+			const Real cutSize = 10.0f; // Fixed size of beveled corner cut in world units
 
-				z += ginfo.getMaxHeightAbovePosition();
+			for (int boxLayer = 0; boxLayer < 2; ++boxLayer) {
+				if (boxLayer == 1 && isSmall)
+					continue; // Skip green box for small objects
+
+				unsigned long lineColor = (boxLayer == 0) ? 0xFFFFFF00 : 0xFF00C8C8; // Yellow or Green
+				Real z = pos.z;
+
+				for (int heightStep = 0; heightStep < 2; ++heightStep) {
+					if (boxLayer == 1 && heightStep == 1)
+						continue; // Skip top layer for green box
+
+					if (boxLayer == 0) {
+						// Draw purple box normally
+						for (int corner = 0; corner < 4; ++corner) {
+							int next = (corner + 1) & 3;
+							pts[corner].z = z;
+							pts[next].z = z;
+
+							ICoord2D start, end;
+							if (worldToScreen(&pts[corner], &start, camera) &&
+								worldToScreen(&pts[next], &end, camera)) {
+								m_lineRenderer->Add_Line(Vector2(start.x, start.y), Vector2(end.x, end.y), BOUNDING_BOX_LINE_WIDTH, lineColor);
+							}
+						}
+					} else {
+						// Draw green box with beveled corners (bottom layer only)
+						Coord3D trimmed[4][2]; // [corner][0=prev bevel, 1=next bevel]
+
+						// Draw main trimmed sides
+						for (int corner = 0; corner < 4; ++corner) {
+							int next = (corner + 1) & 3;
+
+							Coord3D start3D = expandedPts[corner];
+							Coord3D end3D = expandedPts[next];
+
+							// Compute direction vector
+							Coord3D dir;
+							dir.x = end3D.x - start3D.x;
+							dir.y = end3D.y - start3D.y;
+							dir.z = 0;
+
+							// Normalize
+							Real len = sqrt(dir.x * dir.x + dir.y * dir.y);
+							if (len < cutSize * 2.0f) {
+								// Too short to bevel properly, skip beveling
+								dir.x = dir.y = 0.0f;
+							} else {
+								dir.x /= len;
+								dir.y /= len;
+							}
+
+							// Compute trimmed ends
+							Coord3D trimmedStart, trimmedEnd;
+							trimmedStart.x = start3D.x + dir.x * cutSize;
+							trimmedStart.y = start3D.y + dir.y * cutSize;
+							trimmedStart.z = z;
+
+							trimmedEnd.x = end3D.x - dir.x * cutSize;
+							trimmedEnd.y = end3D.y - dir.y * cutSize;
+							trimmedEnd.z = z;
+
+							trimmed[corner][1] = trimmedStart;
+							trimmed[next][0] = trimmedEnd;
+
+							ICoord2D s, e;
+							if (worldToScreen(&trimmedStart, &s, camera) && worldToScreen(&trimmedEnd, &e, camera)) {
+								m_lineRenderer->Add_Line(Vector2(s.x, s.y), Vector2(e.x, e.y), BOUNDING_BOX_LINE_WIDTH, lineColor);
+							}
+						}
+
+						// Draw beveled corners
+						for (int cornerx = 0; cornerx < 4; ++cornerx) {
+							ICoord2D a, b;
+							if (worldToScreen(&trimmed[cornerx][0], &a, camera) &&
+								worldToScreen(&trimmed[cornerx][1], &b, camera)) {
+								m_lineRenderer->Add_Line(Vector2(a.x, a.y), Vector2(b.x, b.y), BOUNDING_BOX_LINE_WIDTH, lineColor);
+							}
+						}
+					}
+
+					z += ginfo.getMaxHeightAbovePosition(); // Top layer (only used for purple)
+				}
 			}
 			break;
 		}
-
 		//---------------------------------------------------------------------------------------------
-		case GEOMETRY_SPHERE:	// not quite right, but close enough
+		case GEOMETRY_SPHERE: // not quite right, but close enough
 		case GEOMETRY_CYLINDER:
-		{
-			Real angle, inc = PI/4.0f;
+		{ 
+			Real angle, inc = PI / 4.0f;
 			Real radius = ginfo.getMajorRadius();
 			Coord3D pnt, lastPnt;
 			ICoord2D start, end;
 			Real z = pos.z;
-
+		
 			bool shouldEnd, shouldStart;
+		
 			// Draw the cylinder.
-			for (int i=0; i<2; i++) {
+			for (int i = 0; i < 2; i++) {
 				angle = 0.0f;
 				lastPnt.x = pos.x + radius * (Real)cos(angle);
 				lastPnt.y = pos.y + radius * (Real)sin(angle);
 				lastPnt.z = z;
 				shouldEnd = worldToScreen(&lastPnt, &end, camera);
-
-				for( angle = inc; angle <= 2.0f * PI; angle += inc ) {
+		
+				for (angle = inc; angle <= 2.0f * PI; angle += inc) {
 					pnt.x = pos.x + radius * (Real)cos(angle);
 					pnt.y = pos.y + radius * (Real)sin(angle);
 					pnt.z = z;
@@ -1698,56 +2803,300 @@ void DrawObject::updateVBWithBoundingBox(MapObject *pMapObj, CameraClass* camera
 					end = start;
 					shouldEnd = shouldStart;
 				}
-
+		
 				// Next time around, draw the top of the cylinder.
 				z += ginfo.getMaxHeightAbovePosition();
 			}
-
+		
 			// Draw centerline
 			pnt.x = pos.x;
 			pnt.y = pos.y;
 			pnt.z = pos.z;
-			shouldStart = worldToScreen( &pnt, &start, camera);
+			shouldStart = worldToScreen(&pnt, &start, camera);
 			pnt.z = pos.z + ginfo.getMaxHeightAbovePosition();
-			shouldEnd = worldToScreen( &pnt, &end, camera);
+			shouldEnd = worldToScreen(&pnt, &end, camera);
 			if (shouldStart && shouldEnd) {
 				m_lineRenderer->Add_Line(Vector2(start.x, start.y), Vector2(end.x, end.y), BOUNDING_BOX_LINE_WIDTH, color);
 			}
+		
+			// Draw green outer margin (similar to GEOMETRY_BOX's green box)
+			if (!isSmall) {
+				const Real margin = 14.0f;
+				const Real outerRadius = radius + margin;
+				const unsigned long greenColor = 0xFF00C8C8;
+				const Real fineInc = PI / 4.0f; // Reduced segments for performance
+		
+				Coord3D pnt, lastPnt;
+				ICoord2D start, end;
+				bool shouldStart, shouldEnd;
+		
+				angle = 0.0f;
+				lastPnt.x = pos.x + outerRadius * (Real)cos(angle);
+				lastPnt.y = pos.y + outerRadius * (Real)sin(angle);
+				lastPnt.z = pos.z;
+				shouldEnd = worldToScreen(&lastPnt, &end, camera);
+		
+				for (angle = fineInc; angle <= 2.0f * PI + fineInc; angle += fineInc) {
+					pnt.x = pos.x + outerRadius * (Real)cos(angle);
+					pnt.y = pos.y + outerRadius * (Real)sin(angle);
+					pnt.z = pos.z;
+					shouldStart = worldToScreen(&pnt, &start, camera);
+		
+					if (shouldStart && shouldEnd) {
+						m_lineRenderer->Add_Line(Vector2(start.x, start.y), Vector2(end.x, end.y), BOUNDING_BOX_LINE_WIDTH, greenColor);
+					}
+		
+					lastPnt = pnt;
+					end = start;
+					shouldEnd = shouldStart;
+				}
+			}
 			break;
 		}
-	}
+	} 
 }
 
 /** Draw a "circle" into the m_lineRenderer, e.g. to visualize weapon range, sight range, sound range **/
 void DrawObject::addCircleToLineRenderer( const Coord3D & center, Real radius, Real width, unsigned long color, CameraClass* camera )
 {
-  Real angle, inc = PI/4.0f;
-  Coord3D pnt, lastPnt;
-  ICoord2D start, end;
-  Real z = center.z;
+    Real angle, inc = PI / 24.0f; // smoother circle with more segments
+    Coord3D pnt, lastPnt;
+    ICoord2D screenStart, screenEnd;
 
-  // Draw the circle.
-  angle = 0.0f;
-  lastPnt.x = center.x + radius * (Real)cos(angle);
-  lastPnt.y = center.y + radius * (Real)sin(angle);
-  lastPnt.z = z;
-  bool shouldEnd = worldToScreen(&lastPnt, &end, camera);
+    // First point
+    angle = 0.0f;
+    lastPnt.x = center.x + radius * (Real)cos(angle);
+    lastPnt.y = center.y + radius * (Real)sin(angle);
 
-  for( angle = inc; angle <= 2.0f * PI; angle += inc ) {
-    pnt.x = center.x + radius * (Real)cos(angle);
-    pnt.y = center.y + radius * (Real)sin(angle);
-    pnt.z = z;
-
-    bool shouldStart = worldToScreen(&pnt, &start, camera);
-    if (shouldStart && shouldEnd) {
-      m_lineRenderer->Add_Line(Vector2(start.x, start.y), Vector2(end.x, end.y), width, color);
+    // Adjust Z using terrain and optionally water height
+    lastPnt.z = TheTerrainRenderObject->getHeightMapHeight(lastPnt.x, lastPnt.y, NULL);
+    if (m_showWater) {
+        Real waterZ = getWaterHeightIfUnderwater(lastPnt.x, lastPnt.y);
+        if (waterZ != -FLT_MAX) {
+            lastPnt.z = waterZ + 4.5f;
+        }
     }
 
-    lastPnt = pnt;
-    end = start;
-    shouldEnd = shouldStart;
-  }
+    bool shouldEnd = worldToScreen(&lastPnt, &screenEnd, camera);
 
+    for (angle = inc; angle <= 2.0f * PI + 0.001f; angle += inc) {
+        pnt.x = center.x + radius * (Real)cos(angle);
+        pnt.y = center.y + radius * (Real)sin(angle);
+
+        pnt.z = TheTerrainRenderObject->getHeightMapHeight(pnt.x, pnt.y, NULL);
+        if (m_showWater) {
+            Real waterZ = getWaterHeightIfUnderwater(pnt.x, pnt.y);
+            if (waterZ != -FLT_MAX) {
+                pnt.z = waterZ + 4.5f;
+            }
+        }
+
+        bool shouldStart = worldToScreen(&pnt, &screenStart, camera);
+        if (shouldStart && shouldEnd) {
+            m_lineRenderer->Add_Line(Vector2(screenStart.x, screenStart.y), Vector2(screenEnd.x, screenEnd.y), width, color);
+        }
+
+        lastPnt = pnt;
+        screenEnd = screenStart;
+        shouldEnd = shouldStart;
+    }
+}
+
+#define RULER_LINE_WIDTH 2.0f
+/** Draw the ruler feedback (line or circle) into m_lineRenderer, terrain-following
+ ** and inside the D3D frame so it doesn't strobe like the old GDI overlay did. The
+ ** ruler state (type, endpoints, length) lives on the active WbView; we read it here.
+ ** Returns true if anything was added to the line renderer. */
+Bool DrawObject::drawRulerFeedback(CameraClass* camera)
+{
+	if (!m_lineRenderer || !camera) {
+		return false;
+	}
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!pDoc) {
+		return false;
+	}
+	WbView3d *pView = pDoc->Get3DView();
+	if (!pView) {
+		return false;
+	}
+
+	const int rulerType = pView->getRulerFeedback();
+	if (rulerType == RULER_NONE) {
+		return false;
+	}
+
+	const unsigned long color = 0xFF00FF00; // opaque green
+
+	if (rulerType == RULER_CIRCLE) {
+		addCircleToLineRenderer(pView->getRulerPoint(0), pView->getRulerLength(),
+														RULER_LINE_WIDTH, color, camera);
+		return true;
+	}
+
+	// RULER_LINE: walk the segment, snapping each sample to terrain/water height so
+	// the line drapes over the ground instead of cutting straight through it.
+	const Coord3D& p0 = pView->getRulerPoint(0);
+	const Coord3D& p1 = pView->getRulerPoint(1);
+
+	const int numSteps = 64;
+	ICoord2D screenPrev, screenCur;
+	bool havePrev = false;
+	bool added = false;
+
+	for (int i = 0; i <= numSteps; ++i) {
+		Real t = (Real)i / numSteps;
+		Coord3D wp;
+		wp.x = p0.x + t * (p1.x - p0.x);
+		wp.y = p0.y + t * (p1.y - p0.y);
+		wp.z = TheTerrainRenderObject->getHeightMapHeight(wp.x, wp.y, NULL) + 4.5f;
+
+		if (m_showWater) {
+			Real waterZ = getWaterHeightIfUnderwater(wp.x, wp.y);
+			if (waterZ != -FLT_MAX) {
+				wp.z = waterZ + 4.5f;
+			}
+		}
+
+		bool ok = worldToScreen(&wp, &screenCur, camera);
+		if (havePrev && ok) {
+			m_lineRenderer->Add_Line(Vector2(screenPrev.x, screenPrev.y),
+															 Vector2(screenCur.x, screenCur.y),
+															 RULER_LINE_WIDTH, color);
+			added = true;
+		}
+		screenPrev = screenCur;
+		havePrev = ok;
+	}
+
+	return added;
+}
+
+#define BUCKET_BRUSH_LINE_WIDTH 2.0f
+/** Draw the wave bucket-fill brush circle at the cursor (terrain/water-following, via
+	the line renderer like the ruler).  Drawn only while the wave editor is the selected
+	tool and Bucket is the active mode; the tool clears its cursor flag on mode/tool
+	switches so the circle never lingers.  Returns true if anything was added. */
+Bool DrawObject::drawBucketBrushFeedback(CameraClass* camera)
+{
+	if (!m_lineRenderer || !camera) {
+		return false;
+	}
+
+	float cx, cy;
+	Int radius;
+	if (!WaveEditorTool::getBucketBrush(cx, cy, radius)) {
+		return false;
+	}
+
+	Coord3D center;
+	center.x = cx;
+	center.y = cy;
+	center.z = 0.0f;	// addCircleToLineRenderer samples terrain/water height per segment
+
+	const unsigned long color = 0xFF00FFFF;	// cyan, matching the wave overlay glyphs
+	addCircleToLineRenderer(center, (Real)radius, BUCKET_BRUSH_LINE_WIDTH, color, camera);
+	return true;
+}
+
+/** Draw a straight world segment into m_lineRenderer in steps that each follow the terrain, or the water where it is shown. */
+void DrawObject::addTerrainLineToLineRenderer(const Coord3D &from, const Coord3D &to, Int steps, Real width, unsigned long color, CameraClass* camera)
+{
+	ICoord2D screenPrev, screenCur;
+	bool havePrev = false;
+	for (Int i = 0; i <= steps; ++i) {
+		const Real t = (Real)i / steps;
+		Coord3D wp;
+		wp.x = from.x + t * (to.x - from.x);
+		wp.y = from.y + t * (to.y - from.y);
+		wp.z = TheTerrainRenderObject->getHeightMapHeight(wp.x, wp.y, NULL);
+		if (m_showWater) {
+			const Real waterZ = getWaterHeightIfUnderwater(wp.x, wp.y);
+			if (waterZ != -FLT_MAX) {
+				wp.z = waterZ + 4.5f;
+			}
+		}
+		const bool ok = worldToScreen(&wp, &screenCur, camera);
+		if (havePrev && ok) {
+			m_lineRenderer->Add_Line(Vector2(screenPrev.x, screenPrev.y), Vector2(screenCur.x, screenCur.y), width, color);
+		}
+		screenPrev = screenCur;
+		havePrev = ok;
+	}
+}
+
+#define STOCHASTIC_BRUSH_LINE_WIDTH 2.0f
+#define STOCHASTIC_HEX_LINE_WIDTH 1.0f
+// Past this many candidate hex cells the overlay leaves them out, to keep the line renderer in bounds.
+#define STOCHASTIC_MAX_HEX_CELLS 400
+/** Draw the stochastic terrain brush: a circle where it paints at full strength, one where its feather ends, and the
+	hex cells whose look the stroke's seed takes over. terrainshadow.hlsl gives each hex cell the seed painted on the
+	height map point nearest its centre, so the seed changes whole cells, which need not match the brush's circles.
+	Returns true if anything was added. */
+Bool DrawObject::drawStochasticBrushFeedback(CameraClass* camera)
+{
+	if (!m_lineRenderer || !camera || m_disableFeedback) {
+		return false;
+	}
+	Coord3D center;
+	Real coreRadius, outerRadius;
+	if (!StochasticTool::getBrushOverlay(center, coreRadius, outerRadius)) {
+		return false;
+	}
+
+	addCircleToLineRenderer(center, coreRadius, STOCHASTIC_BRUSH_LINE_WIDTH, 0xFF40A0FF, camera);
+	if (outerRadius > coreRadius) {
+		addCircleToLineRenderer(center, outerRadius, STOCHASTIC_BRUSH_LINE_WIDTH, 0xFF40E080, camera);
+	}
+
+	// The lattice as the shader walks it: points (a + b/2, b) times the spacing, each cell's corners at the centroids of
+	// the six triangles around it, where its blend weight stops leading.
+	const Vector4 hex = WaterRenderObjClass::getStochasticHex();
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WorldHeightMapEdit *pMap = (pDoc != nullptr) ? pDoc->GetHeightMap() : nullptr;
+	if (hex.X <= 0.0f || pMap == nullptr) {
+		return true;
+	}
+	const Real spacing = 1.0f / hex.X;
+	const Real reach = outerRadius + MAP_XY_FACTOR;
+	const Int bLo = (Int)floor((center.y - reach) / spacing);
+	const Int bHi = (Int)ceil((center.y + reach) / spacing);
+	const Int aSpan = (Int)ceil(2.0f * reach / spacing) + 3;
+	if ((bHi - bLo + 1) * aSpan > STOCHASTIC_MAX_HEX_CELLS) {
+		return true;
+	}
+
+	static const Real corners[6][2] = {
+		{ 0.5f, 1.0f / 3.0f }, { 0.0f, 2.0f / 3.0f }, { -0.5f, 1.0f / 3.0f },
+		{ -0.5f, -1.0f / 3.0f }, { 0.0f, -2.0f / 3.0f }, { 0.5f, -1.0f / 3.0f }
+	};
+	const Int border = pMap->getBorderSize();
+	for (Int b = bLo; b <= bHi; b++) {
+		const Int aLo = (Int)floor((center.x - reach) / spacing - 0.5f * b) - 1;
+		for (Int a = aLo; a < aLo + aSpan; a++) {
+			const Real cx = (a + 0.5f * b) * spacing;
+			const Real cy = b * spacing;
+			// The seed texture is point sampled, so the cell reads the nearest height map point.
+			const Int xIndex = (Int)floor(cx / MAP_XY_FACTOR + 0.5f) + border;
+			const Int yIndex = (Int)floor(cy / MAP_XY_FACTOR + 0.5f) + border;
+			if (!StochasticTool::overlayStampsSeedAt(xIndex, yIndex)) {
+				continue;
+			}
+			for (Int k = 0; k < 6; k++) {
+				const Int n = (k + 1) % 6;
+				Coord3D from, to;
+				from.x = cx + corners[k][0] * spacing;
+				from.y = cy + corners[k][1] * spacing;
+				from.z = 0.0f;
+				to.x = cx + corners[n][0] * spacing;
+				to.y = cy + corners[n][1] * spacing;
+				to.z = 0.0f;
+				addTerrainLineToLineRenderer(from, to, 4, STOCHASTIC_HEX_LINE_WIDTH, 0xFFFFC040, camera);
+			}
+		}
+	}
+	return true;
 }
 
 #define SIGHT_RANGE_LINE_WIDTH 2.0f
@@ -1888,7 +3237,15 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
 
     const AudioEventRTS * event = thingTemplate->getSoundAmbient();
 
-    if ( event == nullptr )
+	// AudioEventRTS event;
+	// event.setEventName(comboText);
+	// event.setAudioEventInfo(TheAudio->findAudioEventInfo(comboText));
+	// event.generateFilename();
+	
+	// if (!event.getFilename().isEmpty()) {
+	// 	PlaySound(event.getFilename().str(), NULL, SND_ASYNC | SND_FILENAME | SND_PURGE);
+	// }
+    if ( event == NULL )
     {
       return;
     }
@@ -1912,7 +3269,17 @@ void DrawObject::updateVBWithSoundRanges(MapObject *pMapObj, CameraClass* camera
         return;
       }
     }
+
+	// AudioEventRTS eventToPlay;
+	// eventToPlay.setEventName(event->getEventName());
+	// eventToPlay.setAudioEventInfo(audioInfo);
+	// eventToPlay.generateFilename();
+	
+	// if (!eventToPlay.getFilename().isEmpty()) {
+	// 	PlaySound(eventToPlay.getFilename().str(), NULL, SND_ASYNC | SND_FILENAME | SND_PURGE);
+	// }
   }
+
 
   // Should have set up audioInfo or returned by now
   DEBUG_ASSERTCRASH( audioInfo != nullptr, ("Managed to finish setting up audio info without setting it?!?" ) );
@@ -2050,6 +3417,124 @@ void DrawObject::setFeedbackPos(Coord3D pos)
 	}
 }
 
+void DrawObject::updateTerrainPasteVB(void)
+{
+    TileTool::TerrainCopyBuffer &buf = TileTool::s_copyBuffer;
+
+    m_feedbackVertexCount = 0;
+    m_feedbackIndexCount = 0;
+
+    DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+    UnsignedShort *ib = lockIdxBuffer.Get_Index_Array();
+    UnsignedShort *curIb = ib;
+
+    DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+    VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+    VertexFormatXYZDUV1 *curVb = vb;
+
+    int w = buf.width;
+    int h = buf.height;
+    if (w <= 0 || h <= 0) return;
+
+    const int PAD_VERT = 9;   // match mesh code's small padding
+    const int PAD_IDX  = 12;  // some extra indices like mesh code
+    const int MAX_VERTS = NUM_FEEDBACK_VERTEX;
+    const int MAX_IDX   = NUM_FEEDBACK_INDEX;
+    const int MAX_16BIT = 65535;
+
+    int expectedVerts = w * h;
+    int expectedIdx = (w - 1) * (h - 1) * 6;
+
+    // Defensive caps:
+    if (expectedVerts + PAD_VERT >= MAX_VERTS) {
+        DEBUG_LOG(("Paste preview too many vertices (%d) — skipping preview", expectedVerts));
+        return;
+    }
+    if (expectedIdx + PAD_IDX >= MAX_IDX) {
+        DEBUG_LOG(("Paste preview too many indices (%d) — skipping preview", expectedIdx));
+        return;
+    }
+    if (expectedVerts > MAX_16BIT) {
+        DEBUG_LOG(("Paste preview exceeds 16-bit index limit (%d verts) — skipping preview", expectedVerts));
+        return;
+    }
+
+    DWORD color = 0x80FFFFFF;  /* semi-transparent white */
+
+    /* Convert rotation to radians */
+    float angle = 0.0f;
+    switch (m_terrainPasteFeedbackRotation)
+    {
+        case 90:  angle = 3.1415926f * 0.5f; break;
+        case 180: angle = 3.1415926f; break;
+        case 270: angle = 3.1415926f * 1.5f; break;
+        default: angle = 0.0f; break;
+    }
+
+    float cosA = cosf(angle);
+    float sinA = sinf(angle);
+
+    /* Center offset for rotation pivot */
+    float cx = (float)(w - 1) * 0.5f;
+    float cy = (float)(h - 1) * 0.5f;
+
+    /* Fill vertex buffer with rotated positions */
+    for (int y = 0; y < h; ++y)
+    {
+        for (int x = 0; x < w; ++x)
+        {
+            /* Local coordinates centered at pivot */
+            float localX = (x - cx) * MAP_XY_FACTOR;
+            float localY = (y - cy) * MAP_XY_FACTOR;
+
+            /* Apply rotation */
+            float rotX = localX * cosA - localY * sinA;
+            float rotY = localX * sinA + localY * cosA;
+
+			/* Compute world position */
+			Coord3D tmp;
+			tmp.x = m_terrainPasteCenter.x + rotX;
+			tmp.y = m_terrainPasteCenter.y + rotY;
+			// tmp.z = (float)buf.heightData[y][x] * MAP_HEIGHT_SCALE;
+
+			float baseZ = (float)buf.heightData[y][x] * MAP_HEIGHT_SCALE;
+			tmp.z = baseZ + m_brushHeight;  
+
+			// Snap to grid if enabled
+			CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+			WbView3d *pView = pDoc->Get3DView(); 
+			pView->snapPoint(&tmp);
+
+			curVb->x = tmp.x;
+			curVb->y = tmp.y;
+			curVb->z = tmp.z;
+
+            curVb->u1 = 0.0f;
+            curVb->v1 = 0.0f;
+            curVb->diffuse = color;
+
+            ++curVb;
+            ++m_feedbackVertexCount;
+        }
+    }
+
+    /* Build index buffer (unchanged) */
+    for (int b = 0; b < h - 1; ++b)
+    {
+        for (int x = 0; x < w - 1; ++x)
+        {
+            int idx = b * w + x;
+            *curIb++ = (UnsignedShort)idx;
+            *curIb++ = (UnsignedShort)(idx + 1);
+            *curIb++ = (UnsignedShort)(idx + w);
+            *curIb++ = (UnsignedShort)(idx + 1);
+            *curIb++ = (UnsignedShort)(idx + w + 1);
+            *curIb++ = (UnsignedShort)(idx + w);
+            m_feedbackIndexCount += 6;
+        }
+    }
+}
+
 void DrawObject::setRampFeedbackParms(const Coord3D *start, const Coord3D *end, Real rampWidth)
 {
 	DEBUG_ASSERTCRASH(start && end, ("Parameter passed into setRampFeedbackParms was null. Not allowed"));
@@ -2069,6 +3554,7 @@ bool _skip_drawobject_render = false;
 /** Render draws into the current 3d context. */
 void DrawObject::Render(RenderInfoClass & rinfo)
 {
+	WBPerfScope perfDraw("drawobj");
 //DEBUG!
 if (_skip_drawobject_render) {
 	return;
@@ -2105,13 +3591,21 @@ if (_skip_drawobject_render) {
 	}
 	m_waterDrawObject->update();
 	DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile1);
-  if (m_drawObjects || m_drawWaypoints || m_drawBoundingBoxes || m_drawSightRanges || m_drawWeaponRanges || m_drawSoundRanges || m_drawTestArtHighlight) {
+  if (m_drawObjects || m_drawWaypoints || m_drawBoundingBoxes || m_drawSightRanges || m_drawWeaponRanges || m_drawSoundRanges || m_drawTestArtHighlight || m_drawObjectsSelected || m_playingSoundFeedback) {
 		//Apply the shader and material
 
 		//WST Variables below are for optimization to reduce VB updates which are extremely slow
 		// Optimization strategy is to remember last setting and avoid re-updating unless it changed
 		int rememberLastSettingVB1 = -99999;
 		int rememberLastSettingVB2 = -99999;
+
+		// View > Show Playing Sounds asks the 3D view per object whether its sound is audible;
+		// look the view up once rather than per object.
+		WbView3d *pPlayingSoundView = NULL;
+		if (m_playingSoundFeedback) {
+			CWorldBuilderDoc *pSoundDoc = CWorldBuilderDoc::GetActiveDoc();
+			pPlayingSoundView = pSoundDoc ? pSoundDoc->GetActive3DView() : NULL;
+		}
 
 		MapObject *pMapObj;
 		for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) {
@@ -2120,21 +3614,36 @@ if (_skip_drawobject_render) {
 				continue;
 			}
 
-// DEBUG!
-if (pMapObj->isSelected()) {
- Transform.Get_Translation();
-}
+			// DEBUG!
+			// if (pMapObj->isSelected()) {
+			// 	Transform.Get_Translation();
+			// }
+
+			/**
+			 * Adriane [Deathscythe] -- this check already existed, not sure why they commented it out.
+			 * It actually works too -- significantly reduces lag when rendering object icons
+			 * with lots of objects placed on the map.
+			 *
+			 * Cull the mfs
+			 */
 			Coord3D loc = *pMapObj->getLocation();
-			if (TheTerrainRenderObject) {
-				loc.z += TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, nullptr);
+
+			SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS); 
+			if (rinfo.Camera.Cull_Sphere(bounds)) {
+				continue;
 			}
-			// Cull.
-			//SphereClass bounds(Vector3(loc.x, loc.y, loc.z), THE_RADIUS);
-			//if (rinfo.Camera.Cull_Sphere(bounds)) {
-			//	continue;
-			//}
+
+			// GROUND LEVEL, whatever height the object itself sits at. loc.z is the object's own
+			// Z offset, so ADDING terrain height to it floated the icon up with a raised object --
+			// the marker ended up hanging in the air, away from the spot on the terrain it marks.
+			// These icons are a top-down editing aid: they want to be where the object stands on
+			// the map, not where it is suspended. So take the terrain height alone.
+			if (TheTerrainRenderObject) {
+				loc.z = TheTerrainRenderObject->getHeightMapHeight(loc.x, loc.y, NULL);
+			}
+
 			Bool doArrow = true;
-			if (pMapObj->getFlag(FLAG_ROAD_FLAGS) || pMapObj->getFlag(FLAG_BRIDGE_FLAGS) || pMapObj->isWaypoint())
+			if (!m_forceDrawArrow && (pMapObj->getFlag(FLAG_ROAD_FLAGS) || pMapObj->getFlag(FLAG_BRIDGE_FLAGS) || pMapObj->isWaypoint()) ) 
 			{
 				doArrow = false;
 			}
@@ -2144,6 +3653,39 @@ if (pMapObj->isSelected()) {
 				if (!m_drawWaypoints) {
 					continue;
 				}
+
+				Bool exists = false;
+				AsciiString wpName = pMapObj->getProperties()->getAsciiString(TheKey_waypointName, &exists);
+				if (exists && wpName.startsWith("Player_") && wpName.endsWith("_Start") && m_baseRadiusFeedback) {
+					const char* fullName = wpName.str();
+					const char* numStart = fullName + 7; // skip "Player_"
+					const char* numEnd = strstr(numStart, "_Start");
+					int playerNum = 0;
+					if (numEnd && numEnd > numStart) {
+						char numBuf[8];
+						int len = numEnd - numStart;
+						if (len > 7) len = 7;
+						strncpy(numBuf, numStart, len);
+						numBuf[len] = '\0';
+						playerNum = atoi(numBuf);
+					}
+
+					if (playerNum >= 1 && playerNum <= 8) {
+						Coord3D center = *pMapObj->getLocation();
+						center.z = TheTerrainRenderObject->getHeightMapHeight(center.x, center.y, NULL);
+
+						const Real innerRadius = 600.0f;
+						const Real outerRadius = innerRadius + 150.0f;
+						const Real lineWidth = 2.0f;
+
+						// Use the same circle drawer you already have
+						addCircleToLineRenderer(center, innerRadius, lineWidth, 0xFFFF0000, &rinfo.Camera); // red
+						addCircleToLineRenderer(center, outerRadius, lineWidth, 0xFF00FF00, &rinfo.Camera); // green
+
+						linesToRender = true; // ensures line renderer will render later
+					}
+				}
+	
 			}	else {
 				// MLL C&C3
 				if (pMapObj->isSelected()) {
@@ -2159,18 +3701,24 @@ if (pMapObj->isSelected()) {
 						linesToRender = true;
 						updateVBWithWeaponRange(pMapObj, &rinfo.Camera);
 					}
-          if (doArrow && m_drawSoundRanges) {
-            linesToRender = true;
-            updateVBWithSoundRanges(pMapObj, &rinfo.Camera);
-          }
+					if (doArrow && m_drawSoundRanges) {
+						linesToRender = true;
+						updateVBWithSoundRanges(pMapObj, &rinfo.Camera); 
+					}
+				} 
+				// View > Show Playing Sounds. Deliberately NOT gated on doArrow: the point is to
+				// see every sound Listen To Map currently has audible, not just the selected one.
+				// isListenSoundPlaying is false for everything unless a listen mode is running.
+				if (pPlayingSoundView && pPlayingSoundView->isListenSoundPlaying(pMapObj)) {
+					linesToRender = true;
+					updateVBWithSoundRanges(pMapObj, &rinfo.Camera);
 				}
-
-				if (doArrow && m_drawTestArtHighlight) {
+				// Force draw arrow triggering test art highlight by mistake
+				if (doArrow && m_drawTestArtHighlight && !m_forceDrawArrow) {
 					linesToRender = true;
 					updateVBWithTestArtHighlight(pMapObj, &rinfo.Camera);
 				}
-
-				if (!m_drawObjects) {
+				if (!m_drawObjects && !pMapObj->isSelected()) {
 					continue;
 				}
 				if (BuildListTool::isActive()) {
@@ -2178,46 +3726,57 @@ if (pMapObj->isSelected()) {
 				}
 			}
 
-			if (count&1) {
-				int setting = pMapObj->getColor();
+			// Makes the icons look 3d -- we set it to true by default since it looks cool -- Adriane
+			Bool isTree = true;
 
-				if (doArrow) {
-					setting |= (1<<25);
-				}
-				if (doDiamond) {
-					setting |= (1<<26);
-				}
-
-				if (setting != rememberLastSettingVB1)	{
+			int settingColor;
+			
+			if (doDiamond) { // Waypoint
+				settingColor = m_waypointIconColor;
+			} else if ( pMapObj->getFlag(FLAG_ROAD_FLAGS)) {
+				settingColor = m_roadIconColor;
+			} else if ( pMapObj->getThingTemplate() && (pMapObj->getThingTemplate()->getEditorSorting() == ES_INFANTRY || pMapObj->getThingTemplate()->getEditorSorting() == ES_VEHICLE) ) {
+				settingColor = m_unitIconColor;
+			} else if ( pMapObj->getThingTemplate() && pMapObj->getThingTemplate()->getEditorSorting() == ES_SHRUBBERY) {
+				settingColor = m_treeIconColor;
+				// isTree = true; 
+			} else { // Everything else
+				settingColor = m_defaultIconColor;
+			}
+			
+			// Now build the setting
+			int setting = settingColor;
+			if (doArrow) {
+				setting |= (1 << 25);
+			}
+			if (doDiamond) {
+				setting |= (1 << 26);
+			}
+			
+			// Now push into vertex buffers like before
+			if (count & 1) {
+				if (setting != rememberLastSettingVB1) {
 					rememberLastSettingVB1 = setting;
-					updateVB(m_vertexBufferTile1,pMapObj->getColor(), doArrow, doDiamond);
+					updateVB(m_vertexBufferTile1, settingColor, doArrow, doDiamond);
 				}
 				DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile1);
-
 			} else {
-				int setting = pMapObj->getColor();
-
-				if (doArrow) {
-					setting |= (1<<25);
-				}
-				if (doDiamond) {
-					setting |= (1<<26);
-				}
-
 				if (setting != rememberLastSettingVB2) {
 					rememberLastSettingVB2 = setting;
-					updateVB(m_vertexBufferTile2, pMapObj->getColor(), doArrow, doDiamond);
+					updateVB(m_vertexBufferTile2, settingColor, doArrow, doDiamond);
 				}
 				DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile2);
 			}
-
-			///@todo - remove the istree stuff, or get the info from the thing template.  jba.
-			Bool isTree = false;
+			
 
 			Vector3 vec(loc.x, loc.y, loc.z);
 			Matrix3D tm(Transform);
 			Matrix3x3 rot(true);
-			rot.Rotate_Z(pMapObj->getAngle());
+			if (!(pMapObj->getFlag(FLAG_ROAD_FLAGS) || 
+				pMapObj->getFlag(FLAG_BRIDGE_FLAGS))) 
+			{
+				rot.Rotate_Z(pMapObj->getAngle());
+			}
 
 			tm.Set_Translation(vec);
 			tm.Set_Rotation(rot);
@@ -2236,6 +3795,13 @@ if (pMapObj->isSelected()) {
 			count++;
 		}
 	}
+#if defined(BUILD_WITH_D3D9)
+	if (m_drawPolygonAreas) {
+		WBPerfScope perfTriggers("triggers");
+		renderPolygonTriggersBatched(rinfo);
+		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
+	}
+#else
 	if (m_drawPolygonAreas) {
  		DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferWater);
 		Int selected;
@@ -2300,6 +3866,7 @@ if (pMapObj->isSelected()) {
 			DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 		}
 	}
+#endif
 
 
  	if (BuildListTool::isActive()) for (i=0; i<TheSidesList->getNumSides(); i++) {
@@ -2319,10 +3886,10 @@ if (pMapObj->isSelected()) {
 			}
 			const Int GREEN = 0x00FF00; // GREEN in BGR.
 			if (count&1) {
-				updateVB(m_vertexBufferTile1, GREEN, true, false);
+				updateVB(m_vertexBufferTile1, GREEN, true, false, false);
 				DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile1);
 			} else {
-				updateVB(m_vertexBufferTile2, GREEN, true, false);
+				updateVB(m_vertexBufferTile2, GREEN, true, false, false);
 				DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile2);
 			}
 			count++;
@@ -2353,7 +3920,8 @@ if (pMapObj->isSelected()) {
 	DX8Wrapper::Set_Transform(D3DTS_WORLD,tmReset);
 
 	if (m_drawWaypoints) {
-		updateWaypointVB();
+		WBPerfScope perfWaypoints("waypoints");
+		updateWaypointVB(rinfo);
 		if (m_feedbackIndexCount>0) {
  			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
 			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
@@ -2364,10 +3932,122 @@ if (pMapObj->isSelected()) {
 		}
 	}
 
+#if 1
+	if (m_boundaryFeedback) {
+		updateBoundaryVB();
+		if (m_feedbackIndexCount > 0) {
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, TRUE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, TRUE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
 
+			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
+			DX8Wrapper::Set_Shader(m_shaderClass);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);	// we want a solid ramp
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);				// disable lighting
+			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+		}
+	}
+
+	// Draw the wave overlay only while the wave editor is the active tool -- this gate
+	// takes priority over the View toggle, so the cyan/yellow glyphs don't linger over
+	// the map when you're working with another tool. Within an active editor the "Show
+	// wave lines" toggle (m_waveFeedback) fully controls the cyan overlay, INCLUDING the
+	// hover/drag ghost glyph: unchecking it hides every overlay line. The live animated
+	// preview wave is drawn separately by the water-track system, so you still see what
+	// you're placing. When the editor isn't active we also skip the updateWaveVB() cost.
+	if (WaveEditorTool::isEditorActive() && m_waveFeedback) {
+		updateWaveVB();
+		if (m_feedbackIndexCount > 0) {
+			// Wave overlay should always be visible, so disable depth test/write -
+			// the lines draw on top of terrain, trees, objects, etc. (editor aid).
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, FALSE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
+
+			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
+			DX8Wrapper::Set_Shader(m_shaderClass);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);
+			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+
+			// restore depth testing for anything drawn after us.
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, TRUE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, TRUE);
+		}
+	}
+
+	// Red shoreline guide: trace the water/land boundary while the wave editor is the
+	// active tool and the "Show shoreline" toggle is on, so users can see where to paint.
+	// Drawn depth-disabled (like the wave overlay) so it's always visible on top.
+	if (WaveEditorTool::isEditorActive() && m_showShoreline) {
+		updateShorelineVB();
+		if (m_feedbackIndexCount > 0) {
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, FALSE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
+
+			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback, 0);
+			DX8Wrapper::Set_Shader(m_shaderClass);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE, D3DFILL_SOLID);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);
+			DX8Wrapper::Draw_Triangles(0, m_feedbackIndexCount / 3, 0, m_feedbackVertexCount);
+
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, TRUE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, TRUE);
+		}
+	}
 
 #if 1
-	if (m_meshFeedback) {
+	if (m_rampFeedback) {
+		updateRampVB();
+		if (m_feedbackIndexCount>0) {
+ 			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
+			DX8Wrapper::Set_Shader(SC_OPAQUE_Z);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);	// we want a solid ramp
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);				// disable lighting
+			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+		}
+	}
+#endif
+
+	if (m_rulerGridFeedback) {
+		updateGridVB();
+		if (m_feedbackIndexCount > 0) {
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
+
+			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback, 0);
+			// Use SC_OPAQUE (PASS_ALWAYS) rather than SC_OPAQUE_Z (PASS_LEQUAL) so the
+			// grid always draws on top -- over water and terrain alike -- matching how
+			// the ruler line behaves. The two shaders are identical apart from the depth
+			// test; with the Z test on, the water surface was occluding the grid even
+			// though its verts already sit at water height.
+			DX8Wrapper::Set_Shader(SC_OPAQUE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE, D3DFILL_SOLID); // or D3DFILL_WIREFRAME if you prefer
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);
+			DX8Wrapper::Draw_Triangles(0, m_feedbackIndexCount / 3, 0, m_feedbackVertexCount);
+		}
+	}
+
+#if 1
+	if (m_terrainPasteFeedback && !m_disableFeedback) {
+		updateTerrainPasteVB();
+		if (m_feedbackIndexCount > 0) {
+			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
+			DX8Wrapper::Set_Shader(SC_OPAQUE_Z);
+			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);
+			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+		}
+	} else if (m_meshFeedback) {
 		updateMeshVB();
 		if (m_feedbackIndexCount>0) {
  			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
@@ -2387,31 +4067,183 @@ if (pMapObj->isSelected()) {
 	}
 #endif
 
-#if 1
-	if (m_rampFeedback) {
-		updateRampVB();
-		if (m_feedbackIndexCount>0) {
- 			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
-			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
-			DX8Wrapper::Set_Shader(SC_OPAQUE_Z);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);	// we want a solid ramp
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);				// disable lighting
-			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+	if (m_showTracingOverlay) {
+		CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+		WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
+
+		// Grid resolution (increase for more detail)
+		const int gridX = 64;
+		const int gridY = 64;
+
+		float left   = ADJUST_FROM_INDEX_TO_REAL(3);
+		float top    = ADJUST_FROM_INDEX_TO_REAL(3);
+		float right  = ADJUST_FROM_INDEX_TO_REAL(pMap->getXExtent() - 3);
+		float bottom = ADJUST_FROM_INDEX_TO_REAL(pMap->getYExtent() - 3);
+
+		float dx = (right - left) / (gridX - 1);
+		float dy = (bottom - top) / (gridY - 1);
+
+		// Resolve the per-map overlay file up front (prefers .png over .dds) so we
+		// know the format before baking UVs. PNG decoded by D3DX uses the opposite
+		// vertical convention from the DDS path, so the V coordinate is flipped for
+		// PNG to keep both orientations the same on screen.
+		AsciiString overlayPath = resolveTracingOverlayPath();
+		const char *ext = overlayPath.isEmpty() ? NULL : overlayPath.reverseFind('.');
+		Bool isPng = (ext != NULL && stricmp(ext, ".png") == 0);
+
+		// Per-vertex diffuse drives overlay opacity: the alpha byte modulates the
+		// texture under the alpha-blend shader. White RGB so the texture isn't tinted.
+		Int alpha = m_tracingOverlayOpacity;
+		if (alpha < 0) alpha = 0; else if (alpha > 255) alpha = 255;
+		UnsignedInt diffuse = ((UnsignedInt)alpha << 24) | 0x00FFFFFF;
+
+		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexFeedback, D3DLOCK_DISCARD);
+		VertexFormatXYZDUV1* vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
+
+		int vtxCount = 0;
+		for (int y = 0; y < gridY; ++y) {
+			float fy = top + y * dy;
+			float v = (float)y / (gridY - 1);
+			if (isPng) v = 1.0f - v;	// flip V for PNG so it isn't upside-down
+			for (int x = 0; x < gridX; ++x) {
+				float fx = left + x * dx;
+				float u = (float)x / (gridX - 1);
+				float fz = TheTerrainRenderObject->getHeightMapHeight(fx, fy, NULL) + 2.0f; // Slightly above terrain
+
+				vb[vtxCount].x = fx;
+				vb[vtxCount].y = fy;
+				vb[vtxCount].z = fz;
+				vb[vtxCount].u1 = u;
+				vb[vtxCount].v1 = v;
+				vb[vtxCount].diffuse = diffuse;
+				vtxCount++;
+			}
 		}
-	}
+
+		DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexFeedback, D3DLOCK_DISCARD);
+		UnsignedShort* ib = lockIdxBuffer.Get_Index_Array();
+
+		int idxCount = 0;
+		for (int b = 0; b < gridY - 1; ++b) {
+			for (int x = 0; x < gridX - 1; ++x) {
+				int i0 = b * gridX + x;
+				int i1 = i0 + 1;
+				int i2 = i0 + gridX;
+				int i3 = i2 + 1;
+				// First triangle
+				ib[idxCount++] = i0;
+				ib[idxCount++] = i1;
+				ib[idxCount++] = i2;
+				// Second triangle
+				ib[idxCount++] = i1;
+				ib[idxCount++] = i3;
+				ib[idxCount++] = i2;
+			}
+		}
+
+		m_feedbackVertexCount = vtxCount;
+		m_feedbackIndexCount = idxCount;
+
+		DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
+		DX8Wrapper::Set_Index_Buffer(m_indexFeedback, 0);
+		DX8Wrapper::Set_Shader(ShaderClass::_PresetAlpha2DShader);
+		DX8Wrapper::Set_Material(m_vertexMaterialClass);
+
+		// Bind the overlay texture resolved above. DDS goes through the asset
+		// manager as before; PNG is decoded with D3DX (the WW3D2 loader can't read
+		// PNG) and cached until the resolved path changes.
+		TextureClass *overlayTex = NULL;
+
+		if (!overlayPath.isEmpty()) {
+			if (isPng) {
+#if !defined(BUILD_WITH_D3D9)
+				// The resize interpolation is baked in at decode time, so picking
+				// the D3DX filter from the current setting (1=nearest -> POINT,
+				// else LINEAR for both the resize and the mip chain).
+				DWORD d3dxFilter = (m_tracingOverlayFilter == 1)
+					? D3DX_FILTER_POINT : D3DX_FILTER_LINEAR;
 #endif
 
-#if 1
-	if (m_boundaryFeedback) {
-		updateBoundaryVB();
-		if (m_feedbackIndexCount>0) {
- 			DX8Wrapper::Set_Vertex_Buffer(m_vertexFeedback);
-			DX8Wrapper::Set_Index_Buffer(m_indexFeedback,0);
-			DX8Wrapper::Set_Shader(m_shaderClass);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);	// we want a solid ramp
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING, FALSE);				// disable lighting
-			DX8Wrapper::Draw_Triangles(	0, m_feedbackIndexCount/3, 0,	m_feedbackVertexCount);
+				// (Re)load the PNG when the resolved path OR the filter changes.
+				if (m_tracingOverlayTexture == NULL ||
+						m_tracingOverlayLoadedPath != overlayPath ||
+						m_tracingOverlayLoadedFilter != m_tracingOverlayFilter) {
+					REF_PTR_RELEASE(m_tracingOverlayTexture);
+					m_tracingOverlayLoadedPath.clear();
+					m_tracingOverlayLoadedFilter = -1;
+
+#if defined(BUILD_WITH_D3D9)
+					// No D3DX on the D3D9 backend: decode with stb_image and build the mip
+					// chain ourselves (nearest or box filtered, mirroring the D3DX choice).
+					TextureClass *pngTex = WBPngTexture_Load(overlayPath.str(), m_tracingOverlayFilter == 1);
+					if (pngTex != NULL) {
+						m_tracingOverlayTexture = pngTex;
+						m_tracingOverlayLoadedPath = overlayPath;
+						m_tracingOverlayLoadedFilter = m_tracingOverlayFilter;
+					}
+#else
+					IDirect3DTexture8 *d3dTex = NULL;
+					HRESULT hr = D3DXCreateTextureFromFileExA(
+						DX8Wrapper::_Get_D3D_Device8(),
+						overlayPath.str(),
+						D3DX_DEFAULT, D3DX_DEFAULT,
+						D3DX_DEFAULT,					// full mip chain
+						0,
+						D3DFMT_A8R8G8B8,			// force a format that carries alpha
+						D3DPOOL_MANAGED,
+						d3dxFilter, d3dxFilter,
+						0, NULL, NULL,
+						&d3dTex);
+					if (SUCCEEDED(hr) && d3dTex != NULL) {
+						m_tracingOverlayTexture = new TextureClass(d3dTex);
+						m_tracingOverlayLoadedPath = overlayPath;
+						m_tracingOverlayLoadedFilter = m_tracingOverlayFilter;
+						// TextureClass AddRefs the D3D texture; drop our extra ref.
+						d3dTex->Release();
+					}
+#endif
+				}
+				overlayTex = m_tracingOverlayTexture;
+			} else {
+				// DDS (or any format the asset manager understands).
+				overlayTex = W3DAssetManager::Get_Instance()->Get_Texture(overlayPath.str());
+			}
+		}
+
+		if (overlayTex != NULL) {
+			DX8Wrapper::Set_Texture(0, overlayTex);
+
+			// Flush the shader/texture changes to the device FIRST, then override the
+			// stage-0 state below. _PresetAlpha2DShader uses GRADIENT_DISABLE, which
+			// means the vertex diffuse never reaches the blender -- so on its own the
+			// per-vertex opacity alpha is ignored. We force stage 0 to modulate the
+			// texture alpha by the diffuse alpha (ALPHAOP=MODULATE, ARG1=TEXTURE,
+			// ARG2=DIFFUSE); since the PNG is loaded as A8R8G8B8 (texAlpha=255), the
+			// blend source alpha becomes exactly our opacity byte. Done after the
+			// flush so the shader's own apply doesn't clobber these.
+			DX8Wrapper::Apply_Render_State_Changes();
+
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+
+			// Apply the resize interpolation to the runtime sampler too (nearest ->
+			// POINT, default -> LINEAR). This makes DDS honor the setting and keeps
+			// PNG magnification crisp/smooth to match its decode. Restore to LINEAR
+			// (the engine default) afterwards so nothing else is affected.
+			DWORD texFilter = (m_tracingOverlayFilter == 1) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MAGFILTER, texFilter);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MINFILTER, texFilter);
+
+			DX8Wrapper::Draw_Triangles(0, idxCount / 3, 0, vtxCount);
+			DX8Wrapper::Set_Texture(0, NULL);
+
+			// Restore stage-0 alpha to a benign pass-through and the engine-default
+			// LINEAR filtering so nothing drawn afterwards inherits our overrides.
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
 		}
 	}
 #endif
@@ -2436,14 +4268,14 @@ if (pMapObj->isSelected()) {
   DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
  	DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferWater);
 
-	if (m_waterDrawObject) {
+	if (m_waterDrawObject && m_showWater) {
 		m_waterDrawObject->renderWater();
 	}
 
 	if (m_drawLetterbox) {
 		int w = m_winSize.x;
 		int h = m_winSize.y;
-		int size = (int)((h - (9.0f / 16.0f * w)) * 0.5f);
+		int size = 200; // or whatever fixed height you want
 		RectClass rect(0, 0, w, size);
 		m_lineRenderer->Add_Quad(rect, 0xFF000000);
 		rect.Set(0, h - size, w, h);
@@ -2451,12 +4283,36 @@ if (pMapObj->isSelected()) {
 		linesToRender = true;
 	}
 
+	// Ruler feedback: drawn here (inside the D3D frame, via the line renderer) so it
+	// no longer strobes the way the old GDI HDC overlay did on a flipping back buffer.
+	if (drawRulerFeedback(&rinfo.Camera)) {
+		linesToRender = true;
+	}
+
+	// Wave bucket-fill brush circle (terrain-following, like the ruler circle).
+	if (drawBucketBrushFeedback(&rinfo.Camera)) {
+		linesToRender = true;
+	}
+
+	// Stochastic terrain brush overlay.
+	if (drawStochasticBrushFeedback(&rinfo.Camera)) {
+		linesToRender = true;
+	}
+
 	// Render any lines that have been added, like bounding boxes.
-	// MLL C&C3
-	if (linesToRender && m_lineRenderer) {
-		m_lineRenderer->Render();
-		// Clear the old lines.
-		m_lineRenderer->Reset();
+	// MLL C&C3 - guarded to prevent Render2D overflow crash
+	if (m_lineRenderer) {
+		int vCount = m_lineRenderer->Get_Color_Array().Count();
+		if (linesToRender && vCount > 0) {
+			// 20k base its working -- 30k is working
+			if (vCount > MAX_LINE_RENDER_SAFE_LIMIT) {
+				// DEBUG_LOG(("m_lineRenderer overflow detected (%d colors) — resetting\n", vCount));
+				m_lineRenderer->Reset();
+			} else {
+				m_lineRenderer->Render();
+				m_lineRenderer->Reset();
+			}
+		}
 	}
 }
 

@@ -25,10 +25,16 @@
 #include "BuildList.h"
 #include "BuildListTool.h"
 #include "BaseBuildProps.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"	// the name matcher + the shared replace report
+#endif
+#include <vector>
 #include "CUndoable.h"
 #include "PointerTool.h"
 #include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
+#include "WbView3d.h"
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "GameLogic/SidesList.h"
 #include "Common/PlayerTemplate.h"
@@ -40,7 +46,12 @@
 BuildList *BuildList::m_staticThis = nullptr;
 Bool BuildList::m_updating = false;
 
-
+#define BUILDLIST_OPTION_PANEL "BuildListOptionPanel"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtPanelBridge.h"
+// Last power-meter percent computed in updateCurSide, read back by qtGetPowerPercent.
+static int s_qtPowerPercent = 0;
+#endif
 /////////////////////////////////////////////////////////////////////////////
 // BuildList dialog
 
@@ -82,6 +93,8 @@ BEGIN_MESSAGE_MAP(BuildList, COptionsPanel)
 	ON_EN_CHANGE(IDC_MAPOBJECT_ZOffset, OnChangeZOffset)
 	ON_EN_CHANGE(IDC_MAPOBJECT_Angle, OnChangeAngle)
 	ON_BN_CLICKED(IDC_EXPORT, OnExport)
+	ON_BN_CLICKED(IDC_IMPORT, OnImport)
+	ON_BN_CLICKED(IDC_SHOW_OBJECTS, OnForcedShowObjects)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -108,8 +121,21 @@ BOOL BuildList::OnInitDialog()
 	OnSelchangeBuildList();
 	m_staticThis = this;
 	m_updating = false;
+
+	CButton *pButton = (CButton*)GetDlgItem(IDC_SHOW_OBJECTS);
+	m_forcedShowObjects=::AfxGetApp()->GetProfileInt(BUILDLIST_OPTION_PANEL, "ForceShowBuildListObjects", 0);
+	pButton->SetCheck(m_forcedShowObjects ? 1:0);
+	OnForcedShowObjects();
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
+}
+
+void BuildList::OnForcedShowObjects()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_SHOW_OBJECTS);
+	m_forcedShowObjects = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(BUILDLIST_OPTION_PANEL, "ForceShowBuildListObjects", m_forcedShowObjects ? 1 : 0);
 }
 
 /// Load the sides in the sides list.
@@ -426,6 +452,9 @@ void BuildList::OnSelchangeBuildList()
 		progressWnd->EnableWindow(true);
 		progressWnd->SetPos((Int)((1.0f-energyUsed)*100));
 	}
+#ifdef RTS_HAS_QT
+	s_qtPowerPercent = (int)((1.0f - energyUsed) * 100);
+#endif
 
 	if (pBuildInfo==nullptr) {
 		enableAttrs = false;
@@ -478,6 +507,9 @@ void BuildList::OnSelchangeBuildList()
 		}
 	}
 
+#ifdef RTS_HAS_QT
+	WBQtBuildList_PushRefresh();
+#endif
 
 }
 
@@ -524,16 +556,23 @@ void BuildList::OnDeleteBuilding()
 		pBuildInfo = pBuildInfo->getNext();
 		if (pBuildInfo == nullptr) return;
 	}
-	pSide->removeFromBuildList(pBuildInfo);
 
+	// Adriane [Deathscythe] -- Crash fix for delete -- this arrangement of code fixes it for some reason
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WbView3d *p3View = pDoc->GetActive3DView();
+	p3View->invalBuildListItemInView(pBuildInfo);
+	pSide->removeFromBuildList(pBuildInfo); 
+
 	SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
 	pDoc->AddAndDoUndoable(pUndo);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
 	updateCurSide();
-	WbView3d *p3View = pDoc->GetActive3DView();
-	p3View->invalBuildListItemInView(pBuildInfo);
-	pList->SetCurSel(-1);
+
+	int itemCount = pList->GetCount();
+	if (itemCount > 0)
+		pList->SetCurSel(itemCount - 1);
+	else
+		pList->SetCurSel(-1);
 }
 
 void BuildList::OnSelendokRebuilds()
@@ -599,6 +638,24 @@ void BuildList::OnDblclkBuildList()
 		if (pBI == nullptr) return;
 	}
 
+#ifdef RTS_HAS_QT
+	{
+		char qtName[256];
+		char qtScript[256];
+		int qtHealth = 0;
+		int qtUnsellable = 0;
+		if (WBQtBaseBuildProps_Run(::AfxGetMainWnd()->GetSafeHwnd(), pBI->getBuildingName().str(), pBI->getScript().str(),
+				pBI->getHealth(), pBI->getUnsellable() ? 1 : 0,
+				qtName, sizeof(qtName), qtScript, sizeof(qtScript), &qtHealth, &qtUnsellable) != 0)
+		{
+			pBI->setBuildingName(AsciiString(qtName));
+			pBI->setScript(AsciiString(qtScript));
+			pBI->setHealth(qtHealth);
+			pBI->setUnsellable(qtUnsellable != 0);
+		}
+		return;
+	}
+#endif
 	BaseBuildProps dlg;
 	dlg.setProps(pBI->getBuildingName(), pBI->getScript(), pBI->getHealth(), pBI->getUnsellable());
 	if (dlg.DoModal() == IDOK) {
@@ -737,22 +794,31 @@ void BuildList::OnExport()
 	static FILE *theLogFile = nullptr;
 	Bool open = false;
 	try {
-		char buffer[_MAX_PATH];
-		::GetModuleFileName(nullptr, buffer, sizeof(buffer));
-		if (char* pEnd = strrchr(buffer, '\\'))
-		{
-			*(pEnd + 1) = 0;
-		}
+		CFileDialog dlg(FALSE, _T("ini"), _T("BuildList.ini"), OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+			_T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
 
-		SidesInfo* pSide = TheSidesList->getSideInfo(m_curSide);
-		Dict* d = TheSidesList->getSideInfo(m_curSide)->getDict();
+		// Default file name suggestion based on current side/player
+		SidesInfo *pSide = TheSidesList->getSideInfo(m_curSide); 
+		if (!pSide) return;
+		Dict *d = pSide->getDict();
+		if (!d) return;
+
 		AsciiString name = d->getAsciiString(TheKey_playerName);
-		strlcat(buffer, name.str(), ARRAY_SIZE(buffer));
-		strlcat(buffer, "_BuildList.ini", ARRAY_SIZE(buffer));
+		CString suggested;
+		suggested.Format(_T("%s_BuildList.ini"), name.str());
+		dlg.m_ofn.lpstrFile = suggested.GetBuffer(MAX_PATH);
 
-		theLogFile = fopen(buffer, "w");
-		if (theLogFile == nullptr)
+		if (dlg.DoModal() != IDOK)
+			return; // User cancelled
+
+		suggested.ReleaseBuffer();
+
+		CString filePath = dlg.GetPathName();
+		theLogFile = fopen(filePath, "w");
+		if (theLogFile == NULL)
 			throw;
+
+		open = true;
 
 		AsciiString tmplname = d->getAsciiString(TheKey_playerFaction);
 		const PlayerTemplate* pt = ThePlayerTemplateStore->findPlayerTemplate(NAMEKEY(tmplname));
@@ -760,8 +826,6 @@ void BuildList::OnExport()
 
 		fprintf(theLogFile, ";Skirmish AI Build List\n");
 		fprintf(theLogFile, "SkirmishBuildList %s\n", pt->getSide().str());
-
-		open = true;
 
 		BuildListInfo *pBuildInfo = pSide->getBuildList();
 		while (pBuildInfo) {
@@ -785,5 +849,640 @@ void BuildList::OnExport()
 			fclose(theLogFile);
 		}
 	}
-
 }
+
+void BuildList::OnImport() 
+{
+	CFileDialog dlg(TRUE, _T("ini"), _T("BuildList.ini"), OFN_HIDEREADONLY | OFN_FILEMUSTEXIST,
+		_T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
+
+	if (dlg.DoModal() != IDOK)
+		return; // User cancelled
+
+	CString filePath = dlg.GetPathName();
+	FILE* file = fopen(filePath, "r");
+	if (file == NULL) {
+		AfxMessageBox(_T("Failed to open file for import."));
+		return;
+	}
+
+	try {
+		// Create a copy of the sides list for undo
+		SidesList sides;
+		sides = *TheSidesList;
+		SidesInfo *pSide = sides.getSideInfo(m_curSide);
+		
+		if (!pSide) {
+			fclose(file);
+			AfxMessageBox(_T("No valid side selected."));
+			return;
+		}
+
+		// Clear existing build list for this side
+		BuildListInfo *pBuild = pSide->getBuildList();
+		while (pBuild) {
+			BuildListInfo *pNext = pBuild->getNext();
+			pSide->removeFromBuildList(pBuild);
+			pBuild = pNext;
+		}
+
+		char line[512];
+		BuildListInfo *currentBuild = NULL;
+		bool inStructure = false;
+		int importedCount = 0;
+
+		while (fgets(line, sizeof(line), file)) {
+			// Trim whitespace
+			char *p = line;
+			while (*p && isspace(*p)) p++;
+			
+			// Skip comments and empty lines
+			if (*p == ';' || *p == '\0' || *p == '\n')
+				continue;
+
+			// Check for Structure start
+			if (strstr(p, "Structure ") == p) {
+				inStructure = true;
+				currentBuild = newInstance(BuildListInfo);
+				
+				// Extract template name
+				char *nameStart = p + 10; // strlen("Structure ")
+				char *nameEnd = strchr(nameStart, '\n');
+				if (nameEnd) *nameEnd = '\0';
+				
+				// Trim trailing whitespace
+				char *end = nameStart + strlen(nameStart) - 1;
+				while (end > nameStart && isspace(*end)) *end-- = '\0';
+				
+				currentBuild->setTemplateName(AsciiString(nameStart));
+				
+				// Set defaults
+				currentBuild->setAngle(0.0f);
+				Coord3D defaultLoc;
+				defaultLoc.set(0.0f, 0.0f, 0.0f);
+				currentBuild->setLocation(defaultLoc);
+				currentBuild->setNumRebuilds(0);
+				currentBuild->setInitiallyBuilt(false);
+				continue;
+			}
+
+			// Check for Structure end
+			if (strstr(p, "END") == p && inStructure) {
+				if (currentBuild) {
+					pSide->addToBuildList(currentBuild, 1000);
+					importedCount++;
+					currentBuild = NULL;
+				}
+				inStructure = false;
+				continue;
+			}
+
+			// Parse structure properties
+			if (inStructure && currentBuild) {
+				if (strstr(p, "Name =") || strstr(p, "Name=")) {
+					char *valueStart = strchr(p, '=') + 1;
+					while (*valueStart && isspace(*valueStart)) valueStart++;
+					char *valueEnd = strchr(valueStart, '\n');
+					if (valueEnd) *valueEnd = '\0';
+					currentBuild->setBuildingName(AsciiString(valueStart));
+				}
+				else if (strstr(p, "Location =") || strstr(p, "Location=")) {
+					float x = 0, y = 0;
+					if (sscanf(p, "%*[^X]X:%f Y:%f", &x, &y) == 2) {
+						Coord3D loc;
+						loc.set(x, y, 0.0f);
+						currentBuild->setLocation(loc);
+					}
+				}
+				else if (strstr(p, "Rebuilds =") || strstr(p, "Rebuilds=")) {
+					int rebuilds = 0;
+					if (sscanf(p, "%*[^=]=%d", &rebuilds) == 1) {
+						currentBuild->setNumRebuilds(rebuilds);
+					}
+				}
+				else if (strstr(p, "Angle =") || strstr(p, "Angle=")) {
+					float angleDeg = 0;
+					if (sscanf(p, "%*[^=]=%f", &angleDeg) == 1) {
+						currentBuild->setAngle(angleDeg * PI / 180);
+					}
+				}
+				else if (strstr(p, "InitiallyBuilt =") || strstr(p, "InitiallyBuilt=")) {
+					char *valueStart = strchr(p, '=') + 1;
+					while (*valueStart && isspace(*valueStart)) valueStart++;
+					bool isBuilt = (strstr(valueStart, "Yes") != NULL || strstr(valueStart, "yes") != NULL);
+					currentBuild->setInitiallyBuilt(isBuilt);
+				}
+			}
+		}
+
+		fclose(file);
+
+		// Add to undo stack and refresh UI
+		CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+		SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
+		pDoc->AddAndDoUndoable(pUndo);
+		REF_PTR_RELEASE(pUndo);
+
+		updateCurSide();
+
+		CString msg;
+		msg.Format(_T("Successfully imported %d buildings."), importedCount);
+		AfxMessageBox(msg);
+
+	} catch (...) {
+		fclose(file);
+		AfxMessageBox(_T("Error occurred during import."));
+	}
+}
+
+#ifdef RTS_HAS_QT
+//----------------------------------------------------------------------------------------
+// Qt front-end support. The MFC BuildList stays created + hidden (m_staticThis intact), so
+// BuildListTool::addBuilding / setSelectedBuildList / BuildList::update all keep driving it.
+// The Qt panel reads state + fires commands through these statics; structural commands set
+// the hidden MFC listbox selection then call the real handler (which builds the undoable).
+//----------------------------------------------------------------------------------------
+namespace {
+	// Walk to the BuildListInfo at index within the current side (NULL if out of range).
+	BuildListInfo *qtBuildAt(int curSide, int idx)
+	{
+		if (idx < 0 || curSide < 0 || curSide >= TheSidesList->getNumSides())
+		{
+			return NULL;
+		}
+		BuildListInfo *pBuild = TheSidesList->getSideInfo(curSide)->getBuildList();
+		int count = idx;
+		while (count > 0 && pBuild != NULL)
+		{
+			pBuild = pBuild->getNext();
+			count--;
+		}
+		return pBuild;
+	}
+	void qtCopyStr(char *out, int cap, const char *src)
+	{
+		if (out == NULL || cap <= 0) { return; }
+		if (src == NULL) { out[0] = 0; return; }
+		strncpy(out, src, cap - 1);
+		out[cap - 1] = 0;
+	}
+}
+
+int BuildList::qtGetSideCount(void)
+{
+	return TheSidesList ? TheSidesList->getNumSides() : 0;
+}
+
+int BuildList::qtGetSideName(int i, char *out, int cap)
+{
+	if (i < 0 || i >= TheSidesList->getNumSides()) { return 0; }
+	Dict *dd = TheSidesList->getSideInfo(i)->getDict();
+	AsciiString name = dd->getAsciiString(TheKey_playerName);
+	if (name.isEmpty())
+	{
+		qtCopyStr(out, cap, "(neutral player, cannot be edited)");
+	}
+	else
+	{
+		// == loadSides: the internal name alone doesn't say WHICH player it is (every AI
+		// slot is "TheEnemy"-ish), so show the display name with it.
+		UnicodeString uni = dd->getUnicodeString(TheKey_playerDisplayName);
+		AsciiString fmt;
+		fmt.format("%s=\"%ls\"", name.str(), uni.str());
+		qtCopyStr(out, cap, fmt.str());
+	}
+	return 1;
+}
+
+int  BuildList::qtGetCurSide(void) { return m_staticThis ? m_staticThis->m_curSide : 0; }
+
+void BuildList::qtSetCurSide(int i)
+{
+	if (m_staticThis == NULL) { return; }
+	if (i < 0 || i >= TheSidesList->getNumSides()) { return; }
+	m_staticThis->m_curSide = i;
+	m_staticThis->updateCurSide();
+}
+
+int BuildList::qtGetBuildCount(void)
+{
+	int side = qtGetCurSide();
+	if (side < 0 || side >= TheSidesList->getNumSides()) { return 0; }
+	int n = 0;
+	for (BuildListInfo *p = TheSidesList->getSideInfo(side)->getBuildList(); p; p = p->getNext())
+	{
+		n++;
+	}
+	return n;
+}
+
+int BuildList::qtGetBuildName(int i, char *out, int cap)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), i);
+	if (p == NULL) { return 0; }
+	qtCopyStr(out, cap, p->getTemplateName().str());
+	return 1;
+}
+
+//----------------------------------------------------------------------------------------
+// Missing build-list entries.
+//
+// A build list entry stores a template NAME; nothing validates it on load, so an entry whose
+// template is gone just sits in the list looking like any other. These flag those entries for
+// the panel and apply the shared name-matcher over them, the same pass the map objects, the
+// scripts and the team templates already have.
+//----------------------------------------------------------------------------------------
+namespace {
+	// An entry is missing when its name names no template. An EMPTY name is not "missing" --
+	// there is nothing to match it to and it was never a real entry.
+	Bool qtBuildIsMissing(BuildListInfo *p)
+	{
+		if (p == NULL)
+		{
+			return false;
+		}
+		AsciiString name = p->getTemplateName();
+		if (name.isEmpty())
+		{
+			return false;
+		}
+		return TheThingFactory->findTemplate(name) == NULL;
+	}
+}
+
+int BuildList::qtGetBuildMissing(int i)
+{
+	return qtBuildIsMissing(qtBuildAt(qtGetCurSide(), i)) ? 1 : 0;
+}
+
+int BuildList::qtHasMissingBuildings(void)
+{
+	if (TheSidesList == NULL)
+	{
+		return 0;
+	}
+	for (Int s = 0; s < TheSidesList->getNumSides(); s++)
+	{
+		for (BuildListInfo *p = TheSidesList->getSideInfo(s)->getBuildList(); p; p = p->getNext())
+		{
+			if (qtBuildIsMissing(p))
+			{
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+int BuildList::qtReplaceBuildingName(const char *from, const char *to)
+{
+	if (TheSidesList == NULL || from == NULL || to == NULL || from[0] == 0)
+	{
+		return 0;
+	}
+	const AsciiString wanted(from);
+	const AsciiString replacement(to);
+	if (wanted == replacement)
+	{
+		return 0;
+	}
+
+	// Mutate a COPY and commit it as one undoable (== addBuilding / the reorder handlers): the
+	// live TheSidesList is only replaced when the undoable is applied.
+	SidesList sides;
+	sides = *TheSidesList;
+
+	int hits = 0;
+	for (Int s = 0; s < sides.getNumSides(); s++)
+	{
+		for (BuildListInfo *p = sides.getSideInfo(s)->getBuildList(); p; p = p->getNext())
+		{
+			if (p->getTemplateName() == wanted)
+			{
+				// Only the name changes -- location, angle, rebuilds, already-built and the rest
+				// of the entry are left exactly as they were.
+				p->setTemplateName(replacement);
+				++hits;
+			}
+		}
+	}
+	if (hits == 0)
+	{
+		return 0;
+	}
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc != NULL)
+	{
+		SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
+		pDoc->AddAndDoUndoable(pUndo);
+		REF_PTR_RELEASE(pUndo);		// belongs to pDoc now
+	}
+	if (m_staticThis != NULL)
+	{
+		m_staticThis->updateCurSide();
+	}
+	return hits;
+}
+
+// Re-point a SINGLE entry, unlike qtReplaceBuildingName which rewrites every entry sharing the
+// name. Two entries can legitimately use the same building (two war factories, say), and swapping
+// the one the user selected must not disturb the other.
+int BuildList::qtReplaceBuildingAt(int side, int idx, const char *to)
+{
+	if (TheSidesList == NULL || to == NULL || to[0] == 0 || side < 0 || idx < 0)
+	{
+		return 0;
+	}
+	if (side >= TheSidesList->getNumSides())
+	{
+		return 0;
+	}
+	const AsciiString replacement(to);
+
+	// Mutate a COPY and commit it as one undoable (== qtReplaceBuildingName / addBuilding): the
+	// live TheSidesList is only replaced when the undoable is applied.
+	SidesList sides;
+	sides = *TheSidesList;
+
+	BuildListInfo *p = sides.getSideInfo(side)->getBuildList();
+	for (int count = idx; count > 0 && p != NULL; count--)
+	{
+		p = p->getNext();
+	}
+	if (p == NULL || p->getTemplateName() == replacement)
+	{
+		return 0;
+	}
+	// Only the name changes -- location, angle, rebuilds, already-built and the rest of the entry
+	// are left exactly as they were.
+	p->setTemplateName(replacement);
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc != NULL)
+	{
+		SidesListUndoable *pUndo = new SidesListUndoable(sides, pDoc);
+		pDoc->AddAndDoUndoable(pUndo);
+		REF_PTR_RELEASE(pUndo);		// belongs to pDoc now
+	}
+	if (m_staticThis != NULL)
+	{
+		m_staticThis->updateCurSide();
+	}
+	return 1;
+}
+
+int BuildList::qtReplaceMissingBuildings(void)
+{
+#ifndef RTS_HAS_QT
+	return 0;	// the matcher and the report are Qt-side
+#else
+	if (TheSidesList == NULL)
+	{
+		return 0;
+	}
+
+	// The distinct unresolvable names, across every side.
+	std::vector<AsciiString> missing;
+	for (Int s = 0; s < TheSidesList->getNumSides(); s++)
+	{
+		for (BuildListInfo *p = TheSidesList->getSideInfo(s)->getBuildList(); p; p = p->getNext())
+		{
+			if (!qtBuildIsMissing(p))
+			{
+				continue;
+			}
+			AsciiString name = p->getTemplateName();
+			Bool seen = false;
+			for (size_t k = 0; k < missing.size(); k++)
+			{
+				if (missing[k] == name)
+				{
+					seen = true;
+					break;
+				}
+			}
+			if (!seen)
+			{
+				missing.push_back(name);
+			}
+		}
+	}
+	if (missing.empty())
+	{
+		return 0;
+	}
+
+	// Match every name before touching anything, so an all-unmatched pass leaves the build lists
+	// and the undo stack alone (== the script and team passes).
+	// Constrain the match to the same type the ADD path allows (BuildListTool: ES_STRUCTURE).
+	// Without it the name is matched against every editor sorting, so a missing building could be
+	// "fixed" to a system marker or a piece of scenery that happens to have a closer name -- a
+	// replacement the user could never have chosen through the tool itself.
+	static const int allowable[1] = { ES_STRUCTURE };
+	std::vector<AsciiString> picks;
+	picks.resize(missing.size());
+	for (size_t i = 0; i < missing.size(); i++)
+	{
+		char picked[256];
+		picked[0] = 0;
+		if (WBQtReplaceUnit_BestMatch(missing[i].str(), allowable, 1, 0, picked, sizeof(picked)) != 0)
+		{
+			picks[i] = picked;
+		}
+	}
+
+	WBQtReplaceReport_Begin(WBQT_REPLACE_SOURCE_BUILDLIST);
+	for (size_t i = 0; i < missing.size(); i++)
+	{
+		int hits = 0;
+		if (!picks[i].isEmpty())
+		{
+			hits = qtReplaceBuildingName(missing[i].str(), picks[i].str());
+		}
+		else
+		{
+			// Unmatched names still get a row (with their entry count) so they can be fixed by
+			// hand rather than staying silently broken.
+			hits = 0;
+			for (Int s = 0; s < TheSidesList->getNumSides(); s++)
+			{
+				for (BuildListInfo *p = TheSidesList->getSideInfo(s)->getBuildList(); p; p = p->getNext())
+				{
+					if (p->getTemplateName() == missing[i])
+					{
+						++hits;
+					}
+				}
+			}
+		}
+		WBQtReplaceReport_Add(missing[i].str(), picks[i].str(), hits);
+	}
+	return (int)missing.size();
+#endif
+}
+
+int  BuildList::qtGetCurBuild(void) { return m_staticThis ? m_staticThis->m_curBuildList : -1; }
+
+void BuildList::qtSetCurBuild(int i)
+{
+	if (m_staticThis == NULL) { return; }
+	m_staticThis->m_curBuildList = i;
+	CListBox *pList = (CListBox *)m_staticThis->GetDlgItem(IDC_BUILD_LIST);
+	if (pList != NULL) { pList->SetCurSel(i); }
+	m_staticThis->OnSelchangeBuildList();
+}
+
+// Re-point the current building WITHOUT the OnSelchangeBuildList side effects. That handler ends
+// in WBQtBuildList_PushRefresh(), which repopulates the Qt panel from the stored BuildListInfo --
+// so calling it on the way IN to an attribute write (angle / Z / already-built / rebuilds) reset
+// the spin box to the old value before the new one was ever stored, and the edit appeared to be
+// ignored. Selection changes still go through qtSetCurBuild, which does want the refresh.
+void BuildList::qtSetCurBuildNoRefresh(int i)
+{
+	if (m_staticThis == NULL) { return; }
+	m_staticThis->m_curBuildList = i;
+	CListBox *pList = (CListBox *)m_staticThis->GetDlgItem(IDC_BUILD_LIST);
+	if (pList != NULL) { pList->SetCurSel(i); }
+}
+
+int BuildList::qtHasCurBuild(void)
+{
+	return (qtBuildAt(qtGetCurSide(), qtGetCurBuild()) != NULL) ? 1 : 0;
+}
+
+double BuildList::qtGetAngle(void)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	return (p != NULL) ? (double)(p->getAngle() * 180 / PI) : 0.0;
+}
+
+double BuildList::qtGetZ(void)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	return (p != NULL) ? (double)p->getLocation()->z : 0.0;
+}
+
+int BuildList::qtGetAlreadyBuilt(void)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	return (p != NULL && p->isInitiallyBuilt()) ? 1 : 0;
+}
+
+int BuildList::qtGetRebuilds(void)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p == NULL) { return 0; }
+	UnsignedInt nr = p->getNumRebuilds();
+	return (nr == BuildListInfo::UNLIMITED_REBUILDS) ? -1 : (int)nr;
+}
+
+// == OnChangeAngle/OnChangeZOffset's tail: redraw the placed building in the 3D view so an
+// angle/Z edit is visible immediately (the Qt setters dropped this, so the ghost never moved).
+static void qtInvalBuildItem(BuildListInfo *p)
+{
+	if (p == NULL)
+	{
+		return;
+	}
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	WbView3d *p3View = (pDoc != NULL) ? pDoc->GetActive3DView() : NULL;
+	if (p3View != NULL)
+	{
+		p3View->invalBuildListItemInView(p);
+	}
+}
+
+//=============================================================================
+// BuildList::qtGoToCurBuild
+//=============================================================================
+/** Centres the 3D view on the selected build list entry.
+
+	A build list entry is a BuildListInfo rather than a map object, but it carries the
+	position the building will be placed at, which is what the view needs. An entry
+	added from the palette but never positioned sits at the origin -- skip those
+	rather than throwing the camera into the corner of the map.
+*/
+//=============================================================================
+void BuildList::qtGoToCurBuild(void)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p == NULL)
+	{
+		return;
+	}
+
+	const Coord3D *pos = p->getLocation();
+	if (pos == NULL)
+	{
+		return;
+	}
+	if (pos->x == 0.0f && pos->y == 0.0f)
+	{
+		return;	// never placed on the map
+	}
+
+	WbView3d *p3View = CWorldBuilderDoc::GetActive3DView();
+	if (p3View != NULL)
+	{
+		p3View->setCenterInView(pos->x / MAP_XY_FACTOR, pos->y / MAP_XY_FACTOR);
+		p3View->Invalidate(false);
+	}
+}
+
+void BuildList::qtSetAngle(double deg)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p != NULL)
+	{
+		p->setAngle((Real)(deg * PI / 180));
+		qtInvalBuildItem(p);
+	}
+}
+
+void BuildList::qtSetZ(double z)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p != NULL)
+	{
+		Coord3D loc = *p->getLocation();
+		loc.z = (Real)z;
+		p->setLocation(loc);
+		qtInvalBuildItem(p);
+	}
+}
+
+void BuildList::qtSetAlreadyBuilt(int on)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p != NULL) { p->setInitiallyBuilt(on != 0); }
+}
+
+void BuildList::qtSetRebuilds(int nr)
+{
+	BuildListInfo *p = qtBuildAt(qtGetCurSide(), qtGetCurBuild());
+	if (p == NULL) { return; }
+	if (nr < 0) { p->setNumRebuilds(BuildListInfo::UNLIMITED_REBUILDS); }
+	else { p->setNumRebuilds((UnsignedInt)nr); }
+}
+
+int  BuildList::qtGetPowerPercent(void) { return s_qtPowerPercent; }
+
+void BuildList::qtMoveUp(void)        { if (m_staticThis) m_staticThis->OnMoveUp(); }
+void BuildList::qtMoveDown(void)      { if (m_staticThis) m_staticThis->OnMoveDown(); }
+void BuildList::qtAddBuilding(void)   { if (m_staticThis) m_staticThis->OnAddBuilding(); }
+void BuildList::qtDeleteBuilding(void){ if (m_staticThis) m_staticThis->OnDeleteBuilding(); }
+void BuildList::qtExport(void)        { if (m_staticThis) m_staticThis->OnExport(); }
+void BuildList::qtImport(void)        { if (m_staticThis) m_staticThis->OnImport(); }
+void BuildList::qtEditProps(void)     { if (m_staticThis) m_staticThis->OnDblclkBuildList(); }
+
+int BuildList::qtGetForcedShow(void)
+{
+	return ::AfxGetApp()->GetProfileInt(BUILDLIST_OPTION_PANEL, "ForceShowBuildListObjects", 0);
+}
+
+void BuildList::qtSetForcedShow(int on)
+{
+	::AfxGetApp()->WriteProfileInt(BUILDLIST_OPTION_PANEL, "ForceShowBuildListObjects", on ? 1 : 0);
+}
+#endif

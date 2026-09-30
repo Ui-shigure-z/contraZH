@@ -21,6 +21,10 @@
 // Class to encapsulate height map.
 // Author: Steven Johnson, Aug 2001
 
+
+#define OBJECT_OPTION_PANEL "ObjectOptionPanel"
+#define BUILDLIST_OPTION_PANEL "BuildListOptionPanel"
+
 #pragma once
 
 // wbview3d.h : header file
@@ -33,7 +37,11 @@
 #include "Common/GameType.h"
 #include "Common/GlobalData.h"
 #include "Common/ModelState.h"
+#include "Common/GameAudio.h"		// AudioHandle, for the Listen To Map handle map
 #include "WW3D2/dx8wrapper.h"
+#include "WBFontAtlas.h"
+
+#include <map>
 
 //#include "GameLogic/Module/BodyModule.h" -- Yikes... not necessary to include this! (KM)
 enum BodyDamageType CPP_11(: Int); //Ahhhh much better!
@@ -51,10 +59,22 @@ class DrawObject;
 class CWorldBuilderView;
 class BuildListInfo;
 class TransRenderObj;
+class W3DModelDrawModuleData;
 struct ID3DXFont;
+struct ID3DXSprite;
 
 /////////////////////////////////////////////////////////////////////////////
 // WbView3d view
+
+// View > Listen To Map: which of the map's ambient sounds to actually play. Mirrors the
+// original WorldBuilder's four-way radio group.
+enum
+{
+	WB_LISTEN_NONE = 0,			///< don't play any ambient sounds (default)
+	WB_LISTEN_ENABLED,			///< only sounds whose object has the ambient-sound "enabled" box ticked
+	WB_LISTEN_PERMANENT,		///< only permanent sounds (looping with no loop count -- they never stop on their own)
+	WB_LISTEN_ALL				///< every ambient sound on the map
+};
 
 class WbView3d : public WbView, public DX8_CleanupHook
 {
@@ -99,6 +119,10 @@ protected:
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnViewShowwireframe();
 	afx_msg void OnUpdateViewShowwireframe(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowfullwireframe();
+	afx_msg void OnUpdateViewShowfullwireframe(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowselectionoverlay();
+	afx_msg void OnUpdateViewShowselectionoverlay(CCmdUI* pCmdUI);
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg void OnViewShowentire3dmap();
 	afx_msg void OnUpdateViewShowentire3dmap(CCmdUI* pCmdUI);
@@ -117,8 +141,19 @@ protected:
 	afx_msg void OnUpdateViewShowExtraBlends(CCmdUI* pCmdUI);
 	afx_msg void OnEditShadows();
 	afx_msg void OnEditMapSettings();
+	afx_msg void OnClearAllExtraBoundaries();
 	afx_msg void OnViewShowimpassableareas();
 	afx_msg void OnUpdateViewShowimpassableareas(CCmdUI* pCmdUI);
+	afx_msg void OnDebugPathfindCliff();
+	afx_msg void OnUpdateDebugPathfindCliff(CCmdUI* pCmdUI);
+	afx_msg void OnDebugPathfindWater();
+	afx_msg void OnUpdateDebugPathfindWater(CCmdUI* pCmdUI);
+	afx_msg void OnDebugPathfindObjects();
+	afx_msg void OnUpdateDebugPathfindObjects(CCmdUI* pCmdUI);
+	afx_msg void OnDebugPathfindPassability();
+	afx_msg void OnUpdateDebugPathfindPassability(CCmdUI* pCmdUI);
+	/// Rebuilds the terrain mesh so a pathfind overlay toggle takes effect.
+	void refreshPathfindOverlay(void);
 	afx_msg void OnImpassableAreaOptions();
 	afx_msg void OnViewPartialmapsize96x96();
 	afx_msg void OnUpdateViewPartialmapsize96x96(CCmdUI* pCmdUI);
@@ -130,6 +165,26 @@ protected:
 	afx_msg void OnUpdateViewPartialmapsize128x128(CCmdUI* pCmdUI);
 	afx_msg void OnViewShowModels();
 	afx_msg void OnUpdateViewShowModels(CCmdUI* pCmdUI);
+	afx_msg void OnViewAnimateModels();
+	afx_msg void OnUpdateViewAnimateModels(CCmdUI* pCmdUI);
+	afx_msg void OnViewBoneNames();
+	afx_msg void OnUpdateViewBoneNames(CCmdUI* pCmdUI);
+	afx_msg void OnViewLogBoneResolution();
+	afx_msg void OnUpdateViewLogBoneResolution(CCmdUI* pCmdUI);
+	afx_msg void OnViewListenEnabled();
+	afx_msg void OnUpdateViewListenEnabled(CCmdUI* pCmdUI);
+	afx_msg void OnViewListenPermanent();
+	afx_msg void OnUpdateViewListenPermanent(CCmdUI* pCmdUI);
+	afx_msg void OnViewListenAll();
+	afx_msg void OnUpdateViewListenAll(CCmdUI* pCmdUI);
+	afx_msg void OnViewListenNone();
+	afx_msg void OnUpdateViewListenNone(CCmdUI* pCmdUI);
+	// Toolbar play/pause across the listen modes: anything audible pauses to NONE, silence
+	// resumes to ALL.
+	afx_msg void OnViewListenToggle();
+	afx_msg void OnUpdateViewListenToggle(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowPlayingSounds();
+	afx_msg void OnUpdateViewShowPlayingSounds(CCmdUI* pCmdUI);
 	afx_msg void OnViewBoundingBoxes();
 	afx_msg void OnUpdateViewBoundingBoxes(CCmdUI* pCmdUI);
 	afx_msg void OnViewSightRanges();
@@ -142,14 +197,132 @@ protected:
 	afx_msg void OnUpdateShowLetterbox(CCmdUI* pCmdUI);
 	afx_msg void OnViewLayersList();
 	afx_msg void OnUpdateViewLayersList(CCmdUI* pCmdUI);
+	afx_msg void OnViewMinimap();
+	afx_msg void OnUpdateViewMinimap(CCmdUI* pCmdUI);
+#ifdef RTS_HAS_QT
+public:
+	// Startup restore: reopen the Qt Layers / Minimap tool windows if they were open last
+	// session (== the old MFC OnCreate ShowWindow-from-profile, deferred to InitInstance's
+	// tail where the Qt owner window exists). Open-only, no toggle.
+	void qtRestoreStartupWindows();
+protected:
+#endif
+	afx_msg void OnMinimapShowObjects();
+	afx_msg void OnUpdateMinimapShowObjects(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapShowRoads();
+	afx_msg void OnUpdateMinimapShowRoads(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapShowBorder();
+	afx_msg void OnUpdateMinimapShowBorder(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapFullExtent();
+	afx_msg void OnUpdateMinimapFullExtent(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapCullObjects();
+	afx_msg void OnUpdateMinimapCullObjects(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapSnap45();
+	afx_msg void OnUpdateMinimapSnap45(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapRefreshOff();
+	afx_msg void OnMinimapRefresh16();
+	afx_msg void OnMinimapRefresh33();
+	afx_msg void OnMinimapRefresh100();
+	afx_msg void OnMinimapRefresh250();
+	afx_msg void OnMinimapRefresh1000();
+	afx_msg void OnUpdateMinimapRefreshOff(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRefresh16(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRefresh33(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRefresh100(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRefresh250(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRefresh1000(CCmdUI* pCmdUI);
+	afx_msg void OnMinimapRes256();
+	afx_msg void OnMinimapRes512();
+	afx_msg void OnMinimapRes1024();
+	afx_msg void OnMinimapRes2048();
+	afx_msg void OnUpdateMinimapRes256(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRes512(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRes1024(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMinimapRes2048(CCmdUI* pCmdUI);
 	afx_msg void OnViewGarrisoned();
 	afx_msg void OnUpdateViewGarrisoned(CCmdUI* pCmdUI);
 	afx_msg void OnViewShowMapBoundaries();
 	afx_msg void OnUpdateViewShowMapBoundaries(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowWaveLines();
+	afx_msg void OnUpdateViewShowWaveLines(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowRulerGrid();
+	afx_msg void OnUpdateViewShowRulerGrid(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowTracingOverlay();
+	afx_msg void OnUpdateViewShowTracingOverlay(CCmdUI* pCmdUI);
 	afx_msg void OnViewShowAmbientSounds();
 	afx_msg void OnUpdateViewShowAmbientSounds(CCmdUI* pCmdUI);
-  afx_msg void OnViewShowSoundCircles();
-  afx_msg void OnUpdateViewShowSoundCircles(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowSoundCircles();
+	afx_msg void OnUpdateViewShowSoundCircles(CCmdUI* pCmdUI);
+	afx_msg void OnWindowLODMode1();
+	afx_msg void OnUpdateOnWindowLODMode1(CCmdUI* pCmdUI);
+	afx_msg void OnWindowLODMode2();
+	afx_msg void OnUpdateOnWindowLODMode2(CCmdUI* pCmdUI);
+	afx_msg void OnWindowLODMode3();
+	afx_msg void OnUpdateOnWindowLODMode3(CCmdUI* pCmdUI);
+	afx_msg void OnMSAANone();
+	afx_msg void OnMSAA2X();
+	afx_msg void OnMSAA4X();
+	afx_msg void OnMSAA8X();
+	afx_msg void OnUpdateMSAANone(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMSAA2X(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMSAA4X(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateMSAA8X(CCmdUI* pCmdUI);
+	afx_msg void OnResetDevice();
+	afx_msg void OnTexFilterDefault();
+	afx_msg void OnTexFilterAniso16X();
+	afx_msg void OnUpdateTexFilterDefault(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateTexFilterAniso16X(CCmdUI* pCmdUI);
+	afx_msg void OnFxShadowMap();
+	afx_msg void OnUpdateFxShadowMap(CCmdUI* pCmdUI);
+	afx_msg void OnFxBloom();
+	afx_msg void OnUpdateFxBloom(CCmdUI* pCmdUI);
+	afx_msg void OnFxEffectShaders();
+	afx_msg void OnUpdateFxEffectShaders(CCmdUI* pCmdUI);
+	afx_msg void OnFxHQSky();
+	afx_msg void OnUpdateFxHQSky(CCmdUI* pCmdUI);
+	afx_msg void OnFxNormalMaps();
+	afx_msg void OnUpdateFxNormalMaps(CCmdUI* pCmdUI);
+	afx_msg void OnFxHeightBlend();
+	afx_msg void OnUpdateFxHeightBlend(CCmdUI* pCmdUI);
+	afx_msg void OnFxSpecular();
+	afx_msg void OnUpdateFxSpecular(CCmdUI* pCmdUI);
+	afx_msg void OnTextShadow();
+	afx_msg void OnUpdateTextShadow(CCmdUI* pCmdUI);
+	afx_msg void OnTextOutline();
+	afx_msg void OnUpdateTextOutline(CCmdUI* pCmdUI);
+	afx_msg void OnTextAntialias();
+	afx_msg void OnUpdateTextAntialias(CCmdUI* pCmdUI);
+	afx_msg void OnTextAnchorDefault();
+	afx_msg void OnUpdateTextAnchorDefault(CCmdUI* pCmdUI);
+	afx_msg void OnTextAnchorNew();
+	afx_msg void OnUpdateTextAnchorNew(CCmdUI* pCmdUI);
+	afx_msg void OnTextRendererOld();
+	afx_msg void OnUpdateTextRendererOld(CCmdUI* pCmdUI);
+	afx_msg void OnTextRendererNew();
+	afx_msg void OnUpdateTextRendererNew(CCmdUI* pCmdUI);
+	afx_msg void OnTextRendererAtlas();
+	afx_msg void OnUpdateTextRendererAtlas(CCmdUI* pCmdUI);
+	afx_msg void OnTextLabelCullOff();
+	afx_msg void OnFpsCap(UINT id);
+	afx_msg void OnUpdateFpsCap(CCmdUI* pCmdUI);
+	afx_msg void OnUpdateTextLabelCullOff(CCmdUI* pCmdUI);
+	afx_msg void OnTextLabelCullNear();
+	afx_msg void OnUpdateTextLabelCullNear(CCmdUI* pCmdUI);
+	afx_msg void OnTextLabelCullMedium();
+	afx_msg void OnUpdateTextLabelCullMedium(CCmdUI* pCmdUI);
+	afx_msg void OnTextLabelCullFar();
+	afx_msg void OnUpdateTextLabelCullFar(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowSubDraw();
+	afx_msg void OnUpdateViewShowSubDraw(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowFullModel();
+	afx_msg void OnUpdateViewShowFullModel(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowBaseRadius();
+	afx_msg void OnUpdateViewShowBaseRadius(CCmdUI* pCmdUI);
+	afx_msg void OnRefreshSceneObjects();
+
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnKillFocus(CWnd* pNewWnd);
+
   //}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -162,6 +335,7 @@ private:
 	SkeletonSceneClass			*m_transparentObjectsScene;
 	CameraClass							*m_camera;
 	WBHeightMap							*m_heightMapRenderObj;
+	Bool m_validTerrain;
 
 	RenderObjClass					*m_objectToolTrackingObj;
 	Bool										m_showObjToolTrackingObj;
@@ -173,12 +347,17 @@ private:
 	CPoint									m_actualWinSize;
 	Real										m_theta;
 	Real										m_cameraAngle;
+	Real										m_cameraAngleRaw;						// unsnapped accumulated rotation; m_cameraAngle is snapped from this when Angle Snap Lock is on
+	Bool										m_snapCameraAngle45;					// Angle Snap Lock: constrain camera rotation to 45-degree steps
 	Real										m_FXPitch;
 	Bool										m_doPitch;
 	Real										m_actualHeightAboveGround;	// for camera tool display only
 	Vector3									m_cameraSource;							// for camera tool display only
 	Vector3									m_cameraTarget;							// for camera tool display only
+	Real										m_cameraGroundZ;						// terrain height (world Z) under the camera center; for the minimap view-box projection
+	Real										m_cameraBorderWorld;					// border size * MAP_XY_FACTOR; subtracted to put frustum corners in border-relative (object) world
 	Int											m_time;
+	LONGLONG										m_lastAnimTick;	///< QPC tick of the last animation advance, 0 before the first
 	Int											m_updateCount;
 	UINT										m_timer;
 	DrawObject							*m_drawObject;
@@ -186,9 +365,21 @@ private:
 	LayerClass							*m_layer;
 	LayerClass							*m_buildLayer;
 	IntersectionClass				*m_intersector;
+	/// Object-space bounding box per tree model name, so picking a forest doesn't create a render
+	/// object per tree per click. Depends only on the asset, so it lives for the session.
+	std::map<AsciiString, AABoxClass>	m_treeBoxCache;
 	Bool										m_showWireframe;
+	Bool										m_showFullWireframe;	///< true => render whole scene in LINE mode (no solid pass)
+	Bool										m_showSelectionOverlay;	///< true => tint selected objects with a highlight color
 	Bool										m_ww3dInited;
+#ifdef RTS_HAS_QT
+	// Set when a device reset (WW3D::Set_Device_Resolution) FAILED: Reset_Device releases
+	// every DX8 resource before attempting the reset and does NOT re-acquire them on
+	// failure, so rendering would deref freed buffers. redraw() retries while this is set.
+	Bool										m_deviceResetFailed;
+#endif
 	Bool										m_needToLoadRoads;
+	Bool										m_freeAssetsOnNextReset;	///< see resetRenderObjects
 	LightClass							*m_globalLight[MAX_GLOBAL_LIGHTS];
 	RenderObjClass						*m_lightFeedbackMesh[MAX_GLOBAL_LIGHTS];
 
@@ -203,28 +394,200 @@ private:
 	Bool										m_firstPaint;  ///< True if we haven't painted yet.
 	Bool										m_showLayersList;	///< Flag whether the layers list is visible or not.
 	Bool										m_showMapBoundaries;	///< Flag whether to show all the map boundaries or not
+	Bool										m_showWaveLines;	///< Flag whether to draw wave start->end overlay lines
 	Bool										m_showAmbientSounds;	///< Flag whether to show all the ambient sounds or not
+	Bool										m_showPlayingSounds;	///< ring the ambient sounds Listen To Map currently has audible
+	Int											m_listenMode;			///< View > Listen To Map: which ambient sounds to play (WB_LISTEN_*)
+	UnsignedInt								m_lastListenSweepTime;	///< GetTickCount of the last re-submit sweep (see startListenSounds)
+	std::map<MapObject *, AudioHandle>		m_listenHandles;		///< the live audio handle per sounding object
+	/// Draw-module models the parent render object could not adopt as sub-objects, kept per
+	/// MapObject so a move/rotate can reposition them (the rebuild path is skipped once the
+	/// object already has a render object, so they would otherwise stay where first placed).
+	/// Each holds a scene ref; cleared with the scene in resetRenderObjects.
+	struct LoosePiece
+	{
+		RenderObjClass *obj;
+		Vector3 boneOffset;		///< offset from the parent's origin when the module rides a bone
+	};
+	std::map<MapObject *, std::vector<LoosePiece> >	m_loosePieces;
+	/// Every draw module's render object, in module order, kept per MapObject so the Animation
+	/// Scrubber can re-pose them all without rebuilding (see repositionAnimationScrub).
+	///
+	/// Recorded here rather than re-derived, because WHERE a module's model ends up is a decision
+	/// the build makes and cannot be read back: a module riding a bone becomes a sub-object of the
+	/// parent's HLod when Add_Sub_Object_To_Bone takes it, and a loose piece when it doesn't. Only
+	/// the loose ones are in m_loosePieces, so walking that list alone finds the parent and little
+	/// else -- which is what left a multi-module object with one thing animating.
+	///
+	/// Borrowed pointers: the parent and the sub-objects are owned by the scene / their parent, and
+	/// the loose ones already hold a ref in m_loosePieces. Cleared with the scene in
+	/// resetRenderObjects and per object in releaseLoosePieces, so nothing here outlives its object.
+	std::map<MapObject *, std::vector<RenderObjClass *> >	m_moduleRenderObjs;
+	/// One draw module already built for the object being assembled, kept so a LATER module naming
+	/// a bone in AttachToBoneInAnotherModule can find it -- the bone may belong to any module, not
+	/// just module 0 (the game searches them all in Drawable::getPristineBonePositions).
+	struct BuiltDrawModule
+	{
+		RenderObjClass *obj;		///< this module's render object, whose HTree may hold the bone
+		Vector3 originOffset;		///< where this module itself sits relative to the parent's origin
+		/// What this module DECLARED via ExtraPublicBone. The engine caches a module's bones from
+		/// this plus TheGlobalData->m_standardPublicBones and searches only that cache, so anything
+		/// else in the model must not answer an attach lookup.
+		const std::vector<AsciiString> *publicBones;
+	};
+	/// Does this module publish boneName (ExtraPublicBone or a standard public bone)? Matches the
+	/// engine's numbered-variant convention: a declared "MESH" also publishes MESH01, MESH02...
+	static Bool modulePublishesBone(const BuiltDrawModule &mod, const char *boneName);
+	/// The condition flags obj's models were built against (damage / garrison / weather / night), so
+	/// a later pass can pick the same ModelConditionInfo the build did.
+	ModelConditionFlags buildModelConditionState(MapObject *obj, const ThingTemplate *tt);
+	/// Park one draw module's render object at `fraction` through its own animation (scrub re-pose).
+	void poseScrubbedModule(RenderObjClass *subRenderObj, const W3DModelDrawModuleData *md,
+									const ModelConditionFlags &state, Real fraction);
+	/// View > Models > Show Bone Names: one resolved AttachToBoneInAnotherModule bone, recorded
+	/// while the object is built (that is the only place the lookup happens) so drawLabels can
+	/// show WHERE a bone landed and WHICH lookup route found it.
+	struct AttachBoneLabel
+	{
+		AsciiString name;			///< the bone as named in the map.ini
+		Vector3 offset;				///< resolved offset from the parent's origin, chain included
+		Bool fromSubObject;			///< true = found via Get_Sub_Object_By_Name, false = HTree pivot
+	};
+	std::map<MapObject *, std::vector<AttachBoneLabel> >	m_attachBoneLabels;
+	Bool										m_showBoneNames;	///< View > Models > Show Bone Names
+	/// View > Models > Log Bone Resolution. Writes one line per AttachToBoneInAnotherModule lookup
+	/// to the debug log: which module answered, by which route, and the offset that came back.
+	/// OFF by default (it is per-module per-object -- thousands of lines on a full map), but kept
+	/// permanently rather than re-added ad hoc, because reading these numbers is what actually
+	/// diagnoses a misplaced piece. Three wrong theories about the dishes on
+	/// NavyStructureHeadquarters died the moment the real offsets were on screen.
+	Bool										m_logBoneResolution;
+	/// Animation Scrubber (View > Models > Animation Scrubber): pose ONE object's draw modules at a
+	/// chosen point through their animations instead of at their resting frame. Keyed by MapObject
+	/// so the rest of the map stays still -- scrubbing everything at once is noise when you are
+	/// inspecting one structure. NULL = nothing is being scrubbed.
+	///
+	/// The position is a FRACTION (0..1), not a frame: an object's modules run animations of
+	/// different lengths (CBBridgeArc_a 60 frames, NBIntCnt_AC 20, ABBtCmdHQ_N 40), so one frame
+	/// number would mean a different point in each. Each module maps the fraction onto its own
+	/// frame count, so they stay in step and all reach their end together.
+	MapObject								*m_scrubObject;
+	Real										m_scrubFraction;
+
+public:
+	/// Animation Scrubber control (see m_scrubObject). Pass obj == NULL to stop scrubbing and let
+	/// everything return to its resting pose. Rebuilds the affected object so the new frame shows.
+	void setAnimationScrub(MapObject *obj, Real fraction);
+	/// Move an ALREADY-armed object to a new point in its animations. Poses the render objects the
+	/// scene already holds instead of rebuilding it, so this is cheap enough to run on every step of
+	/// a slider drag. Returns false when obj is not the armed object (or has no render object yet),
+	/// meaning the caller must go through setAnimationScrub to arm it first.
+	Bool repositionAnimationScrub(MapObject *obj, Real fraction);
+	MapObject *getAnimationScrubObject() const { return m_scrubObject; }
+	Real getAnimationScrubFraction() const { return m_scrubFraction; }
+	/// Longest animation among obj's draw modules, in frames, and how many of its modules actually
+	/// carry one. Drives the scrubber's readout; 0 frames == nothing to scrub. Pure query -- it
+	/// takes the object explicitly rather than reading the scrub state, so asking about a selection
+	/// does not arm it (doing so recursed: arming rebuilds, the rebuild re-notifies the panel, the
+	/// panel asks again).
+	Int getObjectAnimationInfo(MapObject *obj, Int *moduleCountOut) const;
+protected:
   Bool										m_showSoundCircles;	///< Flag whether to show the minimum and maximum radii of the ambient sounds attached to the selected object
 	Bool										m_showBoundingBoxes;
 	Bool										m_showSightRanges;
 	Bool										m_showWeaponRanges;
 	Bool										m_highlightTestArt;
 	Bool										m_showLetterbox;
+	Bool										m_showRulerGrid;
+	Bool										m_showTracingOverlay; ///< Flag whether to show the tracing overlay or not
+	Bool										m_showBaseRadius; ///< Flag whether to show the base radius or not
+	Bool										m_showSubDraw; ///< Flag whether to show the sub models
+	/// Flag whether to also draw the objects a template SPAWNS at its spawn-point bones (the
+	/// Stinger Site's soldiers, and anything else using SpawnBehavior). Default OFF.
+	Bool										m_showFullModel;
+	Bool										m_animateModels; ///< Flag whether models play their animation (LOOP states + idle anims)
+	Int											m_animatedModelCount; ///< # of animations actually applied in the last scene build
+
+	Bool m_showBuildZoneFeedback;
+	Int m_lod;
+	Bool m_textShadow;
+	Bool m_textOutline;						///< 1px black outline around labels; excludes m_textShadow
+	Bool m_textAntialias;					///< grayscale antialiasing for viewport labels
+	Int  m_labelAnchorMode;					///< 0 = Default (ground), 1 = New (object center-height)
+	Int  m_labelRenderer;					///< 0 = Old (D3DX m3DFont, in-frame), 1 = New (raw GDI TextOut on the window after present, strobes; D3D8 only, the D3D9 flip model never shows it), 2 = Atlas (batched glyph quads, in-frame)
+	Int  m_fpsCap;							///< repaint cap in frames per second, 0 = uncapped
+	Bool m_fpsCapTimerSet;					///< a deferred repaint is scheduled on the cap timer
+	Bool deferPaintForFpsCap();				///< TRUE when this paint comes too soon and was rescheduled
+	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
+	void setMSAA(D3DMULTISAMPLE_TYPE type);
+	void setTextureFilter(int mode);
+	void loadFxShaderSettings();			///< FX Shaders menu: WorldBuilder.ini overrides the game's Options.ini values
+	void setEffectShaders(Bool on);			///< soft particles + flame/electric/laser/cryo particle shaders as one switch
+	void releaseD3DXFont();				///< drop m3DFont
+	void createLabelFont();					///< (re)create m3DFont honoring m_textAntialias
 
 
-	ID3DXFont*							m3DFont;
+	ID3DXFont*							m3DFont;		// in-frame label font (Old renderer mode)
+	WBFontAtlas							m_fontAtlas;	// GDI-built glyph atlas -> D3D quads
+#if defined(BUILD_WITH_D3D9)
+	WBFontAtlas							m_hudAtlas;		// D3D9 has no ID3DXFont: HUD/ruler text draws from this atlas instead
+	ID3DXSprite*						m_labelSprite;	// Old (D3DX) labels: one batch for every DrawText between Begin/End
+	Bool								m_labelSpriteOpen;	// between m_labelSprite Begin/End; fontDrawText joins the batch
+	IDirect3DTexture8*					m_labelLayer;		// Old (D3DX) labels with shadow: drawn once here, composited as shadow + text
+	Bool drawLabelsLayered();				///< Old-mode labels through m_labelLayer; FALSE when the layer is unavailable
+#endif
+	Bool hasFrameFont() const;				///< true when fontDrawText() can draw in-frame text
+	void fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color);	///< ID3DXFont on D3D8, the HUD atlas on D3D9
+
+	// --- viewport-label change-detection key --------------------------------
+	// Snapshot of everything that affects label geometry/colour. Built per frame
+	// by buildLabelKey(); used by the GDI-mode repaint coalescing below to detect
+	// "nothing changed" frames.
+	struct LabelCacheKey
+	{
+		Real camXform[12];		// camera transform (3x4) signature
+		Int  winW, winH;
+		Int  lod;
+		Bool showNames, showModels, showWaypoints, showNamesExtra, showPolygonTriggers;
+		Bool lightFeedback;
+		Int  timeOfDay;
+		Int  labelAnchorMode;	// 0 = ground, 1 = center-height
+		UnsignedInt epoch;		// bumped on object/property edits
+
+		Bool operator==(const LabelCacheKey &o) const;
+	};
+	UnsignedInt		m_labelEpoch;		// bumped whenever labels may have changed
+
+	// --- GDI-mode (Label Renderer: New) flicker coalescing -----------------
+	// Raw GDI ::TextOut on the window strobes because every repaint flips the D3D
+	// back buffer (no text) over the whole window before TextOut redraws the text.
+	// On a STATIC view we therefore skip the OnTimer repaint entirely, so the last
+	// presented frame + its GDI text persist on screen (no flip = no wipe = no
+	// strobe). We resume repainting when buildLabelKey() changes, while a mouse
+	// drag / camera track is active, or after a low-rate fallback interval (so
+	// anything that changes without bumping the key still updates within ~5s).
+	// Only consulted when m_labelRenderer == 1; D3DX mode keeps free-running.
+	LabelCacheKey	m_lastGdiPaintKey;	// buildLabelKey() snapshot at the last GDI repaint
+	Bool			m_haveGdiPaintKey;	// m_lastGdiPaintKey is valid
+	LabelCacheKey	buildLabelKey();
 	Int											m_pickPixels;
 	Int											m_partialMapSize;
+	Real m_lastTrackingZ;     // stores last used ghost placement height
+	Bool m_lastTrackingZIsFromHighElev;
 
+    DWORD m_editStartTime;      // Timestamp when editing started
+    DWORD m_totalEditTime;      // Total accumulated edit time in milliseconds
+    Bool m_isTimerRunning;      // Whether the timer is currently running
 protected:
 
 	UINT getLastDrawTime();
 	void init3dScene();
 	void initAssets();
 	void initWW3D();
-  void drawCircle( HDC hdc, const Coord3D & centerPoint, Real radius, COLORREF color );
+	void drawCircle( HDC hdc, const Coord3D & centerPoint, Real radius, COLORREF color );
 	void drawLabels(HDC hdc);
-	void drawLabels();
+	void drawLabels(void);
+	void drawStatusLabels(CPoint basePt, int offset, const char* text, void* m3DFont, HDC hdc);
 	void shutdownWW3D();
 	void killTheTimer();
 	void render();
@@ -233,10 +596,31 @@ protected:
 	void updateLights();
 	void updateScorches();
 	void updateTrees();
+	int parseHexColorFromProfile(const char* section, const char* key, const char* defaultHex);
+	// Read the 5 EntityIconColor profile values once and push them into DrawObject's
+	// (static) icon-color slots. Call once at init, and again whenever those keys change
+	// -- NOT every redraw (each parse is a registry/INI hit). See redraw().
+	void reloadIconColors();
+	// void addMapObjectIfVisible(MapObject *pMapObj);
+	// void updateVisibleMapObjects();
+	
 
 public:
-	virtual Bool viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain=true) override;
-	virtual Bool docToViewCoords(Coord3D curPt, CPoint* newPt) override;
+
+	/// In-memory copy of the View > Show Object Selection Overlay toggle (authoritative;
+	/// the menu handler keeps it and the registry in sync). Lets the click path test the
+	/// overlay state without an uncached GetProfileInt registry read per click.
+	Bool getShowSelectionOverlay() const { return m_showSelectionOverlay; }
+
+	void startEditTimer();
+	void pauseEditTimer();
+	void resetEditTimer();
+	void setEditTime(DWORD second);
+	DWORD getEditTimeInSeconds();
+	AsciiString formatEditTime();
+
+	virtual Bool viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain=true);
+	virtual Bool docToViewCoords(Coord3D curPt, CPoint* newPt);
 
 	virtual void updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const IRegion2D &partialRange) override;
 
@@ -246,6 +630,9 @@ public:
 	// find the best model for an object
 	AsciiString getBestModelName(const ThingTemplate* tt, const ModelConditionFlags& c);
 
+	// Adriane [Deathscythe] - Nasty dogshit hack
+	AsciiString getBestModelNameWBPrev(const ThingTemplate* tt, const ModelConditionFlags& c);
+	
 	/// Invalidates an build list object.
 	void invalBuildListItemInView(BuildListInfo *pBuild);
 
@@ -267,14 +654,87 @@ public:
 	Real getCameraAngle() { return m_cameraAngle; }
 	CPoint getActualWinSize() {return m_actualWinSize;}
 
-	virtual MapObject *picked3dObjectInView(CPoint viewPt) override;
-	virtual BuildListInfo *pickedBuildObjectInView(CPoint viewPt) override;
+	/// Fill corners[4] with the world-space ground-plane points of the view frustum
+	/// (the 4 viewport corners cast to the ground), for drawing a minimap view box.
+	/// Order: top-left, top-right, bottom-right, bottom-left. Returns false if no camera.
+	Bool getViewFrustumGroundCorners(Coord3D corners[4]);
+
+	Real getLastTrackingZ(void) { return m_lastTrackingZ; }
+	Bool getLastTrackingZIsFromHighElev(void) { return m_lastTrackingZIsFromHighElev; }
+	virtual MapObject *picked3dObjectInView(CPoint viewPt);
+	/// True when the terrain surface sits between the camera and hitPoint, so the thing hit is
+	/// buried geometry rather than what the user can see at that pixel.
+	Bool isHitBehindTerrain(const Vector3 &hitPoint);
+	/// Nearest optimized tree the ray passes through, or NULL. Optimized trees are drawn from the
+	/// terrain's tree buffer rather than the scene, so the layer intersector cannot pick them.
+	MapObject *pickedTreeAlongRay(const Vector3 &rayStart, const Vector3 &rayDir, Real maxDistance);
+	/// Object-space bounding box of a tree model, cached by name (see m_treeBoxCache).
+	Bool getTreeModelBox(const AsciiString &modelName, AABoxClass &boxOut);
+	/// View > Models > Show Full Model: attach the units this template spawns (SpawnBehavior) and
+	/// carries (a *Contain InitialPayload) to their bones, as decoration only -- they carry no
+	/// MapObject and can't be picked.
+	void attachSpawnedObjects(RenderObjClass *parentObj, const ThingTemplate *tt, Int playerColor);
+	/// Create one rider's model and hang it off parentObj's bone (shared by both paths above).
+	void attachOneRider(RenderObjClass *parentObj, const AsciiString &templateName, Int boneIndex,
+		Int playerColor);
+	/// Position pMapObj's loose draw-module pieces (see m_loosePieces) against the parent's
+	/// current transform. Call after the parent has been placed -- on a rebuild AND on the
+	/// reuse path, so a move/rotate carries them along. No-op when the object has none.
+	void placeLoosePieces(MapObject *pMapObj, RenderObjClass *parentObj);
+	/// Drop pMapObj's loose pieces from the scene and forget them (object deleted / rebuilt).
+	void releaseLoosePieces(MapObject *pMapObj);
+	/// Find the bone an AttachToBoneInAnotherModule names among the draw modules built so far,
+	/// searching them in module order the way Drawable::getPristineBonePositions does. Returns the
+	/// owning module's render object (NULL when no module has the bone), its bone index, and the
+	/// bone's total offset from the PARENT's origin -- which includes the owning module's own
+	/// offset, so a rider of a rider accumulates down the chain.
+	RenderObjClass *findAttachBone(const std::vector<BuiltDrawModule> &built, const char *boneName,
+		Int &boneIndexOut, Vector3 &offsetOut, Bool *fromSubObjectOut = NULL,
+		Bool logResolution = false);
+	/// Resolved attach-bone offsets, keyed by "<model name>|<bone name>".
+	///
+	/// The offset is PRISTINE data -- fixed at animation frame 0, independent of what the model is
+	/// displaying -- so it depends only on the model and the bone, never on the object or the frame.
+	/// The game exploits that by computing it once per drawable (getAttachToDrawableBoneOffset
+	/// caches behind m_attachToDrawableBoneOffsetValid); WB re-resolves on every rebuild, and each
+	/// resolve costs a Set_Animation plus a full Update_Sub_Object_Transforms hierarchy walk. On an
+	/// object with many modules and riders that is the difference between a redraw and a multi-minute
+	/// stall on undo. Cleared with the scene in resetRenderObjects.
+	struct AttachBoneCacheEntry
+	{
+		Vector3 offset;
+		Bool fromSubObject;
+	};
+	std::map<AsciiString, AttachBoneCacheEntry>	m_attachBoneCache;
+	/// Can tmpl actually put geometry on screen? NOT the same as "has draw modules": every template
+	/// inherits a do-nothing W3DDefaultDraw, so a build placeholder reports one module and draws
+	/// nothing. True only if some W3DModelDraw names a real model.
+	static Bool templateHasDrawableModel(const ThingTemplate *tmpl);
+	/// The template whose draw modules the viewport actually builds. A template listing
+	/// BuildVariations with nothing drawable of its own is a build placeholder (the game
+	/// substitutes a variation in ThingFactory::newObject before the object exists); follow that
+	/// here so EVERY pass over an object's modules -- the build, the scrubber's queries, the
+	/// re-pose -- walks the same template. Returns tmpl unchanged when it draws for itself.
+	static const ThingTemplate *resolveBuildVariation(const ThingTemplate *tmpl);
+	/// Park obj at animation frame 0 so an attach bone reads at the PRISTINE pose (what the game
+	/// caches once in getAttachToDrawableBoneOffset), not at whatever frame it is displaying.
+	/// Returns the animation moved aside -- pass it back to restoreAfterPristineBoneRead.
+	static HAnimClass *poseForPristineBoneRead(RenderObjClass *obj, Real &savedFrameOut,
+		Int &savedModeOut);
+	/// Undo poseForPristineBoneRead. No-op when savedAnim is NULL.
+	static void restoreAfterPristineBoneRead(RenderObjClass *obj, HAnimClass *savedAnim,
+		Real savedFrame, Int savedMode);
+	virtual BuildListInfo *pickedBuildObjectInView(CPoint viewPt);
 
 	void removeFenceListObjects(MapObject *pObject);
 	void updateFenceListObjects(MapObject *pObject);
 
 	/// Removes all render objects.  Call when swithing to a new map.
 	void resetRenderObjects();
+	/// Make the next resetRenderObjects also drop the cached W3D prototypes, so a model whose
+	/// DEFINITION changed (a map.ini editing an object's Draw module) is rebuilt from the new
+	/// one instead of the stale cache. Costs a full asset reload, so only for that case.
+	void freeCachedModelsOnNextReset(void) { m_freeAssetsOnNextReset = true; }
 
 	void stepTimeOfDay();
 
@@ -283,7 +743,15 @@ public:
 
 	DrawObject *getDrawObject() {return m_drawObject;};
 
-	AsciiString getModelNameAndScale(MapObject *pMapObj, Real *scale, BodyDamageType curDamageState);
+	AsciiString getModelNameAndScale(MapObject *pMapObj, Real *scale, BodyDamageType curDamageState,
+		ModelConditionFlags *stateOut = NULL);
+	/// Apply the draw module's Show/HideSubObject list to a newly created render object, as the
+	/// game's W3DModelDraw does -- including hiding whatever is parented to a hidden bone.
+	void applySubObjectVisibility(RenderObjClass *renderObj, const ThingTemplate *tt,
+		const ModelConditionFlags &state);
+	/// As above, with the condition state already resolved (the placed-object path walks every
+	/// draw module, so it resolves one per module).
+	void applySubObjectHideList(RenderObjClass *renderObj, const struct ModelConditionInfo *info);
 
 	virtual Int getPickPixels() override {return m_pickPixels;}
 	virtual Bool viewToDocCoordZ(CPoint curPt, Coord3D *newPt, Real Z) override;
@@ -294,8 +762,25 @@ public:
 
 	virtual void setCenterInView(Real x, Real y) override;
 
-	Bool getShowTerrain();
+	// Like setCenterInView, but does NOT render synchronously. Updates the camera
+	// center and invalidates the view so its own paint loop renders. Safe to call
+	// from another window's message handler (e.g. the Minimap dialog) without
+	// driving the D3D device from a foreign context.
+	void setCenterInViewDeferred(Real x, Real y);
+
+	// (getShowTerrain is WbView's inline accessor -- there was a bodiless redeclaration here that
+	// shadowed it with no definition, so the first caller got an unresolved external.)
 	Bool getShowWireframe();
+
+	// Wave-line overlay toggle, shared by the View menu and the Wave Editor panel
+	// checkbox so the two stay in sync (flag + registry + DrawObject + redraw).
+	Bool getShowWaveLines(void) { return m_showWaveLines; }
+	void setShowWaveLines(Bool show);
+
+	// void setShowBuildZoneFeedBack(Bool toggle) {m_showBuildZoneFeedback = toggle;}
+	Bool getShowBuildZoneFeedBack(void) { return ::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "PreviewBuildZone", 1);}
+	Bool getUseWaterHeight(void) { return ::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "UseWaterHeight", 0);}
+	Bool getShowBuildListObjects(void) { return ::AfxGetApp()->GetProfileInt(BUILDLIST_OPTION_PANEL, "ForceShowBuildListObjects", 0);}
 
 	void setObjTracking(MapObject *pMapObj, Coord3D pos, Real angle, Bool show);
 	void setViewLayersList(Bool showLayersList) { m_showLayersList = showLayersList; }
@@ -303,8 +788,31 @@ public:
 	Bool getShowMapBoundaryFeedback() const { return m_showMapBoundaries; }
 	Bool getShowAmbientSoundsFeedback() const { return m_showAmbientSounds; }
 
-	void togglePitchAndRotation() { m_doPitch = !m_doPitch; }
-	virtual Bool isDoingPitch() override { return m_doPitch; }
+	/// View > Listen To Map. Stopping and (re)starting the map's ambient sounds; call
+	/// restartListenSounds() whenever the set of ambient sounds may have changed (map opened,
+	/// objects added/removed/edited) so the playing set stays in sync with the map.
+	void restartListenSounds(void);
+	void stopListenSounds(void);
+	/// Drop a going-away object's tracked sound, so the handle map cannot outlive its key.
+	void forgetListenSound(MapObject *pMapObj);
+public:
+	/// True while Listen To Map has this object's ambient sound actually audible (View > Show
+	/// Playing Sounds rings these). False for everything when no listen mode is active.
+	Bool isListenSoundPlaying(MapObject *pMapObj) const;
+private:
+private:
+	void startListenSounds(void);
+	/// The object's ambient sound (own dict override, else its template's). Empty == none.
+	AsciiString getAmbientSoundName(MapObject *pMapObj) const;
+	/// outSoundName (optional) receives the sound to play when this returns true.
+	Bool shouldListenToObject(MapObject *pMapObj, AsciiString *outSoundName = NULL) const;
+public:
+
+	Bool getShowGridFeedback(void) const { return m_showRulerGrid; }
+	Bool getShowTracingOverlay(void) const { return m_showTracingOverlay; }
+
+	void togglePitchAndRotation( void ) { m_doPitch = !m_doPitch; }
+	virtual Bool isDoingPitch( void ) { return m_doPitch; }
 	void setShowBoundingBoxes(Bool toggle) {m_showBoundingBoxes = toggle;}
 	Bool getShowBoundingBoxes() { return m_showBoundingBoxes;}
 	void setShowSightRanges(Bool toggle) {m_showSightRanges = toggle;}

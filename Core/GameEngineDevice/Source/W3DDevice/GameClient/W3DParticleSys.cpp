@@ -248,7 +248,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 			hasAdditive = TRUE;
 		}
 
-		if (!hasFlame && sys->isUsingParticles() && !sys->shouldConformToTerrain() && systemEffects(*sys, DRAW_HAZE) != 0)
+		// matches the haze pass, which skips only systems drawn as terrain-conforming meshes
+		const Bool conformsToTerrain = !sys->shouldBillboard() && sys->getVolumeParticleDepth() == 0 && sys->shouldConformToTerrain();
+		if (!hasFlame && sys->isUsingParticles() && !conformsToTerrain && systemEffects(*sys, DRAW_HAZE) != 0)
 		{
 			hasFlame = TRUE;
 		}
@@ -320,13 +322,19 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	}
 }
 
-// Flame systems shade as fire in every pass but the haze, which draws only them. Electric systems shade
-// in every pass but the haze, and a system that is both is a flame. A multiplied sprite has no light to shade.
+// Flame systems shade as fire in every pass but the haze, which draws only them. Cryo and electric systems shade
+// in every pass but the haze. Cryo wins over the rest, and flame over electric. A multiplied sprite has no light to shade.
 unsigned W3DParticleSystemManager::systemEffects(ParticleSystem &system, DrawPass pass)
 {
-	if (system.getShaderType() == ParticleSystemInfo::MULTIPLY || TheW3DSoftParticles == nullptr)
+	// Point groups never hand alpha-tested sprites to the hook, so the haze pass would draw them plain.
+	if (system.getShaderType() == ParticleSystemInfo::MULTIPLY || system.getShaderType() == ParticleSystemInfo::ALPHA_TEST ||
+		TheW3DSoftParticles == nullptr)
 	{
 		return 0;
+	}
+	if (TheW3DSoftParticles->cryoEnabled() && system.isCryo())
+	{
+		return (pass == DRAW_HAZE) ? 0 : SoftParticleHookClass::EFFECT_CRYO;
 	}
 	if (TheW3DSoftParticles->flameEnabled() && system.isFlame())
 	{
@@ -429,6 +437,19 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			sizeScale = resolved.hazeSize;
 			lift = resolved.hazeLift;
 		}
+		// only particles the cryo or electric shader draws scale, so they keep their size with that shading off
+		else if (!useTerrainConformingParticles &&
+			!(sys->isUsingVolumeParticles() && sys->getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH))
+		{
+			if ((effects & SoftParticleHookClass::EFFECT_CRYO) != 0)
+			{
+				sizeScale = max(sys->getTemplate()->getCryoParticleScale(), 0.0f);
+			}
+			else if ((effects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
+			{
+				sizeScale = max(sys->getTemplate()->getElectricParticleScale(), 0.0f);
+			}
+		}
 
 		UnsignedInt startCount = pointCount;
 
@@ -500,9 +521,18 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			m_streakLine->Set_Texture( texture.Peek() );
 			m_streakLine->Set_Shader( shaderForType( sys->getShaderType() ) );
 
-			// Only a streak carries the beam coordinates the laser shader reads. A multiplied streak has no light to shade.
-			const Bool laser = sys->getShaderType() != ParticleSystemInfo::MULTIPLY && sys->isLaser();
-			m_streakLine->Set_Effects( laser ? (SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_LASER) : 0 );
+			// Only a streak carries the beam coordinates the laser and cryo shaders read. A multiplied streak has no light to shade.
+			const Bool shaded = sys->getShaderType() != ParticleSystemInfo::MULTIPLY;
+			const Bool cryo = shaded && sys->isCryo();
+			const Bool laser = shaded && !cryo && sys->isLaser();
+			if (cryo)
+			{
+				m_streakLine->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM );
+			}
+			else
+			{
+				m_streakLine->Set_Effects( laser ? (SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_LASER) : 0 );
+			}
 
 			//UPDATE THE STREAK'S ARRAYS
 			m_streakLine->Set_LocsWidthsColors(

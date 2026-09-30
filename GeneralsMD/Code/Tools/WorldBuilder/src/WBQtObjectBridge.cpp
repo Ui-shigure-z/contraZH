@@ -1,0 +1,573 @@
+// WBQtObjectBridge.cpp -- the MFC side of the Qt Object-panel seam. See WBQtBrushBridge.cpp
+// for the pattern. Plain MFC TU (no Qt include); reverse callbacks resolved against the exe
+// at the final link. Whole body guarded by RTS_HAS_QT so the OFF build compiles it to an
+// empty object.
+//
+// The MFC ObjectOptions is still created as the hidden OFF fallback and owns m_objectsList
+// (the full template list) plus the selection statics the placement tools read
+// (m_currentObjectIndex / m_currentObjectName / m_curOwnerName). This bridge lets the Qt
+// Object panel mirror that list by index and drive those statics, so ObjectTool / FenceTool /
+// GroveTool / BuildListTool keep working unchanged.
+#define DEFINE_EDITOR_SORTING_NAMES		// instantiate EditorSortingNames[] in this TU
+
+#include "StdAfx.h"
+#include "resource.h"
+#include "Lib/BaseType.h"
+#include "ObjectOptions.h"
+#include "ObjectPreview.h"
+#include "WorldBuilderDoc.h"
+#include "Common/WellKnownKeys.h"
+#include "Common/ThingTemplate.h"
+#include "Common/ThingFactory.h"	// TheThingFactory (base-template lookup for the override check)
+#include "Common/ThingSort.h"
+#include "Common/AudioEventRTS.h"
+#include "Common/GameAudio.h"
+#include <mmsystem.h>		// PlaySound + SND_* (winmm, already linked)
+#include "Common/PlayerTemplate.h"
+#include "GameLogic/SidesList.h"
+#include "qt/WBQtPanelBridge.h"
+
+#ifdef RTS_HAS_QT
+
+// The MFC preview is a fixed 128x128 BGR image (see PREVIEW_WIDTH/HEIGHT in ObjectPreview.cpp).
+#define WBQT_PREVIEW_W 256	// the 2x Qt render (see ObjectPreview::qtRenderTemplatePreview)
+#define WBQT_PREVIEW_H 256
+
+//----------------------------------------------------------------------------------------
+// ObjectOptions Qt-support statics (declared in ObjectOptions.h; defined here so they can
+// reach the private selection state without churning ObjectOptions.cpp).
+//----------------------------------------------------------------------------------------
+MapObject *ObjectOptions::qtGetObjectListHead(void)
+{
+	return m_staticThis ? m_staticThis->m_objectsList : NULL;
+}
+
+void ObjectOptions::qtSetCurrentSelection(int listIndex, const char *name)
+{
+	m_currentObjectIndex = listIndex;
+	if (name != NULL)
+	{
+		strncpy(m_currentObjectName, name, NAME_MAX_LEN - 1);
+		m_currentObjectName[NAME_MAX_LEN - 1] = 0;
+	}
+}
+
+int ObjectOptions::qtGetCurrentIndex(void)
+{
+	return m_currentObjectIndex;
+}
+
+void ObjectOptions::qtSetOwnerTeamName(const char *teamName)
+{
+	if (teamName != NULL)
+	{
+		m_curOwnerName = teamName;
+	}
+	else
+	{
+		m_curOwnerName.clear();
+	}
+}
+
+const char *ObjectOptions::qtGetOwnerTeamName(void)
+{
+	return m_curOwnerName.str();
+}
+
+CWnd *ObjectOptions::qtGetMainWnd(void)
+{
+	return m_staticThis;	// ObjectOptions IS a CWnd; the placement code reads its edit box
+}
+
+//----------------------------------------------------------------------------------------
+// Helpers: walk the (index-ordered) template list and derive the tree path for an entry,
+// mirroring ObjectOptions::addObject().
+//----------------------------------------------------------------------------------------
+namespace
+{
+	MapObject *objectAtIndex(int listIndex)
+	{
+		MapObject *pObj = ObjectOptions::qtGetObjectListHead();
+		int count = 0;
+		while (pObj != NULL)
+		{
+			if (count == listIndex)
+			{
+				return pObj;
+			}
+			count++;
+			pObj = pObj->getNext();
+		}
+		return NULL;
+	}
+
+	void copyString(char *out, int cap, const char *src)
+	{
+		if (out == NULL || cap <= 0)
+		{
+			return;
+		}
+		if (src == NULL)
+		{
+			out[0] = 0;
+			return;
+		}
+		strncpy(out, src, cap - 1);
+		out[cap - 1] = 0;
+	}
+}
+
+extern "C" {
+
+int WBQtObject_GetCount(void)
+{
+	int count = 0;
+	for (MapObject *pObj = ObjectOptions::qtGetObjectListHead(); pObj != NULL; pObj = pObj->getNext())
+	{
+		count++;
+	}
+	return count;
+}
+
+int WBQtObject_GetEntry(int listIndex, char *preOut, char *sideOut, char *sortingOut, char *leafOut, int cap)
+{
+	MapObject *pObj = objectAtIndex(listIndex);
+	if (pObj == NULL)
+	{
+		return 0;
+	}
+
+	const ThingTemplate *tt = pObj->getThingTemplate();
+	if (tt != NULL)
+	{
+		// [pre-side] / side / editor-sorting category / leaf, exactly like addObject().
+		EditorSortingType es = tt->getEditorSorting();
+
+		// ES_TEST templates get a top-level "TEST" bucket ABOVE the side, matching the MFC
+		// pre-side tier (addObject: findOrAdd(parent, "TEST") before the by-side findOrAdd).
+		if (es == ES_TEST)
+		{
+			copyString(preOut, cap, "TEST");
+		}
+		else
+		{
+			copyString(preOut, cap, "");
+		}
+
+		copyString(sideOut, cap, tt->getDefaultOwningSide().str());
+
+		if (es == ES_TEST)
+		{
+			copyString(sortingOut, cap, "TEST");
+		}
+		else if (es >= ES_FIRST && es < ES_NUM_SORTING_TYPES)
+		{
+			copyString(sortingOut, cap, EditorSortingNames[es]);
+		}
+		else
+		{
+			copyString(sortingOut, cap, "UNSORTED");
+		}
+
+		copyString(leafOut, cap, tt->getName().str());
+	}
+	else
+	{
+		// Legacy / test-model entries go under a single bucket, leaf = last path element.
+		copyString(preOut, cap, "");
+		copyString(sideOut, cap, "**TEST MODELS");
+		copyString(sortingOut, cap, "");
+		const char *full = pObj->getName().str();
+		const char *leaf = full;
+		for (const char *p = full; *p; ++p)
+		{
+			if (*p == '/')
+			{
+				leaf = p + 1;
+			}
+		}
+		copyString(leafOut, cap, leaf);
+	}
+	return 1;
+}
+
+int WBQtObject_GetFullName(int listIndex, char *nameOut, int cap)
+{
+	MapObject *pObj = objectAtIndex(listIndex);
+	if (pObj == NULL)
+	{
+		return 0;
+	}
+	copyString(nameOut, cap, pObj->getName().str());
+	return 1;
+}
+
+// Non-zero when the loaded map.ini redefined this template, so the panel can flag it.
+//
+// A map.ini "Object Foo" block is loaded with INI_LOAD_CREATE_OVERRIDES, which appends a copy of
+// the template to its override chain rather than editing it in place. ThingFactory's hash map
+// still holds the BASE template (overrides are never re-registered), so looking the name up and
+// asking whether it has a next override is exactly the "this was changed by map.ini" test.
+// MapObject::getThingTemplate() can't answer it -- that already resolves to the final override,
+// which never has a next one of its own.
+int WBQtObject_IsMapIniOverridden(int listIndex)
+{
+	MapObject *pObj = objectAtIndex(listIndex);
+	if (pObj == NULL || TheThingFactory == NULL)
+	{
+		return 0;
+	}
+	const ThingTemplate *tt = pObj->getThingTemplate();
+	if (tt == NULL)
+	{
+		return 0;	// a test-model entry, not a real template
+	}
+	// check=FALSE: a missing name is a normal answer here (no DEBUG_CRASH for it).
+	const ThingTemplate *base = TheThingFactory->findTemplate(tt->getName(), FALSE);
+	if (base == NULL)
+	{
+		return 0;
+	}
+	return (base->getNextOverride() != NULL) ? 1 : 0;
+}
+
+// Non-zero when the loaded map.ini INVENTED this template -- the installed game data has no
+// Object block for the name at all, so it exists only while this map.ini is loaded.
+//
+// Distinct from WBQtObject_IsMapIniOverridden above, which is the "map.ini CHANGED a stock
+// template" case (a base template with an override on its chain). An invented template has no
+// base to override, so that test returns 0 for it. The doc's map.ini load already works the set
+// out during its pre-scan; this just reads it (see WBMapIni_IsPhantomTemplate).
+int WBQtObject_IsMapIniInvented(int listIndex)
+{
+	MapObject *pObj = objectAtIndex(listIndex);
+	if (pObj == NULL)
+	{
+		return 0;
+	}
+	const ThingTemplate *tt = pObj->getThingTemplate();
+	if (tt == NULL)
+	{
+		return 0;	// a test-model entry, not a real template
+	}
+	return WBMapIni_IsPhantomTemplate(tt->getName()) ? 1 : 0;
+}
+
+void WBQtObject_SelectIndex(int listIndex)
+{
+	MapObject *pObj = objectAtIndex(listIndex);
+	if (pObj != NULL)
+	{
+		ObjectOptions::qtSetCurrentSelection(listIndex, pObj->getName().str());
+	}
+}
+
+int WBQtObject_GetSelectedIndex(void)
+{
+	return ObjectOptions::qtGetCurrentIndex();
+}
+
+//----------------------------------------------------------------------------------------
+// Owning-team combo. The team list + neutral relabel + default-for-current mirror the MFC
+// ObjectOptions::updateLabel(); SetTeam mirrors OnEditchangeOwningteam.
+//----------------------------------------------------------------------------------------
+static int findSideListEntryWithPlayerOfSide(AsciiString side)
+{
+	for (int i = 0; i < TheSidesList->getNumSides(); i++)
+	{
+		AsciiString ptname = TheSidesList->getSideInfo(i)->getDict()->getAsciiString(TheKey_playerFaction);
+		const PlayerTemplate *pt = ThePlayerTemplateStore->findPlayerTemplate(NAMEKEY(ptname));
+		if (pt && pt->getSide() == side)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int WBQtObject_GetTeamCount(void)
+{
+	return TheSidesList->getNumTeams();
+}
+
+int WBQtObject_GetTeamName(int teamIndex, char *nameOut, int cap)
+{
+	if (teamIndex < 0 || teamIndex >= TheSidesList->getNumTeams())
+	{
+		return 0;
+	}
+	Dict *d = TheSidesList->getTeamInfo(teamIndex)->getDict();
+	AsciiString name = d->getAsciiString(TheKey_teamName);
+	if (name == "team")
+	{
+		name = "(neutral)";
+	}
+	copyString(nameOut, cap, name.str());
+	return 1;
+}
+
+int WBQtObject_GetDefaultTeamForCurrent(void)
+{
+	MapObject *pCur = objectAtIndex(ObjectOptions::qtGetCurrentIndex());
+	AsciiString defTeamName;
+	if (pCur != NULL)
+	{
+		const ThingTemplate *tt = pCur->getThingTemplate();
+		if (tt != NULL)
+		{
+			Int i = findSideListEntryWithPlayerOfSide(tt->getDefaultOwningSide());
+			if (i >= 0)
+			{
+				defTeamName.set("team");
+				defTeamName.concat(TheSidesList->getSideInfo(i)->getDict()->getAsciiString(TheKey_playerName));
+			}
+		}
+		else
+		{
+			defTeamName.set("team");	// neutral
+		}
+	}
+
+	int neutral = -1;
+	for (int i = 0; i < TheSidesList->getNumTeams(); i++)
+	{
+		AsciiString name = TheSidesList->getTeamInfo(i)->getDict()->getAsciiString(TheKey_teamName);
+		if (name == defTeamName)
+		{
+			return i;
+		}
+		if (name == "team")
+		{
+			neutral = i;
+		}
+	}
+	return neutral;
+}
+
+void WBQtObject_SetTeam(int teamIndex)
+{
+	if (teamIndex < 0 || teamIndex >= TheSidesList->getNumTeams())
+	{
+		ObjectOptions::qtSetOwnerTeamName(NULL);
+		return;
+	}
+	Dict *d = TheSidesList->getTeamInfo(teamIndex)->getDict();
+	ObjectOptions::qtSetOwnerTeamName(d->getAsciiString(TheKey_teamName).str());
+}
+
+//----------------------------------------------------------------------------------------
+// Placement height. getCurObjectHeight() reads the MFC edit box (IDC_OBJECT_HEIGHT_EDIT),
+// so keep writing that so the value the tools read stays correct.
+//----------------------------------------------------------------------------------------
+void WBQtObject_SetHeight(int height)
+{
+	if (ObjectOptions::qtGetMainWnd() == NULL)
+	{
+		return;
+	}
+	CWnd *pWnd = ObjectOptions::qtGetMainWnd()->GetDlgItem(IDC_OBJECT_HEIGHT_EDIT);
+	if (pWnd != NULL)
+	{
+		CString s;
+		s.Format("%d", height);
+		pWnd->SetWindowText(s);
+	}
+}
+
+int WBQtObject_GetHeight(void)
+{
+	// getCurObjectHeight() returns feet; the panel edits the raw integer, so read the box.
+	if (ObjectOptions::qtGetMainWnd() == NULL)
+	{
+		return 0;
+	}
+	CWnd *pWnd = ObjectOptions::qtGetMainWnd()->GetDlgItem(IDC_OBJECT_HEIGHT_EDIT);
+	if (pWnd != NULL)
+	{
+		CString val;
+		pWnd->GetWindowText(val);
+		return atoi(val);
+	}
+	return 0;
+}
+
+//----------------------------------------------------------------------------------------
+// Preview: reuse the exact MFC render path (ObjectPreview::qtRenderTemplatePreview ->
+// generatePreview) and hand the BGR bytes to the Qt panel.
+//----------------------------------------------------------------------------------------
+int WBQtObject_GetPreviewSize(int *widthOut, int *heightOut)
+{
+	if (widthOut != NULL)
+	{
+		*widthOut = WBQT_PREVIEW_W;
+	}
+	if (heightOut != NULL)
+	{
+		*heightOut = WBQT_PREVIEW_H;
+	}
+	return 1;
+}
+
+int WBQtObject_RenderPreview(unsigned char *bgrOut, int cap)
+{
+	if (bgrOut == NULL || cap < WBQT_PREVIEW_W * WBQT_PREVIEW_H * 3)
+	{
+		return 0;
+	}
+	MapObject *pCur = objectAtIndex(ObjectOptions::qtGetCurrentIndex());
+	const ThingTemplate *tt = (pCur != NULL) ? pCur->getThingTemplate() : NULL;
+	const UnsignedByte *data = ObjectPreview::qtRenderTemplatePreview(tt);
+	if (data == NULL)
+	{
+		return 0;
+	}
+	memcpy(bgrOut, data, WBQT_PREVIEW_W * WBQT_PREVIEW_H * 3);
+	return 1;
+}
+
+//----------------------------------------------------------------------------------------
+// Preview toggles, persisted in the registry under the same section/keys the MFC panel uses.
+//----------------------------------------------------------------------------------------
+void WBQtObject_SetPreviewSound(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "PreviewSound", on ? 1 : 0);
+}
+int WBQtObject_GetPreviewSound(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "PreviewSound", 1);
+}
+// == the ObjectOptions selection-change block that plays a template's ambient sound when
+// "Preview sound" is on. The MFC panel gated it on m_isObjectOptsWindowOpen (false in the Qt
+// build), so it never ran; the Qt panel calls this from its own selection handler instead.
+void WBQtObject_PreviewAmbient(void)
+{
+	if (::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "PreviewSound", 1) == 0)
+	{
+		return;
+	}
+	MapObject *pObj = objectAtIndex(ObjectOptions::qtGetCurrentIndex());
+	if (pObj == NULL)
+	{
+		return;
+	}
+	const ThingTemplate *thingTemplate = pObj->getThingTemplate();
+	if (thingTemplate == NULL)
+	{
+		return;
+	}
+	const AudioEventRTS *event = thingTemplate->getSoundAmbient();
+	if (event == NULL)
+	{
+		return;
+	}
+	const AudioEventInfo *audioInfo = event->getAudioEventInfo();
+	if (audioInfo == NULL && TheAudio != NULL)
+	{
+		audioInfo = TheAudio->findAudioEventInfo(event->getEventName());
+	}
+	if (audioInfo == NULL)
+	{
+		return;
+	}
+	AudioEventRTS eventToPlay;
+	eventToPlay.setEventName(event->getEventName());
+	eventToPlay.setAudioEventInfo(audioInfo);
+	eventToPlay.generateFilename();
+	if (!eventToPlay.getFilename().isEmpty())
+	{
+		PlaySound(eventToPlay.getFilename().str(), NULL, SND_ASYNC | SND_FILENAME | SND_PURGE);
+	}
+}
+void WBQtObject_SetPreviewBuildZone(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "PreviewBuildZone", on ? 1 : 0);
+}
+int WBQtObject_GetPreviewBuildZone(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "PreviewBuildZone", 1);
+}
+void WBQtObject_SetUseWaterHeight(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "UseWaterHeight", on ? 1 : 0);
+}
+int WBQtObject_GetUseWaterHeight(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "UseWaterHeight", 1);
+}
+
+// Place-all-in-category: the checkbox drives the ObjectOptions static that ObjectTool
+// reads on mouse-up; the setter persists it (same profile section as the other toggles).
+void WBQtObject_SetPlaceAll(int on)
+{
+	ObjectOptions::setPlaceAllInCategory(on != 0);
+}
+int WBQtObject_GetPlaceAll(void)
+{
+	return ObjectOptions::isPlaceAllInCategory() ? 1 : 0;
+}
+void WBQtObject_SetPlaceAllYSpacing(int spacing)
+{
+	ObjectOptions::setPlaceAllYSpacing(spacing);
+}
+int WBQtObject_GetPlaceAllYSpacing(void)
+{
+	return ObjectOptions::getPlaceAllYSpacing();
+}
+
+// NewSearch toggle ([QtSearch] NewSearch): live-filter search in the tree pickers.
+int WBQtConfig_GetNewSearch(void)
+{
+	return ::AfxGetApp()->GetProfileInt("QtSearch", "NewSearch", 0);
+}
+void WBQtConfig_SetNewSearch(int on)
+{
+	::AfxGetApp()->WriteProfileInt("QtSearch", "NewSearch", on ? 1 : 0);
+}
+
+// ComboSearch toggle ([QtSearch] ComboSearch): type-to-search in the long drop-downs
+// (Sound, the team pickers). Default OFF -- the combos stay plain pick-only, as before.
+int WBQtConfig_GetComboSearch(void)
+{
+	return ::AfxGetApp()->GetProfileInt("QtSearch", "ComboSearch", 0);
+}
+void WBQtConfig_SetComboSearch(int on)
+{
+	::AfxGetApp()->WriteProfileInt("QtSearch", "ComboSearch", on ? 1 : 0);
+}
+
+int WBQtConfig_GetBuildListFollow(void)
+{
+	return ::AfxGetApp()->GetProfileInt("BuildList", "FollowObject", 0);
+}
+void WBQtConfig_SetBuildListFollow(int on)
+{
+	::AfxGetApp()->WriteProfileInt("BuildList", "FollowObject", on ? 1 : 0);
+}
+
+}
+#endif
+
+// Render Particles: a STARTUP-only opt-in. The particle runtime stands up during WbView3d
+// init (OnCreate) when the flag is set; toggling it live proved fragile, so this only persists
+// the choice -- it takes effect on the next WB launch. Persisted OFF by default.
+void WBQtObject_SetRenderParticles(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "RenderParticles", on ? 1 : 0);
+}
+int WBQtObject_GetRenderParticles(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "RenderParticles", 0);
+}
+
+// Tutorial prompts: the one-time hint toasts (F11 full screen, Ctrl-click waypoint/road,
+// group-rotate) and the Ctrl+A "did you mean to show the whole map?" confirm. Handy at first, but
+// experienced users don't need them -- this gates all of them. Persisted ON by default; read live
+// at each prompt site so the checkbox takes effect immediately.
+void WBQtObject_SetTutorialPrompts(int on)
+{
+	::AfxGetApp()->WriteProfileInt("ObjectOptionPanel", "TutorialPrompts", on ? 1 : 0);
+}
+int WBQtObject_GetTutorialPrompts(void)
+{
+	return ::AfxGetApp()->GetProfileInt("ObjectOptionPanel", "TutorialPrompts", 1);
+}

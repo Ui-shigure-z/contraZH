@@ -28,6 +28,7 @@
 #include "wbview.h"
 #include "WHeightMapEdit.h"
 #include "MainFrm.h"
+#include "RulerTool.h"
 #include "Common/Debug.h"
 #include "Common/ThingTemplate.h"
 #include "W3DDevice/GameClient/HeightMap.h"
@@ -35,6 +36,19 @@
 #include "playerlistdlg.h"
 #include "teamsdialog.h"
 #include "LayersList.h"
+#include "PointerTool.h"
+#include "brushoptions.h"
+#include "MoundOptions.h"
+#include "FeatherOptions.h"
+#include "TerrainMaterial.h"
+#include "WaveEditorOptions.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtPlayerListBridge.h"
+#include "qt/panels/WBQtTeamsBridge.h"
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"
+#include "Common/ThingFactory.h"
+#endif
 
 Bool WbView::m_snapToGrid = false;
 
@@ -50,20 +64,36 @@ WbView::WbView() :
 	m_lockAngle(false),
 	m_doLightFeedback(FALSE),
 	m_pickConstraint(ES_NONE),
-	m_doRulerFeedback(RULER_NONE)
+	m_doRulerFeedback(RULER_NONE),
+	m_rectFeedbackSubtract(FALSE)
 {
+	Int showWater = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWater", 1);
+	m_showWater = (showWater!=0);
+	Int showRoads = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowRoads", 1);
+	m_showRoads = (showRoads!=0);
 	Int showWay = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWaypoints", 1);
 	m_showWaypoints = (showWay!=0);
 	Int showPoly = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", 1);
 	m_showPolygonTriggers = (showPoly!=0);
-	Int showObj = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 1);
+	Int showObj = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 0);
 	m_showObjects = (showObj!=0);
+	Int showObjSel = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", 1);
+	m_showObjectsSelected = (showObjSel!=0);
 	Int showNames = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowNames", 1);
 	m_showNames = (showNames!=0);
+	Int showNamesExtra = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowNamesExtra", 1);
+	m_showNamesExtra = (showNamesExtra!=0);
 	Int snapToGrid = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapToGrid", 0);
 	m_snapToGrid = (snapToGrid!=0);
 	Int showTerrain = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTerrain", 1);
 	m_showTerrain = (showTerrain!=0);
+	Int fixedColoredWaypoints = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "UseFixedColoredWaypoints", 0);
+	m_useFixedColoredWaypoints = (fixedColoredWaypoints!=0);
+
+	Int togglePivotFarthest = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TogglePivotFarthest", 0);
+	m_togglePivotFarthest = (togglePivotFarthest!=0);
+	Int toggleObjectRotationWithGroup = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ToggleObjectRotationWithGroup", 0);
+	m_toggleObjectRotationWithGroup = (toggleObjectRotationWithGroup!=0);
 }
 
 WbView::~WbView()
@@ -94,6 +124,8 @@ BEGIN_MESSAGE_MAP(WbView, CView)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SNAPTOGRID, OnUpdateViewSnaptogrid)
 	ON_COMMAND(ID_VIEW_SHOW_OBJECTS, OnViewShowObjects)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOW_OBJECTS, OnUpdateViewShowObjects)
+	ON_COMMAND(ID_VIEW_SHOW_OBJECTS_SELECTED, OnViewShowObjectsSelected)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOW_OBJECTS_SELECTED, OnUpdateViewShowObjectsSelected)
 	ON_COMMAND(ID_EDIT_SELECTDUP, OnEditSelectdup)
 	ON_COMMAND(ID_EDIT_SELECTSIMILAR, OnEditSelectsimilar)
 	ON_COMMAND(ID_EDIT_REPLACE, OnEditReplace)
@@ -104,6 +136,12 @@ BEGIN_MESSAGE_MAP(WbView, CView)
 	ON_COMMAND(ID_EDIT_GLOBALLIGHTOPTIONS, OnEditGloballightoptions)
 	ON_COMMAND(ID_VIEW_SHOWWAYPOINTS, OnViewShowwaypoints)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWWAYPOINTS, OnUpdateViewShowwaypoints)
+	ON_COMMAND(ID_VIEW_SHOWWATER, OnViewShowWater)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWWATER, OnUpdateViewShowWater)
+	ON_COMMAND(ID_VIEW_FIXEDCOLOREDWAYPOINTS, OnViewUseFixedColorWaypoints)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_FIXEDCOLOREDWAYPOINTS, OnUpdateViewUseFixedColorWaypoints)
+	ON_COMMAND(ID_VIEW_SHOWROADS, OnViewShowRoads)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWROADS, OnUpdateViewShowRoads)
 	ON_COMMAND(ID_VIEW_SHOWPOLYGONTRIGGERS, OnViewShowpolygontriggers)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWPOLYGONTRIGGERS, OnUpdateViewShowpolygontriggers)
 	ON_COMMAND(ID_EDIT_PLAYERLIST, OnEditPlayerlist)
@@ -127,6 +165,10 @@ BEGIN_MESSAGE_MAP(WbView, CView)
 	ON_UPDATE_COMMAND_UI(ID_EDIT_PICKDEBRIS, OnUpdatePickDebris)
 	ON_COMMAND(ID_EDIT_PICKANYTHING, OnPickAnything)
 	ON_UPDATE_COMMAND_UI(ID_EDIT_PICKANYTHING, OnUpdatePickAnything)
+	ON_COMMAND(ID_GROUP_PIVOT_CENTER, OnTogglePivotFarthest)
+	ON_UPDATE_COMMAND_UI(ID_GROUP_PIVOT_CENTER, OnUpdateTogglePivotFarthest)
+	ON_COMMAND(ID_GROUP_ROTATE_OBJECT, OnToggleObjectRotationWithGroup)
+	ON_UPDATE_COMMAND_UI(ID_GROUP_ROTATE_OBJECT, OnUpdateToggleObjectRotationWithGroup)
 	ON_COMMAND(ID_EDIT_PICKWAYPOINTS, OnPickWaypoints)
 	ON_UPDATE_COMMAND_UI(ID_EDIT_PICKWAYPOINTS, OnUpdatePickWaypoints)
 	ON_COMMAND(ID_EDIT_PICKROADS, OnPickRoads)
@@ -135,6 +177,8 @@ BEGIN_MESSAGE_MAP(WbView, CView)
 	ON_UPDATE_COMMAND_UI(ID_EDIT_PICKSOUNDS, OnUpdatePickSounds)
 	ON_COMMAND(ID_VIEW_LABELS, OnShowNames)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_LABELS, OnUpdateShowNames)
+	ON_COMMAND(ID_VIEW_LABELS_EXTRA, OnShowNamesExtra)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LABELS_EXTRA, OnUpdateShowNamesExtra)
 	ON_COMMAND(ID_VALIDATION_FIXTEAMS, OnValidationFixTeams)
 	ON_COMMAND(ID_VIEW_SHOW_TERRAIN, OnShowTerrain)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOW_TERRAIN, OnUpdateShowTerrain)
@@ -193,9 +237,9 @@ void WbView::mouseMove(TTrackingMode m, CPoint viewPt)
 {
 	MSG msg;
 	while (::PeekMessage(&msg, m_hWnd, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE)) {
-		viewPt.x = (short)LOWORD(msg.lParam);  // horizontal position of cursor
-		viewPt.y = (short)HIWORD(msg.lParam);  // vertical position of cursor
-		DEBUG_LOG(("Peek mouse %d, %d", viewPt.x,  viewPt.y));
+		viewPt.x = (short)LOWORD(msg.lParam);  // horizontal position of cursor 
+		viewPt.y = (short)HIWORD(msg.lParam);  // vertical position of cursor 
+		// DEBUG_LOG(("Peek mouse %d, %d\n", viewPt.x,  viewPt.y));
 	}
 
 	if (m_trackingMode == TRACK_NONE) {
@@ -211,16 +255,18 @@ void WbView::mouseMove(TTrackingMode m, CPoint viewPt)
 		}
 	}
 	if (CMainFrame::GetMainFrame()->isAutoSaving()) {
+		SetCursor(AfxGetApp()->LoadStandardCursor(IDC_WAIT));
 		return;
 	}
 
 	if (m_doRulerFeedback != RULER_NONE) {
 		// If the user is measuring stuff, no need to do the rest of the text.
 		CString str;
+		const char *units = RulerTool::getUseMeters() ? "meters" : "feet";
 		if (m_doRulerFeedback == RULER_CIRCLE) {
-			str.Format("Diameter (in feet): %f", m_rulerLength * 2.0f);
+			str.Format("Diameter (in %s): %f", units, RulerTool::toDisplayUnits(m_rulerLength * 2.0f));
 		} else {
-			str.Format("Length (in feet): %f", m_rulerLength);
+			str.Format("Length (in %s): %f", units, RulerTool::toDisplayUnits(m_rulerLength));
 		}
 		CMainFrame::GetMainFrame()->SetMessageText(str);
 		return;
@@ -260,7 +306,11 @@ void WbView::mouseMove(TTrackingMode m, CPoint viewPt)
 	if (pObj==nullptr) {
 		pObj = picked3dObjectInView(viewPt);
 	}
-	Real height = TheTerrainRenderObject->getHeightMapHeight(cpt.x, cpt.y, nullptr);
+	Real height = TheTerrainRenderObject->getHeightMapHeight(cpt.x, cpt.y, NULL);
+	Real heightCell = TheTerrainRenderObject->getHeightMapHeight(cpt.x, cpt.y, NULL);
+	heightCell = height / 0.627 + 0.16;
+	height = height + 0.05;
+
 	CString str, str2, str3;
 	// If a layer has been activated, display it.
 	if (strcmp(AsciiString::TheEmptyString.str(), LayersList::TheActiveLayerName.c_str()) != 0) {
@@ -269,7 +319,17 @@ void WbView::mouseMove(TTrackingMode m, CPoint viewPt)
 		str.Format("%d object(s), ", totalObjects);
 	}
 	str2.Format("%d waypoint(s), ", totalWaypoints);
-	str3.Format("(%.2f,%.2f), height %.2f", cpt.x, cpt.y, height);
+
+	// On Hold Edit
+	// 	CString pointerText = CMainFrame::GetMainFrame()->getPointerText();
+	// DEBUG_LOG(("pointer text %s\n",pointerText));
+	// if (!pointerText.IsEmpty()) {
+	// 	str += " | ";
+	// 	str += pointerText;
+	// }
+
+	// Adriane [Deathscythe] -- Semi precise cell calc , todo fix it still sometimes off by something
+	str3.Format("(%.2f,%.2f), height (Feet): %.2f Height (Cell): %.2f ", cpt.x, cpt.y, height, heightCell);
 	str += str2;
 	str += str3;
 	if (numSelected) {
@@ -381,13 +441,13 @@ void WbView::OnMButtonDown(UINT nFlags, CPoint point)
 //=============================================================================
 /** Returns true if the pixel location picks the object. */
 //=============================================================================
-TPickedStatus WbView::picked(MapObject *pObj, Coord3D docPt)
+TPickedStatus WbView::picked(MapObject *pObj, Coord3D docPt, Bool ctrlKeyDown)
 {
 	Coord3D cloc = *pObj->getLocation();
-	if (!m_showObjects && !pObj->isWaypoint()) {
+	if (!m_showObjects && !pObj->isSelected() && !pObj->isWaypoint() && !ctrlKeyDown) {
 		return PICK_NONE;
 	}
-	if (!m_showWaypoints && !WaypointTool::isActive() && pObj->isWaypoint()) {
+	if (!m_showWaypoints && !WaypointTool::isActive() && pObj->isWaypoint() && !ctrlKeyDown) {
 		return PICK_NONE;
 	}
 
@@ -400,11 +460,14 @@ TPickedStatus WbView::picked(MapObject *pObj, Coord3D docPt)
 	if (cpt.length() < 0.5f*MAP_XY_FACTOR+m_hysteresis) {
 		return PICK_CENTER;
 	}
-	if (pObj->getFlag(FLAG_ROAD_FLAGS) ||  pObj->getFlag(FLAG_BRIDGE_FLAGS) || pObj->isWaypoint()) {
+	if (!ctrlKeyDown && (pObj->getFlag(FLAG_ROAD_FLAGS) ||
+						pObj->getFlag(FLAG_BRIDGE_FLAGS) ||
+						pObj->isWaypoint()))
+	{
 		doArrow = false;
 	}
 	// Check and see if we are within 1 cell size of the center.
-	if (doArrow && cpt.length() < 1.5f*MAP_XY_FACTOR+m_hysteresis) {
+	if (doArrow && cpt.length() < 2.5f*MAP_XY_FACTOR+m_hysteresis) {
 		return PICK_ARROW;
 	}
 	return PICK_NONE;
@@ -478,12 +541,74 @@ void WbView::OnEditDelete()
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
 }
 
-/** Handles the key down event.  Currently, handles delete keys, and checks
-for updates to the current tool. */
+static Int clampBrushVal(Int val, Int lo, Int hi)
+{
+	if (val < lo) return lo;
+	if (val > hi) return hi;
+	return val;
+}
+
+/** ']' / '[' step the active brush tool's size up/down by 5; with Shift held they step
+the feather width instead.  (Shift, not Ctrl: Ctrl transiently swaps the current tool,
+so the brush would no longer be active when the key arrived.)
+Each tool's static setter already pushes the new value into
+its options panel and the on-terrain brush feedback circle, so this only has to compute
+the clamped value.  Tools without a brush are simply ignored. */
+static void adjustBrushKeyStep(Bool larger, Bool feather)
+{
+	Tool *pTool = WbApp()->getCurTool();
+	if (pTool == NULL) return;
+	const Int delta = larger ? 5 : -5;
+	switch (pTool->getToolID()) {
+		case ID_BRUSH_TOOL:
+			if (feather) {
+				BrushTool::setFeather(clampBrushVal(BrushTool::getFeather() + delta, BrushOptions::MIN_FEATHER, BrushOptions::MAX_FEATHER));
+			} else {
+				BrushTool::setWidth(clampBrushVal(BrushTool::getWidth() + delta, BrushOptions::MIN_BRUSH_SIZE, BrushOptions::MAX_BRUSH_SIZE));
+			}
+			break;
+		case ID_BRUSH_ADD_TOOL:
+		case ID_BRUSH_SUBTRACT_TOOL:
+			if (feather) {
+				MoundTool::setFeather(clampBrushVal(MoundTool::getFeather() + delta, MoundOptions::MIN_FEATHER, MoundOptions::MAX_FEATHER));
+			} else {
+				MoundTool::setWidth(clampBrushVal(MoundTool::getWidth() + delta, MoundOptions::MIN_BRUSH_SIZE, MoundOptions::MAX_BRUSH_SIZE));
+			}
+			break;
+		case ID_FEATHERTOOL:
+			// The feather tool's single "Feather" value IS its brush size, so plain and
+			// Shift-modified keys both step it.
+			FeatherTool::setFeather(clampBrushVal(FeatherTool::getFeather() + delta, FeatherOptions::MIN_FEATHER_SIZE, FeatherOptions::MAX_FEATHER_SIZE));
+			break;
+		case ID_BIG_TILE_TOOL:
+			if (!feather) {
+				// 2..100 mirrors TerrainMaterial's (protected) MIN_TILE_SIZE/MAX_TILE_SIZE.
+				Int width = clampBrushVal(BigTileTool::getCurrentWidth() + delta, 2, 100);
+				BigTileTool::setWidth(width);
+				TerrainMaterial::setWidth(width);	// keep the panel's size edit in sync
+			}
+			break;
+		case ID_WAVE_EDITOR_TOOL:
+			if (!feather && WaveEditorTool::getEditorMode() == WaveEditorTool::MODE_BUCKET) {
+				WaveEditorOptions::adjustBucketBrushSize(delta);
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+/** Handles the key down event.  Currently, handles delete keys, brush-size keys, and
+checks for updates to the current tool. */
 void WbView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
 	if (nChar == VK_DELETE || nChar == VK_BACK) {
 		OnEditDelete();
+	}
+	// ']' grows / '[' shrinks the active brush; with Shift they adjust its feather.
+	// WM_KEYDOWN auto-repeats, so holding the key keeps stepping the value.
+	if (nChar == VK_OEM_4 || nChar == VK_OEM_6) {
+		adjustBrushKeyStep(nChar == VK_OEM_6, (::GetKeyState(VK_SHIFT) & 0x8000) != 0);
 	}
 	WbApp()->updateCurTool(false);
 	OnSetCursor(this,HTCLIENT,0);
@@ -561,9 +686,21 @@ void WbView::OnEditPaste()
 	/* First, clear the selection. */
 	PointerTool::clearSelection();
 
+	// Set an offset for the pasted objects if necessary
+	const int offsetX = 10;
+	const int offsetY = 10;
+
 	MapObject *pObj = WbApp()->getMapObjPasteList();
 	while (pObj) {
 		pTmp = pObj->duplicate();
+		const Coord3D* pOriginalLocation = pObj->getLocation();
+
+		Coord3D newLocation = *pOriginalLocation;
+		newLocation.x += offsetX; // Adjust X position
+		newLocation.y += offsetY; // Adjust Y position
+
+
+		pTmp->setLocation(&newLocation);
 		pTmp->setNextMap(pTheCopy);
 		pTmp->validate();
 
@@ -582,12 +719,21 @@ void WbView::OnEditPaste()
 void WbView::OnViewShowObjects()
 {
 	m_showObjects = !m_showObjects;
+
+	// Ensure mutual exclusivity
+	if (m_showObjects) {
+		m_showObjectsSelected = 0;
+	} else {
+		m_showObjectsSelected = 1;
+	}
+
 	Invalidate(false);
 	WbView  *pView = (WbView *)WbDoc()->GetActive2DView();
 	if (pView != nullptr && pView != this) {
 		pView->Invalidate(!m_showObjects);
 	}
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", m_showObjects?1:0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", m_showObjectsSelected?1:0);
 }
 
 /** Sets the check in the menu to match the show objects flag. */
@@ -596,7 +742,72 @@ void WbView::OnUpdateViewShowObjects(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(m_showObjects?1:0);
 }
 
-void WbView::OnUpdateEditPaste(CCmdUI* pCmdUI)
+void WbView::OnViewShowObjectsSelected() 
+{
+	m_showObjectsSelected = !m_showObjectsSelected;
+
+	// Ensure mutual exclusivity
+	if (m_showObjectsSelected) {
+		m_showObjects = 0;
+	}
+
+	Invalidate(false);
+	WbView  *pView = (WbView *)WbDoc()->GetActive2DView();
+	if (pView != NULL && pView != this) {
+		pView->Invalidate(!m_showObjectsSelected);
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", m_showObjectsSelected?1:0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", m_showObjects?1:0);
+}
+
+/** Sets the check in the menu to match the show objects flag. */
+void WbView::OnUpdateViewShowObjectsSelected(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_showObjectsSelected?1:0);
+}
+
+
+/** Sets the check in the menu to match the show objects flag. */
+void WbView::OnUpdateTogglePivotFarthest(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_togglePivotFarthest?1:0);
+}
+
+void WbView::OnTogglePivotFarthest() 
+{
+	m_togglePivotFarthest = !m_togglePivotFarthest;
+
+	Invalidate(false);
+	WbView  *pView = (WbView *)WbDoc()->GetActive2DView();
+	if (pView != NULL && pView != this) {
+		pView->Invalidate(!m_togglePivotFarthest);
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TogglePivotFarthest", m_togglePivotFarthest?1:0);
+	// Keep PointerTool's cached copy current so it needn't re-read the registry per mouse-move.
+	PointerTool::setGroupRotateOptions(m_toggleObjectRotationWithGroup, m_togglePivotFarthest);
+}
+
+/** Sets the check in the menu to match the show objects flag. */
+void WbView::OnUpdateToggleObjectRotationWithGroup(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_toggleObjectRotationWithGroup?1:0);
+}
+
+void WbView::OnToggleObjectRotationWithGroup() 
+{
+	m_toggleObjectRotationWithGroup = !m_toggleObjectRotationWithGroup;
+
+	Invalidate(false);
+	WbView  *pView = (WbView *)WbDoc()->GetActive2DView();
+	if (pView != NULL && pView != this) {
+		pView->Invalidate(!m_toggleObjectRotationWithGroup);
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ToggleObjectRotationWithGroup", m_toggleObjectRotationWithGroup?1:0);
+	// Keep PointerTool's cached copy current so it needn't re-read the registry per mouse-move.
+	PointerTool::setGroupRotateOptions(m_toggleObjectRotationWithGroup, m_togglePivotFarthest);
+}
+
+void WbView::OnUpdateEditPaste(CCmdUI* pCmdUI) 
 {
 	MapObject *pTheCopy = WbApp()->getMapObjPasteList();
 	pCmdUI->Enable(pTheCopy != nullptr);
@@ -648,6 +859,35 @@ void WbView::OnEditReplace()
 		}
 	}
 
+#ifdef RTS_HAS_QT
+	{
+		int allowable[ES_NUM_SORTING_TYPES];
+		int allowCount = 0;
+		if (sort == ES_NONE) {
+			for (int i = ES_FIRST; i<ES_NUM_SORTING_TYPES; i++)	{
+				allowable[allowCount++] = i;
+			}
+		} else {
+			allowable[allowCount++] = sort;
+		}
+		char qtPicked[256];
+		qtPicked[0] = 0;
+		int qtRc = WBQtPickUnit_Run(::AfxGetMainWnd()->GetSafeHwnd(), allowable, allowCount, false, qtPicked, sizeof(qtPicked));
+		if (qtRc >= 0) {
+			if (qtRc == 1) {
+				const ThingTemplate* thing = TheThingFactory->findTemplate(AsciiString(qtPicked));
+				if (thing) {
+					CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+					ModifyObjectUndoable *pUndo = new ModifyObjectUndoable(pDoc);
+					pDoc->AddAndDoUndoable(pUndo);
+					pUndo->SetThingTemplate(thing);
+					REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
+				}
+			}
+			return;
+		}
+	}
+#endif
 	PickUnitDialog dlg;
 	if (sort == ES_NONE) {
 		for (int i = ES_FIRST; i<ES_NUM_SORTING_TYPES; i++)	{
@@ -770,7 +1010,49 @@ void WbView::OnUpdateViewShowwaypoints(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(m_showWaypoints?1:0);
 }
 
-void WbView::OnViewShowpolygontriggers()
+void WbView::OnViewShowWater() 
+{
+	m_showWater = !m_showWater;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWater", m_showWater?1:0);
+	PointerTool::clearSelection();
+}
+
+void WbView::OnUpdateViewShowWater(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_showWater?1:0);
+}
+
+void WbView::OnViewUseFixedColorWaypoints() 
+{
+	m_useFixedColoredWaypoints = !m_useFixedColoredWaypoints;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "UseFixedColoredWaypoints", m_useFixedColoredWaypoints?1:0);
+}
+
+void WbView::OnUpdateViewUseFixedColorWaypoints(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_useFixedColoredWaypoints?1:0);
+}
+
+void WbView::OnViewShowRoads() 
+{
+	m_showRoads = !m_showRoads;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowRoads", m_showRoads?1:0);
+	if(TheTerrainRenderObject){
+		if(!m_showRoads){
+			TheTerrainRenderObject->removeAllRoads();
+		} else {
+			TheTerrainRenderObject->loadRoadsAndBridges(NULL,FALSE);
+		}
+	}
+}
+
+void WbView::OnUpdateViewShowRoads(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_showRoads?1:0);
+}
+
+
+void WbView::OnViewShowpolygontriggers() 
 {
 	m_showPolygonTriggers = !m_showPolygonTriggers;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", m_showPolygonTriggers?1:0);
@@ -783,6 +1065,10 @@ void WbView::OnUpdateViewShowpolygontriggers(CCmdUI* pCmdUI)
 
 void WbView::OnEditPlayerlist()
 {
+#ifdef RTS_HAS_QT
+	WBQtPlayerList_Run(::AfxGetMainWnd()->GetSafeHwnd());
+	return;
+#endif
 	PlayerListDlg dlg;
 	dlg.DoModal();
 }
@@ -931,6 +1217,24 @@ void WbView::OnUpdateShowNames(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(m_showNames ? 1 : 0);
 }
 
+
+void WbView::OnShowNamesExtra() 
+{
+	m_showNamesExtra = m_showNamesExtra ? false : true;
+	Invalidate(false);
+	WbView  *pView = (WbView *)WbDoc()->GetActive2DView();
+	if (pView != NULL && pView != this) {
+		pView->Invalidate(false);
+	}
+
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowNamesExtra", m_showNamesExtra?1:0);
+}
+
+void WbView::OnUpdateShowNamesExtra(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_showNamesExtra ? 1 : 0);
+}
+
 void WbView::OnValidationFixTeams()
 {
 	Bool anyFixes = false;
@@ -1019,8 +1323,21 @@ void WbView::OnValidationFixTeams()
 				tmplName.str(), name.str(), teamName.str());
 
 			anyFixes = true;
-			::AfxMessageBox(warning.str(), MB_OK);
-			TeamsInfo ti;
+			::AfxMessageBox(warning.str(), MB_OK);	
+			TeamsInfo ti;	 
+#ifdef RTS_HAS_QT
+			char qtOwner[256];
+			if (WBQtFixTeamOwner_Run(&ti, TheSidesList, ::AfxGetMainWnd()->GetSafeHwnd(), qtOwner, sizeof(qtOwner)) != 0)
+			{
+				AsciiString team;
+				team.set("team");
+				team.concat(AsciiString(qtOwner));
+				if (TheSidesList->findTeamInfo(team)==NULL) {
+					team.set("team"); // neutral.
+				}
+				pMapObj->getProperties()->setAsciiString(TheKey_originalOwner,  team);
+			}
+#else
 			CFixTeamOwnerDialog fix(&ti, TheSidesList);
 			if (fix.DoModal() == IDOK) {
 				if (fix.pickedValidTeam()) {
@@ -1033,6 +1350,7 @@ void WbView::OnValidationFixTeams()
 					pMapObj->getProperties()->setAsciiString(TheKey_originalOwner,  team);
 				}
 			}
+#endif
 		}
 	}
 
@@ -1065,6 +1383,10 @@ void WbView::OnUpdateShowTerrain(CCmdUI* pCmdUI)
 
 void WbView::OnEditTeamlist()
 {
+#ifdef RTS_HAS_QT
+	WBQtTeams_Run(::AfxGetMainWnd()->GetSafeHwnd());
+	return;
+#endif
 	CTeamsDialog dlg;
 	dlg.DoModal();
 }

@@ -33,7 +33,11 @@
 
 #include <list>
 
-RoadOptions *RoadOptions::m_staticThis = nullptr;
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtRoadBridge.h"
+#endif
+
+RoadOptions *RoadOptions::m_staticThis = NULL;
 Bool RoadOptions::m_updating = false;
 AsciiString RoadOptions::m_currentRoadName;
 Int RoadOptions::m_currentRoadIndex=0;
@@ -79,12 +83,38 @@ BEGIN_MESSAGE_MAP(RoadOptions, COptionsPanel)
 	ON_BN_CLICKED(IDC_BROAD_CURVE, OnBroadCurve)
 	ON_BN_CLICKED(IDC_JOIN, OnJoin)
 	ON_BN_CLICKED(IDC_APPLY_ROAD, OnApplyRoad)
+	ON_BN_CLICKED(IDC_OBJECT_SEARCH_BUTTON, OnSearch)
+	ON_BN_CLICKED(IDC_OBJECT_SEARCH_RESET_BTN, OnReset)
+	ON_EN_CHANGE(IDC_ROAD_SNAP_POINT_EDIT, OnEditSnapPoint)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
 // RoadOptions data access method.
 
+void RoadOptions::OnEditSnapPoint() 
+{
+	if (m_updating) return;
+
+	CWnd *pWnd = m_staticThis->GetDlgItem(IDC_ROAD_SNAP_POINT_EDIT);
+	if (pWnd) {
+		CString val;
+		pWnd->GetWindowText(val);
+
+		double snapDistance = atof(val);
+		if (snapDistance > 5.0)
+			snapDistance = 5.0;
+		if (snapDistance < 0.2)
+			snapDistance = 0.2;
+
+		// Store as string if using non-integer values
+		CString strVal;
+		strVal.Format("%.2f", snapDistance);
+		::AfxGetApp()->WriteProfileString("RoadOptionPanel", "RoadSnappingDistance", strVal);
+
+		// m_customSnap = true; // Uncomment if needed
+	}
+}
 
 void RoadOptions::updateLabel()
 {
@@ -186,6 +216,11 @@ void RoadOptions::updateSelection()
 		pButton = (CButton *)m_staticThis->GetDlgItem(IDC_JOIN);
 		pButton->SetCheck(join);
 	}
+#ifdef RTS_HAS_QT
+	// Keep the Qt Road panel (the RTS_HAS_QT front-end) in step: it re-reads the selection
+	// state through the bridge whenever the MFC selection path runs.
+	WBQtRoad_PushRefresh();
+#endif
 }
 
 /** Applies road corner flags and road type to selection. */
@@ -219,10 +254,47 @@ BOOL RoadOptions::OnInitDialog()
 	CRect rect;
 	pWnd->GetWindowRect(&rect);
 
+	// Load saved snap distance from profile
+	CString roadSnappingDistance = ::AfxGetApp()->GetProfileString("RoadOptionPanel", "RoadSnappingDistance", "1.0");
+	// Set the snap distance to the edit box
+	pWnd = GetDlgItem(IDC_ROAD_SNAP_POINT_EDIT);
+	if (pWnd) {
+		pWnd->SetWindowText(roadSnappingDistance);
+	}
+
 	ScreenToClient(&rect);
 	rect.DeflateRect(2,2,2,2);
-	m_roadTreeView.Create(TVS_HASLINES|TVS_LINESATROOT|TVS_HASBUTTONS|
-		TVS_SHOWSELALWAYS|TVS_DISABLEDRAGDROP, rect, this, IDC_ROAD_TREEVIEW);
+	
+	// Create the font for the treeview
+	m_treeFont.CreateFont(
+		14,
+		0,
+		0,
+		0,
+		FW_MEDIUM,
+		FALSE,
+		FALSE,
+		0,
+		ANSI_CHARSET,
+		OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY,
+		DEFAULT_PITCH | FF_SWISS,
+		_T("Segoe UI")
+	);
+
+	// Create the TreeView
+	m_roadTreeView.Create(
+		TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS |
+		TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP,
+		rect,
+		this,
+		IDC_ROAD_TREEVIEW
+	);
+
+	// Apply the font
+	m_roadTreeView.SetFont(&m_treeFont);
+
 	m_roadTreeView.ShowWindow(SW_SHOW);
 
 	Int index = 0;
@@ -521,11 +593,18 @@ void RoadOptions::SelectConnected()
 
 void RoadOptions::ChangeRoadType(AsciiString newRoad)
 {
+	// if (AfxMessageBox(
+    //     _T("Changing the road type have a broken undo at the moment -- you will have to save your map before continuing. Continue?"),
+    //     MB_YESNO | MB_ICONWARNING) != IDYES)
+    // {
+    //     return;
+    // }
+
 	SelectConnected();
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	ModifyObjectUndoable *pUndo = new ModifyObjectUndoable(pDoc);
 	pDoc->AddAndDoUndoable(pUndo);
-	pUndo->SetName(newRoad);
+	pUndo->SetRoadType(newRoad);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
 }
 
@@ -608,3 +687,340 @@ void RoadOptions::OnApplyRoad()
 		ChangeRoadType(m_currentRoadName);
 	}
 }
+
+
+void RoadOptions::OnOK()
+{
+    OnSearch(); 
+}
+void RoadOptions::OnSearch()
+{
+
+    CString searchText;
+    GetDlgItemText(IDC_OBJECT_SEARCH_EDIT, searchText);
+    searchText.MakeLower();
+
+	m_roadTreeView.SetRedraw(FALSE);   // stop redraw
+    m_roadTreeView.DeleteAllItems(); // clear tree
+
+    // If search box empty → restore full list
+    if (searchText.IsEmpty())
+    {
+        OnReset();
+        return;
+    }
+
+    Int index = 0;
+    int matchCount = 0;
+
+    // Search roads
+    for (TerrainRoadType* road = TheTerrainRoads->firstRoad(); 
+         road; road = TheTerrainRoads->nextRoad(road))
+    {
+        CString name = road->getName().str();
+        CString lower = name; lower.MakeLower();
+
+        if (lower.Find(searchText) != -1)
+        {
+            addRoad((char*)road->getName().str(), index, TVI_ROOT);
+            matchCount++;
+        }
+        index++;
+    }
+
+    // Search bridges
+    for (TerrainRoadType* bridge = TheTerrainRoads->firstBridge(); 
+         bridge; bridge = TheTerrainRoads->nextBridge(bridge))
+    {
+        CString name = bridge->getName().str();
+        CString lower = name; lower.MakeLower();
+
+        if (lower.Find(searchText) != -1)
+        {
+            addRoad((char*)bridge->getName().str(), index, TVI_ROOT);
+            matchCount++;
+        }
+        index++;
+    }
+
+    if (matchCount == 0)
+    {
+		::MessageBeep(MB_ICONEXCLAMATION); // no result
+
+		m_roadTreeView.DeleteAllItems(); // clear tree
+		m_roadTreeView.Invalidate();       // force repaint
+
+        return;
+    }
+
+    // Expand "Roads" and/or "Bridges" automatically if results found
+    HTREEITEM root = m_roadTreeView.GetRootItem();
+    ExpandAllItems(m_roadTreeView, root);
+
+    m_roadTreeView.SetRedraw(TRUE);    // resume redraw
+    m_roadTreeView.Invalidate();       // force repaint
+}
+
+// 🔄 Reset View – restore original full list
+void RoadOptions::OnReset()
+{
+    m_roadTreeView.SetRedraw(FALSE);   // stop redraw
+    m_roadTreeView.DeleteAllItems();
+
+    Int index = 0;
+
+    // restore roads
+    for (TerrainRoadType* road = TheTerrainRoads->firstRoad(); 
+         road; road = TheTerrainRoads->nextRoad(road))
+    {
+        addRoad((char*)road->getName().str(), index, TVI_ROOT);
+        index++;
+    }
+
+    // restore bridges
+    for (TerrainRoadType* bridge = TheTerrainRoads->firstBridge(); 
+         bridge; bridge = TheTerrainRoads->nextBridge(bridge))
+    {
+        addRoad((char*)bridge->getName().str(), index, TVI_ROOT);
+        index++;
+    }
+
+    // restore selection + label
+	int selectionindex = 0; // we set it to 0 since its default 
+    setRoadTreeViewSelection(TVI_ROOT, selectionindex);
+    updateLabel();
+
+    m_roadTreeView.SetRedraw(TRUE);    // resume redraw
+    m_roadTreeView.Invalidate();       // force repaint
+}
+
+void RoadOptions::ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem)
+{
+    while (hItem)
+    {
+        treeCtrl.Expand(hItem, TVE_EXPAND);
+        HTREEITEM hChild = treeCtrl.GetChildItem(hItem);
+        if (hChild)
+            ExpandAllItems(treeCtrl, hChild);
+
+        hItem = treeCtrl.GetNextSiblingItem(hItem);
+    }
+}
+
+#ifdef RTS_HAS_QT
+//----------------------------------------------------------------------------------------
+// RoadOptions Qt-support statics (declared in RoadOptions.h; defined here so the Qt Road
+// panel can mirror the road-type selection statics and fire the same command handlers
+// without churning the MFC message map). See qt/panels/WBQtRoadBridge.h for the contract.
+//----------------------------------------------------------------------------------------
+int RoadOptions::qtGetCurrentIndex(void)
+{
+	return m_currentRoadIndex;
+}
+
+void RoadOptions::qtSelectIndex(int index, const char *name)
+{
+	// Mirrors the MFC TVN_SELCHANGED leaf branch: record the current road-type index + name.
+	m_currentRoadIndex = index;
+	if (name != NULL)
+	{
+		m_currentRoadName = name;
+	}
+	if (m_staticThis)
+	{
+		m_staticThis->updateLabel();
+	}
+}
+
+int RoadOptions::qtGetCurrentName(char *nameOut, int cap)
+{
+	if (nameOut == NULL || cap <= 0)
+	{
+		return 0;
+	}
+	const char *src = m_currentRoadName.str();
+	strncpy(nameOut, src, cap - 1);
+	nameOut[cap - 1] = 0;
+	return 1;
+}
+
+int RoadOptions::qtGetCornerType(void)
+{
+	if (m_angleCorners)
+	{
+		return WBQT_ROAD_CORNER_ANGLED;
+	}
+	if (m_tightCurve)
+	{
+		return WBQT_ROAD_CORNER_TIGHT;
+	}
+	return WBQT_ROAD_CORNER_BROAD;
+}
+
+void RoadOptions::qtSetCornerType(int cornerType)
+{
+	// Mirrors OnBroadCurve / OnTightCurve / OnAngled: set the sticky corner flags, then apply
+	// the flags to the current road selection.
+	if (cornerType == WBQT_ROAD_CORNER_ANGLED)
+	{
+		m_angleCorners = true;
+		m_tightCurve = false;
+	}
+	else if (cornerType == WBQT_ROAD_CORNER_TIGHT)
+	{
+		m_angleCorners = false;
+		m_tightCurve = true;
+	}
+	else
+	{
+		m_angleCorners = false;
+		m_tightCurve = false;
+	}
+	if (m_staticThis)
+	{
+		m_staticThis->applyToSelection();
+	}
+}
+
+int RoadOptions::qtGetJoin(void)
+{
+	return m_doJoin ? 1 : 0;
+}
+
+void RoadOptions::qtSetJoin(int on)
+{
+	// Mirrors OnJoin, but takes the toggle state directly instead of reading the MFC checkbox.
+	m_doJoin = (on != 0);
+	Int flagMask = FLAG_ROAD_JOIN;
+	Int flagVal = 0;
+	if (m_doJoin)
+	{
+		flagVal = FLAG_ROAD_JOIN;
+	}
+	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc)
+	{
+		ModifyFlagsUndoable *pUndo = new ModifyFlagsUndoable(pDoc, flagMask, flagVal);
+		pDoc->AddAndDoUndoable(pUndo);
+		REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
+	}
+}
+
+void RoadOptions::qtApplyRoadType(void)
+{
+	// Mirrors OnApplyRoad -> ChangeRoadType(m_currentRoadName).
+	if (m_staticThis && m_currentRoadName != AsciiString::TheEmptyString)
+	{
+		m_staticThis->ChangeRoadType(m_currentRoadName);
+	}
+}
+
+void RoadOptions::qtGetSelectionState(int *cornerTypeOut, int *joinOut, int *mixedOut, char *roadNameOut, int cap)
+{
+	// Replicates the corner/join/name computation in updateSelection() without touching any MFC
+	// controls, so the Qt panel can show the right checkbox states for the current road selection.
+	Int angled = 0;
+	Int tight = 0;
+	Int broad = 0;
+	Int join = 0;
+	AsciiString roadName;
+	Bool multipleNames = false;
+
+	MapObject *pMapObj;
+	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+	{
+		if (pMapObj->isSelected() && pMapObj->getFlag(FLAG_ROAD_FLAGS))
+		{
+			if (roadName.isEmpty())
+			{
+				roadName = pMapObj->getName();
+			}
+			else
+			{
+				if (!(roadName==pMapObj->getName()))
+				{
+					multipleNames = true;
+				}
+			}
+			if (pMapObj->getFlag(FLAG_ROAD_CORNER_ANGLED))
+			{
+				angled = 1;
+			}
+			else if (pMapObj->getFlag(FLAG_ROAD_CORNER_TIGHT))
+			{
+				tight = 1;
+			}
+			else
+			{
+				broad = 1;
+			}
+			if (pMapObj->getFlag(FLAG_ROAD_JOIN))
+			{
+				join = 1;
+			}
+		}
+	}
+
+	Int mixed = 0;
+	if (angled+broad+tight==0)
+	{
+		// nothing selected -- fall back to the sticky corner/join state.
+		if (m_angleCorners)
+		{
+			angled = 1;
+		}
+		else if (m_tightCurve)
+		{
+			tight = 1;
+		}
+		else
+		{
+			broad = 1;
+		}
+		if (m_doJoin)
+		{
+			join = 1;
+		}
+	}
+	else if (angled+broad+tight==1)
+	{
+		// One type selected.
+	}
+	else
+	{
+		// Mixed selection: the MFC path clears all checks.
+		angled = tight = broad = join = 0;
+		mixed = 1;
+	}
+
+	if (cornerTypeOut != NULL)
+	{
+		if (angled)
+		{
+			*cornerTypeOut = WBQT_ROAD_CORNER_ANGLED;
+		}
+		else if (tight)
+		{
+			*cornerTypeOut = WBQT_ROAD_CORNER_TIGHT;
+		}
+		else
+		{
+			*cornerTypeOut = WBQT_ROAD_CORNER_BROAD;
+		}
+	}
+	if (joinOut != NULL)
+	{
+		*joinOut = join;
+	}
+	if (mixedOut != NULL)
+	{
+		*mixedOut = mixed;
+	}
+	if (roadNameOut != NULL && cap > 0)
+	{
+		const char *src = (!roadName.isEmpty() && !multipleNames) ? roadName.str() : "";
+		strncpy(roadNameOut, src, cap - 1);
+		roadNameOut[cap - 1] = 0;
+	}
+}
+#endif

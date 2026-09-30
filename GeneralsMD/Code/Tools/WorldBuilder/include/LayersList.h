@@ -32,6 +32,7 @@
 /*---------------------------------------------------------------------------*/
 
 #pragma once
+#define LAYERS_LIST_SECTION "LayersList"
 
 // INCLUDES ///////////////////////////////////////////////////////////////////
 #include "Common/AsciiString.h"
@@ -116,9 +117,30 @@ class LayersList : public CDialog
 		static PolygonTrigger *findPolygonTriggerByUID(AsciiString objectIDToFind);
 		static Bool findAndSelectMapObject(AsciiString selectedItemAsciiString);
 		static Bool findAndSelectPolygonTrigger(AsciiString selectedItemAsciiString);
-		static void unselectAllMapObjects();
-		static void unselectAllPolygonTriggers();
+		static void unselectAllMapObjects(void);
+		static void unselectAllPolygonTriggers(void);
 
+#ifdef RTS_HAS_QT
+		// Qt front-end support (WBQtLayersBridge). The MFC dialog stays created + hidden as
+		// the model owner (TheLayersList feeds the whole codebase); the Qt window mirrors the
+		// tree and drives these statics, which are the MFC command handlers keyed by NAME
+		// instead of the last-clicked tree item. Defined in LayersList.cpp.
+		static int  qtGetLayerCount(void);
+		static int  qtGetLayerName(int i, char *out, int cap);
+		static int  qtGetLayerState(int i);	// 0 shown, 1 hidden, 2 active
+		static int  qtGetItemCount(int layer);
+		static int  qtGetItemLabel(int layer, int j, char *out, int cap);
+		static int  qtNewLayer(char *nameOut, int cap);
+		static void qtDeleteLayer(const char *name);
+		static void qtToggleHideLayer(const char *name);
+		static void qtToggleActiveLayer(const char *name);
+		static int  qtRenameLayer(const char *oldName, const char *newName);
+		static void qtMergeLayerInto(const char *src, const char *dst);
+		static void qtMoveObjectToLayer(const char *label, const char *layerName);
+		static void qtMoveViewSelectionToLayer(const char *layerName);
+		static void qtSelectItem(const char *label);
+#endif
+		
 	public:
 		// This is a string because making it an AsciiString makes us barf on construction. :-(
 		static std::string TheDefaultLayerName;
@@ -174,7 +196,8 @@ class LayersList : public CDialog
 		afx_msg void OnMergeViewSelection(UINT commandID);
 		afx_msg void OnSelectActiveLayer();
 
-
+		afx_msg void OnMove(int x, int y);
+				
 		afx_msg void OnSelectLayerObject();
 		afx_msg void OnNewLayer();
 		afx_msg void OnDeleteLayer();

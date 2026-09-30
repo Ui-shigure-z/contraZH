@@ -327,8 +327,8 @@ square:
 A 512-texel texture takes the room of four 256-texel ones. A texture that does not fit draws wrong, and the
 render log names it, so a map with many large textures needs a smaller border.
 
-Shadow mapping, specular, normal and glow maps, per-pixel lights, soft particles, flame and laser
-shading and the other features that need the Direct3D 9 build are on [Direct3D 9 Features](dx9feat.md).
+Shadow mapping, specular, terrain glint, HQ sky cloud shadows, normal and glow maps, per-pixel lights, soft particles, flame
+and laser shading and the other features that need the Direct3D 9 build are on [Direct3D 9 Features](dx9feat.md).
 
 ### Bloom
 
@@ -420,6 +420,9 @@ Notes:
 * Each light's reach is `GroundGlowRadius` on the module, else `LaserGroundGlowRadius`, else the
 laser's `OuterBeamWidth`, at least 15, plus a 6 unit soft edge. Long beams spread and dim their twelve lights.
 * The terrain takes up to 64 dynamic lights a frame, of all kinds.
+* In the Direct3D 9 build, beams whose glows overlap light the ground together, so a spot several
+lasers hit brightens modestly instead of compounding. `LaserGroundGlowOverlap = No` in
+`GameData.ini` lights each beam on its own. See [Laser ground glow](dx9feat.md#laser-ground-glow).
 
 # ParticleSystem.ini
 
@@ -879,15 +882,22 @@ spawned them in amber)
 * `Ctrl + '` - (The `CommandSet` the object uses, in yellow)
 * `Ctrl + ;` - (The weapons the object is armed with, in red, under the command set)
 * `Ctrl + /` - (The `Armor` the object currently uses, in light blue, under the weapons)
+* `Ctrl + ,` - (Laser beams: the laser object's name, which for a weapon is its `LaserName`, in pink
+at the middle of the beam)
+* `Ctrl + .` - (Laser beams: the `W3DLaserDraw` module tags, in lavender, under the laser name)
 
 * Sub object names (hull, turret, wheels, ...) are for `ShowSubObject` / `HideSubObject`. Up to 16,
 then "and N more".
 * Command set, weapons and armor are read from the live object, so they show the set or block the
 engine actually picked. Empty cases show `<none>`, `<no weapons>` or `<no armor>`.
 * Weapons are listed as in a `WeaponSet` block, e.g. `PRIMARY NapalmMissileWeapon`.
+* Laser labels that would overlap are pushed up above each other. A second beam of the same laser
+landing on an existing label is not labelled again. With a laser overlay on, the object overlays
+skip laser objects, which sit on their firer.
 
 Also bindable in `CommandMap.ini` as `CHEAT_SHOW_OBJECT_NAME`, `CHEAT_SHOW_PARTICLE_NAMES`,
-`CHEAT_SHOW_COMMAND_SET`, `CHEAT_SHOW_WEAPON_SET` and `CHEAT_SHOW_ARMOR_SET`.
+`CHEAT_SHOW_COMMAND_SET`, `CHEAT_SHOW_WEAPON_SET`, `CHEAT_SHOW_ARMOR_SET`, `CHEAT_SHOW_LASER_NAME`
+and `CHEAT_SHOW_LASER_BEAM_BLOCK`.
 
 * `ParticleNameLingerMS = 0` - (Options.ini. Milliseconds a particle name stays on screen after its
 system has gone. 0 or absent shows names only while the system is alive.)

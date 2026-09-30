@@ -76,7 +76,7 @@ void SortingRendererClass::Set_Insert_Effects(unsigned effects, const void *effe
 	InsertEffects = effects;
 	InsertEffectData = effectData;
 }
-static unsigned DEFAULT_SORTING_POLY_COUNT = 16384;	// (count * 3) must be less than 65536
+static unsigned DEFAULT_SORTING_POLY_COUNT = 21844;	// (count * 3) must be less than 65536
 static unsigned DEFAULT_SORTING_VERTEX_COUNT = 32768;	// count must be less than 65536
 
 // CONTRA_BLENDSORT: 0 sorts every triangle, 1 batches additive and merges state, 2 sorts rigid meshes per object.
@@ -444,7 +444,6 @@ void SortingRendererClass::Insert_Triangles(
 	const bool additive=BlendBatching && Is_Order_Independent(state->sorting_state.shader);
 
 	if (!Uses_Sorting_Buffers(state->sorting_state)) {
-		WWASSERT(Sorts_Meshes_Per_Object());
 		if (bounding_sphere.Is_Valid()) {
 			// Mesh bounding spheres are already in world space, so only the view's depth column applies.
 			const float (&view)[4][4]=state->sorting_state.view.m;

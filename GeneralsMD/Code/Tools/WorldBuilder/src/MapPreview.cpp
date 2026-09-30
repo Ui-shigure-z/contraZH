@@ -423,6 +423,124 @@ void MapPreview::buildMapPreviewTexture( CString tgaName )
 
 }
 
+void MapPreview::buildMapPreviewTextureAnime(CString tgaName)
+{
+    RGBColor waterColor;
+    waterColor.red = 0.35f;   // slightly more vibrant blue
+    waterColor.green = 0.55f;
+    waterColor.blue = 1.0f;
+
+    CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+    WorldHeightMapEdit* pMap = pDoc->GetHeightMap();
+
+    Real maxHeight = -10000.0f;
+    Real minHeight = 10000.0f;
+    Real avgHeight = 0.0f;
+    Int count = 0;
+
+    // Precompute min, max, and average heights
+    Coord3D worldPoint;
+    ICoord2D radarPoint;
+    for (Int y = 0; y < MAP_PREVIEW_HEIGHT; ++y)
+    {
+        for (Int x = 0; x < MAP_PREVIEW_WIDTH; ++x)
+        {
+            radarPoint.x = x;
+            radarPoint.y = y;
+            mapPreviewToWorld(&radarPoint, &worldPoint);
+
+            Real h = pMap->getHeight(worldPoint.x, worldPoint.y);
+            avgHeight += h;
+            if (h > maxHeight) maxHeight = h;
+            if (h < minHeight) minHeight = h;
+            ++count;
+        }
+    }
+    avgHeight /= count;
+
+    // Anime-style terrain rendering
+    for (Int b = 0; b < MAP_PREVIEW_HEIGHT; ++b)
+    {
+        for (Int x = 0; x < MAP_PREVIEW_WIDTH; ++x)
+        {
+            radarPoint.x = x;
+            radarPoint.y = b;
+            mapPreviewToWorld(&radarPoint, &worldPoint);
+
+            Real h = pMap->getHeight(worldPoint.x, worldPoint.y);
+            RGBColor color;
+
+            if (localIsUnderwater(MAP_XY_FACTOR * (worldPoint.x - pMap->getBorderSize()), 
+                                  MAP_XY_FACTOR * (worldPoint.y - pMap->getBorderSize())))
+            {
+                // Anime water: more saturated
+                color = waterColor;
+                color.red = min(color.red + 0.15f, 1.0f);
+                color.green = min(color.green + 0.05f, 1.0f);
+            }
+            else
+            {
+                // Terrain color
+                pMap->getTerrainColorAt(MAP_XY_FACTOR * (worldPoint.x - pMap->getBorderSize()), 
+                                        MAP_XY_FACTOR * (worldPoint.y - pMap->getBorderSize()), &color);
+
+                // Exaggerate height differences
+                Real heightFactor = (h - avgHeight) / (maxHeight - minHeight + 0.001f);
+                
+                // Darken cliffs: if steep relative to neighbors
+                Int xNext = min(x + 1, MAP_PREVIEW_WIDTH - 1);
+                Int yNext = min(b + 1, MAP_PREVIEW_HEIGHT - 1);
+
+                radarPoint.x = xNext; radarPoint.y = b;
+                Coord3D worldNextX; mapPreviewToWorld(&radarPoint, &worldNextX);
+                Real hNextX = pMap->getHeight(worldNextX.x, worldNextX.y);
+
+                radarPoint.x = x; radarPoint.y = yNext;
+                Coord3D worldNextY; mapPreviewToWorld(&radarPoint, &worldNextY);
+                Real hNextY = pMap->getHeight(worldNextY.x, worldNextY.y);
+
+                Real slope = max(fabs(h - hNextX), fabs(h - hNextY));
+
+                if (slope > 1.0f) // threshold for cliff
+                {
+                    color.red *= 0.5f;
+                    color.green *= 0.5f;
+                    color.blue *= 0.5f;
+                }
+
+                // Brighten peaks, darken valleys
+                if (heightFactor > 0)
+                {
+                    color.red = min(color.red + 0.4f * heightFactor, 1.0f);
+                    color.green = min(color.green + 0.4f * heightFactor, 1.0f);
+                    color.blue = min(color.blue + 0.4f * heightFactor, 1.0f);
+                }
+                else
+                {
+                    color.red = max(color.red + 0.3f * heightFactor, 0.0f);
+                    color.green = max(color.green + 0.3f * heightFactor, 0.0f);
+                    color.blue = max(color.blue + 0.3f * heightFactor, 0.0f);
+                }
+            }
+
+            // Write to pixel buffer
+            m_pixelBuffer[b][x] = 255 | 
+                (REAL_TO_INT(color.red * 255) << 8) | 
+                (REAL_TO_INT(color.green * 255) << 16) | 
+                (REAL_TO_INT(color.blue * 255) << 24);
+        }
+    }
+
+    // Save TGA
+    Targa tga;
+    tga.Header.Width = MAP_PREVIEW_WIDTH;
+    tga.Header.Height = MAP_PREVIEW_HEIGHT;
+    tga.Header.PixelDepth = 32;
+    tga.Header.ImageType = TGA_TRUECOLOR;
+    tga.SetImage((char*)m_pixelBuffer);
+    tga.Save(tgaName, TGAF_IMAGE, FALSE);
+}
+
 
 
 //-----------------------------------------------------------------------------

@@ -34,7 +34,8 @@ public:
 	~W3DShockwaveManager();
 
 	/// radius is how far the ring travels, width its thickness and strength how far it bends the scene, all in world units
-	void add(const Coord3D &position, Real radius, Real width, Real strength, UnsignedInt durationMs);
+	/// strengthInPixels measures strength in pixels at 1080 lines instead, so the bend is the same at every zoom
+	void add(const Coord3D &position, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationMs);
 	/// draws the live rings over the scene, after the particles
 	void render(RenderInfoClass &rinfo);
 	void ReleaseResources();	///< drops the scene copy and shader before a device reset; render recreates them
@@ -48,6 +49,7 @@ private:
 		Real radius;
 		Real width;
 		Real strength;
+		Bool strengthInPixels;
 		UnsignedInt startMs;
 		UnsignedInt durationMs;
 	};

@@ -36,8 +36,8 @@
 // TheSuperHackers @info The max sizes correspond to a number of vertices and indices of a mesh casting shadows
 // in the scene. The more vertices the meshes are supposed to have, the higher these limits need to be.
 // Multiplying these numbers by MIN_SLOT_SIZE gives the max supported amount of vertices and indices.
-#define MAX_VB_SIZES 128 //number of different sized VB slots allowed.
-#define MAX_IB_SIZES 128 //number of different sized IB slots allowed (goes all the way up to 65536)
+#define MAX_VB_SIZES 256 //number of different sized VB slots allowed.
+#define MAX_IB_SIZES 512 //number of different sized IB slots allowed (goes all the way up to 65536)
 
 #define MIN_SLOT_SIZE_SHIFT 5 //used for division by MIN_SLOT_SIZE
 #define MIN_SLOT_SIZE (1 << MIN_SLOT_SIZE_SHIFT) //minimum number of vertices allocated per slot (power of 2).
@@ -45,10 +45,11 @@
 // TheSuperHackers @info The number of slots corresponds to number of meshes casting shadows in the scene.
 // The more meshes there are, the larger the slots needs to be.
 // TheSuperHackers @tweak Double the original sizes to allow for twice as many shadows to be created in the scene.
+// WorldBuilder raises these further so shadows on large maps with many objects do not run out of slots.
 #define SLOTS_MULTIPLIER 2
-#define MAX_NUMBER_SLOTS (4096 * SLOTS_MULTIPLIER) //maximum number of slots that can be allocated.
-#define MAX_VERTEX_BUFFERS_CREATED (32 * SLOTS_MULTIPLIER) //maximum number of D3D vertex buffers allowed to create per vertex type.
-#define MAX_INDEX_BUFFERS_CREATED (32 * SLOTS_MULTIPLIER)
+#define MAX_NUMBER_SLOTS 65536 //maximum number of slots that can be allocated.
+#define MAX_VERTEX_BUFFERS_CREATED 256 //maximum number of D3D vertex buffers allowed to create per vertex type.
+#define MAX_INDEX_BUFFERS_CREATED 256
 
 #define DEFAULT_VERTEX_BUFFER_SIZE 8192 //this size ends up generating VB's of about 256Kbytes
 #define DEFAULT_INDEX_BUFFER_SIZE 32768

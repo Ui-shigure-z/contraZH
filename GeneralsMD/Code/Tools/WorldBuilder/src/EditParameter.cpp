@@ -22,6 +22,10 @@
 #include "StdAfx.h"
 #include "resource.h"
 #include "WorldBuilder.h"
+#include "WorldBuilderDoc.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtParamBridge.h"
+#endif
 
 // This is used to allow sounds to be played via PlaySound
 #include <mmsystem.h>
@@ -98,6 +102,7 @@ BEGIN_MESSAGE_MAP(EditParameter, CDialog)
 	ON_EN_CHANGE(IDC_EDIT, OnChangeEdit)
 	ON_CBN_EDITCHANGE(IDC_COMBO, OnEditchangeCombo)
 	ON_BN_CLICKED(IDC_PREVIEWSOUND, OnPreviewSound)
+	ON_CBN_SELCHANGE(IDC_COMBO, OnComboSelChange)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -107,7 +112,13 @@ SidesList *EditParameter::m_sidesListP = nullptr;
 
 Int EditParameter::edit( Parameter *pParm, Int keyPressed, AsciiString unitName )
 {
-	if (pParm->getParameterType() == Parameter::COORD3D)
+#ifdef RTS_HAS_QT
+	// Qt mode: every parameter type runs in the native Qt editors (generic value dialog,
+	// coordinate editor, object picker, color picker). keyPressed (the old rich-edit
+	// type-to-edit seed) is unused there.
+	return WBQtParam_Edit(pParm, unitName.str()) ? IDOK : IDCANCEL;
+#endif
+	if (pParm->getParameterType() == Parameter::COORD3D) 
 	{
 		EditCoordParameter editCoordDlg;
 		editCoordDlg.m_parameter = pParm;
@@ -1231,7 +1242,24 @@ Bool EditParameter::loadTriggerAreas(CComboBox *pCombo, AsciiString match)
 	return didMatch;
 }
 
-//-------------------------------------------------------------------------------------------------
+char* EditParameter::trimSpaces(char* str) {
+    // Trim leading spaces
+    while (*str && isspace((unsigned char)*str)) {
+        ++str;
+    }
+
+    // Trim trailing spaces
+    if (*str) {
+        char* end = str + strlen(str) - 1;
+        while (end > str && isspace((unsigned char)*end)) {
+            --end;
+        }
+        *(end + 1) = '\0';
+    }
+
+    return str;
+}
+
 Bool EditParameter::loadCommandButtons(CComboBox *pCombo, AsciiString match)
 {
 	if (pCombo) pCombo->ResetContent();
@@ -1258,6 +1286,7 @@ Bool EditParameter::loadCommandButtons(CComboBox *pCombo, AsciiString match)
 				token = strtok(nullptr, seps);
 				if( token != nullptr )
 				{
+					token = trimSpaces(token);  // Trim any leading/trailing spaces
 					if (pCombo) pCombo->AddString(token);
 					if (strcmp(match.str(), token) == 0) didMatch = true;
 				}
@@ -1500,6 +1529,14 @@ Bool EditParameter::loadSides(CComboBox *pCombo, AsciiString match)
 	if (match == LOCAL_PLAYER) didMatch=true;
 	if (match == THIS_PLAYER) didMatch=true;
 	if (match == THIS_PLAYER_ENEMY) didMatch=true;
+	if (match == PLAYER_0) didMatch = true;
+	if (match == PLAYER_1) didMatch = true;
+	if (match == PLAYER_2) didMatch = true;
+	if (match == PLAYER_3) didMatch = true;
+	if (match == PLAYER_4) didMatch = true;
+	if (match == PLAYER_5) didMatch = true;
+	if (match == PLAYER_6) didMatch = true;
+	if (match == PLAYER_7) didMatch = true;
 	Int i;
 	SidesList *sidesListP = m_sidesListP;
 	if (sidesListP==nullptr) sidesListP = TheSidesList;
@@ -1510,6 +1547,18 @@ Bool EditParameter::loadSides(CComboBox *pCombo, AsciiString match)
 		if (pCombo) pCombo->AddString(name.str());
 		if ((name==match)) didMatch = true;
 	}
+
+	// Add these to the last after the dynamic ones
+	// if (pCombo) {
+	// 	pCombo->AddString(PLAYER_0);
+	// 	pCombo->AddString(PLAYER_1);
+	// 	pCombo->AddString(PLAYER_2);
+	// 	pCombo->AddString(PLAYER_3);
+	// 	pCombo->AddString(PLAYER_4);
+	// 	pCombo->AddString(PLAYER_5);
+	// 	pCombo->AddString(PLAYER_6);
+	// 	pCombo->AddString(PLAYER_7);
+	// }
 	return didMatch;
 }
 
@@ -2112,11 +2161,21 @@ BOOL EditParameter::OnInitDialog()
 
 	}
 	if (showCombo) {
+		CString text = m_parameter->getString().str();
+
 		pCombo->ShowWindow(SW_SHOW);
-		pCombo->SetWindowText(m_parameter->getString().str());
-		if (m_parameter->getString().isEmpty()) {
+		pCombo->SetWindowText(text);
+
+		if (text.IsEmpty()) {
 			pCombo->SetCurSel(0);
+		} else {
+			int index = pCombo->FindStringExact(-1, text);
+			if (index != CB_ERR) {
+				pCombo->SetCurSel(index);
+				pCombo->SendMessage(CB_SETTOPINDEX, index, 0);  // Scroll to visible
+			}
 		}
+
 		pCombo->SetFocus();
 		if (m_key && m_key != VK_SPACE) pCombo->PostMessage(WM_CHAR, m_key, 0);
 	}	else if (showList) {
@@ -2132,9 +2191,16 @@ BOOL EditParameter::OnInitDialog()
 	}
 	pCaption->SetWindowText(captionText);
 
-	CButton *previewSound = (CButton*)GetDlgItem(IDPREVIEWSOUND);
+	CButton* previewSound = (CButton*)GetDlgItem(IDPREVIEWSOUND);
+	CButton* togglePreviewSound = (CButton*)GetDlgItem(IDC_TOGGLE_PREVIEW_SOUND);
+
 	if (previewSound) {
 		previewSound->ShowWindow(showAudioButton ? SW_SHOW : SW_HIDE);
+	}
+
+	if (togglePreviewSound) {
+		togglePreviewSound->ShowWindow(showAudioButton ? SW_SHOW : SW_HIDE);
+		togglePreviewSound->SetCheck(showAudioButton ? 1 : 0);
 	}
 
 	return FALSE;  // return TRUE unless you set the focus to a control
@@ -2373,8 +2439,61 @@ void EditParameter::OnPreviewSound()
 	}
 }
 
+void EditParameter::OnComboSelChange()
+{
+	if (!m_parameter)
+		return;
+
+	CButton* togglePreview = (CButton*)GetDlgItem(IDC_TOGGLE_PREVIEW_SOUND);
+	if (!togglePreview || togglePreview->GetCheck() != BST_CHECKED)
+		return; // Auto-preview is off
+	
+	int type = m_parameter->getParameterType();
+
+	if (type == Parameter::SOUND || type == Parameter::DIALOG || type == Parameter::MUSIC)
+	{
+		CComboBox* pCombo = (CComboBox*)GetDlgItem(IDC_COMBO);
+		if (!pCombo)
+			return;
+
+		int sel = pCombo->GetCurSel();
+		if (sel == CB_ERR)
+			return;
+
+		CString txt;
+		pCombo->GetLBText(sel, txt);
+		AsciiString comboText(txt);
+
+		AudioEventRTS event;
+		event.setEventName(comboText);
+		event.setAudioEventInfo(TheAudio->findAudioEventInfo(comboText));
+		event.generateFilename();
+		if (!event.getFilename().isEmpty()) {
+			PlaySound(event.getFilename().str(), NULL, SND_ASYNC | SND_FILENAME | SND_PURGE);
+		}
+	}
+}
+
 AsciiString EditParameter::loadLocalizedText(CComboBox *pCombo, AsciiString isStringInTable)
 {
+	DEBUG_LOG(("EditParameter::loadLocalizedText\n"));
+	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+	CString path = pDoc->getMapPath();
+	char folderPath[_MAX_PATH];
+	strcpy(folderPath, path);
+	char* lastSlash = strrchr(folderPath, '\\');
+	if (lastSlash) {
+		*lastSlash = '\0';
+	}
+
+	CString strPath = CString(folderPath) + "\\map.str";
+
+	// Convert CString → AsciiString
+	AsciiString mapPath(strPath);
+
+	// Reload map strings
+	TheGameText->reloadMapStrings(mapPath);
+
 	static const AsciiString theScriptPrefix = "SCRIPT";
 	AsciiStringVec vec = TheGameText->getStringsWithLabelPrefix(theScriptPrefix);
 	if (pCombo) {

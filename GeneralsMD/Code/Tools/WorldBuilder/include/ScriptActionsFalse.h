@@ -58,11 +58,14 @@ protected:
 	Script *m_script;	 // Doesn't change.
 	ScriptAction *m_falseAction; // Currently selected action.
 	Int					m_index; // Index of whatever is currently selected.
+	Bool m_bSmartCopyEnabled;
 
 protected:
-	void enableUI();
-	void loadList();
-	Bool doMoveDown();
+	void enableUI(void); 
+	void loadList(void);
+	Bool doMoveDown(void);
+	AsciiString incrementStringNumber(const AsciiString &input);
+	void applySmartCopyToAction(ScriptAction* pAction);
 
 protected:
 	// Generated message map functions
@@ -74,9 +77,12 @@ protected:
 	afx_msg void OnNew();
 	afx_msg void OnDelete();
 	afx_msg void OnCopy();
+	afx_msg void OnSmartCopy();
+	afx_msg void OnMoveToTrue();
 	afx_msg void OnMoveDown();
 	afx_msg void OnMoveUp();
 	afx_msg void OnChangeEditComment();
+	virtual BOOL OnSetActive();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 

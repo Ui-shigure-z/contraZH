@@ -46,14 +46,17 @@
 #include "ScorchOptions.h"
 #include "BuildList.h"
 #include "RulerOptions.h"
+#include "WaveEditorOptions.h"
 
 #define TWO_D_WINDOW_SECTION "TwoDWindow"
 #define MAIN_FRAME_SECTION "MainFrame"
+#define TOOLTIP_SECTION "ToolTips"
 
 // Timer id used to debounce dynamic-resolution rescaling on window resize (distinct from the autosave timer id 1).
 #define ADJUST_VIEW_TIMER 6969
 
 class LayersList;
+class MinimapDialog;
 class ScriptDialog;
 
 class CMainFrame : public CFrameWnd
@@ -84,16 +87,52 @@ public:
 #endif
 
 	static CMainFrame *GetMainFrame() { return TheMainFrame; }
-
+	CWnd							*m_curOptions;
+	int m_curDialogID;
+	
 	void showOptionsDialog(Int dialogID);
 	void OnEditGloballightoptions();
 	void ResetWindowPositions(void);
-	void adjustWindowSize(void);
 	void ScheduleAdjustViewAfterResize(void);
-	void applyDynamicResolution(void);
+	void adjustWindowSize(Bool forcedResolution = false, Bool dynamicResolution = false);
 	Bool isAutoSaving(void) {return m_autoSaving;};
+	Bool isFocusedOnScripting(void) {return m_focusedinScripting;};
+	void setFocusInScripting(Bool focus);
+	Bool showAutoSaveMessage(void) {return m_showAutoSaveMessage;};
 	void handleCameraChange(void);
 	void onEditScripts();
+	CString getPointerText(void) {return m_pointerText;};
+
+	void closeScriptDialog();
+	ScriptDialog* getScriptDialog() { return m_scriptDialog; }
+
+#ifdef RTS_HAS_QT
+	// Phase 2 MFC -> Qt: the Qt host (a QWinWidget HWND) the 3D viewport is reparented
+	// into; NULL when not hosted. positionQtViewportHost() sizes it to fill the same pane
+	// the view used to occupy (client minus the docked toolbar/status bar).
+	HWND m_qtViewportHost;
+	void positionQtViewportHost(void);
+	// Phase 3: a runtime "Theme" menu (System/Dark/Light) driving WBQtTheme.
+	void addQtThemeMenu(void);
+	afx_msg void OnQtTheme(UINT nID);
+	afx_msg void OnUpdateQtTheme(CCmdUI *pCmdUI);
+	// Tier 4a: once the Qt menu bar is installed, keep CFrameWnd from re-attaching
+	// the detached MFC menu. Defined in src/WBQtChromeBridge.cpp.
+	virtual void OnUpdateFrameMenu(HMENU hMenuAlt);
+	// Tier 4c: mirror every SetMessageText into the Qt status row (push, no polling).
+	// Defined in src/WBQtChromeBridge.cpp.
+	afx_msg LRESULT OnSetMessageString(WPARAM wParam, LPARAM lParam);
+	// Stage 1: mirror the composed frame title (map name + FWS_ADDTOTITLE) into the Qt
+	// main window, the visible top-level. Defined in src/WBQtChromeBridge.cpp.
+	virtual void OnUpdateFrameTitle(BOOL bAddToTitle);
+	// Tier 5: follow a live Windows light/dark switch while the Qt theme mode is System.
+	// Defined in src/WBQtHostBridge.cpp.
+	afx_msg void OnSettingChange(UINT uFlags, LPCTSTR lpszSection);
+	// Stage 1: MFC's close path needs the 3D view back under the frame (CDocument::
+	// OnCloseDocument ENSURE_VALIDs the view's GetParentFrame(), which is NULL while
+	// the view lives under the Qt window) -- unhost first, re-host if canceled.
+	afx_msg void OnClose();
+#endif
 
 protected:  // control bar embedded members
 	CStatusBar					m_wndStatusBar;
@@ -120,19 +159,30 @@ protected:  // control bar embedded members
 	GlobalLightOptions	m_globalLightOptions;
 	CameraOptions				m_cameraOptions;
 	LayersList*					m_layersList;
+	MinimapDialog*			m_minimapDialog;
 	ScriptDialog*				m_scriptDialog;
 	RulerOptions				m_rulerOptions;
-
-	CWnd							*m_curOptions;
+	WaveEditorOptions			m_waveEditorOptions;
+	
 	Int								m_curOptionsX;
 	Int								m_curOptionsY;
 	Int								m_optionsPanelWidth;
 	Int								m_optionsPanelHeight;
+	// The Wave Editor panel is wider than the other option panels; track its own size so
+	// it isn't folded into the shared m_optionsPanelWidth (which would widen every other
+	// panel, e.g. Object Properties).  See showOptionsDialog().
+	Int								m_waveEditorPanelWidth;
+	Int								m_waveEditorPanelHeight;
 	Int								m_globalLightOptionsWidth;
 	Int								m_globalLightOptionsHeight;
 
 	Int								m_3dViewWidth;
+	// Int m_newWidth;
+    // Int m_newHeight;
+	// Bool m_disableOnSize;
 
+	Bool							m_focusedinScripting;  ///< True if focus is in scripting window.
+	Bool							m_showAutoSaveMessage;  ///< True if we are autosaving.
 	Bool							m_autoSaving;  ///< True if we are autosaving.
 	UINT							m_hAutoSaveTimer;  ///< Timer that triggers for autosave.
 	Bool							m_autoSave;    ///< If true, then do autosaves.
@@ -140,18 +190,30 @@ protected:  // control bar embedded members
 
 	static CMainFrame *TheMainFrame;
 
+	CTime m_nextAutoSaveTime;
+	CString m_pointerText;
+
 // Generated message map functions
 protected:
 	//{{AFX_MSG(CMainFrame)
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
-	afx_msg void OnMove(int x, int y);
+	afx_msg void OnExitSizeMove();
 	afx_msg void OnViewBrushfeedback();
 	afx_msg void OnUpdateViewBrushfeedback(CCmdUI* pCmdUI);
 	afx_msg void OnDestroy();
-	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg BOOL OnCopyData(CWnd *pWnd, COPYDATASTRUCT *pCopyDataStruct);
+	afx_msg LRESULT OnMcpRequest(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnMcpServerEnabled();
+	afx_msg void OnUpdateMcpServerEnabled(CCmdUI *pCmdUI);
+	afx_msg void OnMcpServerInformation();
 	afx_msg void OnTimer(UINT nIDEvent);
 	afx_msg void OnEditCameraoptions();
+	afx_msg void OnViewAnimScrubber();
+	afx_msg void OnUpdateViewAnimScrubber(CCmdUI* pCmdUI);
+	afx_msg void OnDropFiles(HDROP hDropInfo);
 	//}}AFX_MSG
+	afx_msg void OnShowAssertDialogs();
+	afx_msg void OnUpdateShowAssertDialogs(CCmdUI* pCmdUI);
 	DECLARE_MESSAGE_MAP()
 };
 

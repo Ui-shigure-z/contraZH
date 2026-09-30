@@ -138,7 +138,9 @@ public:
 
 	Bool isInGameLogicUpdate() const { return m_isInUpdate; }
 	Bool hasUpdated() const { return m_hasUpdated; } ///< Returns true if the logic frame has advanced in the current client/render update
-	UnsignedInt getFrame();										///< Returns the current simulation frame number
+	// virtual so the WorldBuilder editor can supply its own frame clock (WBParticleRuntime)
+	// without standing up the real simulation -- the game keeps the base m_frame implementation.
+	virtual UnsignedInt getFrame();						///< Returns the current simulation frame number
 #if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
 	// The legacy frame is the 30 Hz frame that frame-count code was written against.
 	UnsignedInt getFrameLegacy() const;

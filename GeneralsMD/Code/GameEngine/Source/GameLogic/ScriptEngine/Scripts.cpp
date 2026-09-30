@@ -908,10 +908,14 @@ m_conditionExecutedCount(0),
 m_frameToEvaluateAt(0),
 m_isSubroutine(false),
 m_hasWarnings(false),
-m_nextScript(nullptr),
-m_condition(nullptr),
-m_action(nullptr),
-m_actionFalse(nullptr),
+m_dirty(true),
+m_warningUpdateToDate(false),
+m_nextScript(NULL),
+m_condition(NULL),
+m_action(NULL),
+//Added By Sadullah Nader
+//Initializations inserted
+m_actionFalse(NULL),
 m_curTime(0.0f)
 {
 }
@@ -1945,7 +1949,7 @@ AsciiString Parameter::getUiText() const
 		case RADAR_EVENT_TYPE:
 			switch (m_int) {
 				//case RADAR_EVENT_INVALID: ++m_int;	// continue to the next case.
-				case RADAR_EVENT_INVALID: DEBUG_CRASH(("Invalid radar event")); uiText.format("Construction"); break;
+				case RADAR_EVENT_INVALID: uiText.format("Construction"); break;
 				case RADAR_EVENT_CONSTRUCTION: uiText.format("Construction"); break;
 				case RADAR_EVENT_UPGRADE: uiText.format("Upgrade"); break;
 				case RADAR_EVENT_UNDER_ATTACK: uiText.format("Under Attack"); break;

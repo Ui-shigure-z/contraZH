@@ -39,7 +39,10 @@
 Int MoundTool::m_moundHeight=0;
 Int MoundTool::m_brushWidth;
 Int MoundTool::m_brushFeather;
-
+Bool MoundTool::m_enableMirror;
+Bool MoundTool::m_mirrorX;
+Bool MoundTool::m_mirrorY;
+Bool MoundTool::m_mirrorDiag;
 
 
 /// Constructor
@@ -99,7 +102,20 @@ void MoundTool::activate()
 	DrawObject::setBrushFeedbackParms(false, m_brushWidth, m_brushFeather);
 }
 
-void MoundTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
+/// Throw away an uncommitted stroke.
+/** The tool was swapped out between the mouse down and the mouse up, so the edit
+copies would otherwise stay ref'd until the next mouseDown released them. */
+void MoundTool::abandonStroke(void)
+{
+	if (m_htMapEditCopy == NULL && m_htMapSaveCopy == NULL) {
+		return;
+	}
+	REF_PTR_RELEASE(m_htMapEditCopy);
+	REF_PTR_RELEASE(m_htMapSaveCopy);
+	revertAbandonedPreview();
+}
+
+void MoundTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
 {
 	if (m != TRACK_L) return;
 
@@ -120,6 +136,13 @@ void MoundTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBui
 {
 	if (m != TRACK_L) return;
 
+	// No stroke in progress (the tool was swapped in mid-drag, so it never got the
+	// matching mouseDown) - nothing to commit.
+	if (m_htMapEditCopy == NULL) {
+		REF_PTR_RELEASE(m_htMapSaveCopy);
+		return;
+	}
+
 	WBDocUndoable *pUndo = new WBDocUndoable(pDoc, m_htMapEditCopy);
 	pDoc->AddAndDoUndoable(pUndo);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
@@ -127,23 +150,76 @@ void MoundTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBui
 	REF_PTR_RELEASE(m_htMapSaveCopy);
 }
 
+/// Helper: apply mound stroke at a given centre index.
+void MoundTool::applyMoundAt(CPoint ndx, CWorldBuilderDoc* pDoc, IRegion2D& partialRange)
+{
+	int brushWidth = m_brushWidth;
+	int setFeather = m_brushFeather;
+	if (setFeather > 0) {
+		brushWidth += 2 * setFeather;
+		brushWidth += 2; // for round brush.
+	}
+
+	int sub = brushWidth / 2;
+	int add = brushWidth - sub;
+
+	Int htDelta = m_moundHeight;
+	if (!m_raising) htDelta = -m_moundHeight;
+
+	Int i, j;
+	for (i = ndx.x - sub; i < ndx.x + add; i++) {
+		if (i < 0 || i >= m_htMapEditCopy->getXExtent()) continue;
+		for (j = ndx.y - sub; j < ndx.y + add; j++) {
+			if (j < 0 || j >= m_htMapEditCopy->getYExtent()) continue;
+
+			// Floating point based blending calculation.  jba.
+			Real blendFactor = calcRoundBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
+			Int curHeight = m_htMapEditCopy->getHeight(i, j);
+			float fNewHeight = (blendFactor * (htDelta + curHeight)) + ((1.0f - blendFactor) * curHeight);
+			Int newHeight = floor(fNewHeight + 0.5f);
+
+			// check boundary values
+			if (newHeight < m_htMapSaveCopy->getMinHeightValue()) newHeight = m_htMapSaveCopy->getMinHeightValue();
+			if (newHeight > m_htMapSaveCopy->getMaxHeightValue()) newHeight = m_htMapSaveCopy->getMaxHeightValue();
+
+			m_htMapEditCopy->setHeight(i, j, newHeight);
+			pDoc->invalCell(i, j);
+		}
+	}
+
+	// Expand the dirty region to cover this stroke
+	if (ndx.x - brushWidth < partialRange.lo.x) partialRange.lo.x = ndx.x - brushWidth;
+	if (ndx.x + brushWidth > partialRange.hi.x) partialRange.hi.x = ndx.x + brushWidth;
+	if (ndx.y - brushWidth < partialRange.lo.y) partialRange.lo.y = ndx.y - brushWidth;
+	if (ndx.y + brushWidth > partialRange.hi.y) partialRange.hi.y = ndx.y + brushWidth;
+}
+
 void MoundTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	Coord3D cpt;
 	pView->viewToDocCoords(viewPt, &cpt);
 	DrawObject::setFeedbackPos(cpt);
+
+	pView->Invalidate();
+	pDoc->updateAllViews();
 	if (m != TRACK_L) return;
+
+	// The stroke buffers are built in mouseDown.  A fast tool swap can retarget the
+	// tool between the down and the move, so the move arrives without them; bail
+	// rather than dereference null.
+	if (m_htMapEditCopy == NULL || m_htMapSaveCopy == NULL) {
+		return;
+	}
 
 	Int curTime	= ::GetTickCount();
 	Int deltaTime = curTime - m_lastMoveTime;
 	if (deltaTime < MIN_DELAY_TIME) return;
 	m_lastMoveTime = curTime;
 
-
 	int brushWidth = m_brushWidth;
 	int setFeather = m_brushFeather;
-	if (setFeather>0) {
-		brushWidth += 2*setFeather;
+	if (setFeather > 0) {
+		brushWidth += 2 * setFeather;
 		brushWidth += 2; // for round brush.
 	}
 
@@ -156,83 +232,51 @@ void MoundTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 	m_prevXIndex = ndx.x;
 	m_prevYIndex = ndx.y;
 
-	int sub = brushWidth/2;
-	int add = brushWidth-sub;
-
-	Int htDelta = m_moundHeight;
-	if (!m_raising) htDelta = -m_moundHeight;
-	// round brush
-	Int i, j;
-	for (i=ndx.x-sub; i<ndx.x+add; i++) {
-		if (i<0 || i>=m_htMapEditCopy->getXExtent()) {
-			continue;
-		}
-		for (j=ndx.y-sub; j<ndx.y+add; j++) {
-			if (j<0 || j>=m_htMapEditCopy->getYExtent()) {
-				continue;
-			}
-#if 1
-			// New floating point based blending calculation.  jba.
-			Real blendFactor;
-			blendFactor = calcRoundBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
-			Int curHeight = m_htMapEditCopy->getHeight(i,j);
-			float fNewHeight = (blendFactor*(htDelta+curHeight))+((1.0f-blendFactor)*curHeight);
-			Int newHeight = floor(fNewHeight+0.5f);
-
-			// check boundary values
-			if (newHeight < m_htMapSaveCopy->getMinHeightValue()) newHeight = m_htMapSaveCopy->getMinHeightValue();
-			if (newHeight > m_htMapSaveCopy->getMaxHeightValue()) newHeight = m_htMapSaveCopy->getMaxHeightValue();
-
-			m_htMapEditCopy->setHeight(i, j, newHeight);
-			pDoc->invalCell(i, j);
-#else
-			// Previous integer calculated mounding and blending.
-			// If not re-enabled by Dec 2001, delete as obsolete.
-			Int xd = abs( (2*(i-(ndx.x-sub)))+1 - brushWidth);
-			Int yd = abs( (2*(j-(ndx.y-sub)))+1 - brushWidth);
-
-			float delta = (float)sqrt(xd*xd+yd*yd);
-			//Int curHeight = m_htMapSaveCopy->getHeight(i,j);
-			Int curHeight = m_htMapEditCopy->getHeight(i,j);
-			Int newHeight = curHeight + htDelta;
-
-			// check boundary values
-			if (newHeight < m_htMapSaveCopy->getMinHeightValue()) newHeight = m_htMapSaveCopy->getMinHeightValue();
-			if (newHeight > m_htMapSaveCopy->getMaxHeightValue()) newHeight = m_htMapSaveCopy->getMaxHeightValue();
-
-			if (delta<m_brushWidth) {
-				m_htMapEditCopy->setHeight(i, j, newHeight);
-				pDoc->invalCell(i, j);
-			} else if (delta<brushWidth+0.7 && setFeather) {
-				Int factor = setFeather+1;
-				factor *= 2;
-				float feather = delta-m_brushWidth;
-				float fNewHeight = ((factor-feather)*(htDelta+curHeight)+(feather*curHeight) )/factor;
-				newHeight = (Int)(fNewHeight);
-				if (newHeight < m_htMapSaveCopy->getMinHeightValue()) newHeight = m_htMapSaveCopy->getMinHeightValue();
-				if (newHeight > m_htMapSaveCopy->getMaxHeightValue()) newHeight = m_htMapSaveCopy->getMaxHeightValue();
-				if (newHeight > m_htMapEditCopy->getHeight(i,j)) {
-					if (htDelta<0) {
-						newHeight = m_htMapEditCopy->getHeight(i,j);
-					}
-				} else {
-					if (htDelta>0) {
-						newHeight = m_htMapEditCopy->getHeight(i,j);
-					}
-				}
-
-				m_htMapEditCopy->setHeight(i, j, newHeight);
-				pDoc->invalCell(i, j);
-			}
-#endif
-		}
-	}
-
+	// Initialise dirty region at the primary stroke position
 	IRegion2D partialRange;
 	partialRange.lo.x = ndx.x - brushWidth;
 	partialRange.hi.x = ndx.x + brushWidth;
 	partialRange.lo.y = ndx.y - brushWidth;
 	partialRange.hi.y = ndx.y + brushWidth;
+
+	// Primary stroke
+	applyMoundAt(ndx, pDoc, partialRange);
+
+	// Mirror across X centre (left/right)
+	if (m_enableMirror && (m_mirrorX || m_mirrorDiag))
+	{
+		CPoint mirrorX;
+		mirrorX.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+		mirrorX.y = ndx.y;
+		if (m_mirrorX)
+			applyMoundAt(mirrorX, pDoc, partialRange);
+
+		// Mirror across Y centre (top/bottom)
+		if (m_mirrorY)
+		{
+			CPoint mirrorY;
+			mirrorY.x = ndx.x;
+			mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+			applyMoundAt(mirrorY, pDoc, partialRange);
+		}
+
+		// Diagonal: opposite corner — only when both axes active, or diag toggle
+		if (m_mirrorDiag || (m_mirrorX && m_mirrorY))
+		{
+			CPoint mirrorXY;
+			mirrorXY.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+			mirrorXY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+			applyMoundAt(mirrorXY, pDoc, partialRange);
+		}
+	}
+	else if (m_enableMirror && m_mirrorY)
+	{
+		CPoint mirrorY;
+		mirrorY.x = ndx.x;
+		mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+		applyMoundAt(mirrorY, pDoc, partialRange);
+	}
+
 	pDoc->updateHeightMap(m_htMapEditCopy, true, partialRange);
 }
 
@@ -243,6 +287,5 @@ void MoundTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 DigTool::DigTool()
 {
 	m_toolID = ID_BRUSH_SUBTRACT_TOOL;
-	m_raising = false;  // digging.
+	m_raising = false;  // digging. 
 }
-

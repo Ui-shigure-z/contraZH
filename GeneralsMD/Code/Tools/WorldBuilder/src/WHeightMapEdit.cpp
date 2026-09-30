@@ -41,6 +41,9 @@
 #include "Common/WellKnownKeys.h"
 #include "mapobjectprops.h"
 #include "LayersList.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtTerrainModalBridge.h"
+#endif
 
 #include "Common/DataChunk.h"
 
@@ -248,6 +251,10 @@ m_warnTooManyBlend(false)
 			m_cellFlipState[i] = pThis->m_cellFlipState[i];
 			m_cellCliffState[i] = pThis->m_cellCliffState[i];
 		}
+		if (pThis->m_stochasticData != nullptr) {
+			m_stochasticData = new UnsignedByte[m_dataSize*STOCHASTIC_BYTES];
+			memcpy(m_stochasticData, pThis->m_stochasticData, m_dataSize*STOCHASTIC_BYTES);
+		}
 	}
 
 	m_boundaries = pThis->m_boundaries;
@@ -283,7 +290,24 @@ WorldHeightMapEdit::WorldHeightMapEdit(ChunkInputStream *pStrm):
 	// check for missing texture classes.
 	for (i=0; i<m_numTextureClasses; i++) {
 		if (m_textureClasses[i].globalTextureClass < 0) {
-			TerrainModal modalTerrainDlg(m_textureClasses[i].name, this);
+#ifdef RTS_HAS_QT
+			int qtPicked = -1;
+			int qtRc = WBQtTerrainModal_Run(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, m_textureClasses[i].name.str(), this, &qtPicked);
+			if (qtRc >= 0) {
+				if (qtRc == 1 && qtPicked >= 0) {
+					m_textureClasses[i].globalTextureClass = qtPicked;
+					m_textureClasses[i].name = m_globalTextureClasses[qtPicked].name;
+					didMajorRemap = true;
+				} else {
+					didCancel = true;
+					for (j=0; j<m_textureClasses[i].numTiles; j++) {
+						REF_PTR_RELEASE(m_sourceTiles[m_textureClasses[i].firstTile+j]);
+					}
+				}
+				continue;
+			}
+#endif
+			TerrainModal modalTerrainDlg(m_textureClasses[i].name, this);	
 			if (IDOK==modalTerrainDlg.DoModal()) {
 				Int globalTex = modalTerrainDlg.getNewNdx();
 				m_textureClasses[i].globalTextureClass = globalTex;
@@ -328,7 +352,19 @@ Bool WorldHeightMapEdit::remapTextures()
 	Int i;
 	Bool anyChanges;
 	for (i=0; i<m_numTextureClasses; i++) {
-		TerrainModal modalTerrainDlg(m_textureClasses[i].name, this);
+#ifdef RTS_HAS_QT
+		int qtPicked = -1;
+		int qtRc = WBQtTerrainModal_Run(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, m_textureClasses[i].name.str(), this, &qtPicked);
+		if (qtRc >= 0) {
+			if (qtRc == 1 && qtPicked >= 0) {
+				m_textureClasses[i].globalTextureClass = qtPicked;
+				anyChanges = true;
+				m_textureClasses[i].name = m_globalTextureClasses[qtPicked].name;
+			}
+			continue;
+		}
+#endif
+		TerrainModal modalTerrainDlg(m_textureClasses[i].name, this);	
 		if (IDOK==modalTerrainDlg.DoModal()) {
 			Int globalTex = modalTerrainDlg.getNewNdx();
 			m_textureClasses[i].globalTextureClass = globalTex;
@@ -672,6 +708,20 @@ void WorldHeightMapEdit::saveToFile(DataChunkOutput &chunkWriter)
 		}
 	chunkWriter.closeDataChunk();
 
+	/***************STOCHASTIC TERRAIN ***************/
+	// Only a map with paint on it writes the chunk, which older builds skip.
+	Bool painted = false;
+	for (i=0; m_stochasticData != nullptr && i<m_dataSize && !painted; i++) {
+		painted = m_stochasticData[i*STOCHASTIC_BYTES] != 0;
+	}
+	if (painted) {
+		chunkWriter.openDataChunk("StochasticTerrain", K_STOCHASTIC_VERSION_1);
+		chunkWriter.writeInt(m_width);
+		chunkWriter.writeInt(m_height);
+		chunkWriter.writeArrayOfBytes((char*)m_stochasticData, m_dataSize*STOCHASTIC_BYTES);
+		chunkWriter.closeDataChunk();
+	}
+
 #ifdef EVAL_TILING_MODES
 	chunkWriter.openDataChunk("FUNKY_TILING", 1);
 	chunkWriter.writeInt(m_tileMode);
@@ -859,6 +909,16 @@ Int WorldHeightMapEdit::getTextureClass(Int xIndex, Int yIndex, Bool baseClass)
 	}
 	return getTextureClassFromNdx(textureNdx);	//get globalTextureClass index
 }
+
+Bool WorldHeightMapEdit::setTextureClass(Int xIndex, Int yIndex, Int textureClass)
+{
+	if (xIndex < 0 || yIndex < 0 || xIndex >= m_width || yIndex >= m_height)
+		return false;
+
+	return setTileNdx(xIndex, yIndex, textureClass, true);
+}
+
+
 /*Get index of sub-tile that would show up here if it wasn't blended but tiled across*/
 Int WorldHeightMapEdit::getBlendTileNdxForClass(Int xIndex, Int yIndex, Int textureClass)
 {
@@ -1206,6 +1266,104 @@ void WorldHeightMapEdit::blendSpecificTiles(Int xIndex, Int yIndex, Int srcXInde
 }
 
 
+/******************************************************************
+	unblendArea
+		Removes all blend tiles from the texture region at xIndex, yIndex.
+		The region is defined by the texture at xIndex, yIndex.
+		This is the inverse of autoBlendOut - it clears blend tiles instead of creating them.
+		Blends are stored on the NEIGHBORING tiles (different texture class), not on the 
+		source texture tiles, so we need to find all border tiles and clear their blends.
+*/
+void WorldHeightMapEdit::unblendArea(Int xIndex, Int yIndex)
+{
+	Int ndx = (yIndex * m_width) + xIndex;
+	Int curTileClass = getTextureClass(xIndex, yIndex, true); // Get base texture class
+	if (curTileClass < 0) {
+		return;
+	}
+
+	Int i, j;
+	UnsignedByte *pProcessed = new UnsignedByte[m_dataSize];
+	if (pProcessed == NULL) {
+		AfxMessageBox(IDS_OUT_OF_MEMORY);
+		return;
+	}
+	for (i = 0; i < m_dataSize; i++) {
+		pProcessed[i] = false;
+	}
+
+	CProcessNode *pNodesToProcess = NULL;
+	CProcessNode *pBorderNodes = NULL;  // Tiles that border our texture area
+	
+	// Find all the nodes that are in the current tile class (flood fill from click point)
+	// and collect border tiles (tiles with different texture class that neighbor our area)
+	pNodesToProcess = new CProcessNode(xIndex, yIndex);
+	pProcessed[ndx] = true;
+	
+	while (pNodesToProcess) {
+		CProcessNode *pCurNode = pNodesToProcess;
+		pNodesToProcess = pCurNode->m_next;
+		pCurNode->m_next = NULL;
+		
+		// Check all 8 neighbors
+		for (i = pCurNode->m_x - 1; i <= pCurNode->m_x + 1; i++) {
+			if (i < 0 || i >= m_width) continue;
+			for (j = pCurNode->m_y - 1; j <= pCurNode->m_y + 1; j++) {
+				if (j < 0 || j >= m_height) continue;
+				
+				Int curNdx = (j * m_width) + i;
+				if (pProcessed[curNdx]) {
+					continue;
+				}
+				
+				// Check if this neighbor has the same base texture class
+				if (curTileClass == getTextureClass(i, j, true)) {
+					// Same texture class - add to process queue to continue flood fill
+					CProcessNode *pNewNode = new CProcessNode(i, j);
+					pNewNode->m_next = pNodesToProcess;
+					pNodesToProcess = pNewNode;
+					pProcessed[curNdx] = true;
+				} else {
+					// Different texture class - this is a border tile where blends are stored
+					// Add to border nodes list for processing
+					CProcessNode *pBorderNode = new CProcessNode(i, j);
+					pBorderNode->m_next = pBorderNodes;
+					pBorderNodes = pBorderNode;
+					pProcessed[curNdx] = true;
+				}
+			}
+		}
+		
+		delete pCurNode;
+	}
+
+	// Now process all border tiles and clear any blends that blend INTO our texture class
+	while (pBorderNodes) {
+		CProcessNode *pCurNode = pBorderNodes;
+		pBorderNodes = pCurNode->m_next;
+		
+		Int curNdx = (pCurNode->m_y * m_width) + pCurNode->m_x;
+		
+		// Clear blend if it blends into our texture class
+		if (m_blendTileNdxes[curNdx] > 0) {
+			Int blendClass = getTextureClassFromNdx(m_blendedTiles[m_blendTileNdxes[curNdx]].blendNdx);
+			if (blendClass == curTileClass) {
+				m_blendTileNdxes[curNdx] = 0;
+			}
+		}
+		if (m_extraBlendTileNdxes[curNdx] > 0) {
+			Int extraBlendClass = getTextureClassFromNdx(m_blendedTiles[m_extraBlendTileNdxes[curNdx]].blendNdx);
+			if (extraBlendClass == curTileClass) {
+				m_extraBlendTileNdxes[curNdx] = 0;
+			}
+		}
+		
+		delete pCurNode;
+	}
+
+	if (pProcessed) delete[] pProcessed;
+	pProcessed = NULL;
+}
 
 /******************************************************************
 	autoBlendOut
@@ -1214,7 +1372,7 @@ void WorldHeightMapEdit::blendSpecificTiles(Int xIndex, Int yIndex, Int srcXInde
 		The edges are blended out, to whatever texture is already there.
 		If edgeClass == -1, use an alpha blend.  Otherwise, use tile class edgeClass.
 */
-void WorldHeightMapEdit::autoBlendOut(Int xIndex, Int yIndex, Int globalEdgeClass)
+void WorldHeightMapEdit::autoBlendOut(Int xIndex, Int yIndex, Int globalEdgeClass, Bool hvGap, Bool dGap, Bool revalidateBlends) 
 {
 	Int ndx = (yIndex*m_width)+xIndex;
 	Int curTileClass = getTextureClass(xIndex, yIndex);
@@ -1273,7 +1431,97 @@ void WorldHeightMapEdit::autoBlendOut(Int xIndex, Int yIndex, Int globalEdgeClas
 					// obliterates it.
 					Int sides, total;
 					getTexClassNeighbors(i, j, curTileClass, &sides, &total);
-					if (sides>2 || total>5) {
+					bool shouldFill = false;
+
+					// Normal "mostly surrounded" rule
+					if (sides > 2 || total > 5)
+						shouldFill = true;
+					else {
+						// --- NEW: line-gap detection ---
+						// Check horizontal or vertical sandwich (tile between two same-class tiles)
+						if(hvGap){
+							static const int dx2[4][2] = { {-1,1}, {0,0}, {-1,-1}, {1,1} };
+							static const int dy2[4][2] = { {0,0}, {-1,1}, {-1,1}, {-1,1} };
+
+							// Simpler version: check straight 2-length across x or y
+							int left = i - 1, right = i + 1, up = j - 1, down = j + 1;
+							if (left >= 0 && right < m_width &&
+								getTextureClass(left, j, true) == curTileClass &&
+								getTextureClass(right, j, true) == curTileClass)
+								shouldFill = true;
+							else if (up >= 0 && down < m_height &&
+								getTextureClass(i, up, true) == curTileClass &&
+								getTextureClass(i, down, true) == curTileClass)
+								shouldFill = true;
+						}
+					}
+
+					// This one is just too loose at the moment -- we can enable it maybe via ui
+					// maxes 3x3 corners filled so becareful
+					// --- Check for diagonal sandwich (two same-class diagonals around a gap) ---
+					// Only apply if close to the first tile (to prevent long-range fills)
+					if (!shouldFill && dGap) {
+						int dxFromOrigin = abs(i - xIndex);
+						int dyFromOrigin = abs(j - yIndex);
+						int distSq = dxFromOrigin * dxFromOrigin + dyFromOrigin * dyFromOrigin;
+
+						// limit diagonal gap fill radius (e.g. within ~2.5 tiles)
+						const int maxDistSq = 6; // roughly radius ~2.4
+						if (distSq <= maxDistSq) {
+							int left = i - 1, right = i + 1, up = j - 1, down = j + 1;
+
+							// top-left & bottom-right diagonal
+							if (left >= 0 && up >= 0 && right < m_width && down < m_height &&
+								getTextureClass(left, up, true) == curTileClass &&
+								getTextureClass(right, down, true) == curTileClass)
+							{
+								shouldFill = true;
+							}
+							// top-right & bottom-left diagonal
+							else if (right < m_width && up >= 0 && left >= 0 && down < m_height &&
+								getTextureClass(right, up, true) == curTileClass &&
+								getTextureClass(left, down, true) == curTileClass)
+							{
+								shouldFill = true;
+							}
+						}
+					}
+
+					// --- Check for 2-step bridging (fills single gaps before blending) ---
+					// if (!shouldFill) {
+					// 	// check corner-to-side or side-to-corner 2-step bridges
+					// 	static const int pairs[8][2][2] = {
+					// 		{{-1,-1},{1,0}},  // TL + right
+					// 		{{-1,-1},{0,1}},  // TL + down
+					// 		{{1,-1},{-1,0}},  // TR + left
+					// 		{{1,-1},{0,1}},   // TR + down
+					// 		{{1,1},{-1,0}},   // BR + left
+					// 		{{1,1},{0,-1}},   // BR + up
+					// 		{{-1,1},{1,0}},   // BL + right
+					// 		{{-1,1},{0,-1}}   // BL + up
+					// 	};
+
+					// 	for (int p = 0; p < 8 && !shouldFill; ++p) {
+					// 		int ax = i + pairs[p][0][0];
+					// 		int ay = j + pairs[p][0][1];
+					// 		int bx = i + pairs[p][1][0];
+					// 		int by = j + pairs[p][1][1];
+
+					// 		if (ax >= 0 && ax < m_width && ay >= 0 && ay < m_height &&
+					// 			bx >= 0 && bx < m_width && by >= 0 && by < m_height)
+					// 		{
+					// 			if (getTextureClass(ax, ay, true) == curTileClass &&
+					// 				getTextureClass(bx, by, true) == curTileClass)
+					// 			{
+					// 				shouldFill = true;
+					// 			}
+					// 		}
+					// 	}
+					// }
+			
+					
+
+					if (shouldFill) {
 						m_tileNdxes[curNdx] = getTileNdxForClass(i, j, curTileClass);
 						m_blendTileNdxes[curNdx] = 0; // no blend.
 					} else {
@@ -1306,6 +1554,57 @@ void WorldHeightMapEdit::autoBlendOut(Int xIndex, Int yIndex, Int globalEdgeClas
 	for (i=0; i<m_dataSize; i++) {
 		pProcessed[i] = false;
 	}
+
+	// --- Clear any stale blends of our class in the affected area before re-blending. ---
+	// IMPORTANT: the primary (m_blendTileNdxes) and secondary/3-way (m_extraBlendTileNdxes)
+	// layers must be cleared TOGETHER whenever either one references curTileClass. Clearing
+	// only the primary layer leaves a stale extra-blend entry behind; blendSpecificTiles()
+	// decides whether a new blend goes into the primary or extra slot purely by testing
+	// whether m_blendTileNdxes[ndx] is already non-zero, so an orphaned extra-blend value
+	// combines with a freshly-written primary blend to produce a bogus 3-way blend.
+	if((hvGap || dGap) || revalidateBlends){
+		for (CProcessNode* n = pProcessedNodes; n; n = n->m_next) {
+			int ndx = (n->m_y * m_width) + n->m_x;
+			if (m_blendTileNdxes[ndx] > 0) {
+				int blendClass = getTextureClassFromNdx(
+					m_blendedTiles[m_blendTileNdxes[ndx]].blendNdx);
+				if (blendClass == curTileClass)
+					m_blendTileNdxes[ndx] = 0;
+			}
+			if (m_extraBlendTileNdxes[ndx] > 0) {
+				int extraBlendClass = getTextureClassFromNdx(
+					m_blendedTiles[m_extraBlendTileNdxes[ndx]].blendNdx);
+				if (extraBlendClass == curTileClass)
+					m_extraBlendTileNdxes[ndx] = 0;
+			}
+		}
+
+		// --- Clear only blends in the 1-tile margin around each processed node ---
+		for (CProcessNode* za = pProcessedNodes; za; za = za->m_next) {
+			for (int dy = -1; dy <= 1; ++dy) {
+				int y = za->m_y + dy;
+				if (y < 0 || y >= m_height) continue;
+				for (int dx = -1; dx <= 1; ++dx) {
+					int x = za->m_x + dx;
+					if (x < 0 || x >= m_width) continue;
+					int ndx = y * m_width + x;
+					if (m_blendTileNdxes[ndx] > 0) {
+						int blendClass = getTextureClassFromNdx(
+							m_blendedTiles[m_blendTileNdxes[ndx]].blendNdx);
+						if (blendClass == curTileClass)
+							m_blendTileNdxes[ndx] = 0;
+					}
+					if (m_extraBlendTileNdxes[ndx] > 0) {
+						int extraBlendClass = getTextureClassFromNdx(
+							m_blendedTiles[m_extraBlendTileNdxes[ndx]].blendNdx);
+						if (extraBlendClass == curTileClass)
+							m_extraBlendTileNdxes[ndx] = 0;
+					}
+				}
+			}
+		}
+	}
+
 
 	pNodesToProcess = pProcessedNodes;
 	pProcessedNodes = nullptr;
@@ -1662,7 +1961,6 @@ void WorldHeightMapEdit::setHeight(Int xIndex, Int yIndex, UnsignedByte height) 
 		setCellCliffFlagFromHeights(xIndex-1, yIndex-1);
 }
 
-
 /******************************************************************
 	optimizeTiles
 		This optimizes the tiles and blend tiles, recalculating them
@@ -1675,7 +1973,7 @@ Bool WorldHeightMapEdit::optimizeTiles()
 	for (i=0; i<m_dataSize; i++) {
 		Int texNdx = this->m_tileNdxes[i];
 		Int texClass = getTextureClassFromNdx(texNdx);
-		DEBUG_ASSERTCRASH((texClass>=0),("oops"));
+		// DEBUG_ASSERTCRASH((texClass>=0),("oops"));
 		if (texClass<0) texClass=0;
 		m_tileNdxes[i] = texClass;
 	}
@@ -1685,7 +1983,7 @@ Bool WorldHeightMapEdit::optimizeTiles()
 	for (i=1; i<m_numBlendedTiles; i++) {
 		blendInfo[i] = m_blendedTiles[i];
 		blendInfo[i].blendNdx = getTextureClassFromNdx(blendInfo[i].blendNdx);
-		DEBUG_ASSERTCRASH((blendInfo[i].blendNdx>=0),("oops"));
+		// DEBUG_ASSERTCRASH((blendInfo[i].blendNdx>=0),("oops"));
 		if (blendInfo[i].blendNdx<0) blendInfo[i].blendNdx=0;
 	}
 
@@ -1696,6 +1994,11 @@ Bool WorldHeightMapEdit::optimizeTiles()
 		m_cliffInfo[i].tileIndex = texClass;
 	}
 
+	// --- VC6-compatible: snapshot of tile classes ---
+	Int* tileClassSnapshot = new Int[m_dataSize];
+	for (i = 0; i < m_dataSize; ++i) {
+		tileClassSnapshot[i] = m_tileNdxes[i];
+	}
 
 	// Release all the tiles.
 	for (i=0; i<NUM_SOURCE_TILES; i++) {
@@ -1735,7 +2038,7 @@ Bool WorldHeightMapEdit::optimizeTiles()
 				else
 				{	newBlendNdx = findOrCreateBlendTile(&curBlendInfo);
 					if (m_numBlendedTiles < NUM_BLEND_TILES) {
-						DEBUG_ASSERTCRASH((newBlendNdx>0),("oops"));
+						// DEBUG_ASSERTCRASH((newBlendNdx>0),("oops"));
 					}
 					if (newBlendNdx < 0) newBlendNdx = 0;
 				}
@@ -1756,7 +2059,7 @@ Bool WorldHeightMapEdit::optimizeTiles()
 				else
 				{	newBlendNdx = findOrCreateBlendTile(&curBlendInfo);
 					if (m_numBlendedTiles < NUM_BLEND_TILES) {
-						DEBUG_ASSERTCRASH((newBlendNdx>0),("oops"));
+						// DEBUG_ASSERTCRASH((newBlendNdx>0),("oops"));
 					}
 					if (newBlendNdx < 0) newBlendNdx = 0;
 				}
@@ -1770,6 +2073,98 @@ Bool WorldHeightMapEdit::optimizeTiles()
 		Int texClass  = m_cliffInfo[i].tileIndex;
 		m_cliffInfo[i].tileIndex = getTileNdxForClass(x,y,texClass);
 	}
+
+	// // --- Auto-blend pass using provided autoBlendOut(), corrected to call on dominant neighbor ---
+	// // Runs after we rebuilt blends so we can correct missed edges.
+	// // Only call autoBlendOut for candidate tiles (no blends currently, and neighbor test suggests it might be swallowed).
+	// {
+	// 	Int dx, dy;
+	// 	for (dy = 0; dy < m_height; ++dy) {
+	// 		for (dx = 0; dx < m_width; ++dx) {
+	// 			Int ndx = dy * m_width + dx;
+
+	// 			// Skip tiles that already have some blend info
+	// 			if (m_blendTileNdxes[ndx] != 0 || m_extraBlendTileNdxes[ndx] != 0)
+	// 				continue;
+
+	// 			// Quick neighbor test using existing helper
+	// 			Int sides = 0;
+	// 			Int total = 0;
+	// 			Int curClass = getTextureClass(dx, dy, true);
+	// 			if (curClass < 0) continue;
+
+	// 			getTexClassNeighbors(dx, dy, curClass, &sides, &total);
+
+	// 			if (!(sides > 2 || total > 5))
+	// 				continue; // not a candidate
+
+	// 			// Build neighbor-class counts and remember a seed coordinate for each class
+	// 			Int numClasses = m_numTextureClasses > 0 ? m_numTextureClasses : 64; // fallback
+	// 			Int *counts = new Int[numClasses];
+	// 			Int *seedX = new Int[numClasses];
+	// 			Int *seedY = new Int[numClasses];
+	// 			if (!counts || !seedX || !seedY) {
+	// 				// out of memory (unlikely) - clean up and bail out of this tile
+	// 				if (counts) delete[] counts;
+	// 				if (seedX) delete[] seedX;
+	// 				if (seedY) delete[] seedY;
+	// 				continue;
+	// 			}
+	// 			for (Int ci = 0; ci < numClasses; ++ci) {
+	// 				counts[ci] = 0;
+	// 				seedX[ci] = -1;
+	// 				seedY[ci] = -1;
+	// 			}
+
+	// 			// 8-direction neighbors
+	// 			static const int ndx8[8] = { -1, 1, 0, 0, -1, -1, 1, 1 };
+	// 			static const int ndy8[8] = { 0, 0, -1, 1, -1, 1, -1, 1 };
+	// 			for (Int k = 0; k < 8; ++k) {
+	// 				Int nx = dx + ndx8[k];
+	// 				Int ny = dy + ndy8[k];
+	// 				if (nx < 0 || ny < 0 || nx >= m_width || ny >= m_height) continue;
+	// 				Int nClass = getTextureClass(nx, ny, true);
+	// 				if (nClass < 0 || nClass == curClass) continue;
+	// 				if (nClass >= numClasses) {
+	// 					// if this happens, ignore (shouldn't normally)
+	// 					continue;
+	// 				}
+	// 				++counts[nClass];
+	// 				// store a seed coordinate for this class (last seen is fine)
+	// 				seedX[nClass] = nx;
+	// 				seedY[nClass] = ny;
+	// 			}
+
+	// 			// choose the most frequent neighbor class
+	// 			Int bestClass = -1;
+	// 			Int bestCount = 0;
+	// 			for (Int b = 0; b < numClasses; ++b) {
+	// 				if (counts[b] > bestCount) {
+	// 					bestCount = counts[b];
+	// 					bestClass = b;
+	// 				}
+	// 			}
+
+	// 			if (bestClass >= 0 && bestCount > 0) {
+	// 				Int sx = seedX[bestClass];
+	// 				Int sy = seedY[bestClass];
+	// 				if (sx >= 0 && sy >= 0) {
+	// 					DEBUG_LOG((
+	// 						"optimizeTiles: autoBlendOut candidate at (%d,%d) baseClass=%d dominantNeighborClass=%d count=%d -> seed(%d,%d)\n",
+	// 						dx, dy, curClass, bestClass, bestCount, sx, sy));
+	// 					// call on the neighbor seed so we expand the dominant neighbor class into the tile
+	// 					autoBlendOut(sx, sy, -1);
+	// 				}
+	// 			}
+
+	// 			delete[] counts;
+	// 			delete[] seedX;
+	// 			delete[] seedY;
+	// 		}
+	// 	}
+	// }
+
+	delete[] tileClassSnapshot;
 
 	REF_PTR_RELEASE(m_terrainTex);
 	REF_PTR_RELEASE(m_terrainTex);
@@ -1827,6 +2222,7 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	Short *extraBlendTileNdxes = new Short[newDataSize];
 	HeightSampleType *data = new HeightSampleType[newDataSize];
 	Short  *cliffInfoNdxes = new Short[newDataSize];
+	UnsignedByte *stochasticData = (m_stochasticData != nullptr) ? new UnsignedByte[newDataSize*STOCHASTIC_BYTES] : nullptr;
 
 	Int i, j;
 	for (i=0; i<newXSize; i++) {
@@ -1865,6 +2261,11 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 				extraBlendTileNdxes[newNdx] = 0;
 				cliffInfoNdxes[newNdx] = 0;
 			}
+			if (stochasticData != nullptr) {
+				for (Int k=0; k<STOCHASTIC_BYTES; k++) {
+					stochasticData[newNdx*STOCHASTIC_BYTES + k] = inRange ? m_stochasticData[oldNdx*STOCHASTIC_BYTES + k] : 0;
+				}
+			}
 		}
 	}
 
@@ -1878,6 +2279,10 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	m_extraBlendTileNdxes = extraBlendTileNdxes;
 	m_cliffInfoNdxes = cliffInfoNdxes;
 	m_data = data;
+	delete[] m_stochasticData;
+	m_stochasticData = stochasticData;
+	m_stochasticTexDirty = true;
+	REF_PTR_RELEASE(m_stochasticTex);
 	m_width = newXSize;
 	m_height = newYSize;
 	m_borderSize = newBorder;
@@ -1908,6 +2313,29 @@ Bool WorldHeightMapEdit::resize(Int newXSize, Int newYSize, Int newHeight, Int n
 	return(true);
 }
 
+
+/**
+	setStochastic
+		Paints a cell's stochastic terrain, making room for it on the first stroke.
+*/
+void WorldHeightMapEdit::setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate)
+{
+	if (xIndex < 0 || yIndex < 0 || xIndex >= m_width || yIndex >= m_height) {
+		return;
+	}
+	if (m_stochasticData == nullptr) {
+		if (strength == 0) {
+			return;
+		}
+		m_stochasticData = new UnsignedByte[m_dataSize*STOCHASTIC_BYTES];
+		memset(m_stochasticData, 0, m_dataSize*STOCHASTIC_BYTES);
+	}
+	UnsignedByte *cell = m_stochasticData + (yIndex*m_width + xIndex)*STOCHASTIC_BYTES;
+	cell[0] = strength;
+	cell[1] = (strength != 0) ? seed : 0;
+	cell[2] = (strength != 0) ? rate : 0;
+	m_stochasticTexDirty = true;
+}
 
 /** Returns true if the texture class is used in the current
 map.  If false, the texture is not used or loaded in the
@@ -2019,6 +2447,8 @@ void WorldHeightMapEdit::removeFirstObject()
 //=============================================================================
 Bool WorldHeightMapEdit::selectDuplicates()
 {
+	const float Z_DELTA     = 0.05f;
+	const float ANGLE_DELTA = 0.01f; // radians (~0.57°)
 	const float DELTA =  0.05f;
 	MapObject *firstObj = MapObject::TheMapObjectListPtr;
 	MapObject *pObj;
@@ -2030,19 +2460,29 @@ Bool WorldHeightMapEdit::selectDuplicates()
 		Coord3D curLoc = *pObj->getLocation();
 
 		for (prevObj=firstObj; prevObj != pObj; prevObj=prevObj->getNext()) {
-			if (pObj->getName() != prevObj->getName()) {
-				continue; // names don't match.
-			}
+			// if (pObj->getName() != prevObj->getName()) {
+			// 	continue; // names don't match.
+			// }
 			if (pObj->isWaypoint()) {
 				// Don't delete duplicate waypoints.
 				continue;
 			}
 			Coord3D prevLoc = *prevObj->getLocation();
+			Real prevAngle = prevObj->getAngle();
 			if (abs(curLoc.x-prevLoc.x)>DELTA) {
 				continue; // locations don't match.
 			}
 			if (abs(curLoc.y-prevLoc.y)>DELTA) {
 				continue; // locations don't match.
+			}
+
+			if (fabs(curLoc.z - prevLoc.z) > Z_DELTA)   continue;
+			if (fabs(pObj->getAngle() - prevAngle) > ANGLE_DELTA) continue;
+
+			// If they occupy the same spot but have different names,
+			// this is allowed — skip it.
+			if (pObj->getName() != prevObj->getName()) {
+				continue;
 			}
 
 			if (pObj->getFlag(FLAG_ROAD_FLAGS)) {
@@ -2054,6 +2494,7 @@ Bool WorldHeightMapEdit::selectDuplicates()
 					continue;
 				}
 				Coord3D nextLoc = *pObj->getNext()->getLocation();
+				Real nextAngle = pObj->getAngle();
 				prevObj = prevObj->getNext();
 				if (!prevObj) continue;
 				if (!prevObj->getFlag(FLAG_ROAD_POINT2)) {
@@ -2066,6 +2507,10 @@ Bool WorldHeightMapEdit::selectDuplicates()
 				if (abs(nextLoc.y-prevLoc.y)>DELTA) {
 					continue; // locations don't match.
 				}
+
+				if (fabs(nextLoc.z - prevLoc.z) > Z_DELTA)   continue;
+				if (fabs(nextAngle - prevObj->getAngle()) > ANGLE_DELTA) continue;
+
 				pObj->setSelected(true);
 				pObj = pObj->getNext();
 				pObj->setSelected(true);
@@ -2093,10 +2538,12 @@ Bool WorldHeightMapEdit::selectSimilar()
 	MapObject *selectedObj;
 	MapObject *otherObj;
 	Bool anySelected = false;
+	// Roads used to be skipped here (and below), so Select Similar did nothing at all when the
+	// selection was a road. They are ordinary map objects whose getName() is the road type, so
+	// they match on name like everything else -- the only special handling they need is that a
+	// segment is a POINT1 object immediately followed by its POINT2 partner, and selecting one
+	// endpoint without the other would leave a half-selected segment.
 	for (selectedObj=firstObj; selectedObj; selectedObj=selectedObj->getNext()) {
-		if (selectedObj->getFlag(FLAG_ROAD_FLAGS)) {
-			continue;
-		}
 		if (selectedObj->isSelected()) {
 			anySelected = true;
 			break;
@@ -2106,12 +2553,19 @@ Bool WorldHeightMapEdit::selectSimilar()
 		return false;
 	}
 
-	for (otherObj=firstObj; otherObj != nullptr; otherObj=otherObj->getNext()) {
+	// When the anchor is a road/bridge endpoint, match against the segment's type. Picking the
+	// POINT2 end still has the same name, so no normalization is needed here. Bridges are laid
+	// out as the same adjacent POINT1/POINT2 pair and are treated the same way throughout.
+	Bool wantRoads = (selectedObj->getFlags() & (FLAG_ROAD_FLAGS|FLAG_BRIDGE_FLAGS)) != 0;
+
+	for (otherObj=firstObj; otherObj != NULL; otherObj=otherObj->getNext()) {
 		if (otherObj->getName() != selectedObj->getName()) {
 			continue; // names don't match.
 		}
 
-		if (otherObj->getFlag(FLAG_ROAD_FLAGS)) {
+		// Never mix roads/bridges and normal objects, even if one shares the road's name.
+		Bool isRoad = (otherObj->getFlags() & (FLAG_ROAD_FLAGS|FLAG_BRIDGE_FLAGS)) != 0;
+		if (isRoad != wantRoads) {
 			continue;
 		}
 
@@ -2122,6 +2576,16 @@ Bool WorldHeightMapEdit::selectSimilar()
 		}
 
 		otherObj->setSelected(true);
+
+		// Keep road segments whole: selecting a POINT1 without its POINT2 (or vice versa) would
+		// leave a half-selected segment that drags apart. The pair is always adjacent in the
+		// list, so the partner is just the next node.
+		if (isRoad && (otherObj->getFlags() & (FLAG_ROAD_POINT1|FLAG_BRIDGE_POINT1))) {
+			MapObject *partner = otherObj->getNext();
+			if (partner && (partner->getFlags() & (FLAG_ROAD_POINT2|FLAG_BRIDGE_POINT2))) {
+				partner->setSelected(true);
+			}
+		}
 	}
 	return anySelected;
 }
@@ -3374,7 +3838,17 @@ void WorldHeightMapEdit::changeBoundary(Int ndx, ICoord2D *border)
 	m_boundaries[ndx] = (*border);
 }
 
-void WorldHeightMapEdit::removeLastBoundary()
+// void WorldHeightMapEdit::removeBoundary(Int ndx, ICoord2D *border)
+// {
+// 	if (!border || ndx < 0 || ndx >= m_boundaries.size()) {
+// 		DEBUG_CRASH(("Invalid border change request. jkmcd"));
+// 		return;
+// 	}
+
+// 	m_boundaries[ndx] = (*border);
+// }
+
+void WorldHeightMapEdit::removeLastBoundary(void)
 {
 	if (m_boundaries.empty()) {
 		DEBUG_CRASH(("Invalid border remove request. jkmcd"));
@@ -3382,6 +3856,19 @@ void WorldHeightMapEdit::removeLastBoundary()
 	}
 
 	m_boundaries.pop_back();
+}
+
+void WorldHeightMapEdit::removeAllExtraBoundaries()
+{
+	if (m_boundaries.size() <= 1) {
+		// Nothing to remove or only one boundary exists
+		return;
+	}
+
+	// Keep only the first boundary
+	ICoord2D firstBoundary = m_boundaries[0];
+	m_boundaries.clear();
+	m_boundaries.push_back(firstBoundary);
 }
 
 void WorldHeightMapEdit::findBoundaryNear(Coord3D *pt, float okDistance, Int *outNdx, Int *outHandle)

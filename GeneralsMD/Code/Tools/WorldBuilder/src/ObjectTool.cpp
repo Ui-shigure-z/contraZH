@@ -27,12 +27,18 @@
 #include "CUndoable.h"
 #include "DrawObject.h"
 #include "MainFrm.h"
+#include "mapobjectprops.h"		// getSingleSelectedObject, for the activate re-sync
+#include "ObjectOptions.h"
 #include "wbview3d.h"
 #include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
 #include "WorldBuilderView.h"
 #include "Common/ThingTemplate.h"
 #include "Common/WellKnownKeys.h"
+#include "PointerTool.h"
+
+
+Bool ObjectTool::m_objectToolActive = false;
 //
 // ObjectTool class.
 //
@@ -78,7 +84,80 @@ Real ObjectTool::calcAngle(Coord3D downPt, Coord3D curPt, WbView* pView)
 	return((Real)angle);
 }
 
+Real ObjectTool::calcAngleSnapped(Coord3D downPt, Coord3D curPt, WbView* pView)
+{
+    double dx = curPt.x - downPt.x;
+    double dy = curPt.y - downPt.y;
+    double dist = sqrt(dx*dx + dy*dy);
+    double angle = 0.0;
 
+    if (dist < 0.1) {
+        angle = 0.0;
+    } else if (abs(dx) > abs(dy)) {
+        angle = acos(dx / dist);
+        if (dy < 0) angle = -angle;
+    } else {
+        angle = asin(dy / dist);
+        if (dx < 0) angle = PI - angle;
+    }
+
+    // Snap angle in degrees to nearest 15° and convert back to radians
+    double angleDeg = angle * 180.0 / PI;
+
+    // Snap angle to nearest 15 degrees (VC6 compatible)
+    double snappedDeg = (angleDeg >= 0.0) 
+        ? floor(angleDeg / 15.0 + 0.5) * 15.0 
+        : ceil(angleDeg / 15.0 - 0.5) * 15.0;
+
+    // Wrap snapped angle between -180 and +180
+    if (snappedDeg > 180.0) snappedDeg -= 360.0;
+    else if (snappedDeg < -180.0) snappedDeg += 360.0;
+
+    angle = snappedDeg * PI / 180.0;
+
+#ifdef _DEBUG
+    CString buf;
+    buf.Format("Angle %f rad, %d degrees (snapped)\n", angle, (int)snappedDeg);
+    ::OutputDebugString(buf);
+#endif
+
+    return (Real)angle;
+}
+
+float ObjectTool::getAngleDegrees360(const Coord3D& downPt, const Coord3D& curPt, WbView* pView)
+{
+    Real radians = ObjectTool::calcAngle(downPt, curPt, pView);
+    float degrees = static_cast<float>(radians * 180.0 / PI);
+
+    if (degrees < 0.0f)
+        degrees += 360.0f;
+
+    // Convert 181-359 degrees to negative equivalents
+    if (degrees > 180.0f)
+        degrees -= 360.0f;
+
+    return degrees;
+}
+
+float ObjectTool::getAngleDegreesSnapped15(const Coord3D& downPt, const Coord3D& curPt, WbView* pView)
+{
+    // Raw angle in radians
+    Real radians = ObjectTool::calcAngle(downPt, curPt, pView);
+    float degrees = static_cast<float>(radians * 180.0 / PI);
+
+    // Normalize to [0, 360)
+    if (degrees < 0.0f)
+        degrees += 360.0f;
+
+    // Snap to nearest 15 degrees (VC6-safe rounding)
+    float snapped = floor(degrees / 15.0f + 0.5f) * 15.0f;
+
+    // Normalize to [-180, 180]
+    if (snapped > 180.0f)
+        snapped -= 360.0f;
+
+    return snapped;
+}
 
 /// Turn off object tracking.
 void ObjectTool::deactivate()
@@ -86,17 +165,33 @@ void ObjectTool::deactivate()
 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 	if (pDoc==nullptr) return;
 	WbView3d *p3View = pDoc->GetActive3DView();
-	p3View->setObjTracking(nullptr, m_downPt3d, 0, false);
+	p3View->setObjTracking(NULL, m_downPt3d, 0, false);
+
+	m_objectToolActive = false;
 }
 /// Shows the object options panel
 void ObjectTool::activate()
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_OBJECT_OPTIONS);
 	DrawObject::setDoBrushFeedback(false);
+
+	// Re-sync the tree to whatever is already selected. Selecting in the viewport calls
+	// ObjectOptions::selectObject, but that is a no-op while this panel does not exist yet
+	// (m_staticThis is NULL), which is exactly the case when the object tool has not been
+	// activated -- so without this the first click on the tool showed no selection and only
+	// a second one did.
+	MapObject *theObj = MapObjectProps::getSingleSelectedObject();
+	if (theObj != NULL)
+	{
+		ObjectOptions::selectObject(theObj);
+	}
+
 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 	if (pDoc==nullptr) return;
 	WbView3d *p3View = pDoc->GetActive3DView();
-	p3View->setObjTracking(nullptr, m_downPt3d, 0, false);
+	p3View->setObjTracking(NULL, m_downPt3d, 0, false);
+
+    m_objectToolActive = true;
 }
 
 /** Execute the tool on mouse down - Place an object. */
@@ -106,6 +201,9 @@ void ObjectTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 
 	Coord3D cpt;
 	pView->viewToDocCoords(viewPt, &cpt);
+
+    pView->snapPoint(&cpt);
+	
 	m_downPt2d = viewPt;
 	m_downPt3d = cpt;
 }
@@ -124,9 +222,22 @@ void ObjectTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 		loc = m_downPt3d;
 	}
 	MapObject *pCur = ObjectOptions::getObjectNamed(AsciiString(ObjectOptions::getCurObjectName()));
-	Real angle = justAClick ? 0 : calcAngle(loc, cpt, pView);
-	if (justAClick && pCur && pCur->getThingTemplate()) {
-		angle = pCur->getThingTemplate()->getPlacementViewAngle();
+	Real angle;
+
+	if (justAClick) {
+		// Use default template placement angle if just previewing
+		if (pCur && pCur->getThingTemplate())
+			angle = pCur->getThingTemplate()->getPlacementViewAngle();
+		else
+			angle = 0;
+	} 
+	else {
+		// <- SUPPORT SNAP HERE
+		if (pView->isLockedAngle()) {
+			angle = ObjectTool::calcAngleSnapped(loc, cpt, pView);   // snapped rotation
+		} else {
+			angle = ObjectTool::calcAngle(loc, cpt, pView);          // free rotation
+		}
 	}
 	WbView3d *p3View = pDoc->GetActive3DView();
 	p3View->setObjTracking(nullptr, m_downPt3d, 0, false);
@@ -134,10 +245,26 @@ void ObjectTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 	if (pCur) {
 		// Display the transparent version of this object.
 		p3View->setObjTracking(pCur, loc, angle, true);
+
+		float angleDeg = angle * (180.0f / 3.14159265f);
+		CString text;
+		text.Format(_T("X: %.2f\nY: %.2f\nAngle: %.2f"), loc.x, loc.y, angleDeg);
+		PointerTool::setLastPointerInfoString(text);
 	} else {
 		// Don't display anything.
 		p3View->setObjTracking(nullptr, loc, angle, false);
 	}
+
+	/**
+	 * Adriane [Deathscythe]
+	 * This is computationally expensive mf — but honestly, who cares? ;)
+	 * It's your processor that's going to suffer, not mine.
+	 *
+	 * Triggers re-renders whenever the mouse moves
+	 * while holding the ghost 3D preview.
+	 */     
+	pView->Invalidate();  
+	pDoc->updateAllViews();         
 }
 
 /** Execute the tool on mouse up - Place an object. */
@@ -153,9 +280,40 @@ void ObjectTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 
 	Coord3D loc = m_downPt3d;
 	pView->snapPoint(&loc);
-	loc.z = ObjectOptions::getCurObjectHeight();
-	Real angle = justAClick ? 0 : calcAngle(loc, cpt, pView);
-	MapObject *pNew = ObjectOptions::duplicateCurMapObjectForPlace(&loc, angle, true);
+
+	// Use ghost preview height if valid
+	WbView3d* p3View = pDoc->GetActive3DView();
+	if (p3View && p3View->getLastTrackingZIsFromHighElev()) {
+		loc.z = p3View->getLastTrackingZ();
+		// DEBUG_LOG(("terrainz: %.2f\n", loc.z));
+	} else {
+		loc.z = ObjectOptions::getCurObjectHeight();  // fallback
+	}
+	MapObject *pCur = ObjectOptions::getObjectNamed(AsciiString(ObjectOptions::getCurObjectName()));
+	Real angle;
+
+	if (justAClick) {
+		// Use default template placement angle if just previewing
+		if (pCur && pCur->getThingTemplate())
+			angle = pCur->getThingTemplate()->getPlacementViewAngle();
+		else
+			angle = 0;
+	} else {
+		// <- SUPPORT SNAP HERE
+		if (pView->isLockedAngle()) {
+			angle = ObjectTool::calcAngleSnapped(loc, cpt, pView);   // snapped rotation
+		} else {
+			angle = ObjectTool::calcAngle(loc, cpt, pView);          // free rotation
+		}
+	}
+
+	MapObject *pNew;
+	if (ObjectOptions::isPlaceAllInCategory()) {
+		// One click places the whole tree category as a single undoable grid.
+		pNew = ObjectOptions::duplicateCategoryMapObjectsForPlace(&loc, angle);
+	} else {
+		pNew = ObjectOptions::duplicateCurMapObjectForPlace(&loc, angle, true);
+	}
 	if (pNew) {
 		if (justAClick && pNew->getThingTemplate()) {
 			angle = pNew->getThingTemplate()->getPlacementViewAngle();

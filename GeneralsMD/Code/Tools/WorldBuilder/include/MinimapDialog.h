@@ -1,0 +1,191 @@
+/*
+**	Command & Conquer Generals Zero Hour(tm)
+**	Copyright 2025 Electronic Arts Inc.
+**
+**	This program is free software: you can redistribute it and/or modify
+**	it under the terms of the GNU General Public License as published by
+**	the Free Software Foundation, either version 3 of the License, or
+**	(at your option) any later version.
+**
+**	This program is distributed in the hope that it will be useful,
+**	but WITHOUT ANY WARRANTY; without even the implied warranty of
+**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+**	GNU General Public License for more details.
+**
+**	You should have received a copy of the GNU General Public License
+**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#pragma once
+
+#ifndef __MINIMAP_DIALOG_H_
+#define __MINIMAP_DIALOG_H_
+
+#include "Lib/BaseType.h"
+#include "Common/AsciiString.h"
+#include <map>
+#include <set>
+
+class MapObject;
+
+#define MINIMAP_SECTION "MinimapDialog"
+
+// Configurable sampling resolution bounds. The pixel buffer is heap-allocated to
+// m_resolution * m_resolution UnsignedInts, so large sizes don't bloat the object.
+enum
+{
+	MINIMAP_RES_MIN     = 256,
+	MINIMAP_RES_DEFAULT = 256,
+	MINIMAP_RES_MAX     = 2048,
+};
+
+// The Minimap is a floating modeless tool window. Click/drag recenters the 3D
+// viewport (in heightmap CELL units; setupCamera scales by MAP_XY_FACTOR).
+class MinimapDialog : public CDialog
+{
+public:
+	enum { IDD = IDD_MINIMAP };
+	MinimapDialog(CWnd *pParent = NULL);
+	virtual ~MinimapDialog();
+
+	void rebuildTerrain();			///< Resample the terrain (expensive); then composite objects.
+	void refreshObjects();			///< Cheap: re-composite cached terrain + objects (no resample).
+	void requestRebuild(Bool terrainChanged = true);	///< Object/camera changes refresh instantly; terrain edits are throttled.
+	void requestSelectionRefresh();	///< Selection-only change: recomposite objects, keep the roads cache (roads didn't move).
+	void requestViewBoxRefresh();	///< Camera moved (only the view box moves): cheap repaint, no recomposite (unless culling).
+
+	// Called from the pointer tool after a click that may have changed the selection.
+	// Does nothing unless the minimap is actually VISIBLE, the selection-overlay is on,
+	// AND the selected set really changed since the last refresh -- so a hidden minimap,
+	// the overlay-off case, and no-op clicks never touch the 3D viewport's redraw path.
+	// Cheap-first: the O(1) visible/overlay checks gate the O(n) selection signature.
+	static void notifySelectionChanged();
+
+	// Suppress all minimap rebuilds while a map load/teardown is in progress. A modal
+	// MessageBox during OnOpenDocument pumps messages, which can fire the pending
+	// rebuild timer and run rebuildTerrain() against a half-swapped document -> hang.
+	// The doc brackets the load with setLoading(true/false); the false call also kicks
+	// one clean rebuild.
+	static void setLoading(Bool loading);
+	static Bool isLoading() { return s_loading; }
+
+	// --- configuration (persisted to registry under MINIMAP_SECTION) ---
+	void setShowObjects(Bool show);
+	Bool getShowObjects() const { return m_showObjects; }
+
+	void setShowRoads(Bool show);
+	Bool getShowRoads() const { return m_showRoads; }
+
+	void setShowBorder(Bool show);		///< Draw an orange outline at the playable-area boundary.
+	Bool getShowBorder() const { return m_showBorder; }
+
+	void setFullExtent(Bool full);		///< Map the full heightmap (playable + border) vs. playable area only.
+	Bool getFullExtent() const { return m_fullExtent; }
+
+	void setCullObjects(Bool cull);		///< Only draw object blips inside the 3D view frustum.
+	Bool getCullObjects() const { return m_cullObjects; }
+
+	void setRefreshDelayMs(Int ms);		///< 0 = manual (rebuild only on load/toggle).
+	Int  getRefreshDelayMs() const { return m_refreshDelayMs; }
+
+	void setResolution(Int res);		///< Clamped to [MINIMAP_RES_MIN, MINIMAP_RES_MAX].
+	Int  getResolution() const { return m_resolution; }
+
+protected:
+	virtual BOOL OnInitDialog();
+	virtual void OnCancel();
+	virtual void OnOK();
+
+	afx_msg void OnPaint();
+	afx_msg void OnExitSizeMove();		///< Persist the window position once, when the user finishes dragging.
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+
+	DECLARE_MESSAGE_MAP()
+
+private:
+	void interpolateColorForHeight(RGBColor *color, Real height,
+		Real hiZ, Real midZ, Real loZ);
+	Bool minimapToWorld(Int mx, Int my, Real *worldX, Real *worldY);
+	void centerViewAtClient(CPoint point);
+	void allocBuffer();				///< (Re)allocate the buffers for the current resolution.
+	void drawObjects();				///< Overlay map objects (units/structures) onto the buffer.
+
+	// Blip sizes in buffer pixels for the current resolution and client size, the
+	// shared colors and toggles, and the owner -> house color memo for one blip pass.
+	struct BlipStyle
+	{
+		Int unitSize, structSize, outlineWidth, haloPad, clientPx;
+		Bool showSelection;
+		UnsignedInt black, gold, darkGray, cyan;
+		std::map<AsciiString, Int> ownerColors;
+	};
+	void blipStyle(BlipStyle &style);
+	Bool blipCell(MapObject *pObj, Int *mx, Int *my);	///< buffer cell of an object's blip; FALSE when it draws none.
+	void drawBlip(MapObject *pObj, Int mx, Int my, BlipStyle &style);
+	Int  blipHalfExtent(const BlipStyle &style) const;	///< largest half size any blip or halo can reach.
+	void refreshSelectionBlips();	///< Redraw only the blips whose halo changed, under a clip, over the cached terrain+roads.
+	void setClip(Int x0, Int y0, Int x1, Int y1);		///< Fill helpers write only inside [x0,x1) x [y0,y1).
+	void resetClip();
+	void drawRoads();				///< Rasterize road/bridge segments into the buffer (drawn under objects).
+	void drawThickLine(Int x0, Int y0, Int x1, Int y1, Int halfW, UnsignedInt color,
+		struct RoadTex *tex = NULL, Real segLenPx = 0.0f,
+		Real tintR = 1.0f, Real tintG = 1.0f, Real tintB = 1.0f);	///< Textured (or flat) thick line into the buffer.
+	void drawViewBoxOverlay(HDC hdc, Int clientW, Int clientH);	///< GDI camera-frustum box (display res).
+	void drawBorderOverlay(HDC hdc, Int clientW, Int clientH);	///< GDI orange playable-area boundary (display res).
+	void fillRect(Int cx, Int cy, Int w, Int h, UnsignedInt color);	///< centered, clipped buffer fill.
+	void fillCheckerRect(Int cx, Int cy, Int w, Int h, UnsignedInt colorA, UnsignedInt colorB, Int cell);	///< centered checkerboard fill (cashbox); cell = block size in buffer px.
+	void fillDiamond(Int cx, Int cy, Int size, UnsignedInt color);	///< centered, clipped diamond fill (units).
+	Bool worldToMinimap(Real worldX, Real worldY, Int *mx, Int *my);	///< world coords -> minimap cell.
+	// The coordinate mapping shared by every minimap path (terrain resample, blips,
+	// roads, view box, drag-to-center). Depends on m_fullExtent: full-extent maps the
+	// whole heightmap (playable + border), playable-only maps just the interior.
+	//   span        = number of heightmap cells the minimap spans (per axis)
+	//   originCell  = heightmap cell index at minimap pixel 0 (0 full, border playable)
+	// A heightmap cell c maps to minimap pixel (c - originCell) / span * res. Returns
+	// FALSE if there is no map.
+	Bool mapSpans(Real *xSpan, Real *ySpan, Real *originCell);
+	Bool isInViewFrustum(Real worldX, Real worldY);	///< point (world units) inside the 3D view's ground footprint?
+	inline UnsignedInt &pixel(Int x, Int y) { return m_pixelBuffer[y * m_resolution + x]; }
+
+	UnsignedInt *m_pixelBuffer;		///< composited (terrain + objects), shown via the DIB.
+	UnsignedInt *m_terrainBuffer;	///< cached terrain-only resample; reused when only objects change.
+	UnsignedInt *m_terrainRoadsBuffer;	///< cached terrain+roads layer; roads are camera-invariant,
+									///< so this is reused across camera-only recomposites (cull-on drag)
+									///< and only rebuilt when terrain or roads actually change.
+	Bool m_roadsValid;				///< m_terrainRoadsBuffer is current (terrain+roads composited).
+	Bool m_terrainValid;			///< m_terrainBuffer holds a current resample.
+	Int  m_resolution;				///< current sampling/buffer edge (square).
+	Bool m_terrainBuilt;
+	Bool m_dragging;
+	Bool m_rebuildPending;			///< A terrain change is waiting to be resampled.
+	Bool m_inRebuild;				///< Re-entrancy guard: rebuildTerrain is on the stack.
+	static Bool s_loading;			///< A map load/teardown is in progress (suppress rebuilds).
+
+	Bool m_showObjects;				///< draw unit/structure dots over the terrain.
+	Bool m_showRoads;				///< draw road/bridge segments over the terrain.
+	Bool m_showBorder;				///< draw an orange outline at the playable-area boundary.
+	Bool m_fullExtent;				///< map the full heightmap (playable + border) vs. playable area only.
+	Bool m_cullObjects;				///< only draw object blips inside the 3D view frustum.
+	Int  m_refreshDelayMs;			///< throttle delay; 0 = manual.
+
+	UnsignedInt m_lastSelectionSig;	///< signature of the selection set at the last halo refresh,
+									///< so notifySelectionChanged() can skip no-op clicks.
+	std::set<MapObject*> m_lastSelected;	///< objects drawn with a halo in the last blip pass.
+
+	// Clip window for the fill helpers, in buffer pixels; the whole buffer unless a
+	// selection refresh narrows it to the dirty rects.
+	Int m_clipX0, m_clipY0, m_clipX1, m_clipY1;
+
+	// The composited buffer stretched to the client size, kept between paints so a
+	// camera move only blits it and redraws the overlays.
+	HBITMAP m_stretchBmp;
+	Int  m_stretchW, m_stretchH;
+	Bool m_stretchValid;
+};
+
+extern MinimapDialog *TheMinimapDialog;
+
+#endif // __MINIMAP_DIALOG_H_

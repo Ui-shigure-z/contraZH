@@ -22,6 +22,7 @@
 //
 
 #define  CAMERA_OPTIONS_PANEL_SECTION "CameraOptionsWindow"
+#define  SCRIPT_DIALOG_SECTION "ScriptDialog"
 #include "WBPopupSlider.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -81,6 +82,22 @@ public: // popup slider interface.
 
 public:
 	void update();
+
+#ifdef RTS_HAS_QT
+	// Qt front-end support (WBQtCameraBridge). The MFC dialog stays created + hidden (a
+	// CMainFrame member); the Qt window drives the view through these statics. Defined in
+	// CameraOptions.cpp.
+	static double qtGetPitch(void);
+	static void   qtSetPitch(double pitch);
+	static void   qtResetCamera(void);
+	static void   qtDropWaypoint(void);
+	static void   qtCenterOnSelected(void);
+	static int    qtGetInfo(float *height, float *zoom, float *posX, float *posY,
+	                        float *tgtX, float *tgtY);
+private:
+	static CameraOptions *s_qtInstance;
+public:
+#endif
 
 };
 

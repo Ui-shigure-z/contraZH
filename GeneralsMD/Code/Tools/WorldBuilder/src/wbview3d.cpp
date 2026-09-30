@@ -19,20 +19,37 @@
 // wbview3d.cpp : implementation file
 //
 
+// #include "Common/GameLOD.h"
 #include "StdAfx.h"
 #include "resource.h"
 #include "WWMath/wwmath.h"
 #include "WW3D2/ww3d.h"
+#include <vector>
+#include "WW3D2/texturefilter.h"
 #include "WW3D2/scene.h"
 #include "WW3D2/rendobj.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/intersec.h"
+#include "WWMath/colmath.h"		// CollisionMath::Collide, for the ray-vs-tree-box pick
+#include "WWMath/aabox.h"			// AABoxClass
+// Show Full Model reads these two modules' data straight off the template (no GameLogic involved).
+#include "Common/GameCommon.h"		// LOGICFRAMES_PER_SECOND, which SpawnBehavior.h uses unqualified
+#include "GameLogic/Module/SpawnBehavior.h"
+#include "GameLogic/Module/SpawnPointProductionExitUpdate.h"
+#include "GameLogic/Module/TransportContain.h"		// InitialPayload (the plain transports)
+#include "GameLogic/Module/OverlordContain.h"		// payload template list (Overlord turrets)
+#include "GameLogic/Module/HelixContain.h"			// payload template list (Helix)
+#include "W3DDevice/GameClient/Module/W3DDependencyModelDraw.h"	// AttachToBoneInContainer
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/Module/W3DTreeDraw.h"
+#include "W3DDevice/GameClient/W3DBridgeBuffer.h"
 #include "WW3D2/agg_def.h"
 #include "WW3D2/part_ldr.h"
+#include "WW3D2/rendobj.h"
 #include "WW3D2/hanim.h"
+#include "WW3D2/hlod.h"		// Peek_Animation_And_Info, for the pristine attach-bone pose
+#include "WW3D2/htree.h"			// Get_Parent_Index, for the sub-object bone walk
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/dx8indexbuffer.h"
 #include "WW3D2/dx8vertexbuffer.h"
@@ -57,6 +74,8 @@
 #include "WW3D2/shattersystem.h"
 #include "WW3D2/light.h"
 #include "WW3D2/texproject.h"
+#include "WW3D2/rinfo.h"
+#include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "MapSettings.h"
 #include "WW3D2/predlod.h"
 #include "SelectMacrotexture.h"
@@ -68,14 +87,26 @@
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "WBHeightMap.h"
+#include "WBParticleRuntime.h"
+// Render Particles toggle (WBQtObjectBridge.cpp): the startup-only live-preview flag. Declared
+// locally so this file needn't pull in the Qt-linkage bridge header just for one accessor.
+extern "C" int WBQtObject_GetRenderParticles(void);
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/Common/W3DConvert.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DBloom.h"
+#include "W3DDevice/GameClient/W3DSoftParticles.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "DrawObject.h"
+#include "RulerTool.h"
+#include "TracingOverlayOptions.h"
+#include "GameLogic/PolygonTrigger.h"
 #include "Common/MapObject.h"
 #include "Common/GlobalData.h"
 #include "ShadowOptions.h"
 #include "WorldBuilder.h"
+#include "WaveEditorTool.h"	// WaveEditorTool::isEditorActive() gates the wave-track flush()
 #include "wbview3d.h"
 #include "Common/Debug.h"
 #include "Common/FramePacer.h"
@@ -89,12 +120,33 @@
 #include "GameLogic/SidesList.h"
 #include "GameLogic/TerrainLogic.h"
 #include "GameClient/View.h"
+#include "Common/GameAudio.h"			// View > Listen To Map: TheAudio / addAudioEvent / update
+#include "Common/AudioEventRTS.h"
+#include "Common/AudioEventInfo.h"
+#include "Common/AudioAffect.h"
+#include "Common/AudioHandleSpecialValues.h"	// AHSV_NoSound
 #include "GlobalLightOptions.h"
 #include "LayersList.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtLayersBridge.h"
+#include "qt/panels/WBQtMinimapBridge.h"
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#include "qt/panels/WBQtTracingOverlayBridge.h"
+#include "qt/WBQtToast.h"
+#endif
+#include "WBTutorialPrompts.h"
+#include "MinimapDialog.h"
 #include "ImpassableOptions.h"
+#include "GameLogic/Module/SupplyWarehouseDockUpdate.h"
+// #include "CUndoable.h"
 
 
+#if defined(BUILD_WITH_D3D9)
+#include "WBD3DX9Font.h"
+#else
 #include <d3dx8.h>
+#endif
+#include "WBPerf.h"
 
 
 // ----------------------------------------------------------------------------
@@ -108,8 +160,11 @@ class SkeletonSceneClass;
 #define MAX_LOADSTRING			100
 #define WINDOW_WIDTH				640
 #define WINDOW_HEIGHT				480
-#define UPDATE_TIME					100  /* 10 frames a second */
+#define UPDATE_TIME					16  /* 10 frames a second */
 #define MOUSE_WHEEL_FACTOR	32
+
+#define ICON_COLOR_SECTION "EntityIconColor"
+#define BRIDGE_FLOAT_AMT (0.25f)
 
 #define SAMPLE_DYNAMIC_LIGHT	1
 #ifdef SAMPLE_DYNAMIC_LIGHT
@@ -117,6 +172,7 @@ static W3DDynamicLight * theDynamicLight = nullptr;
 static Real theLightXOffset = 0.1f;
 static Real theLightYOffset = 0.07f;
 static Int theFlashCount = 0;
+static Bool g_alreadyHintedTraceOverlay = false;
 #endif
 
 // ----------------------------------------------------------------------------
@@ -151,6 +207,7 @@ static void WWAssert_Callback(const char * message)
 }
 
 
+
 // The W3DShadowManager accesses TheTacticalView, so we have to create
 // a stub class & object in Worldbuilder for it to access.
 class PlaceholderView : public View
@@ -158,13 +215,20 @@ class PlaceholderView : public View
 protected:
 	Int m_width, m_height;																			///< Dimensions of the view
 	Int m_originX, m_originY;																		///< Location of top/left view corner
+	Coord3D m_eyePos;																						///< the camera itself (audio listener)
+	Real m_viewAngle;																						///< camera heading, for audio orientation
 
 protected:
 	virtual View *prependViewToList( View *list ) override {return nullptr;};		///< Prepend this view to the given list, return the new list
 	virtual View *getNextView() override { return nullptr; }				///< Return next view in the set
 public:
 
-	virtual void init() override {};
+	PlaceholderView() : m_width(0), m_height(0), m_originX(0), m_originY(0)
+	{
+		m_eyePos.zero();
+	}
+
+	virtual void init( void ){};
 
 	virtual UnsignedInt getID() override { return 1; }
 
@@ -228,12 +292,26 @@ public:
 	virtual void pitchCamera( Real finalPitch, Int milliseconds, Real easeIn, Real easeOut ) override {};
 
 	virtual void setAngle( Real angle ) override {};																///< Rotate the view around the up axis to the given angle
-	virtual Real getAngle() override { return 0; }
 	virtual void setPitch( Real angle ) override {};																	///< Rotate the view around the horizontal axis to the given angle
 	virtual Real getPitch() override { return 0; }							///< Return current camera pitch
 	virtual void setAngleToDefault() override {}											///< Set the view angle back to default
 	virtual void setPitchToDefault() override {}											///< Set the view pitch back to default
-	virtual void getPosition(Coord3D *pos) {}											///< Return camera position
+
+	// View > Listen To Map drives the audio microphone off these: AudioManager::update reads
+	// the look-at point (View::getPosition -> m_pos), the view angle and the real camera
+	// position to place the listener. setupCamera() pushes the live values in via
+	// setAudioCamera() each frame; before that happens they read as the zeroes this stub
+	// always returned, which is what the shadow manager (the original and only other
+	// caller) has always seen.
+	virtual Real getAngle() override { return m_angle; }
+	virtual Coord3D get3DCameraPosition() const override { return m_eyePos; }
+
+	void setAudioCamera( const Coord3D *lookAt, const Coord3D *eye, Real angle )
+	{
+		setPosition(*lookAt);
+		m_eyePos = *eye;
+		m_angle = angle;
+	}
 
 	virtual Real getHeightAboveGround() override { return 1; }
 	virtual void setHeightAboveGround(Real z) override { }
@@ -335,22 +413,228 @@ void SkeletonSceneClass::Remove_Render_Object(RenderObjClass * obj)
 	}
 }
 
+// Bool pleaseHelpMeIamUnderTheWata( Real x, Real y)
+// {
+// 	ICoord3D iLoc;
+// 	iLoc.x = (floor(x+0.5f));
+// 	iLoc.y = (floor(y+0.5f));
+// 	iLoc.z = 0;
+// 	// Look for water areas.
+// 	for (PolygonTrigger *pTrig=PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+// 		if (!pTrig->isWaterArea()) {
+// 			continue;
+// 		}
+// 		// See if point is in a water area
+// 		if (pTrig->pointInTrigger(iLoc)) {
+// 			Real wZ = pTrig->getPoint(0)->z;
+// 			// See if the ground height is less than the water level.
+// 			Real curHeight = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+// 			return (curHeight<wZ);
+// 		}
+// 	}
+// 	return false;
+// }
+
+/**
+ * Adriane [Deathscythe]
+ * Non computationaly expensive suggested check :P 
+ */
+Bool isInsideMapStructureObject(Real x, Real y)
+{
+	MapObject* pObj = MapObject::getFirstMapObject();
+
+	while (pObj) {
+		const ThingTemplate* t = pObj->getThingTemplate();
+		if (!t || !t->isKindOf(KINDOF_STRUCTURE)) {
+			pObj = pObj->getNext();
+			continue;
+		}
+
+		const Coord3D* pos = pObj->getLocation();
+		const GeometryInfo& geom = t->getTemplateGeometryInfo();
+
+		Real halfSizeX = geom.getMajorRadius();
+		Real halfSizeY = geom.getMinorRadius();
+
+		Real angle = pObj->getAngle(); // Assuming this gives rotation in radians around Z
+		Real cosA = (Real)cos(-angle); // Inverse rotate
+		Real sinA = (Real)sin(-angle);
+
+		// Translate point to object-local space
+		Real dx = x - pos->x;
+		Real dy = y - pos->y;
+
+		Real localX = dx * cosA - dy * sinA;
+		Real localY = dx * sinA + dy * cosA;
+
+		// Check if point is within the axis-aligned bounding box in local space
+		if (fabs(localX) <= halfSizeX && fabs(localY) <= halfSizeY) {
+			return true;
+		}
+
+		pObj = pObj->getNext();
+	}
+
+	return false;
+}
+
 
 void WbView3d::setObjTracking(MapObject *pMapObj,  Coord3D pos, Real angle, Bool show)
 {
 	m_showObjToolTrackingObj = show;
 	if (!show) return;
 	Real scale;
-	AsciiString modelName = getModelNameAndScale(pMapObj, &scale, BODY_PRISTINE);
+	ModelConditionFlags trackState;
+	AsciiString modelName = getModelNameAndScale(pMapObj, &scale, BODY_PRISTINE, &trackState);
+
+	// Adriane [Deathscythe] The worldbuilder's scale change is very off for infantry -- adjust properly
+	if (scale > 2.0 && pMapObj->getThingTemplate()->isKindOf(KINDOF_INFANTRY)) {
+		scale *= 4.0f;  // scale up to 350% 
+	}
+
 	if (modelName != m_objectToolTrackingModelName) {
 		m_objectToolTrackingModelName = modelName;
 		REF_PTR_RELEASE(m_objectToolTrackingObj);
 		m_objectToolTrackingObj = m_assetManager->Create_Render_Obj( modelName.str(), scale, 0);
+		// The placement ghost should look like what will actually be placed.
+		applySubObjectVisibility(m_objectToolTrackingObj, pMapObj->getThingTemplate(), trackState);
 	}
 	if (m_objectToolTrackingObj == nullptr) {
 		return;
 	}
-	pos.z += m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, nullptr);
+	
+
+	m_validTerrain = true; // always true
+	if(getShowBuildZoneFeedBack()){
+		const ThingTemplate *t = pMapObj->getThingTemplate();
+		Real objectAngle = pMapObj->getAngle();
+
+		Real halfSizeX = 1.0f;
+		Real halfSizeY = 1.0f;
+		
+		if (t) {
+			const GeometryInfo &geom = t->getTemplateGeometryInfo();
+			halfSizeX = geom.getMajorRadius();
+			halfSizeY = geom.getMinorRadius();
+		}
+
+		// outer margin for the bounding box of the object 
+		// halfSizeY += 10.0f;
+		// halfSizeX += 10.0f;
+		
+		const int numSamples = 5;
+		
+		Real cosA = (Real)cos(angle);
+		Real sinA = (Real)sin(angle);
+		bool anyCliff = false;
+		bool anyBadBuild = false;
+
+
+		for (int i = -numSamples; i <= numSamples && !anyCliff; ++i) {
+			for (int j = -numSamples; j <= numSamples && !anyCliff; ++j) {
+
+				// skip outer circle if desired
+				Real fx = (Real)i / (Real)numSamples;
+				Real fy = (Real)j / (Real)numSamples;
+				if ((fx * fx + fy * fy) > 1.0f)
+					continue;
+
+				Real offsetX = fx * halfSizeX;
+				Real offsetY = fy * halfSizeY;
+
+				Real rotatedX = offsetX * cosA - offsetY * sinA;
+				Real rotatedY = offsetX * sinA + offsetY * cosA;
+
+				Real sampleX = pos.x + rotatedX;
+				Real sampleY = pos.y + rotatedY;
+
+				if (m_heightMapRenderObj->isCliffCell(sampleX, sampleY)) {
+					// DEBUG_LOG(("Cliff terrain at sample (%.2f, %.2f)\n", sampleX, sampleY));
+					anyCliff = true;
+					break;
+				}
+
+				if (i == 0 && j == 0 && m_heightMapRenderObj->isBadBuildLocation(pos.x, pos.y, objectAngle, halfSizeX, halfSizeY) || 
+					isInsideMapStructureObject(sampleX, sampleY)) {
+					// DEBUG_LOG(("Bad build location at (%.2f, %.2f) for object size %.2f\n", sampleX, sampleY, objectSize));
+					anyBadBuild = true;
+				}
+
+				
+			}
+		}
+
+	
+		m_validTerrain = !anyCliff && !anyBadBuild;
+	}
+
+	bool usedBridgeHeight = false;
+	MapObject *prevBridge = NULL; 
+	if (getUseWaterHeight()) {
+		for (MapObject *cur = MapObject::getFirstMapObject(); cur; cur = cur->getNext()) {
+			if (cur->getFlag(FLAG_BRIDGE_POINT1)) {
+				prevBridge = cur;
+				continue;
+			}
+			
+			if (cur->getFlag(FLAG_BRIDGE_POINT2) && prevBridge) {
+				Vector3 pt1, pt2;
+
+				pt1.Set(prevBridge->getLocation()->x, prevBridge->getLocation()->y, 0);
+				pt2.Set(cur->getLocation()->x, cur->getLocation()->y, 0);
+
+				pt1.Z = TheTerrainRenderObject->getHeightMapHeight(pt1.X, pt1.Y, NULL) + BRIDGE_FLOAT_AMT;
+				pt2.Z = TheTerrainRenderObject->getHeightMapHeight(pt2.X, pt2.Y, NULL) + BRIDGE_FLOAT_AMT;
+
+				Vector3 bridgeVec = pt2 - pt1;
+				Vector3 toObj = Vector3(pos.x, pos.y, 0) - pt1;
+
+				float bridgeLenSq = bridgeVec.X * bridgeVec.X + bridgeVec.Y * bridgeVec.Y;
+				float t = (bridgeLenSq > 0.0001f) ? ((toObj.X * bridgeVec.X + toObj.Y * bridgeVec.Y) / bridgeLenSq) : 0.0f;
+
+				Vector3 closestPt = pt1 + bridgeVec * clamp(t, 0.0f, 1.0f);
+				Vector3 delta = Vector3(pos.x, pos.y, 0) - closestPt;
+				float distSq = delta.X * delta.X + delta.Y * delta.Y;
+
+				W3DBridgeBuffer* bridgeBuffer = m_heightMapRenderObj->getBridgeBuffer();
+				BridgeInfo info;
+
+				if (bridgeBuffer) {
+					info = bridgeBuffer->getBridgeInfoFromMapObject(prevBridge, cur);
+					// DEBUG_LOG(("Bridge Width: %.0f", info.bridgeWidth));
+				}
+
+				const float maxBridgeHalfWidth = info.bridgeWidth * 0.5f;
+
+				// Only apply height if point is within bridge bounds AND width
+				if (t >= 0.0f && t <= 1.0f && distSq <= maxBridgeHalfWidth * maxBridgeHalfWidth) {
+					float bridgeZ = pt1.Z + t * (pt2.Z - pt1.Z);
+					pos.z = bridgeZ;
+					m_lastTrackingZ = pos.z - TheTerrainRenderObject->getHeightMapHeight(pos.x, pos.y, NULL);
+					m_lastTrackingZIsFromHighElev = true;
+					usedBridgeHeight = true;
+					break;  // Stop after first valid match
+				}
+
+				prevBridge = NULL;  // Only pair once
+			} else {
+				prevBridge = NULL;
+			}
+		}
+	}
+	if (!usedBridgeHeight) {
+		Real terrainZ = m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, NULL);
+		Real waterZ = m_heightMapRenderObj->getWaterHeightIfUnderwater(pos.x, pos.y);
+
+		if (waterZ != -FLT_MAX && getUseWaterHeight()) {
+			pos.z = waterZ;
+			m_lastTrackingZ = pos.z - terrainZ;
+			m_lastTrackingZIsFromHighElev = true;
+		} else {
+			pos.z = terrainZ;
+			m_lastTrackingZIsFromHighElev = false;
+		}
+	}
 	Matrix3D renderObjPos(true);	// init to identity
 	renderObjPos.Translate(pos.x, pos.y, pos.z);
 	renderObjPos.Rotate_Z(angle);
@@ -366,35 +650,57 @@ IMPLEMENT_DYNCREATE(WbView3d, WbView)
 
 // ----------------------------------------------------------------------------
 WbView3d::WbView3d() :
-	m_assetManager(nullptr),
-	m_scene(nullptr),
-	m_overlayScene(nullptr),
-	m_transparentObjectsScene(nullptr),
-	m_baseBuildScene(nullptr),
-	m_objectToolTrackingObj(nullptr),
+	m_assetManager(NULL),
+	m_scene(NULL),
+	m_overlayScene(NULL),
+	m_transparentObjectsScene(NULL),
+	m_baseBuildScene(NULL),	 
+	m_objectToolTrackingObj(NULL),
+	m_lastTrackingZIsFromHighElev(false),
+	m_lastTrackingZ(0.0),
 	m_showObjToolTrackingObj(false),
 	m_camera(nullptr),
 	m_heightMapRenderObj(nullptr),
 	m_mouseWheelOffset(0),
 	m_actualWinSize(0, 0),
 	m_cameraAngle(0.0),
+	m_cameraAngleRaw(0.0),
+	m_snapCameraAngle45(false),
 	m_FXPitch(1.0f),
 	m_actualHeightAboveGround(0.0f),
+	m_cameraGroundZ(0.0f),
+	m_cameraBorderWorld(0.0f),
 	m_doPitch(false),
 	m_theta(0.0),
 	m_time(0),
+	m_lastAnimTick(0),
 	m_updateCount(0),
+	m_labelEpoch(0),
+	m_labelAnchorMode(0),
+	m_labelRenderer(0),
+	m_haveGdiPaintKey(false),
 	m_needToLoadRoads(0),
-	m_timer(0),
-	m_drawObject(nullptr),
-	m_layer(nullptr),
-	m_buildLayer(nullptr),
-	m_intersector(nullptr),
+	m_freeAssetsOnNextReset(false),
+	m_listenMode(WB_LISTEN_NONE),
+	m_lastListenSweepTime(0),
+	m_timer(NULL),
+	m_drawObject(NULL),
+	m_layer(NULL),
+	m_buildLayer(NULL),
+	m_intersector(NULL),
 	m_showEntireMap(false),
 	m_partialMapSize(129),
 	m_showWireframe(false),
+	m_showFullWireframe(false),
+	m_showSelectionOverlay(false),
 	m_projection(false),
 	m_showShadows(false),
+	m_animateModels(false),
+	m_showBoneNames(false),
+	m_logBoneResolution(false),
+	m_scrubObject(NULL),
+	m_scrubFraction(0.0f),
+	m_animatedModelCount(0),
 	m_firstPaint(true),
 	m_groundLevel(10),
 	m_curTrackingZ(10),
@@ -406,11 +712,56 @@ WbView3d::WbView3d() :
 	m_showWeaponRanges(false),
 	m_highlightTestArt(false),
 	m_showLetterbox(false),
-  m_showSoundCircles(false)
+	m_validTerrain(true),
+	m_showBuildZoneFeedback(false),
+	m_showSoundCircles(false),
+    m_editStartTime(0),
+    m_totalEditTime(0),
+    m_isTimerRunning(false)
 {
 	TheTacticalView = &bogusTacticalView;
+	// D3DX font handle for viewport labels. The release-guards in
+	// createLabelFont()/shutdownWW3D() test it, so it MUST start NULL. Without this,
+	// a _DEBUG build leaves it as 0xcdcdcdcd and the first createLabelFont() call
+	// dereferences that bogus pointer -> access violation.
+	m3DFont = NULL;
+#if defined(BUILD_WITH_D3D9)
+	m_labelSprite = NULL;
+	m_labelSpriteOpen = false;
+	m_labelLayer = NULL;
+#endif
+#ifdef RTS_HAS_QT
+	m_deviceResetFailed = false;
+#endif
 	m_actualWinSize.x = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
 	m_actualWinSize.y = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
+
+	
+	m_lod = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LODMode", 2);
+	m_textShadow = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextShadow", 1) != 0;
+	m_textOutline = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextOutline", 0) != 0;
+	if (m_textOutline) {
+		m_textShadow = false;
+	}
+	m_textAntialias = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextAntialias", 1) != 0;
+	m_labelAnchorMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 0);
+	m_labelRenderer = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
+#if defined(BUILD_WITH_D3D9)
+	if (m_labelRenderer == 1) {
+		m_labelRenderer = 2;	// GDI text on the window never shows under the D3D9 flip model
+	}
+#endif
+	m_labelCull = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
+	m_fpsCap = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "FpsCap", 60);
+	m_fpsCapTimerSet = false;
+	WBPerf::setEnabled(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "PerfLog", 0) != 0);
+	m_snapCameraAngle45 = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", 0) != 0);
+
+	int msaaMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "MSAAMode", 0);
+	WW3D::Set_MSAA_Mode((WW3D::MultiSampleModeEnum)msaaMode);
+
+	loadFxShaderSettings();
+
 	m_cameraOffset.x = m_cameraOffset.y = m_cameraOffset.z = 1;
 
 	for (Int i=0; i<MAX_GLOBAL_LIGHTS; i++)
@@ -420,6 +771,8 @@ WbView3d::WbView3d() :
 	}
 
 	m_showWireframe = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", 0) != 0);
+	m_showFullWireframe = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowFullWireframe", 0) != 0);
+	m_showSelectionOverlay = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSelectionOverlay", 0) != 0);
 	m_showEntireMap = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", 1) != 0);
 	m_projection = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", 0) != 0);
 	m_showShadows = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 1) != 0);
@@ -449,6 +802,16 @@ WbView3d::~WbView3d()
 	REF_PTR_RELEASE(m_drawObject) ;
 	REF_PTR_RELEASE(m_heightMapRenderObj);
 	W3DShaderManager::shutdown();
+	// FX Shaders: same order as the game (W3DDisplay / W3DTerrainVisual), the shadow map after the
+	// shader manager and everything before WW3D::Shutdown.
+	delete TheW3DShadowMap;
+	TheW3DShadowMap = nullptr;
+	delete TheW3DBloom;
+	TheW3DBloom = nullptr;
+	delete TheW3DSoftParticles;
+	TheW3DSoftParticles = nullptr;
+	delete TheW3DSkyClouds;
+	TheW3DSkyClouds = nullptr;
 	shutdownWW3D();
 }
 // ----------------------------------------------------------------------------
@@ -464,9 +827,10 @@ void WbView3d::shutdownWW3D()
 	m_buildLayer = nullptr;
 
 	if (m3DFont) {
-		m3DFont->Release();
+		releaseD3DXFont();
 		m3DFont = nullptr;
 	}
+	m_fontAtlas.releaseTexture();	// drop the GPU atlas with the device; CPU bits stay
 	if (m_ww3dInited) {
 		m_lightList.Reset_List();
 
@@ -496,6 +860,13 @@ void WbView3d::shutdownWW3D()
 #ifdef SAMPLE_DYNAMIC_LIGHT
 		REF_PTR_RELEASE(theDynamicLight);
 #endif
+		// Wave editor: free the water-track system (and its DX8 buffers) while the
+		// device is still alive.
+		if (TheWaterTracksRenderSystem) {
+			delete TheWaterTracksRenderSystem;
+			TheWaterTracksRenderSystem = NULL;
+		}
+
 		WW3D::Shutdown();
 
 		WWMath::Shutdown();
@@ -514,11 +885,14 @@ void WbView3d::ReleaseResources()
 		TheTerrainRenderObject->ReleaseResources();
 	}
 	if (m3DFont) {
-		m3DFont->Release();
+		releaseD3DXFont();
 	}
 	m3DFont = nullptr;
 	if (m_drawObject) {
 		m_drawObject->freeMapResources();
+	}
+	if (TheWaterTracksRenderSystem) {
+		TheWaterTracksRenderSystem->ReleaseResources();
 	}
 }
 
@@ -531,42 +905,15 @@ void WbView3d::ReAcquireResources()
 {
 	if (TheTerrainRenderObject) {
 		TheTerrainRenderObject->ReAcquireResources();
-		TheTerrainRenderObject->loadRoadsAndBridges(nullptr,FALSE);
-		TheTerrainRenderObject->worldBuilderUpdateBridgeTowers( m_assetManager, m_scene );
+		TheTerrainRenderObject->loadRoadsAndBridges(NULL,FALSE);
+		// TheTerrainRenderObject->worldBuilderUpdateBridgeTowers( m_assetManager, m_scene );
 	}
 	m_drawObject->initData();
-	IDirect3DDevice8* pDev = DX8Wrapper::_Get_D3D_Device8();
-	if (pDev) {
+	createLabelFont();
 
-//		CDC* pDC = GetDC();
-		LOGFONT logFont;
-		logFont.lfHeight = 20;
-		logFont.lfWidth = 0;
-		logFont.lfEscapement = 0;
-		logFont.lfOrientation = 0;
-		logFont.lfWeight = FW_REGULAR;
-		logFont.lfItalic = FALSE;
-		logFont.lfUnderline = FALSE;
-		logFont.lfStrikeOut = FALSE;
-		logFont.lfCharSet = ANSI_CHARSET;
-		logFont.lfOutPrecision = OUT_DEFAULT_PRECIS;
-		logFont.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-		logFont.lfQuality = DEFAULT_QUALITY;
-		logFont.lfPitchAndFamily = DEFAULT_PITCH;
-		strcpy(logFont.lfFaceName, "Arial");
-
-		HFONT hFont = CreateFontIndirect(&logFont);
-		if (hFont) {
-			D3DXCreateFont(pDev, hFont, &m3DFont);
-			DeleteObject(hFont);
-		} else {
-			m3DFont = nullptr;
-		}
-
-	} else {
-		m3DFont = nullptr;
+	if (TheWaterTracksRenderSystem) {
+		TheWaterTracksRenderSystem->ReAcquireResources();
 	}
-
 }
 
 // ----------------------------------------------------------------------------
@@ -591,7 +938,21 @@ void WbView3d::reset3dEngineDisplaySize(Int width, Int height)
 	m_actualWinSize.x = width;
 	m_actualWinSize.y = height;
 	if (m_ww3dInited) {
+#ifdef RTS_HAS_QT
+		// The reset can fail (device lost / Reset error) AFTER Reset_Device has already
+		// released every DX8 resource, and it does NOT re-acquire them on failure.
+		// Remember the failure so redraw() retries instead of rendering freed buffers.
+		m_deviceResetFailed =
+			(WW3D::Set_Device_Resolution(m_actualWinSize.x, m_actualWinSize.y, true) != WW3D_ERROR_OK);
+#else
 		WW3D::Set_Device_Resolution(m_actualWinSize.x, m_actualWinSize.y, true);
+#endif
+	}
+
+	// Update camera FOV instead of stretching -- Preserves ratio
+	if (m_camera) {
+		float newAspectRatio = (float)width / (float)height;
+		m_camera->Set_Aspect_Ratio_HackedForWB(newAspectRatio);
 	}
 }
 
@@ -656,6 +1017,22 @@ void WbView3d::setupCamera()
 	pos.z = m_centerPt.Z* MAP_XY_FACTOR;
 
 	Real groundLevel = m_heightMapRenderObj?getHeightAroundPos(m_heightMapRenderObj, pos.x, pos.y) : 0;
+	// Cache the terrain height under the camera so the minimap view box can intersect
+	// the frustum against the real ground (getViewFrustumGroundCorners). m_centerPt.Z is
+	// always 0, so the old "groundZ = m_centerPt.Z * MAP_XY_FACTOR" was a flat z=0 plane,
+	// which drifted the box on non-flat / non-square maps.
+	m_cameraGroundZ = groundLevel;
+
+	// Cache the border offset in world units. The camera/eye is in ABSOLUTE cell-index
+	// world (m_centerPt includes the border), but minimap dots, terrain, and
+	// MapObject::getLocation() are all BORDER-RELATIVE. getViewFrustumGroundCorners
+	// subtracts this so its corners share the object world space (so the drawn box AND
+	// the isInViewFrustum cull line up with the blips instead of being shifted by the
+	// border).
+	{
+		WorldHeightMapEdit *pMapForBorder = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
+		m_cameraBorderWorld = pMapForBorder ? (pMapForBorder->getBorderSize() * MAP_XY_FACTOR) : 0.0f;
+	}
 
 	// set position of camera itself
 	/*
@@ -710,6 +1087,24 @@ void WbView3d::setupCamera()
 	m_actualHeightAboveGround = m_cameraOffset.z * zoom - groundLevel;
 	m_cameraSource = sourcePos;
 	m_cameraTarget = targetPos;
+
+	// Feed the audio listener (View > Listen To Map). AudioManager::update reads these off
+	// TheTacticalView to place the microphone; without them it would sit at the origin and every
+	// sound would pan as if the camera never moved. Both are shifted into the same
+	// BORDER-RELATIVE world that MapObject::getLocation() (and therefore the positions we hand
+	// to addAudioEvent) uses -- sourcePos/targetPos are in absolute cell-index world, so mixing
+	// the two would offset every sound by the map's border.
+	{
+		Coord3D audioLookAt;
+		Coord3D audioEye;
+		audioLookAt.x = targetPos.X - m_cameraBorderWorld;
+		audioLookAt.y = targetPos.Y - m_cameraBorderWorld;
+		audioLookAt.z = targetPos.Z;
+		audioEye.x = sourcePos.X - m_cameraBorderWorld;
+		audioEye.y = sourcePos.Y - m_cameraBorderWorld;
+		audioEye.z = sourcePos.Z;
+		bogusTacticalView.setAudioCamera(&audioLookAt, &audioEye, angle);
+	}
 	/*
 	DEBUG_LOG(("Camera: pos=(%g,%g) height=%g pitch=%g FXPitch=%g yaw=%g groundLevel=%g",
 		targetPos.X, targetPos.Y,
@@ -737,10 +1132,10 @@ void WbView3d::setupCamera()
 		if (m_projection) {
 			camtransform.Make_Identity();
 			camtransform.Set_Translation(Vector3(targetPos.X, targetPos.Y, lookDistance));
-			m_heightMapRenderObj->setFlattenHeights(true);
+			// m_heightMapRenderObj->setFlattenHeights(true);
 			//m_camera->Set_Projection_Type(CameraClass::ORTHO);
 		} else {
-			m_heightMapRenderObj->setFlattenHeights(false);
+			// m_heightMapRenderObj->setFlattenHeights(false);
 			//m_camera->Set_Projection_Type(CameraClass::PERSPECTIVE);
 		}
 	}
@@ -748,11 +1143,8 @@ void WbView3d::setupCamera()
 	if (m_heightMapRenderObj) {
 		m_heightMapRenderObj->setDrawEntireMap(m_showEntireMap);
 	}
-	// Keep the projection matched to the current render resolution so the scene
-	// isn't distorted at non-4:3 window sizes (dynamic resolution scaling).
-	if (m_actualWinSize.y > 0) {
-		m_camera->Set_Aspect_Ratio((float)m_actualWinSize.x/(float)m_actualWinSize.y);
-	}
+
+	m_camera->Set_Aspect_Ratio_HackedForWB((float)m_actualWinSize.x/(float)m_actualWinSize.y);
 }
 
 // ----------------------------------------------------------------------------
@@ -800,6 +1192,12 @@ void WbView3d::init3dScene()
 void WbView3d::resetRenderObjects()
 {
 	if (!m_scene) return;
+	// Live particle emitters aren't in m_scene, so the scene-iterator teardown below won't touch
+	// them -- destroy them explicitly (invalObjectInView(NULL) recreates them right after).
+	WBParticleRuntime::destroyAllEmitters();
+	// The scene (and every animation applied to it) is about to be torn down; the rebuild that
+	// follows re-counts as it re-applies.
+	m_animatedModelCount = 0;
 	if (TheW3DShadowManager) {
 		TheW3DShadowManager->removeAllShadows();
 	}
@@ -825,10 +1223,50 @@ void WbView3d::resetRenderObjects()
 	}
 	m_baseBuildScene->Destroy_Iterator(sceneIter);
 	MapObject *pMapObj = MapObject::getFirstMapObject();
+	// The scene was emptied above, so the loose draw-module pieces went with it: drop our
+	// refs and forget them, or the next build would leak them and re-add stale objects.
+	for (std::map<MapObject *, std::vector<LoosePiece> >::iterator lpIt = m_loosePieces.begin();
+			lpIt != m_loosePieces.end(); ++lpIt) {
+		for (size_t li = 0; li < lpIt->second.size(); ++li) {
+			if (lpIt->second[li].obj != NULL) {
+				lpIt->second[li].obj->Release_Ref();
+			}
+		}
+	}
+	m_loosePieces.clear();
+	// Borrowed pointers into the scene that was just emptied -- forget them without releasing
+	// (the refs that existed were the loose ones, dropped just above).
+	m_moduleRenderObjs.clear();
+	// Bone-name labels describe a build that no longer exists; the next one re-records them.
+	m_attachBoneLabels.clear();
+	// Resolved offsets go too: freeCachedModelsOnNextReset can drop the W3D prototypes, so a model
+	// NAME may mean different geometry after this (that is exactly why a map.ini reload resets).
+	m_attachBoneCache.clear();
+	// NOTE: m_scrubObject deliberately SURVIVES this. setAnimationScrub drives the scrub by calling
+	// resetRenderObjects (a per-object rebuild is not supported -- see the note there), so clearing
+	// it here would wipe the state the rebuild is supposed to apply: the object would arm, the
+	// reset would disarm it, and every module would pose at frame 0 as if nothing had been asked
+	// for. But only a pointer still IN the map's object list may survive: the removal path nulls a
+	// deleted object, yet a map load replaces the whole list without routing through it, and the
+	// MemoryPool recycles freed slots -- so a stale pointer could coincidentally match a NEW
+	// object and silently scrub-pose it. Validate rather than trust.
+	if (m_scrubObject != NULL) {
+		Bool scrubStillPresent = false;
+		for (MapObject *o = MapObject::getFirstMapObject(); o; o = o->getNext()) {
+			if (o == m_scrubObject) {
+				scrubStillPresent = true;
+				break;
+			}
+		}
+		if (!scrubStillPresent) {
+			m_scrubObject = NULL;
+		}
+	}
 	// Erase references to render objs that have been removed.
 	while (pMapObj)
 	{
-		pMapObj->setRenderObj(nullptr);
+		pMapObj->setRenderObj(NULL);
+		pMapObj->setShadowObj(NULL);
 		pMapObj = pMapObj->getNext();
 	}
 
@@ -843,6 +1281,20 @@ void WbView3d::resetRenderObjects()
 	}
 
 	m_needToLoadRoads = true; // load roads next time we redraw.
+
+	// Drop the cached W3D prototypes too, when asked. Create_Render_Obj clones a prototype cached
+	// by model name, so tearing the scene down is not enough on its own: a model whose definition
+	// changed underneath us -- a map.ini editing an object's Draw module, so the same name now
+	// means different geometry or a different set of sub-objects -- would be rebuilt from the
+	// STALE prototype, leaving the old sub-objects visible. Only done on request: Free_Assets
+	// also releases every texture, so it is far too heavy for the ordinary per-edit refresh.
+	// Ordered AFTER the scene teardown above, which is what releases the last references to the
+	// render objects cloned from those prototypes.
+	if (m_freeAssetsOnNextReset && m_assetManager) {
+		m_freeAssetsOnNextReset = false;
+		PredictiveLODOptimizerClass::Free();
+		m_assetManager->Free_Assets();
+	}
 
 	if (TheW3DShadowManager)
 		TheW3DShadowManager->Reset();
@@ -863,7 +1315,13 @@ void WbView3d::stepTimeOfDay()
 		TheWritableGlobalData->m_timeOfDay = TIME_OF_DAY_FIRST;
 	}
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
+
+	// Time-of-day changes the terrain tint, so the minimap needs a full resample.
+	// This is an explicit user action (like load/toggle), so rebuild immediately
+	// rather than via the throttle (which honors "Refresh Rate: Off").
+	if (TheMinimapDialog && TheMinimapDialog->IsWindowVisible())
+		TheMinimapDialog->rebuildTerrain();
 }
 
 // ----------------------------------------------------------------------------
@@ -1009,11 +1467,24 @@ void WbView3d::updateScorches()
 // ----------------------------------------------------------------------------
 void WbView3d::updateTrees()
 {
+	/** 
+	 * Adriane [Deathscythe] -- Bug fix 
+	 * Do not render them trees when we dont need too
+	 */
 	TheTerrainRenderObject->removeAllTrees();
+	if (!m_showModels) {
+        return;
+    }
+
 	TheTerrainRenderObject->removeAllProps();
 	MapObject *pMapObj;
 	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
 	{
+
+		// Skip objects that shouldn't render (hidden by layer or flag)
+		if (pMapObj->getFlags() & FLAG_DONT_RENDER)
+			continue;
+
 		const ThingTemplate *tTemplate;
 
 		tTemplate = pMapObj->getThingTemplate();
@@ -1059,14 +1530,16 @@ void WbView3d::updateFenceListObjects(MapObject *pObject)
 		RenderObjClass *renderObj=nullptr;
 		REF_PTR_SET( renderObj, pMapObj->getRenderObj() );
 		if (!renderObj) {
-			Real scale = 1.0;
-			AsciiString modelName = getModelNameAndScale(pMapObj, &scale, BODY_PRISTINE);
+			Real scale = 1.0; 
+			ModelConditionFlags subState;
+			AsciiString modelName = getModelNameAndScale(pMapObj, &scale, BODY_PRISTINE, &subState);
 			// set render object, or create if we need to
 			if( renderObj == nullptr && modelName.isEmpty() == FALSE &&
 					strncmp( modelName.str(), "No ", 3 ) )
 			{
 
 				renderObj = m_assetManager->Create_Render_Obj( modelName.str(), scale, 0);
+				applySubObjectVisibility(renderObj, pMapObj->getThingTemplate(), subState);
 
 			}
 		}
@@ -1105,6 +1578,140 @@ void WbView3d::removeFenceListObjects(MapObject *pObject)
 	}
 
 	Invalidate(false);
+}
+
+/**
+ * Adriane [Deathscythe]
+ * Very nasty hack incoming, good lord — some necessary functions are already exposed for tree drawing,
+ * and I can fix the preview bug using those.
+ * 
+ * Do note though: this is a temporary fix —
+ * WorldBuilder originally only checked for W3DModelDraw. However, due to
+ * optimizations made by the Zero Hour developers, many tree objects were
+ * converted to use W3DTreeDraw instead. As a result, previews for these
+ * objects were broken. This fallback restores support for tree previews.
+ * 
+ * Extra: the original getBestModelName() is also synonymous with the shadow system.
+ * I had to revert edits to the original and create a new function,
+ * since there's a weird bug I haven't been able to fix where models are drawn twice
+ * when trees are rendered.
+ */
+// Apply the draw module's ShowSubObject / HideSubObject list to a freshly created render object.
+//
+// The game does this in W3DModelDraw::doHideShowSubObjs when it builds a drawable; WorldBuilder
+// only ever called Create_Render_Obj, so a model whose condition state hides part of itself drew
+// the hidden geometry. Objects that share a model and differ only by what they hide -- which is
+// how a map.ini commonly reskins one -- all looked identical, and identical to the base model.
+//
+// Mirrors the game in BOTH steps: hide the named sub-object, then hide everything parented to its
+// bone. That second step is why hiding a turret takes its barrel with it.
+void WbView3d::applySubObjectVisibility(RenderObjClass *renderObj, const ThingTemplate *tt,
+	const ModelConditionFlags &state)
+{
+	if (renderObj == NULL || tt == NULL)
+	{
+		return;
+	}
+	const ModuleInfo &mi = tt->getDrawModuleInfo();
+	if (mi.getCount() == 0)
+	{
+		return;
+	}
+	const ModuleData *mdd = mi.getNthData(0);
+	const W3DModelDrawModuleData *md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+	if (md == NULL)
+	{
+		return;
+	}
+	const ModelConditionInfo *info = md->findBestInfo(state);
+	if (info == NULL || info->m_hideShowVec.empty())
+	{
+		return;
+	}
+	applySubObjectHideList(renderObj, info);
+}
+
+// The applier itself, given the already-resolved condition state. Separate so the placed-object
+// path -- which walks every draw module and so resolves its own info per module -- shares it.
+void WbView3d::applySubObjectHideList(RenderObjClass *renderObj, const ModelConditionInfo *info)
+{
+	if (renderObj == NULL || info == NULL)
+	{
+		return;
+	}
+	const HTreeClass *htree = renderObj->Get_HTree();
+	const Int numSubObjects = renderObj->Get_Num_Sub_Objects();
+	for (std::vector<ModelConditionInfo::HideShowSubObjInfo>::const_iterator it =
+			info->m_hideShowVec.begin(); it != info->m_hideShowVec.end(); ++it)
+	{
+		Int objIndex = 0;
+		RenderObjClass *subObj = renderObj->Get_Sub_Object_By_Name(it->subObjName.str(), &objIndex);
+		if (subObj == NULL)
+		{
+			continue;
+		}
+		subObj->Set_Hidden(it->hide);
+		if (htree != NULL)
+		{
+			// Everything hanging off this sub-object's bone goes with it (== the game's
+			// doHideShowBoneSubObjs): hiding a chassis must hide what is mounted on it.
+			const Int boneIdx = renderObj->Get_Sub_Object_Bone_Index(0, objIndex);
+			for (Int i = 0; i < numSubObjects; i++)
+			{
+				Int parentBoneIndex = renderObj->Get_Sub_Object_Bone_Index(0, i);
+				Bool isChild = false;
+				while (parentBoneIndex != 0)
+				{
+					parentBoneIndex = htree->Get_Parent_Index(parentBoneIndex);
+					if (parentBoneIndex == boneIdx)
+					{
+						isChild = true;
+						break;
+					}
+				}
+				if (isChild)
+				{
+					RenderObjClass *childObject = renderObj->Get_Sub_Object(i);
+					if (childObject != NULL)
+					{
+						childObject->Set_Hidden(it->hide);
+						childObject->Release_Ref();
+					}
+				}
+			}
+		}
+		subObj->Release_Ref();
+	}
+}
+
+AsciiString WbView3d::getBestModelNameWBPrev(const ThingTemplate* tt, const ModelConditionFlags& c)
+{
+	if (tt)
+	{
+		const ModuleInfo& mi = tt->getDrawModuleInfo();
+		if (mi.getCount() > 0)
+		{
+			const ModuleData* mdd = mi.getNthData(0);
+
+			// Try W3DModelDraw first
+			const W3DModelDrawModuleData* md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+			if (md)
+			{
+				return md->getBestModelNameForWB(c);
+			}
+
+			/*
+			* Adriane [Deathscythe] 
+			* Fallback: Try W3DTreeDraw -- now supports preview model in WorldBuilder.
+			*/
+			const W3DTreeDrawModuleData* td = mdd ? mdd->getAsW3DTreeDrawModuleData() : NULL;
+			if (td)
+			{
+				return td->m_modelName;
+			}
+		}
+	}
+	return AsciiString::TheEmptyString;
 }
 
 // ----------------------------------------------------------------------------
@@ -1167,7 +1774,7 @@ void WbView3d::invalBuildListItemInView(BuildListInfo *pBuildToInval)
 			if (!found && pBuildToInval) {
 				continue;
 			}
-			if (!BuildListTool::isActive() && !pBuild->isInitiallyBuilt()) {
+			if (!BuildListTool::isActive() && !pBuild->isInitiallyBuilt() && !getShowBuildListObjects()) {
 				continue;
 			}
 			// Update.
@@ -1201,6 +1808,12 @@ void WbView3d::invalBuildListItemInView(BuildListInfo *pBuildToInval)
 				{
 
 					renderObj = m_assetManager->Create_Render_Obj( modelName.str(), scale, playerColor);
+					{
+						// == the game's W3DModelDraw: apply this state's Show/HideSubObject list.
+						ModelConditionFlags subState;
+						subState.clear();
+						applySubObjectVisibility(renderObj, tTemplate, subState);
+					}
 					if( m_showShadows  && tTemplate->getShadowType() != SHADOW_NONE)
 					{
 						//add correct type of shadow
@@ -1214,6 +1827,14 @@ void WbView3d::invalBuildListItemInView(BuildListInfo *pBuildToInval)
 						shadowInfo.m_sizeY=tTemplate->getShadowSizeY();
 						shadowInfo.m_offsetX=tTemplate->getShadowOffsetX();
 						shadowInfo.m_offsetY=tTemplate->getShadowOffsetY();
+						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
+					}
+					else if (m_showShadows && TheGlobalData->m_shadowsAlwaysOn)
+					{
+						// Matches the game's ShadowsAlwaysOn, which casts only into the shadow map.
+						Shadow::ShadowTypeInfo shadowInfo;
+						shadowInfo.m_type = SHADOW_VOLUME;
+						shadowInfo.m_shadowMapOnly = true;
 						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
 					}
 				}
@@ -1249,7 +1870,8 @@ void WbView3d::invalBuildListItemInView(BuildListInfo *pBuildToInval)
 }
 
 
-AsciiString WbView3d::getModelNameAndScale(MapObject *pMapObj, Real *scale, BodyDamageType curDamageState)
+AsciiString WbView3d::getModelNameAndScale(MapObject *pMapObj, Real *scale,
+	BodyDamageType curDamageState, ModelConditionFlags *stateOut)
 {
 	ModelConditionFlags state;
 	switch (curDamageState)
@@ -1347,18 +1969,109 @@ AsciiString WbView3d::getModelNameAndScale(MapObject *pMapObj, Real *scale, Body
 		{
 
 			// get visual data from the thing template
-			modelName = getBestModelName(tTemplate, state);
+			modelName = getBestModelNameWBPrev(tTemplate, state);
 			*scale = tTemplate->getAssetScale();
 
-		}
+		}  // end if
+	}  // end else
+	if (stateOut != NULL)
+	{
+		*stateOut = state;		// so the caller can apply this state's sub-object visibility
 	}
 	return modelName;
 }
+
+static AsciiString CleanSubObjName(const AsciiString& in)
+{
+    const char* raw = in.str();
+    if (!raw) return AsciiString::TheEmptyString;
+
+    // Trim leading whitespace
+    while (*raw && isspace((unsigned char)*raw)) raw++;
+
+    // Trim trailing whitespace
+    const char* end = raw + strlen(raw);
+    while (end > raw && isspace((unsigned char)*(end - 1))) end--;
+
+    // Copy into a buffer we can edit
+    int len = (int)(end - raw);
+    if (len <= 0) return AsciiString::TheEmptyString;
+
+    char buf[256]; // plenty big for subobject names
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+
+    strncpy(buf, raw, len);
+    buf[len] = '\0';
+
+    // Normalize to uppercase
+    for (int i = 0; i < len; i++) {
+        buf[i] = toupper((unsigned char)buf[i]);
+    }
+
+    return AsciiString(buf);
+}
+
+
+/** Which animation should "Animate Models" play for this state, or NULL to leave the static pose.
+
+	Two cases play, and nothing else:
+	  1. AnimationMode = LOOP -- the state is authored to loop, so play it.
+	  2. An IdleAnimation (infantry standing, and anything else that fidgets in place). Those are
+	     declared ONCE -- the engine REQUIRES it ("Idle Anims should always use ONCE or
+	     ONCE_BACKWARDS") -- and in game one plays through and then another is picked at random.
+	     WB has no per-drawable update to drive that reselection, so we loop the first idle
+	     instead: the unit reads as alive, which is the point in an editor.
+	Everything else (doors, deploy sequences, recoil) is driven by game logic WB does not run, so
+	looping it would look wrong.
+
+	isIdleAnim() is the same runtime seam the engine itself uses to spot an idle anim; the
+	parse-time GOT_IDLE_ANIMS flag is private to the INI parser. A state may not mix idle and
+	non-idle anims (the parser rejects it), so the first idle found describes the whole state. */
+static const W3DAnimationInfo *pickWBAnimation(const ModelConditionInfo *info)
+{
+	if (info == NULL || info->m_animations.empty())
+	{
+		return NULL;
+	}
+	if (info->m_mode == RenderObjClass::ANIM_MODE_LOOP)
+	{
+		return &info->m_animations[0];
+	}
+	for (size_t i = 0; i < info->m_animations.size(); ++i)
+	{
+		if (info->m_animations[i].isIdleAnim())
+		{
+			return &info->m_animations[i];
+		}
+	}
+	return NULL;
+}
+
+
+static void DumpSubObjects(RenderObjClass* obj, const char* modelName)
+{
+    if (!obj) return;
+
+    int count = obj->Get_Num_Sub_Objects();
+    DEBUG_LOG(("--- SubObjects for %s (count=%d) ---\n", modelName, count));
+
+    for (int i = 0; i < count; i++) {
+        RenderObjClass* sub = obj->Get_Sub_Object(i);
+        const char* subName = sub ? sub->Get_Name() : NULL; // <-- use Get_Name()
+        if (subName && *subName) {
+            DEBUG_LOG(("   [%d] '%s'\n", i, subName));
+        } else {
+            DEBUG_LOG(("   [%d] (no name)\n", i));
+        }
+    }
+}
+
 
 // ----------------------------------------------------------------------------
 void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 {
 	++m_updateCount;
+	++m_labelEpoch;		// objects/properties may have changed -> rebuild label cache
 	Bool updateAllTrees = false;
 	if (m_heightMapRenderObj == nullptr) {
 		m_heightMapRenderObj = NEW_REF(WBHeightMap,());
@@ -1467,43 +2180,593 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 
 
 		if (!renderObj) {
-			Real scale = 1.0;
-			AsciiString modelName = getModelNameAndScale(pMapObj, &scale, curDamageState);
-			// set render object, or create if we need to
-			if( renderObj == nullptr && modelName.isEmpty() == FALSE &&
-					strncmp( modelName.str(), "No ", 3 ) )
-			{
+			// Rebuilding from scratch: drop any pieces from the previous build first, or each
+			// rebuild would stack another set on top of the last.
+			releaseLoosePieces(pMapObj);
 
-				if (!getShowModels()) {
-					continue;
+			Real scale = 1.0;
+		
+			const ThingTemplate* tTemplate = pMapObj->getThingTemplate();
+
+			// BuildVariations: a template that lists them is a BUILD PLACEHOLDER and is never what
+			// the game actually creates. ThingFactory::newObject substitutes before the object
+			// exists at all --
+			//     const std::vector<AsciiString>& asv = tmplate->getBuildVariations();
+			//     if (!asv.empty()) { ... tmplate = findTemplate(asv[which]); }
+			// -- so EVERY spawn (build bar, script, map placement) becomes one of the variations.
+			// The placeholder itself carries only cost / prerequisites / BuildVariations and
+			// commonly has no draw modules whatsoever.
+			//
+			// WB never calls newObject; it walks the placed template's own draw modules, so it
+			// faithfully drew nothing and the object appeared as a bare label with no geometry
+			// (NavyCapitalNebulaCruiser00 and NavyCapitalEclipseCruiser00 in the naval map.ini,
+			// both of which the game shows as full battleships). Follow the substitution here.
+			//
+			// FIRST variation, not a random one: the game re-rolls per object, but a viewport that
+			// changed which model it drew on every rebuild would be worse than useless in an editor.
+			// Deterministic beats faithful here.
+			//
+			// Only when the placeholder has nothing to draw of its own -- a template with both its
+			// own modules AND variations keeps its own, since that is what it declares.
+			//
+			// Done HERE, at the point the template is resolved, rather than at the draw-module loop
+			// below: scale (getAssetScale), the shadow settings and the post-collapse scan all read
+			// tTemplate before that loop, and they must describe the model actually being drawn.
+			// "Has nothing to draw" is NOT "has no draw modules". Every object inherits
+			// ModuleTag_DefaultW3DDefaultDraw from the default template -- a W3DDefaultDraw, which
+			// renders nothing. Templates that want geometry add their own AND RemoveModule that
+			// default; a build placeholder does neither, so it reports ONE draw module that draws
+			// nothing at all (census: NavyCapitalNebulaCruiser00 modules=1 variations=3).
+			// Test for a module that can actually produce a model instead -- shared with the
+			// scrubber's passes (resolveBuildVariation), which must walk the same template.
+			tTemplate = resolveBuildVariation(tTemplate);
+
+			if (tTemplate) {
+				Bool hasPostCollapseState = false;
+				const ModuleInfo& modelinfo = tTemplate->getBehaviorModuleInfo();
+				for (Int modIdx = 0; modIdx < modelinfo.getCount(); ++modIdx) {
+					if (modelinfo.getNthName(modIdx).compare("StructureCollapseUpdate") == 0 || 
+						modelinfo.getNthName(modIdx).compare("StructureToppleUpdate")   == 0
+					) {
+						// DEBUG_LOG(("HAS POST_COLLAPSE\n"));
+						hasPostCollapseState = true;
+						break;
+					}
 				}
-				renderObj = m_assetManager->Create_Render_Obj( modelName.str(), scale, playerColor);
-				if( m_showShadows )
-				{
-					Shadow::ShadowTypeInfo shadowInfo;
-					shadowInfo.allowUpdates=FALSE;	//shadow image will never update
-					shadowInfo.allowWorldAlign=TRUE;	//shadow image will wrap around world objects
-					if (tTemplate && tTemplate->getShadowType() != SHADOW_NONE && !(pMapObj->getFlags() & FLAG_DONT_RENDER))
-					{	//add correct type of shadow
-						strlcpy(shadowInfo.m_ShadowName, tTemplate->getShadowTextureName().str(), ARRAY_SIZE(shadowInfo.m_ShadowName));
-						DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
-						shadowInfo.m_type=(ShadowType)tTemplate->getShadowType();
-						shadowInfo.m_sizeX=tTemplate->getShadowSizeX();
-						shadowInfo.m_sizeY=tTemplate->getShadowSizeY();
-						shadowInfo.m_offsetX=tTemplate->getShadowOffsetX();
-						shadowInfo.m_offsetY=tTemplate->getShadowOffsetY();
-						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
-					} else if (!tTemplate) {
-						shadowInfo.m_type=(ShadowType)SHADOW_VOLUME;
-						shadowObj=TheW3DShadowManager->addShadow(renderObj, &shadowInfo);
+
+			// 	const ModuleData* moduleData = NULL;
+			// 	const ModuleInfo& modInfo = tTemplate->getBehaviorModuleInfo();
+
+			// 	for (int i = 0; i < modInfo.getCount(); ++i) {
+			// 		if (modInfo.getNthName(i).compare("SupplyWarehouseDockUpdate") == 0) {
+			// 			moduleData = modInfo.getNthData(i);
+			// 			break;
+			// 		}
+			// 	}
+
+			// if (moduleData) {
+			// 	const SupplyWarehouseDockUpdateModuleData* dockData =
+			// 		static_cast<const SupplyWarehouseDockUpdateModuleData*>(moduleData);
+
+			// 	int startingBoxes = dockData->m_startingBoxesData;
+
+			// 	// Compute cash value
+			// 	int cashValue = static_cast<int>(startingBoxes * TheGlobalData->m_baseValuePerSupplyBox);
+
+			// 	DEBUG_LOG(("starting boxes: %d, cash value: %d\n", startingBoxes, cashValue));
+			// }
+
+				scale = tTemplate->getAssetScale();
+				// Adriane [Deathscythe] The worldbuilder's scale change is very off for infantry -- adjust properly
+				if (scale > 2.0 && pMapObj->getThingTemplate()->isKindOf(KINDOF_INFANTRY)) {
+					scale *= 4.0f;  // scale up to 350% 
+				}
+		
+				// Setup model condition flags from the current damage state
+				ModelConditionFlags state;
+				switch (curDamageState) {
+					case BODY_PRISTINE:
+					default:
+						state.clear();
+						break;
+					case BODY_DAMAGED:
+						state.set(MODELCONDITION_DAMAGED);
+						break;
+					case BODY_REALLYDAMAGED:
+						state.set(MODELCONDITION_REALLY_DAMAGED);
+						break;
+					case BODY_RUBBLE:
+						if(hasPostCollapseState){
+							state.set(MODELCONDITION_POST_COLLAPSE);
+						} else {
+							state.set(MODELCONDITION_RUBBLE);
+						}
+						break;
+				}
+		
+				if (getShowGarrisoned()) {
+					state.set(MODELCONDITION_GARRISONED);
+				}
+		
+				// Check weather conditions
+				Int objWeather = 0;
+				Bool exists = FALSE;
+				if (pMapObj && pMapObj->getProperties()) {
+					objWeather = pMapObj->getProperties()->getInt(TheKey_objectWeather, &exists);
+				}
+				switch (objWeather) {
+					default:
+					case 0:
+						if (TheGlobalData->m_weather == WEATHER_SNOWY) {
+							state.set(MODELCONDITION_SNOW);
+						}
+						break;
+					case 2:
+						state.set(MODELCONDITION_SNOW);
+						break;
+				}
+		
+				// Check time of day
+				Int objTime = 0;
+				if (pMapObj && pMapObj->getProperties()) {
+					objTime = pMapObj->getProperties()->getInt(TheKey_objectTime, &exists);
+				}
+				switch (objTime) {
+					default:
+					case 0:
+						if (TheGlobalData->m_timeOfDay == TIME_OF_DAY_NIGHT) {
+							state.set(MODELCONDITION_NIGHT);
+						}
+						break;
+					case 2:
+						state.set(MODELCONDITION_NIGHT);
+						break;
+				}
+		
+				const ModuleInfo& mi = tTemplate->getDrawModuleInfo();
+				// DEBUG_LOG(("Draw Module Count: %d \n", mi.getCount()));
+
+				// AttachToBoneInAnotherModule names a bone published (via ExtraPublicBone) by SOME
+				// other draw module -- not necessarily module 0. The game resolves it through
+				// Drawable::getPristineBonePositions, which LOOPS OVER EVERY DRAW MODULE and takes
+				// the first that owns the bone; WB used to ask module 0's render object alone, so a
+				// module riding a sibling's bone resolved to index 0, got no offset, and stacked at
+				// the parent's origin. That is the "some objects are misaligned" symptom.
+				//
+				// NavyStructureCorvetteHangarGaalsien (map.ini) is the case in point -- 12 modules,
+				// only two of which ride a bone module 0 actually owns:
+				//
+				//   module 01 PSCarRapt     publishes WINGTIP01 WINGTIP02      <- the parent
+				//   module 02 NVSSUPPLYTK   publishes TIRE01 TIRE02 TREADFX07
+				//   module 03 UVLiteTank    publishes TREADSR01
+				//   module 06 NBSupCent_N   publishes BOX06 BOX1058, rides WINGTIP02  (module 01)
+				//   module 04 ABBtCmdHQ_N   rides TIRE01     (module 02)
+				//   module 07/08            ride  BOX06      (module 06 -- itself a rider)
+				//   module 09/10            ride  TREADSR01  (module 03)
+				//   module 12 NBPwrPtI      rides WINGTIP01  (module 01)
+				//
+				// So keep every module built so far and search them all, in module order, the way
+				// the game does. Note module 06 both rides a bone and publishes the one 07/08 ride:
+				// offsets have to ACCUMULATE down that chain, hence storing each module's resolved
+				// offset from the parent's origin rather than just its render object.
+				std::vector<BuiltDrawModule> builtModules;
+				if (mi.getCount() > 0) {
+					for (int i = 0; i < mi.getCount(); ++i) {
+						const ModuleData* mdd = mi.getNthData(i);
+						// DEBUG_LOG(("Processing Module Number: %d \n", i));
+						const W3DModelDrawModuleData* md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+						if (md) {
+							AsciiString modelName = md->getBestModelNameForWB(state);
+							// DEBUG_LOG(("Processing ModelName: %s\n", modelName.str()));
+							if (!modelName.isEmpty() && strncmp(modelName.str(), "No ", 3) != 0) {
+								if (!getShowModels()) continue;
+		
+								// Create the sub-model render object
+								RenderObjClass* subRenderObj = m_assetManager->Create_Render_Obj(modelName.str(), scale, playerColor);
+								if (subRenderObj == NULL) {
+									// Keep m_moduleRenderObjs aligned with the module walk: the
+									// scrubber's re-pose (repositionAnimationScrub) pairs the recorded
+									// render objects against the modules that NAME a model, so a module
+									// whose asset failed to load must still occupy its slot -- otherwise
+									// every later module would be posed with the previous module's
+									// animation. poseScrubbedModule skips the NULL.
+									m_moduleRenderObjs[pMapObj].push_back(NULL);
+								}
+								if (subRenderObj) {
+									// == the game's W3DModelDraw: hide what THIS module's condition
+									// state hides, plus anything parented to a hidden bone. Uses
+									// this module's own info, not the template's first module.
+									const ModelConditionInfo *ci = md->findBestInfo(state);
+									if (ci != NULL && !ci->m_hideShowVec.empty()) {
+										applySubObjectHideList(subRenderObj, ci);
+									}
+
+									// DumpSubObjects(subRenderObj, modelName.str()); // <-- dump list once
+
+									const ModelConditionInfo* info = md->findBestInfo(state);
+									if (info && !info->m_hideShowVec.empty()) {
+										for (size_t i = 0; i < info->m_hideShowVec.size(); ++i) {
+											const ModelConditionInfo::HideShowSubObjInfo& h = info->m_hideShowVec[i];
+
+											// AsciiString cleanName = CleanSubObjName(h.subObjName);
+											AsciiString cleanName = h.subObjName;
+											Int objIndex;
+											RenderObjClass* subObj = subRenderObj->Get_Sub_Object_By_Name(cleanName.str(), &objIndex);
+											if (subObj) {
+												// DEBUG_LOG(("*** SubObject to clean: '%s'\n", cleanName.str()));
+												subObj->Set_Hidden(h.hide);
+												subObj->Release_Ref();
+											} 
+											// else {
+												// DEBUG_LOG(("*** ASSET ERROR: SubObject '%s' not found in %s!\n",
+												// 		cleanName.str(), modelName.str()));
+												// DumpSubObjects(subRenderObj, modelName.str()); // <-- dump list once
+											// }
+										}
+									}
+
+									// EVERY DRAW MODULE HAS ITS OWN STATE AND ITS OWN AnimationMode, so each
+									// gets the treatment ITS mode asks for -- they do not overlap, and one
+									// global "animate or don't" switch cannot describe them. On this object
+									// alone module 04 is LOOP, 05 is ONCE_BACKWARDS and 07/08 are MANUAL.
+									//
+									//   LOOP / LOOP_PINGPONG / LOOP_BACKWARDS -> play it, if the user asked
+									//   MANUAL / ONCE / ONCE_BACKWARDS        -> park it on its resting frame
+									//
+									// A non-looping state does not idle in bind pose in game: it settles on
+									// one frame of its animation and stays there (a closed door, a stowed
+									// crane). WB used to show bind pose instead -- and since BONES MOVE WITH
+									// THE POSE, a module publishing an ExtraPublicBone then handed the wrong
+									// position to every module riding it (findAttachBone reads that bone
+									// straight off this render object). Posing is therefore not cosmetic;
+									// it is what makes the riders land where the game puts them, which is
+									// why it happens whether or not Animate Models is on.
+									const RenderObjClass::AnimMode iniMode =
+										info ? info->m_mode : RenderObjClass::ANIM_MODE_MANUAL;
+									const Bool isLoopingMode =
+										(iniMode == RenderObjClass::ANIM_MODE_LOOP
+											|| iniMode == RenderObjClass::ANIM_MODE_LOOP_PINGPONG
+											|| iniMode == RenderObjClass::ANIM_MODE_LOOP_BACKWARDS);
+
+									// "Animate Models" (View menu) governs PLAYBACK only. pickWBAnimation
+									// decides what is worth playing (LOOP states + idle anims) and why.
+									//
+									// A scrubbed object never plays: the whole point is to hold every one of
+									// its modules at the frame the slider asks for, and a module left running
+									// would be the one thing on the object ignoring the control. So the
+									// scrub takes over playback too, and all its modules go down the posing
+									// path below.
+									const Bool scrubbingThis = (pMapObj == m_scrubObject);
+									const W3DAnimationInfo *animInfo =
+										(m_animateModels && isLoopingMode && !scrubbingThis)
+											? pickWBAnimation(info) : NULL;
+
+									// Posing covers the rest: the non-looping states, plus the looping ones
+									// whenever playback is off, so a bone source is never left in bind pose.
+									const W3DAnimationInfo *poseInfo = NULL;
+									if (animInfo == NULL && info != NULL && !info->m_animations.empty())
+									{
+										// NOT pickWBAnimation: that answers "what should PLAY" and returns
+										// NULL for exactly the MANUAL/ONCE_BACKWARDS states needing a pose.
+										// The engine settles on the state's first animation (m_curState->
+										// m_animations[m_whichAnimInCurState], which is 0 for a single-anim
+										// state), so take that.
+										poseInfo = &info->m_animations[0];
+									}
+
+									const W3DAnimationInfo *useInfo = animInfo ? animInfo : poseInfo;
+									if (useInfo != NULL)
+									{
+										// Resolve the anim through WB's OWN asset manager. The obvious call,
+										// W3DAnimationInfo::getAnimHandle(), goes through the static
+										// W3DDisplay::m_assetManager, which WB never sets (it is normally
+										// NULL) -- see the same trap documented in WBParticleRuntime. Look
+										// the animation up by name here instead so no global is involved.
+										HAnimClass* anim = m_assetManager->Get_HAnim(useInfo->getName().str());
+										if (anim)
+										{
+											if (animInfo != NULL)
+											{
+												// Playing. WW3D::Sync() runs every redraw() and advances it.
+												subRenderObj->Set_Animation(anim, 0.0f, iniMode);
+												++m_animatedModelCount;
+											}
+											else
+											{
+												// Posed. FRAME 0 -- always, whatever the AnimationMode says.
+												//
+												// This is the pose the engine reads bone positions from, and it
+												// is emphatic about it: validateCachedBones sets the model to
+												// frame 0 with the comment "make sure we're in frame zero"
+												// before caching any bone. The ONE exception is an opt-in
+												// per-state INI flag, PRISTINE_BONE_POS_IN_FINAL_FRAME:
+												//     whichFrame = testFlagBit(m_flags, PRISTINE_...) ?
+												//                      Get_Num_Frames()-1 : 0;
+												//
+												// NOT the *_BACKWARDS modes. Those pick a start frame for
+												// PLAYBACK (the startFrame block in setModelState), which is a
+												// different question from where the bones rest. Conflating the
+												// two parked CBBridgeArc_a (ONCE_BACKWARDS) on its LAST frame
+												// -- the gantry swung fully out -- so the MESH06 it publishes
+												// came back 156 units away and both NBIntCnt_AC dishes flew
+												// off the building with it.
+												//
+												// PRISTINE_BONE_POS_IN_FINAL_FRAME is bit 4 of the file-local
+												// ACBits enum in W3DModelDraw.cpp. It is not exported, and
+												// engine headers are off-limits from here, so the bit index is
+												// spelled out rather than shared.
+												const Int PRISTINE_BONE_POS_IN_FINAL_FRAME_BIT = 4;
+												const Bool finalFrame =
+													(info != NULL
+														&& (info->m_flags & (1 << PRISTINE_BONE_POS_IN_FINAL_FRAME_BIT)) != 0);
+												Real restFrame = finalFrame
+													? (Real)(anim->Get_Num_Frames() - 1) : 0.0f;
+
+												// Animation Scrubber: this object is being scrubbed, so put
+												// the module at the requested point instead of its rest
+												// frame. The fraction maps onto THIS module's own frame
+												// count, so modules of different lengths stay in step.
+												if (pMapObj == m_scrubObject) {
+													restFrame = m_scrubFraction
+														* (Real)(anim->Get_Num_Frames() - 1);
+												}
+
+												// ANIM_MODE_MANUAL parks the hierarchy on that frame and holds
+												// it, so Sync() cannot walk it off.
+												subRenderObj->Set_Animation(anim, restFrame,
+													RenderObjClass::ANIM_MODE_MANUAL);
+											}
+											// Get_HAnim returns an addrefed handle; Set_Animation adds its own.
+											anim->Release_Ref();
+										}
+									}
+
+									Bool isNight = state.test(MODELCONDITION_NIGHT);
+
+									for (Int subIndex = 0; subIndex < subRenderObj->Get_Num_Sub_Objects(); ++subIndex)
+									{
+										RenderObjClass* test = subRenderObj->Get_Sub_Object(subIndex);
+										if (!test) continue;
+
+										const char* name = test->Get_Name();
+										if (!name) continue;
+
+										if (strstr(name, "HEADLIGHT") && !isNight)
+											test->Set_Hidden(true);
+
+										if (strstr(name, "MUZZLE") || strstr(name, "TURRETFX") || strstr(name, "WARHEAD"))
+											test->Set_Hidden(true);
+
+										test->Release_Ref();
+									}
+									
+
+									// Handle shadow for each sub model
+									if (m_showShadows) {
+										Shadow::ShadowTypeInfo shadowInfo;
+										shadowInfo.allowUpdates = FALSE;    // Shadow image will never update
+										shadowInfo.allowWorldAlign = TRUE;  // Shadow image will wrap around world objects
+										
+										if (tTemplate->getShadowType() != SHADOW_NONE && !(pMapObj->getFlags() & FLAG_DONT_RENDER)) {
+											strcpy(shadowInfo.m_ShadowName, tTemplate->getShadowTextureName().str());
+											DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
+											shadowInfo.m_type = (ShadowType)tTemplate->getShadowType();
+											shadowInfo.m_sizeX = tTemplate->getShadowSizeX();
+											shadowInfo.m_sizeY = tTemplate->getShadowSizeY();
+											shadowInfo.m_offsetX = tTemplate->getShadowOffsetX();
+											shadowInfo.m_offsetY = tTemplate->getShadowOffsetY();
+											// DEBUG_LOG(("processing shadow"));
+											shadowObj = TheW3DShadowManager->addShadow(subRenderObj, &shadowInfo); // <-- CAPTURE
+										} else {
+											shadowInfo.m_type = (ShadowType)SHADOW_VOLUME;
+											shadowObj = TheW3DShadowManager->addShadow(subRenderObj, &shadowInfo); // <-- CAPTURE
+										}
+									}
+		
+									// Attach submodels properly
+									if (!renderObj) {
+										renderObj = subRenderObj;  // First model is the main renderObj
+
+										// The parent is a bone source like any other module -- record it so a
+										// later module naming one of ITS bones can find it. Offset zero: this
+										// module IS the parent's origin.
+										BuiltDrawModule parentModule;
+										parentModule.obj = subRenderObj;
+										parentModule.originOffset.Set(0.0f, 0.0f, 0.0f);
+										parentModule.publicBones = &md->m_extraPublicBones;
+										builtModules.push_back(parentModule);
+
+										// Module order, for the scrubber's re-pose (m_moduleRenderObjs).
+										m_moduleRenderObjs[pMapObj].push_back(subRenderObj);
+
+										if (m_lod == 1 || !m_showSubDraw) {
+											break;  // Only use the first model
+										}
+									} else {
+										// A module may ride a bone published by ANOTHER module (that module
+										// lists it in ExtraPublicBone; this one names it in
+										// AttachToBoneInAnotherModule) -- the Overlord's turret and the
+										// multi-part map.ini structures work this way.
+										//
+										// |                             | BEFORE                  | AFTER                    |
+										// |-----------------------------|-------------------------|--------------------------|
+										// | AttachToBoneInAnotherModule | never read              | read per module          |
+										// | piece position              | the object's origin     | the bone's translation   |
+										// | piece orientation           | the parent's            | the parent's, at any     |
+										// |                             |                         | object heading           |
+										// | riding pieces               | stacked at the origin,  | sit on their bone, as    |
+										// |                             | buried in the main mesh | the game draws them      |
+										// | reads to the user           | "the piece is missing"  | the full object          |
+										//
+										// That symptom is what sent this to the map.ini parser first, but
+										// nothing was mis-parsed: NavyStructureHeadquarters has three such
+										// modules (EXITEND, MESH06 x2), and a diagnostic build showed every
+										// module resolving and creating fine -- two of them just landed on
+										// the SAME render-object pointer.
+										//
+										// POSITION from the bone, ORIENTATION from the parent -- which is what
+										// the game does. With CACHE_ATTACH_BONE defined (it is),
+										// adjustTransformMtx offsets the drawable's own matrix by
+										// getAttachToDrawableBoneOffset == boneMtx.Get_Translation() ALONE.
+										// The bone says where the piece goes, not which way it faces.
+										//
+										// Attaching to the bone straight gives it the bone's FULL transform,
+										// so art that rotates the bone (EXITEND is turned 90 degrees about Z)
+										// spins the piece with it. Nor can that be undone by writing the
+										// sub-object's transform here: HLodClass::Update_Sub_Object_Transforms
+										// does robj->Set_Transform(HTree->Get_Transform(bone)) whenever the
+										// hierarchy is dirty -- and Add_Sub_Object_To_Bone dirties it -- so
+										// any Set_Transform at attach time is overwritten on the next render.
+										//
+										// Capture the bone instead and control it: a captured bone's pivot
+										// uses the matrix we supply rather than the animated one, and it
+										// survives the hierarchy update. Keep the bone's translation and drop
+										// its rotation. Safe per-object because Animatable3DObjClass COPIES
+										// the HTree per instance (W3DNEW HTreeClass(*source)) instead of
+										// sharing the cached asset, so this cannot leak to other objects.
+										//
+										// Which module owns the bone? Ask them ALL, in module order (see the
+										// note by builtModules) -- asking only the parent is what left the
+										// riders of a sibling's bone sitting on the object's origin.
+										// boneOffset comes back measured from the PARENT's origin with any
+										// intermediate module's own offset already folded in.
+										Int boneIndex = 0;
+										Vector3 boneOffset(0.0f, 0.0f, 0.0f);
+										RenderObjClass *boneOwner = NULL;
+										Bool boneFromSubObj = false;
+										if (md->m_attachToDrawableBone.isNotEmpty()) {
+											if (m_logBoneResolution) {
+												// Which object/module the following lines belong to --
+												// otherwise a map's worth of bone lines is unattributable.
+												DEBUG_LOG(("WBBONE object=%s module=%d model=%s wants bone=%s\n",
+													tTemplate->getName().str(), i, modelName.str(),
+													md->m_attachToDrawableBone.str()));
+											}
+											boneOwner = findAttachBone(builtModules,
+												md->m_attachToDrawableBone.str(), boneIndex, boneOffset,
+												&boneFromSubObj, m_logBoneResolution);
+
+											// View > Models > Show Bone Names. This is the ONLY place the
+											// lookup runs, so record what it found for drawLabels -- both
+											// where the bone landed and which route resolved it, since a
+											// pivot and a sub-object are what the two halves of the search
+											// are for and telling them apart is the point of the overlay.
+											if (boneOwner != NULL) {
+												AttachBoneLabel bl;
+												bl.name = md->m_attachToDrawableBone;
+												bl.offset = boneOffset;
+												bl.fromSubObject = boneFromSubObj;
+												m_attachBoneLabels[pMapObj].push_back(bl);
+											}
+										}
+
+										// Only the PARENT can adopt the piece as a sub-object, so the
+										// rotation-cancelling below applies to the parent's own bones. A bone
+										// on some other module cannot be attached to at all (that module is a
+										// loose piece in the scene, not a hierarchy WB can parent into) --
+										// there the offset alone carries the placement, which is all the game
+										// takes from the bone anyway.
+										const HTreeClass *htree =
+											(boneIndex != 0 && boneOwner == renderObj) ? renderObj->Get_HTree() : NULL;
+										if (htree != NULL) {
+											// PivotClass::Capture_Update POST-MULTIPLIES the control matrix
+											// onto the transform the hierarchy already computed -- it does
+											// not replace it -- so cancelling the bone's rotation means
+											// supplying that rotation's INVERSE: R * R-1 == identity.
+											//
+											// SPACES MATTER HERE. Control_Bone's parameter is named
+											// relative_tm: it is PARENT-RELATIVE, the same space as
+											// PivotClass::BaseTransform ("base-pose transform, relative to
+											// parent"). Get_Bone_Transform, by contrast, hands back the
+											// pivot's accumulated WORLD transform --
+											//     pivot->Transform = Parent->Transform * BaseTransform
+											// -- which carries the whole chain, including the object's own
+											// placement and heading on the map. Inverting THAT and passing
+											// it to Control_Bone only cancels correctly when the parent
+											// chain contributes no rotation (object at yaw 0); rotate the
+											// object and the pieces counter-rotate away from where they
+											// belong.
+											//
+											// So recover the local rotation first: parentWorld-1 * boneWorld
+											// == BaseTransform, which is what Control_Bone wants.
+											const Int parentIndex = htree->Get_Parent_Index(boneIndex);
+											Matrix3D boneWorld = htree->Get_Transform(boneIndex);
+											Matrix3D local = boneWorld;
+											if (parentIndex >= 0) {
+												Matrix3D parentInv;
+												htree->Get_Transform(parentIndex).Get_Orthogonal_Inverse(parentInv);
+												Matrix3D::Multiply(parentInv, boneWorld, &local);
+											}
+
+											// Rotation only: the bone's translation must survive (it is the
+											// whole point -- it says WHERE the piece goes), so zero the
+											// translation before inverting and the inverse stays a pure
+											// rotation that leaves the offset alone.
+											local.Set_Translation(Vector3(0.0f, 0.0f, 0.0f));
+											Matrix3D cancel;
+											local.Get_Orthogonal_Inverse(cancel);	// separate dest: it reads while writing
+											renderObj->Capture_Bone(boneIndex);
+											renderObj->Control_Bone(boneIndex, cancel, false);
+										}
+										// Add_Sub_Object_To_Bone is a NO-OP on a parent that isn't an HLod:
+										// RenderObjClass's base version just `return 0`, and only HLodClass
+										// overrides it. When module 0's model is a plain MeshClass -- it has
+										// no HTree, which is exactly the case here -- every attach is
+										// silently discarded and those pieces are never drawn at all. That
+										// is why a multi-part object could show only its first module.
+										//
+										// Fall back to putting the piece in the scene in its own right,
+										// which is closer to what the game does anyway (each draw module
+										// owns a render object; they are not sub-objects of each other).
+										// It can't be positioned yet -- the parent's own transform is set
+										// after this loop -- so collect it and place it there.
+										//
+										// Only try the sub-object route for a bone the PARENT owns; a bone on
+										// another module has no hierarchy here to attach into, so go straight
+										// to a loose piece carrying the offset.
+										const Bool attached = (htree != NULL)
+											&& (renderObj->Add_Sub_Object_To_Bone(subRenderObj, boneIndex) != 0);
+										if (!attached) {
+											LoosePiece piece;
+											piece.obj = subRenderObj;
+											piece.obj->Add_Ref();	// the map holds a ref until released
+											// Keep the bone's OFFSET (not its rotation -- see above). Already
+											// relative to the parent's origin, chain included.
+											piece.boneOffset = boneOffset;
+											m_loosePieces[pMapObj].push_back(piece);
+										}
+
+										// Record this module as a bone source for the modules still to come:
+										// it may publish the bone one of THEM rides (module 06 both rides
+										// WINGTIP02 and publishes the BOX06 that 07 and 08 ride). Its own
+										// offset is where it just landed, so those riders accumulate from
+										// here instead of measuring against the parent's origin.
+										BuiltDrawModule thisModule;
+										thisModule.obj = subRenderObj;
+										thisModule.originOffset = boneOffset;
+										thisModule.publicBones = &md->m_extraPublicBones;
+										builtModules.push_back(thisModule);
+
+										// Module order, for the scrubber's re-pose. Recorded whether the
+										// piece was adopted as a sub-object or left loose -- which of the
+										// two happened is exactly what a later pass cannot tell.
+										m_moduleRenderObjs[pMapObj].push_back(subRenderObj);
+
+										subRenderObj->Release_Ref();  // Release ref after attaching
+									}
+								}
+							}
+						}
 					}
 				}
 			}
 		}
-
 		if (renderObj && !(pMapObj->getFlags() & FLAG_DONT_RENDER)) {
 			pMapObj->setRenderObj(renderObj);
-			pMapObj->setShadowObj(shadowObj);
+
+			if (pMapObj->getShadowObj() == NULL) {
+				pMapObj->setShadowObj(shadowObj);
+			}
 
 			// set item's position to loc, and get scale from item and apply it.
 
@@ -1524,9 +2787,65 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 
 			m_scene->Add_Render_Object(renderObj);
 
+			// Draw modules the parent could not adopt as sub-objects (Add_Sub_Object_To_Bone is a
+			// no-op unless the parent is an HLod): they live in the scene as separate render objects
+			// and are positioned against the parent here. DECORATION ONLY, like attachSpawnedObjects
+			// -- they carry no MapObject and the pick scan matches on getRenderObj, so they cannot be
+			// selected or clicked.
+			// This block runs on the REUSE path too (a move/rotate keeps the existing render
+			// object and only re-sets its transform), which is what carries the pieces along --
+			// nothing parents them, so nothing else would move them. safeContains keeps the
+			// re-add from stacking duplicates on every reposition.
+			{
+				std::map<MapObject *, std::vector<LoosePiece> >::iterator lpIt = m_loosePieces.find(pMapObj);
+				if (lpIt != m_loosePieces.end()) {
+					for (size_t li = 0; li < lpIt->second.size(); ++li) {
+						RenderObjClass *piece = lpIt->second[li].obj;
+						if (piece != NULL && !m_scene->safeContains(piece)) {
+							m_scene->Add_Render_Object(piece);
+						}
+					}
+				}
+				placeLoosePieces(pMapObj, renderObj);
+			}
+
+			// View > Models > Show Full Model: also draw the units this object SPAWNS, attached to
+			// its spawn-point bones. Must come after Set_Transform + Add_Render_Object so the
+			// attached models inherit the parent's placement.
+			if (m_showFullModel) {
+				attachSpawnedObjects(renderObj, pMapObj->getThingTemplate(), playerColor);
+			}
+
+			// Live particle preview: place this object's emitters now that its render obj is
+			// positioned, so attached emitters can read their bone world-transforms from it. This
+			// moves existing emitters in place when it can (so a drag-move doesn't reset them each
+			// tick -- the "re-rendering" flicker) and rebuilds otherwise; the caller doesn't decide.
+			// Self-guards (no-op unless "Render Particles" is on), like the destroy hooks.
+			//
+			// Pass the condition state the model above was selected with. Emitters are declared per
+			// condition state, so without this the runtime read the DEFAULT state's emitters while we
+			// drew a night/garrisoned/damaged model -- and building FX like chimney smoke are usually
+			// declared ONLY on those states (the pristine daytime state has them commented out), so
+			// nothing showed. Recomputed here via the same helper the model lookup uses, because the
+			// flags built inside the create branch above are out of scope by now.
+			Real emitterScale = 1.0f;
+			ModelConditionFlags emitterState;
+			getModelNameAndScale(pMapObj, &emitterScale, curDamageState, &emitterState);
+			WBParticleRuntime::placeEmittersForObject(pMapObj, renderObj, loc.x, loc.y, loc.z,
+				&emitterState);
+
 			REF_PTR_RELEASE(renderObj); // belongs to m_scene now.
 		} else if (renderObj) {
 			m_scene->Remove_Render_Object(renderObj);
+		} else if (!(pMapObj->getFlags() & FLAG_DONT_RENDER)) {
+			// No render object, but the object may still be PURE PARTICLES: a map.ini commonly
+			// defines an FX marker as "Model = None" plus a ParticleSysBone, which is a real,
+			// visible thing in the game and drew nothing here -- the emitter placement used to sit
+			// inside the has-a-model branch above. There is no bone to read, so the runtime falls
+			// back to the object origin, which is where such an emitter belongs anyway.
+			// No model was drawn, so there is no state to match -- the runtime falls back to the
+			// default state, which is where a model-less FX marker declares its emitters anyway.
+			WBParticleRuntime::placeEmittersForObject(pMapObj, NULL, loc.x, loc.y, loc.z, NULL);
 		}
 		if (found) break;
 	}
@@ -1539,6 +2858,13 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 			updateAllTrees = true;
 		}
 	}
+	if (!found && pMapObjIn) {
+		// The object is gone from the list (deleted/moved) -- drop any live emitters it had.
+		WBParticleRuntime::destroyEmittersForObject(pMapObjIn);
+		// Same for its Listen To Map sound: the handle map is keyed by MapObject*, so an entry
+		// for a deleted object would outlive the object it names.
+		forgetListenSound(pMapObjIn);
+	}
 	if (!found && pMapObjIn && pMapObjIn->getRenderObj()) {
 		if( m_showShadows ) {
 			resetRenderObjects();
@@ -1547,11 +2873,19 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 			return;
 		}
 		m_scene->Remove_Render_Object(pMapObjIn->getRenderObj());
-		pMapObjIn->setRenderObj(nullptr);
+		releaseLoosePieces(pMapObjIn);	// the parent is going, so its pieces go with it
+		if (m_scrubObject == pMapObjIn) {
+			m_scrubObject = NULL;	// never keep a pointer to an object that is going away
+		}
+		pMapObjIn->setRenderObj(NULL);
 	}
 
 	if (isRoad) {
-		m_needToLoadRoads = true; // load roads next time we redraw.
+		if(!m_showRoads){
+			TheTerrainRenderObject->removeAllRoads();
+		} else {
+			m_needToLoadRoads = true; // load roads next time we redraw.
+		}
 	}
 	if (updateAllTrees) {
 		updateTrees();
@@ -1564,6 +2898,13 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 	}
 	Invalidate(false);
 
+	// Objects added/moved/deleted/modified all funnel through here (both the doc's
+	// invalObject path and direct p3View->invalObjectInView(NULL) callers), so this
+	// is the single place to refresh the minimap's object overlay. Pass terrainChanged
+	// = false so it re-composites the cached terrain instead of resampling (cheap).
+	if (TheMinimapDialog && TheMinimapDialog->IsWindowVisible())
+		TheMinimapDialog->requestRebuild(false);
+
 	--m_updateCount;
 }
 
@@ -1571,9 +2912,10 @@ void WbView3d::invalObjectInView(MapObject *pMapObjIn)
 // ----------------------------------------------------------------------------
 void WbView3d::updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const IRegion2D &partialRange)
 {
-	if (htMap == nullptr)
+	if (htMap == NULL)
 		return;
 	++m_updateCount;
+	DrawObject::invalidateShoreline();	// terrain/map changed -> wave editor's shoreline guide must rescan
 
 	if (m_heightMapRenderObj == nullptr) {
 		m_heightMapRenderObj = NEW_REF(WBHeightMap,());
@@ -1625,6 +2967,120 @@ void WbView3d::setCenterInView(Real x, Real y)
 	}
 }
 
+void WbView3d::setCenterInViewDeferred(Real x, Real y)
+{
+	if (x != m_centerPt.X || y != m_centerPt.Y) {
+		m_centerPt.X = x;
+		m_centerPt.Y = y;
+		constrainCenterPt();
+		updateHysteresis();
+		// Rebuild the camera transform NOW (no D3D present -- setupCamera only sets
+		// m_camera's matrix) so the minimap view box, which projects the frustum via
+		// getViewFrustumGroundCorners(), reflects the new center on this same click.
+		// Without this the box reads the stale transform and lags one click behind
+		// (the first click appears to do nothing).
+		setupCamera();
+		// Do NOT render here. Let the 3D view's own OnPaint/OnTimer loop do the
+		// D3D present on its own thread/window context. Rendering from the Minimap
+		// dialog's message handler corrupts the device and blanks the viewport.
+		Invalidate(FALSE);
+		CMainFrame::GetMainFrame()->handleCameraChange();
+	}
+}
+
+Bool WbView3d::getViewFrustumGroundCorners(Coord3D corners[4])
+{
+	if (!m_camera)
+		return FALSE;
+
+	// Cast a ray from the camera through each viewport corner (normalized device
+	// space, -1..1) and intersect the ground plane z = groundZ, like the game radar's
+	// view box (W3DRadar::reconstructViewBox projects the screen corners onto the plane
+	// z = terrain average height). Averaging over the playable area matches the game's
+	// Radar::newMap sampling, so the box dimensions agree with the in-game radar; the
+	// height under the camera center (m_cameraGroundZ) stays as the fallback for maps
+	// with no heightmap. (Do NOT use m_centerPt.Z -- it is permanently 0, which
+	// intersected a flat z=0 plane and drifted the box, worst along +Y.)
+	Real groundZ = m_cameraGroundZ;
+	{
+		WorldHeightMapEdit *pAvgMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
+		if (pAvgMap) {
+			Int border = pAvgMap->getBorderSize();
+			Int x0 = border;
+			Int y0 = border;
+			Int x1 = pAvgMap->getXExtent() - border;
+			Int y1 = pAvgMap->getYExtent() - border;
+			if (x1 > x0 && y1 > y0) {
+				// == the radar's every-second-cell sample grid (~64x64 samples).
+				Int stepX = (x1 - x0) / 64;
+				if (stepX < 1) {
+					stepX = 1;
+				}
+				Int stepY = (y1 - y0) / 64;
+				if (stepY < 1) {
+					stepY = 1;
+				}
+				Real sum = 0.0f;
+				Int samples = 0;
+				for (Int y = y0; y < y1; y += stepY) {
+					for (Int x = x0; x < x1; x += stepX) {
+						sum += pAvgMap->getHeight(x, y) * MAP_HEIGHT_SCALE;
+						samples++;
+					}
+				}
+				if (samples > 0) {
+					groundZ = sum / samples;
+				}
+			}
+		}
+	}
+	const Vector3 eye = m_camera->Get_Position();
+
+	// NDC corners in view order: top-left, top-right, bottom-right, bottom-left.
+	// (+Y is up in view space, so top = +1.)
+	static const Vector2 ndc[4] = {
+		Vector2(-1.0f,  1.0f),
+		Vector2( 1.0f,  1.0f),
+		Vector2( 1.0f, -1.0f),
+		Vector2(-1.0f, -1.0f)
+	};
+
+	for (int i = 0; i < 4; ++i)
+	{
+		Vector3 onPlane;
+		m_camera->Un_Project(onPlane, ndc[i]);
+		Vector3 dir = onPlane - eye;
+
+		// Intersect ray eye + t*dir with plane z = groundZ.
+		Real denom = dir.Z;
+		Real t;
+		if (denom > -1.0e-6f && denom < 1.0e-6f)
+			t = 1.0f;					// ray parallel to ground; degenerate, just use the plane pt
+		else
+			t = (groundZ - eye.Z) / denom;
+
+		// If the corner points away from the ground (t<=0, looking at the horizon),
+		// push it far out along the ray so the box edge still spans the view.
+		if (t <= 0.0f)
+			t = 100000.0f;
+
+		Vector3 hit = eye + dir * t;
+		// Convert from absolute (border-included) world to BORDER-RELATIVE world so the
+		// corners match MapObject::getLocation() -- the space the minimap dots, terrain,
+		// and the isInViewFrustum cull all use. Without this the box and cull are shifted
+		// by border*MAP_XY_FACTOR (the box lands over the wrong part of the map).
+		// The camera lives in the SAME border-relative world as terrain and
+		// MapObject::getLocation() (setupCamera: pos = m_centerPt * MAP_XY_FACTOR,
+		// verified live against object blips), so the ground hits already are object-
+		// world coordinates. Subtracting m_cameraBorderWorld here shifted the minimap
+		// view box (and the blip cull) south-west by exactly the border.
+		corners[i].x = hit.X;
+		corners[i].y = hit.Y;
+		corners[i].z = hit.Z;
+	}
+	return TRUE;
+}
+
 //=============================================================================
 // WbView3d::picked3dObjectInView
 //=============================================================================
@@ -1643,6 +3099,16 @@ MapObject *WbView3d::picked3dObjectInView(CPoint viewPt)
 		Bool hit = m_intersector->Intersect_Screen_Point_Layer( logX, logY, *m_layer );
 		if( hit )
 		{
+			// Reject a hit the terrain is standing in front of. Lots of models sink part of
+			// their mesh below ground -- wall segments, bunkers, anything with a buried
+			// foundation -- and the layer ray test happily reports that buried geometry, so
+			// clicking bare ground NEAR such an object selected the object instead of the
+			// terrain. Comparing the object hit against the terrain along the SAME ray gives
+			// the answer the user expects: whatever is actually visible at that pixel wins.
+			if (isHitBehindTerrain(m_intersector->Result.Intersection)) {
+				return NULL;
+			}
+
 			MapObject *pObj;
 			for (pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
 				if (pObj->getRenderObj() == m_intersector->Result.IntersectedRenderObject) {
@@ -1650,9 +3116,1190 @@ MapObject *WbView3d::picked3dObjectInView(CPoint viewPt)
 				}
 			}
 		}
+
+		// Nothing in the object layer -- try the trees. Optimized trees (KINDOF_OPTIMIZED_TREE,
+		// drawn by W3DTreeDraw) are baked into the terrain's tree buffer rather than added to the
+		// scene as render objects, so they have no getRenderObj() and the layer ray test above can
+		// never see them. Without this they were only reachable through the 2D fallback in
+		// PointerTool, which tests a small radius around the object ORIGIN -- i.e. you had to click
+		// the trunk's spot on the ground, and clicking the canopy did nothing.
+		//
+		// Get_Screen_Ray left the pick ray in the intersector, so this reuses the very same ray.
+		if (m_intersector->RayLocation != NULL && m_intersector->RayDirection != NULL) {
+			MapObject *pTree = pickedTreeAlongRay(*m_intersector->RayLocation,
+				*m_intersector->RayDirection, m_camera->Get_Depth()*MAP_XY_FACTOR);
+			if (pTree != NULL) {
+				return pTree;
+			}
+		}
 	}
 
 	return nullptr;
+}
+
+//=============================================================================
+// WbView3d::pickedTreeAlongRay
+//=============================================================================
+/** The nearest optimized tree the ray passes through, or NULL.
+
+Optimized trees live in the terrain's tree buffer, not the scene, so they cannot be picked by
+the layer intersector. The buffer exposes no per-tree bounds either, so this rebuilds each
+tree's box WB-side from the data WB already has: the draw module's model (whose object-space
+box comes from the same asset the buffer draws) placed at the tree's world position and scale.
+
+Boxes rather than meshes on purpose -- a canopy is mostly empty space, and a click anywhere in
+a tree's silhouette should select it, which is what a modeller would expect from an editor. */
+//=============================================================================
+MapObject *WbView3d::pickedTreeAlongRay(const Vector3 &rayStart, const Vector3 &rayDir,
+	Real maxDistance)
+{
+	if (m_assetManager == NULL || m_heightMapRenderObj == NULL) {
+		return NULL;
+	}
+
+	MapObject *pBest = NULL;
+	Real bestFraction = 1.0f;
+	Real bestTrunkDistSqr = FLT_MAX;	// nothing picked yet, so any hit beats it
+	LineSegClass ray(rayStart, rayStart + rayDir*maxDistance);
+
+	for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
+		if (pObj->getFlags() & FLAG_DONT_RENDER) {
+			continue;
+		}
+		const ThingTemplate *tt = pObj->getThingTemplate();
+		if (tt == NULL || !tt->isKindOf(KINDOF_OPTIMIZED_TREE)) {
+			continue;
+		}
+		const ModuleInfo &mi = tt->getDrawModuleInfo();
+		if (mi.getCount() <= 0) {
+			continue;
+		}
+		const ModuleData *mdd = mi.getNthData(0);
+		const W3DTreeDrawModuleData *md = mdd ? mdd->getAsW3DTreeDrawModuleData() : NULL;
+		if (md == NULL || md->m_modelName.isEmpty()) {
+			continue;
+		}
+
+		// Object-space box of the tree's model, cached by name so a forest costs one lookup per
+		// DISTINCT tree model rather than one render-object creation per tree.
+		AABoxClass objBox;
+		if (!getTreeModelBox(md->m_modelName, objBox)) {
+			continue;
+		}
+
+		// Place it the way addTree() does: terrain height at the trunk, uniform template scale.
+		const Real scale = tt->getAssetScale();
+		Coord3D pos = *pObj->getLocation();
+		pos.z += m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, NULL);
+
+		// Axis-aligned world box. The tree's Z rotation is ignored: a canopy box is close enough
+		// to symmetric that rotating it would change the silhouette very little, and an AABB keeps
+		// this a cheap slab test per tree.
+		AABoxClass worldBox;
+		worldBox.Center.Set(pos.x + objBox.Center.X*scale,
+			pos.y + objBox.Center.Y*scale,
+			pos.z + objBox.Center.Z*scale);
+		worldBox.Extent.Set(objBox.Extent.X*scale, objBox.Extent.Y*scale, objBox.Extent.Z*scale);
+
+		CastResultStruct castResult;
+		castResult.Fraction = 1.0f;
+		RayCollisionTestClass rayTest(ray, &castResult);
+		if (!CollisionMath::Collide(rayTest.Ray, worldBox, rayTest.Result)) {
+			continue;
+		}
+
+		// Among the trees the ray passes through, take the one whose TRUNK the click is nearest,
+		// not the one whose box the ray happens to enter first.
+		//
+		// A tree's bounding box is a tall prism around a roughly conical canopy, so neighbouring
+		// trees' boxes overlap heavily in the corners where there is no actual foliage. Ranking by
+		// entry distance meant a click aimed squarely at one tree could land in a sliver of its
+		// neighbour's box first and select the neighbour -- which made picking one tree out of a
+		// close pair almost impossible. Distance from the click ray to the trunk axis is stable and
+		// matches what the user is aiming at.
+		const Vector3 trunk(pos.x, pos.y, pos.z);
+		const Vector3 toTrunk = trunk - rayStart;
+		const Real along = Vector3::Dot_Product(toTrunk, rayDir);		// rayDir is unit length
+		const Vector3 closestOnRay = rayStart + rayDir*along;
+		const Real trunkDistSqr = (trunk - closestOnRay).Length2();
+
+		if (trunkDistSqr < bestTrunkDistSqr) {
+			bestTrunkDistSqr = trunkDistSqr;
+			bestFraction = castResult.Fraction;
+			pBest = pObj;
+		}
+	}
+
+	if (pBest != NULL) {
+		// Same rule the object picks follow: don't select something the ground hides.
+		Vector3 hit = rayStart + rayDir*(maxDistance*bestFraction);
+		if (isHitBehindTerrain(hit)) {
+			return NULL;
+		}
+	}
+	return pBest;
+}
+
+//=============================================================================
+// WbView3d::attachSpawnedObjects
+//=============================================================================
+/** View > Models > Show Full Model: draw the units a template brings with it -- the ones it
+SPAWNS and the ones it CARRIES -- as sub-objects of the parent's render object.
+
+A Stinger Site is the clearest case: in game it is a nest plus three soldiers, but the map shows
+only the empty nest, because the soldiers are separate Objects that GameLogic creates at runtime.
+An Overlord with a turret is the same story from the other direction -- the turret is a passenger
+the transport starts loaded with. WorldBuilder never runs GameLogic, so neither exists here.
+
+Two mechanisms put a unit on another unit, and they name their bone from opposite ends:
+
+  SPAWNED  -- SpawnBehavior names the templates, and SpawnPointProductionExitUpdate names the
+              bone prefix they exit at, numbered <Prefix>01, <Prefix>02, ... exactly as
+              W3DModelDraw's getPristineBonePositions builds them.
+  CARRIED  -- a *Contain module's InitialPayload names the templates, and the PASSENGER's own
+              W3DDependencyModelDraw names the bone it rides on (AttachToBoneInContainer), so
+              the bone has to be read off the thing being carried, not the carrier.
+
+Both end at the same place: create the unit's model and attach it to that bone on the parent, so
+it inherits the parent's transform and moves with it.
+
+These are DECORATION ONLY: attached as sub-objects of the parent rather than added to the scene
+in their own right, so they carry no MapObject, cannot be picked or selected, and nothing about
+the map changes. Turning the option off (the default) removes them again on the next rebuild. */
+//=============================================================================
+void WbView3d::attachSpawnedObjects(RenderObjClass *parentObj, const ThingTemplate *tt,
+	Int playerColor)
+{
+	if (parentObj == NULL || tt == NULL || m_assetManager == NULL) {
+		return;
+	}
+
+	// Collect both kinds in one walk of the behavior modules.
+	std::vector<AsciiString> spawnNames;	// SpawnBehavior templates
+	AsciiString spawnBoneName;				// SpawnPointProductionExitUpdate bone prefix
+	std::vector<AsciiString> payloadNames;	// *Contain InitialPayload templates
+
+	const ModuleInfo &behaviors = tt->getBehaviorModuleInfo();
+	for (Int i = 0; i < behaviors.getCount(); ++i) {
+		const AsciiString moduleName = behaviors.getNthName(i);
+		const ModuleData *md = behaviors.getNthData(i);
+		if (md == NULL) {
+			continue;
+		}
+
+		if (moduleName.compare("SpawnBehavior") == 0) {
+			const SpawnBehaviorModuleData *sd = (const SpawnBehaviorModuleData *)md;
+			for (size_t s = 0; s < sd->m_spawnTemplateNameData.size(); ++s) {
+				spawnNames.push_back(sd->m_spawnTemplateNameData[s]);
+			}
+			continue;
+		}
+		if (moduleName.compare("SpawnPointProductionExitUpdate") == 0) {
+			const SpawnPointProductionExitUpdateModuleData *ed =
+				(const SpawnPointProductionExitUpdateModuleData *)md;
+			spawnBoneName = ed->m_spawnPointBoneNameData;
+			continue;
+		}
+
+		// Carried payloads. Overlord / Helix keep a template LIST; the plain transports (and
+		// everything deriving from TransportContain, which is most of the rest) keep a single
+		// name + count. Both are reachable through TransportContainModuleData, so one branch per
+		// shape covers Overlord, Helix, MobNexus, Transport and their relatives.
+		if (moduleName.compare("OverlordContain") == 0) {
+			const OverlordContainModuleData *od = (const OverlordContainModuleData *)md;
+			for (size_t s = 0; s < od->m_payloadTemplateNameData.size(); ++s) {
+				payloadNames.push_back(od->m_payloadTemplateNameData[s]);
+			}
+		} else if (moduleName.compare("HelixContain") == 0) {
+			const HelixContainModuleData *hd = (const HelixContainModuleData *)md;
+			for (size_t s = 0; s < hd->m_payloadTemplateNameData.size(); ++s) {
+				payloadNames.push_back(hd->m_payloadTemplateNameData[s]);
+			}
+		} else if (moduleName.compare("TransportContain") == 0 ||
+					moduleName.compare("MobNexusContain") == 0) {
+			const TransportContainModuleData *td = (const TransportContainModuleData *)md;
+			for (Int c = 0; c < td->m_initialPayload.count; ++c) {
+				payloadNames.push_back(td->m_initialPayload.name);
+			}
+		}
+	}
+
+	// --- spawned units, at <Prefix>01.. on the parent -------------------------------------
+	if (!spawnNames.empty() && !spawnBoneName.isEmpty()) {
+		// Cycle the template list the way SpawnBehavior does when there are more spawn points
+		// than named templates.
+		const Int MAX_SPAWN_BONES = 10;		// == MAX_SPAWN_POINTS
+		size_t nameIndex = 0;
+		for (Int b = 1; b <= MAX_SPAWN_BONES; ++b) {
+			char buffer[256];
+			sprintf(buffer, "%s%02d", spawnBoneName.str(), b);
+			const Int boneIndex = parentObj->Get_Bone_Index(buffer);
+			if (boneIndex == 0) {
+				break;	// 0 is the root, i.e. "not found" -- the numbered run has ended
+			}
+			attachOneRider(parentObj, spawnNames[nameIndex], boneIndex, playerColor);
+			nameIndex = (nameIndex + 1) % spawnNames.size();
+		}
+	}
+
+	// --- carried units, at the bone the PASSENGER names ------------------------------------
+	for (size_t p = 0; p < payloadNames.size(); ++p) {
+		const ThingTemplate *rider =
+			TheThingFactory ? TheThingFactory->findTemplate(payloadNames[p], FALSE) : NULL;
+		if (rider == NULL) {
+			continue;
+		}
+		// The rider's own draw module says which bone of its container it sits on.
+		AsciiString riderBone;
+		const ModuleInfo &draws = rider->getDrawModuleInfo();
+		for (Int d = 0; d < draws.getCount(); ++d) {
+			const ModuleData *dd = draws.getNthData(d);
+			if (dd == NULL) {
+				continue;
+			}
+			if (draws.getNthName(d).compare("W3DDependencyModelDraw") == 0) {
+				const W3DDependencyModelDrawModuleData *depd =
+					(const W3DDependencyModelDrawModuleData *)dd;
+				riderBone = depd->m_attachToDrawableBoneInContainer;
+				break;
+			}
+		}
+		if (riderBone.isEmpty()) {
+			continue;	// a passenger with no declared mount point -- the game hides it inside
+		}
+		const Int boneIndex = parentObj->Get_Bone_Index(riderBone.str());
+		if (boneIndex == 0) {
+			continue;	// this container has no such bone
+		}
+		attachOneRider(parentObj, payloadNames[p], boneIndex, playerColor);
+	}
+}
+
+//=============================================================================
+// WbView3d::setAnimationScrub
+//=============================================================================
+/** Hold one object's draw modules at a point through their animations.
+
+Rebuilds whatever was being scrubbed before AND whatever is being scrubbed now, so the old object
+returns to its resting pose as the new one takes over.
+
+THE POSE ONLY APPLIES ON A FULL REBUILD. Set_Animation runs inside the draw-module loop, and
+invalObjectInView enters that loop only `if (!renderObj)` -- an object that already has a render
+object takes the reuse path, which re-sets its transform and nothing else. So dropping the existing
+render object is not an optimization detail here, it IS the mechanism: without it the slider moves,
+the frame readout updates, and the viewport shows exactly what it showed before. */
+//=============================================================================
+void WbView3d::setAnimationScrub(MapObject *obj, Real fraction)
+{
+	if (fraction < 0.0f) {
+		fraction = 0.0f;
+	}
+	if (fraction > 1.0f) {
+		fraction = 1.0f;
+	}
+
+	// Only ever hold a pointer that is currently in the map's object list. A map load replaces that
+	// list wholesale without routing through the removal path, so an object armed before the load
+	// would otherwise leave a dangling pointer that a new allocation could coincidentally match.
+	if (obj != NULL) {
+		Bool stillPresent = false;
+		for (MapObject *o = MapObject::getFirstMapObject(); o; o = o->getNext()) {
+			if (o == obj) {
+				stillPresent = true;
+				break;
+			}
+		}
+		if (!stillPresent) {
+			obj = NULL;
+		}
+	}
+
+	MapObject *previous = m_scrubObject;
+	m_scrubObject = obj;
+	m_scrubFraction = fraction;
+
+	// FULL scene reset, not a per-object teardown.
+	//
+	// Pulling one object's render object out of the scene and rebuilding it in place is not an
+	// operation WB supports: the scene owns it, and the picker, the shadow manager and
+	// m_loosePieces all hold references that a surgical removal leaves stale -- doing it from a
+	// slider callback crashed on the next mouse move (the null-this assert at the top of
+	// viewToDocCoords). resetRenderObjects() is the sanctioned way to make the scene reflect
+	// changed build-time decisions; it is what OnReloadMapIni uses for the same reason (a map.ini
+	// edit changes what the module loop would produce), and it tears the whole scene down and
+	// rebuilds cleanly.
+	//
+	// It costs a full rebuild, which is why only ARMING and DISARMING come through here.
+	// repositionAnimationScrub handles moving an already-armed object, which is the common case
+	// (every step of a drag) and needs no rebuild at all.
+	if (previous != obj || obj != NULL) {
+		resetRenderObjects();
+		invalObjectInView(NULL);
+	}
+}
+
+//=============================================================================
+// WbView3d::buildModelConditionState
+//=============================================================================
+/** The condition flags obj's models were built against (damage, garrison, weather, time of day).
+
+Extracted so the scrub re-pose can pick the SAME ModelConditionInfo the build did -- picking a
+different one would pose a module against an animation it is not currently showing. The build in
+invalObjectInView derives its own copy inline from locals it already has; this recomputes it from
+the map object, which is all the information those locals came from. */
+//=============================================================================
+ModelConditionFlags WbView3d::buildModelConditionState(MapObject *obj, const ThingTemplate *tt)
+{
+	ModelConditionFlags state;
+	state.clear();
+	if (obj == NULL || tt == NULL) {
+		return state;
+	}
+
+	// Damage state, from initial health against the same thresholds the build uses.
+	Bool exists = FALSE;
+	const Int health = obj->getProperties() ? obj->getProperties()->getInt(TheKey_objectInitialHealth, &exists) : 100;
+	const Real ratio = health / 100.0f;
+	BodyDamageType curDamageState;
+	if (ratio > TheGlobalData->m_unitDamagedThresh) {
+		curDamageState = BODY_PRISTINE;
+	} else if (ratio > TheGlobalData->m_unitReallyDamagedThresh) {
+		curDamageState = BODY_DAMAGED;
+	} else if (ratio > 0.0f) {
+		curDamageState = BODY_REALLYDAMAGED;
+	} else {
+		curDamageState = BODY_RUBBLE;
+	}
+
+	Bool hasPostCollapseState = false;
+	const ModuleInfo &behaviors = tt->getBehaviorModuleInfo();
+	for (Int modIdx = 0; modIdx < behaviors.getCount(); ++modIdx) {
+		if (behaviors.getNthName(modIdx).compare("StructureCollapseUpdate") == 0 ||
+			behaviors.getNthName(modIdx).compare("StructureToppleUpdate") == 0) {
+			hasPostCollapseState = true;
+			break;
+		}
+	}
+
+	switch (curDamageState) {
+		case BODY_PRISTINE:
+		default:
+			break;
+		case BODY_DAMAGED:
+			state.set(MODELCONDITION_DAMAGED);
+			break;
+		case BODY_REALLYDAMAGED:
+			state.set(MODELCONDITION_REALLY_DAMAGED);
+			break;
+		case BODY_RUBBLE:
+			if (hasPostCollapseState) {
+				state.set(MODELCONDITION_POST_COLLAPSE);
+			} else {
+				state.set(MODELCONDITION_RUBBLE);
+			}
+			break;
+	}
+
+	if (getShowGarrisoned()) {
+		state.set(MODELCONDITION_GARRISONED);
+	}
+
+	Int objWeather = 0;
+	if (obj->getProperties()) {
+		objWeather = obj->getProperties()->getInt(TheKey_objectWeather, &exists);
+	}
+	switch (objWeather) {
+		default:
+		case 0:
+			if (TheGlobalData->m_weather == WEATHER_SNOWY) {
+				state.set(MODELCONDITION_SNOW);
+			}
+			break;
+		case 2:
+			state.set(MODELCONDITION_SNOW);
+			break;
+	}
+
+	Int objTime = 0;
+	if (obj->getProperties()) {
+		objTime = obj->getProperties()->getInt(TheKey_objectTime, &exists);
+	}
+	switch (objTime) {
+		default:
+		case 0:
+			if (TheGlobalData->m_timeOfDay == TIME_OF_DAY_NIGHT) {
+				state.set(MODELCONDITION_NIGHT);
+			}
+			break;
+		case 2:
+			state.set(MODELCONDITION_NIGHT);
+			break;
+	}
+
+	return state;
+}
+
+//=============================================================================
+// WbView3d::repositionAnimationScrub
+//=============================================================================
+/** Move the ALREADY-SCRUBBED object to a new point in its animations, without a rebuild.
+
+setAnimationScrub costs a whole-map resetRenderObjects, which is far too slow to run per slider
+step -- so the scrubber used to apply the pose only when the drag ended. That rebuild is only
+needed to change what the draw-module loop DECIDES (which modules play versus pose); once an object
+is armed, every module on it is already parked in ANIM_MODE_MANUAL and moving it is just
+Set_Animation with a different frame on render objects the scene already holds.
+
+So this re-walks the template's draw modules to re-derive each one's animation -- cheap, no asset
+creation and no scene surgery -- and re-poses the matching render objects in place. Riders need no
+attention: they are Add_Sub_Object_To_Bone'd onto the parent's HLod and follow their bone as the
+pose moves. Loose pieces DO need it, since they are positioned by a bone offset WB resolves itself.
+
+Returns false when the object is not currently armed or has no render object, in which case the
+caller must fall back to setAnimationScrub to arm it. */
+//=============================================================================
+Bool WbView3d::repositionAnimationScrub(MapObject *obj, Real fraction)
+{
+	if (obj == NULL || obj != m_scrubObject) {
+		return false;	// not armed -- only setAnimationScrub can build the posed state
+	}
+	RenderObjClass *renderObj = obj->getRenderObj();
+	if (renderObj == NULL || m_assetManager == NULL) {
+		return false;
+	}
+
+	if (fraction < 0.0f) {
+		fraction = 0.0f;
+	}
+	if (fraction > 1.0f) {
+		fraction = 1.0f;
+	}
+	m_scrubFraction = fraction;
+
+	// Resolve through the same BuildVariations substitution the build used, or a placeholder
+	// object's walk below would pace off the PLACEHOLDER's modules (which all skip) while the
+	// recorded render objects came from the variation.
+	const ThingTemplate *tt = resolveBuildVariation(obj->getThingTemplate());
+	if (tt == NULL) {
+		return false;
+	}
+
+	// The render objects the build produced, in module order. Recorded at build time rather than
+	// re-derived: a module that rides a bone becomes a sub-object of the parent's HLod when
+	// Add_Sub_Object_To_Bone takes it and a loose piece when it doesn't, and which happened is not
+	// something this pass can read back. Walking m_loosePieces alone found the parent and the few
+	// genuinely loose modules, so a multi-module object animated one thing.
+	std::map<MapObject *, std::vector<RenderObjClass *> >::iterator objIt = m_moduleRenderObjs.find(obj);
+	if (objIt == m_moduleRenderObjs.end() || objIt->second.empty()) {
+		return false;	// nothing recorded (built before this existed) -- let the caller rebuild
+	}
+	const std::vector<RenderObjClass *> &moduleObjs = objIt->second;
+	size_t objIndex = 0;
+
+	ModelConditionFlags state = buildModelConditionState(obj, tt);
+
+	// Same walk, and the same skips, as the build: only modules that contributed a model got a
+	// render object recorded, so the two stay in step.
+	const ModuleInfo &mi = tt->getDrawModuleInfo();
+	for (Int i = 0; i < mi.getCount() && objIndex < moduleObjs.size(); ++i) {
+		const ModuleData *mdd = mi.getNthData(i);
+		const W3DModelDrawModuleData *md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+		if (md == NULL) {
+			continue;
+		}
+		AsciiString modelName = md->getBestModelNameForWB(state);
+		if (modelName.isEmpty() || strncmp(modelName.str(), "No ", 3) == 0) {
+			continue;	// contributed no model at build time either, so there is nothing to pose
+		}
+
+		poseScrubbedModule(moduleObjs[objIndex], md, state, fraction);
+		++objIndex;
+	}
+
+	// Loose pieces deliberately do NOT follow. They are placed from the PRISTINE bone offset
+	// captured at build time (placeLoosePieces re-uses that stored offset rather than re-reading
+	// the bone), which is what the game does -- the dishes on NavyStructureHeadquarters stay put
+	// while the mast they are published from swings. Riders that ARE parented via
+	// Add_Sub_Object_To_Bone need no help either: they hang off the HLod and move with their bone.
+	//
+	// So the only thing left is to get the new pose on screen.
+	Invalidate(false);
+	return true;
+}
+
+//=============================================================================
+// WbView3d::poseScrubbedModule
+//=============================================================================
+/** Park one draw module's render object at `fraction` through its own animation.
+
+Mirrors the posing branch of the draw-module loop in invalObjectInView -- same animation choice
+(the state's first animation, NOT pickWBAnimation, which answers "what should play") and the same
+ANIM_MODE_MANUAL park, but at the scrubbed frame instead of the rest frame. The fraction maps onto
+THIS module's own frame count, so modules of different lengths stay in step. */
+//=============================================================================
+void WbView3d::poseScrubbedModule(RenderObjClass *subRenderObj, const W3DModelDrawModuleData *md,
+											 const ModelConditionFlags &state, Real fraction)
+{
+	if (subRenderObj == NULL || md == NULL || m_assetManager == NULL) {
+		return;
+	}
+	const ModelConditionInfo *info = md->findBestInfo(state);
+	if (info == NULL || info->m_animations.empty()) {
+		return;	// this module has no animation to hold
+	}
+
+	HAnimClass *anim = m_assetManager->Get_HAnim(info->m_animations[0].getName().str());
+	if (anim == NULL) {
+		return;
+	}
+	const Real frame = fraction * (Real)(anim->Get_Num_Frames() - 1);
+	subRenderObj->Set_Animation(anim, frame, RenderObjClass::ANIM_MODE_MANUAL);
+	anim->Release_Ref();	// Get_HAnim addrefed; Set_Animation took its own
+}
+
+//=============================================================================
+// WbView3d::getObjectAnimationInfo
+//=============================================================================
+/** Frames in the longest animation on obj, and how many of its modules animate.
+
+The scrubber shows a frame number alongside its percentage, and "frames" is only well defined per
+module -- the modules run animations of different lengths. Report the LONGEST, which is the one
+that finishes last and so bounds the whole object's motion. Returns 0 when nothing animates.
+
+PURE QUERY. It takes the object as an argument instead of reading m_scrubObject, so that describing
+a selection cannot arm it. The first cut did arm it, and that recursed until the stack died: arming
+rebuilds the object, the rebuild reaches the selection-changed hook, the hook re-notifies the panel,
+and the panel asks again. */
+//=============================================================================
+Int WbView3d::getObjectAnimationInfo(MapObject *obj, Int *moduleCountOut) const
+{
+	if (moduleCountOut != NULL) {
+		*moduleCountOut = 0;
+	}
+	if (obj == NULL) {
+		return 0;
+	}
+
+	// Same BuildVariations substitution as the build: the placeholder's own modules carry no
+	// animations (or models) at all, so without this the scrubber reports "none animate" for
+	// exactly the objects the substitution exists for.
+	const ThingTemplate *tTemplate = resolveBuildVariation(obj->getThingTemplate());
+	if (tTemplate == NULL) {
+		return 0;
+	}
+
+	Int maxFrames = 0;
+	Int animatedModules = 0;
+	const ModuleInfo &mi = tTemplate->getDrawModuleInfo();
+	for (Int i = 0; i < mi.getCount(); ++i) {
+		const ModuleData *mdd = mi.getNthData(i);
+		const W3DModelDrawModuleData *md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+		if (md == NULL) {
+			continue;
+		}
+		// Frame COUNTS only, so the exact condition state does not matter much here -- a damaged
+		// variant of an animation is the same length as its pristine one in practice. Use the
+		// default state rather than recomputing the damage/weather/time flags the build loop
+		// derives; the posing itself still uses the real state.
+		ModelConditionFlags defaultState;
+		defaultState.clear();
+		const ModelConditionInfo *info = md->findBestInfo(defaultState);
+		if (info == NULL || info->m_animations.empty()) {
+			continue;
+		}
+		HAnimClass *anim = m_assetManager
+			? m_assetManager->Get_HAnim(info->m_animations[0].getName().str()) : NULL;
+		if (anim == NULL) {
+			continue;
+		}
+		++animatedModules;
+		if (anim->Get_Num_Frames() > maxFrames) {
+			maxFrames = anim->Get_Num_Frames();
+		}
+		anim->Release_Ref();	// Get_HAnim returns an addrefed handle
+	}
+
+	if (moduleCountOut != NULL) {
+		*moduleCountOut = animatedModules;
+	}
+	return maxFrames;
+}
+
+//=============================================================================
+// WbView3d::modulePublishesBone
+//=============================================================================
+/** Does this draw module publish boneName, so that it may answer an attach lookup?
+
+The engine never searches raw model contents. validateCachedBones fills a module's pristine-bone
+map by calling doSingleBoneName for each name in TheGlobalData->m_standardPublicBones and then each
+name in the module's own m_publicBones (== ExtraPublicBone); getPristineBonePositions then reads
+only that map. A mesh that nobody declared is simply not visible to the lookup.
+
+doSingleBoneName caches the declared name AND its numbered variants -- "MESH" also caches MESH01,
+MESH02, ... up to the first gap -- so a declared prefix publishes its whole numbered family. Match
+that here: exact hit, or the declared name is a prefix followed only by digits.
+
+Names arrive lowercased on both sides (m_attachToDrawableBone via parseAsciiStringLC; the declared
+list is lowered here), so the compare is case-insensitive in effect. */
+//=============================================================================
+Bool WbView3d::modulePublishesBone(const BuiltDrawModule &mod, const char *boneName)
+{
+	if (boneName == NULL || boneName[0] == '\0') {
+		return false;
+	}
+
+	// The declared list, then the global standard bones -- the same two sources, in the same
+	// order, that validateCachedBones walks.
+	for (Int pass = 0; pass < 2; ++pass) {
+		const std::vector<AsciiString> *list;
+		if (pass == 0) {
+			list = mod.publicBones;
+		} else {
+			list = TheGlobalData ? &TheGlobalData->m_standardPublicBones : NULL;
+		}
+		if (list == NULL) {
+			continue;
+		}
+
+		for (size_t i = 0; i < list->size(); ++i) {
+			AsciiString declared = (*list)[i];
+			if (declared.isEmpty()) {
+				continue;
+			}
+			declared.toLower();
+
+			const char *d = declared.str();
+			const size_t dlen = strlen(d);
+			if (strcmp(d, boneName) == 0) {
+				return true;
+			}
+			// Numbered variant: the declared name followed by digits only (MESH -> MESH06).
+			if (strncmp(d, boneName, dlen) == 0 && boneName[dlen] != '\0') {
+				Bool allDigits = true;
+				for (const char *c = boneName + dlen; *c != '\0'; ++c) {
+					if (*c < '0' || *c > '9') {
+						allDigits = false;
+						break;
+					}
+				}
+				if (allDigits) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+//=============================================================================
+// WbView3d::templateHasDrawableModel
+//=============================================================================
+/** Can this template actually put geometry on screen?
+
+Not the same question as "does it have draw modules". Every object inherits
+`ModuleTag_DefaultW3DDefaultDraw` from the default template, and W3DDefaultDraw renders nothing --
+templates with real art add their own module AND `RemoveModule` that default. A build placeholder
+does neither, so it reports one draw module and draws nothing (which is exactly how
+NavyCapitalNebulaCruiser00 came to be an invisible object with modules=1).
+
+So: true only if some module is a W3DModelDraw whose default state names a real model. */
+//=============================================================================
+Bool WbView3d::templateHasDrawableModel(const ThingTemplate *tmpl)
+{
+	if (tmpl == NULL) {
+		return false;
+	}
+	const ModuleInfo &mi = tmpl->getDrawModuleInfo();
+	for (Int i = 0; i < mi.getCount(); ++i) {
+		const ModuleData *mdd = mi.getNthData(i);
+		const W3DModelDrawModuleData *md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+		if (md == NULL) {
+			continue;		// e.g. the inherited W3DDefaultDraw -- not a model draw at all
+		}
+		ModelConditionFlags defaultState;
+		defaultState.clear();
+		const AsciiString modelName = md->getBestModelNameForWB(defaultState);
+		// "No " is how getBestModelNameForWB reports NONE (the same test the build loop uses).
+		if (!modelName.isEmpty() && strncmp(modelName.str(), "No ", 3) != 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//=============================================================================
+// WbView3d::resolveBuildVariation
+//=============================================================================
+/** The template whose draw modules the viewport actually builds.
+
+A template that lists BuildVariations and has nothing drawable of its own is a build placeholder:
+the game substitutes one of the variations in ThingFactory::newObject before the object exists at
+all, so the placeholder itself is never what gets drawn. Follow the substitution here --
+deterministically (the FIRST drawable variation, where the game re-rolls per object), because a
+viewport that changed models on every rebuild would be worse than useless in an editor.
+
+Every pass over an object's draw modules must resolve through this, or the passes walk DIFFERENT
+templates: the build would draw the variation while the scrubber's queries and re-pose walked the
+placeholder (whose modules all skip), leaving the scrubber dead on exactly these objects. */
+//=============================================================================
+const ThingTemplate *WbView3d::resolveBuildVariation(const ThingTemplate *tmpl)
+{
+	if (tmpl == NULL || templateHasDrawableModel(tmpl)) {
+		return tmpl;
+	}
+	const std::vector<AsciiString> &variations = tmpl->getBuildVariations();
+	for (size_t vi = 0; vi < variations.size(); ++vi) {
+		const ThingTemplate *varTmpl =
+			TheThingFactory ? TheThingFactory->findTemplate(variations[vi], FALSE) : NULL;
+		if (varTmpl != NULL && templateHasDrawableModel(varTmpl)) {
+			return varTmpl;
+		}
+	}
+	return tmpl;
+}
+
+//=============================================================================
+// WbView3d::poseForPristineBoneRead
+//=============================================================================
+/** Park obj on its animation's frame 0 so a bone can be read at the PRISTINE pose.
+
+Attach offsets are pristine data. The game reads them through validateCachedBones, which poses the
+model at frame 0 before caching, and getAttachToDrawableBoneOffset then caches the result for the
+drawable's lifetime -- so a riding module is placed ONCE and never follows the bone afterwards.
+
+WB re-resolves on every rebuild, so it has to reproduce that frame explicitly: without it the
+offset is read from whatever frame the publisher is being DISPLAYED at, and the riders chase a
+moving bone (the NavyStructureHeadquarters dishes trailing CBBridgeArc_a's gantry). Returns the
+animation that was playing so restoreAfterPristineBoneRead can put the display pose back, or NULL
+when the object has no animation to disturb. */
+//=============================================================================
+HAnimClass *WbView3d::poseForPristineBoneRead(RenderObjClass *obj, Real &savedFrameOut,
+	Int &savedModeOut)
+{
+	savedFrameOut = 0.0f;
+	savedModeOut = RenderObjClass::ANIM_MODE_MANUAL;
+	if (obj == NULL || obj->Class_ID() != RenderObjClass::CLASSID_HLOD) {
+		return NULL;	// only an HLod carries an animatable hierarchy
+	}
+
+	HLodClass *hlod = (HLodClass *)obj;
+	Int numFrames = 0;
+	Real mult = 1.0f;
+	HAnimClass *current = hlod->Peek_Animation_And_Info(savedFrameOut, numFrames, savedModeOut, mult);
+	if (current == NULL) {
+		return NULL;	// nothing posed -- the bone already reads at the base pose
+	}
+
+	// Peek does NOT addref; hold one while it is out of the render object's hands.
+	current->Add_Ref();
+	obj->Set_Animation(current, 0.0f, RenderObjClass::ANIM_MODE_MANUAL);
+	return current;
+}
+
+//=============================================================================
+// WbView3d::restoreAfterPristineBoneRead
+//=============================================================================
+/** Put back the display pose poseForPristineBoneRead moved aside. Safe with a NULL anim. */
+//=============================================================================
+void WbView3d::restoreAfterPristineBoneRead(RenderObjClass *obj, HAnimClass *savedAnim,
+	Real savedFrame, Int savedMode)
+{
+	if (obj == NULL || savedAnim == NULL) {
+		return;
+	}
+	obj->Set_Animation(savedAnim, savedFrame, savedMode);
+	savedAnim->Release_Ref();	// balance the Add_Ref in poseForPristineBoneRead
+}
+
+//=============================================================================
+// WbView3d::findAttachBone
+//=============================================================================
+/** Resolve an AttachToBoneInAnotherModule bone against every draw module built so far.
+
+"Another module" means exactly that: the bone is published (ExtraPublicBone) by whichever module
+owns it, which is very often NOT module 0. The game never assumes otherwise -- its
+Drawable::getPristineBonePositions walks the drawable's whole draw-module list and takes the first
+module that resolves the name -- so match that here rather than asking the parent alone.
+
+Returns the owning module's render object, or NULL when no module has the bone. offsetOut is the
+bone's offset from the PARENT's origin: the bone's own translation within its module, plus that
+module's offset, so a module riding a bone on a module that is itself riding a bone lands in the
+right place instead of losing the first hop. */
+//=============================================================================
+RenderObjClass *WbView3d::findAttachBone(const std::vector<BuiltDrawModule> &built,
+	const char *boneName, Int &boneIndexOut, Vector3 &offsetOut, Bool *fromSubObjectOut,
+	Bool logResolution)
+{
+	boneIndexOut = 0;
+	offsetOut.Set(0.0f, 0.0f, 0.0f);
+	if (fromSubObjectOut != NULL) {
+		*fromSubObjectOut = false;
+	}
+	if (boneName == NULL || boneName[0] == '\0') {
+		return NULL;
+	}
+
+	for (size_t i = 0; i < built.size(); ++i) {
+		RenderObjClass *obj = built[i].obj;
+		if (obj == NULL) {
+			continue;
+		}
+
+		// ONLY a module that PUBLISHES this bone may answer for it. The game does not scan raw model
+		// contents: validateCachedBones caches a module's bones from that module's own m_publicBones
+		// (ExtraPublicBone) plus TheGlobalData->m_standardPublicBones, and getPristineBonePositions
+		// then searches THAT cache. Anything else in the model is invisible to the lookup.
+		//
+		// This matters because the map.ini objects here are assembled from unrelated unit models,
+		// and the bone names in play (ENGINE01, SPARK02, MINIGUN, MESH06...) recur in dozens of
+		// them. Matching on raw model contents lets a module capture a bone belonging to a sibling
+		// it has nothing to do with -- observed: an AVCHINOOK module resolving SPARK02 against an
+		// NBPWRPLANT module, and the two NBIntCnt_AC dishes on NavyStructureHeadquarters landing
+		// apart because the second matched the first (its own model carries a MESH06) instead of
+		// the CBBridgeArc_a that publishes it.
+		if (!modulePublishesBone(built[i], boneName)) {
+			continue;
+		}
+
+		// TWO ways a model can carry a bone, and the engine tries both -- see doSingleBoneName in
+		// W3DModelDraw.cpp, which falls back to findSingleSubObj whenever findSingleBone misses.
+		//
+		// 1. an HTree PIVOT -- Get_Bone_Index. Only Animatable3DObjClass (HLod) implements it;
+		//    RenderObjClass::Get_Bone_Index is a base-class stub that just `return 0` (rendobj.h),
+		//    exactly like Add_Sub_Object_To_Bone. So on a plain MeshClass this ALWAYS misses, and
+		//    a module whose model is a mesh can never own a bone by this route.
+		// 2. a named SUB-OBJECT -- Get_Sub_Object_By_Name, which works on a mesh.
+		//
+		// Doing only (1) is what left the riders of NVSSUPPLYTK's TIRE01 and UVLiteTank's TREADSR01
+		// misaligned after the multi-module search went in: those publishers are plain meshes, so
+		// the search walked right past them and the riders kept the parent's origin.
+
+		// Cached? The offset is pristine data -- it depends on the MODEL and the BONE and nothing
+		// else, not on this object nor on the frame being displayed -- so it is the same answer
+		// every time for a given pair. Resolving it costs a Set_Animation plus a full hierarchy
+		// re-evaluation, and an object with many modules and riders pays that per pair on EVERY
+		// rebuild; undo of a complex map.ini-overridden object stalled for minutes on it.
+		// (The game does the same thing, once per drawable, behind m_attachToDrawableBoneOffsetValid.)
+		const char *ownerModelName = obj->Get_Name() ? obj->Get_Name() : "?";
+		AsciiString cacheKey;
+		cacheKey.format("%s|%s", ownerModelName, boneName);
+		std::map<AsciiString, AttachBoneCacheEntry>::const_iterator cacheIt =
+			m_attachBoneCache.find(cacheKey);
+		if (cacheIt != m_attachBoneCache.end()) {
+			offsetOut = cacheIt->second.offset + built[i].originOffset;
+			boneIndexOut = cacheIt->second.fromSubObject ? 0 : obj->Get_Bone_Index(boneName);
+			if (fromSubObjectOut != NULL) {
+				*fromSubObjectOut = cacheIt->second.fromSubObject;
+			}
+			if (logResolution) {
+				DEBUG_LOG(("WBBONE cached bone=%s owner=%s -> off=(%.2f %.2f %.2f)\n",
+					boneName, ownerModelName, offsetOut.X, offsetOut.Y, offsetOut.Z));
+			}
+			return obj;
+		}
+
+		// READ THE BONE AT THE PRISTINE POSE, whatever frame the module is DISPLAYING.
+		//
+		// The attach offset is a pristine quantity in the game, fixed once and never revisited:
+		// getAttachToDrawableBoneOffset caches it behind m_attachToDrawableBoneOffsetValid, and the
+		// read underneath goes through validateCachedBones, which poses the model at frame 0 first
+		// ("make sure we're in frame zero"). So a rider does NOT track a moving bone -- the two
+		// NBIntCnt_AC dishes on NavyStructureHeadquarters are static scenery, even though the
+		// CBBridgeArc_a publishing their MESH06 animates a gantry through 156 units.
+		//
+		// WB re-resolves on every rebuild, so without this the offset would be recomputed from
+		// whatever frame the publisher currently sits at, and the Animation Scrubber would drag
+		// the dishes around after the gantry -- motion the game never shows.
+		Real savedFrame = 0.0f;
+		Int savedMode = RenderObjClass::ANIM_MODE_MANUAL;
+		HAnimClass *savedAnim = poseForPristineBoneRead(obj, savedFrame, savedMode);
+
+		const Int boneIndex = obj->Get_Bone_Index(boneName);
+		const HTreeClass *htree = obj->Get_HTree();
+		if (boneIndex != 0 && htree != NULL) {
+			// Translation only. The bone says WHERE the piece goes, not which way it faces -- the
+			// game offsets by boneMtx.Get_Translation() alone (getAttachToDrawableBoneOffset) and
+			// takes the orientation from the drawable. Measure against the module's own root so the
+			// offset is module-relative, then add where that module itself sits.
+			//
+			// READ THROUGH Get_Bone_Transform, NOT htree->Get_Transform. The HTree holds whatever
+			// pose was last EVALUATED into it; setting an animation only marks the hierarchy dirty.
+			// Get_Bone_Transform (animobj.cpp) is what forces the evaluation:
+			//     if (!Is_Hierarchy_Valid()) { Update_Sub_Object_Transforms(); }
+			//     return HTree->Get_Transform(boneindex);
+			// Reading the HTree directly skips that and hands back the un-evaluated base pose --
+			// which is why posing CBBridgeArc_a at frame 0 vs its last frame changed the MESH06
+			// offset not at all: it stayed (2.68, -156.39, -33.91) either way, because neither pose
+			// was ever evaluated. Same accessor the engine's own findSingleBone uses.
+			const Matrix3D boneWorld = obj->Get_Bone_Transform(boneIndex);
+			const Matrix3D rootWorld = obj->Get_Bone_Transform(0);
+			// Cache the MODULE-LOCAL part only; originOffset is per-object placement and must not
+			// be baked in (the same model/bone pair is reused by objects at different offsets).
+			const Vector3 localOffset = boneWorld.Get_Translation() - rootWorld.Get_Translation();
+			AttachBoneCacheEntry entry;
+			entry.offset = localOffset;
+			entry.fromSubObject = false;
+			m_attachBoneCache[cacheKey] = entry;
+
+			offsetOut = localOffset + built[i].originOffset;
+			boneIndexOut = boneIndex;
+			if (logResolution) {
+				DEBUG_LOG(("WBBONE pivot  bone=%s owner=%s idx=%d modOff=(%.2f %.2f %.2f) -> off=(%.2f %.2f %.2f)\n",
+					boneName, obj->Get_Name() ? obj->Get_Name() : "?", boneIndex,
+					built[i].originOffset.X, built[i].originOffset.Y, built[i].originOffset.Z,
+					offsetOut.X, offsetOut.Y, offsetOut.Z));
+			}
+			restoreAfterPristineBoneRead(obj, savedAnim, savedFrame, savedMode);
+			return obj;
+		}
+
+		// Fallback: the bone is a named sub-object. Get_Sub_Object_By_Name addrefs what it returns.
+		//
+		// Get_Transform() on the child gives its WORLD transform, so it only means "offset within
+		// the model" while the model itself is at the origin. The engine guarantees exactly that
+		// before reading it: validateCachedBones does
+		//     Matrix3D tmp(true); tmp.Scale(scale); robj->Set_Transform(tmp);
+		// -- parking the model at identity -- and only then calls findSingleSubObj. WB reads these
+		// during the module loop, BEFORE the object's own Set_Transform further down, so the model
+		// is usually at identity already; but "usually" is how a stray parent transform leaks into
+		// the offset and throws the piece far off (both NBIntCnt_AC dishes landed way out, either
+		// side of where MESH06 should be). Subtract the model's own placement so the result is
+		// genuinely model-relative no matter what the parent's transform happens to be.
+		RenderObjClass *child = obj->Get_Sub_Object_By_Name(boneName);
+		if (child != NULL) {
+			const Matrix3D childMtx = child->Get_Transform();
+			const Matrix3D ownerMtx = obj->Get_Transform();
+			child->Release_Ref();
+			// Module-local part only -- see the pivot branch above.
+			const Vector3 localOffset = childMtx.Get_Translation() - ownerMtx.Get_Translation();
+			AttachBoneCacheEntry subEntry;
+			subEntry.offset = localOffset;
+			subEntry.fromSubObject = true;
+			m_attachBoneCache[cacheKey] = subEntry;
+
+			offsetOut = localOffset + built[i].originOffset;
+			// No HTree pivot backs this, so there is no index to attach to -- report 0 and let the
+			// caller place it as a loose piece on the offset alone. Returning the owner (not NULL)
+			// is what tells the caller the bone WAS found.
+			boneIndexOut = 0;
+			if (fromSubObjectOut != NULL) {
+				*fromSubObjectOut = true;
+			}
+			if (logResolution) {
+				// The raw pieces too, not just the result: a wrong offset is nearly always one of
+				// these three being wrong, and seeing which saves re-deriving it.
+				DEBUG_LOG(("WBBONE subobj bone=%s owner=%s child=(%.2f %.2f %.2f) ownerAt=(%.2f %.2f %.2f) modOff=(%.2f %.2f %.2f) -> off=(%.2f %.2f %.2f)\n",
+					boneName, obj->Get_Name() ? obj->Get_Name() : "?",
+					childMtx.Get_Translation().X, childMtx.Get_Translation().Y, childMtx.Get_Translation().Z,
+					ownerMtx.Get_Translation().X, ownerMtx.Get_Translation().Y, ownerMtx.Get_Translation().Z,
+					built[i].originOffset.X, built[i].originOffset.Y, built[i].originOffset.Z,
+					offsetOut.X, offsetOut.Y, offsetOut.Z));
+			}
+			restoreAfterPristineBoneRead(obj, savedAnim, savedFrame, savedMode);
+			return obj;
+		}
+
+		// This module published the name but carries neither the pivot nor the sub-object; put its
+		// display pose back before moving on to the next candidate.
+		restoreAfterPristineBoneRead(obj, savedAnim, savedFrame, savedMode);
+	}
+
+	// Nothing published it. Worth a line of its own: the piece will sit on the parent's origin,
+	// and "no module publishes this bone" is a different problem from "the offset is wrong".
+	if (logResolution) {
+		DEBUG_LOG(("WBBONE MISS   bone=%s -- no module publishes it (piece stays at the object origin)\n",
+			boneName));
+	}
+	return NULL;
+}
+
+//=============================================================================
+// WbView3d::placeLoosePieces
+//=============================================================================
+/** Put pMapObj's loose draw-module pieces where the parent is now.
+
+These are draw modules the parent could not adopt as sub-objects (Add_Sub_Object_To_Bone is a
+no-op unless the parent is an HLod), so they sit in the scene as separate render objects. Nothing
+parents them, which means nothing moves them either -- hence this, called both when the object is
+built and on the reuse path, so a move or rotate carries them along instead of leaving them
+behind at the old placement.
+
+Orientation comes from the parent; the bone contributes POSITION only, and its offset is rotated
+into the parent's frame so it swings around with the heading. That matches the game, whose
+adjustTransformMtx offsets the drawable's own matrix by the bone's translation alone. */
+//=============================================================================
+void WbView3d::placeLoosePieces(MapObject *pMapObj, RenderObjClass *parentObj)
+{
+	if (pMapObj == NULL || parentObj == NULL) {
+		return;
+	}
+	std::map<MapObject *, std::vector<LoosePiece> >::iterator it = m_loosePieces.find(pMapObj);
+	if (it == m_loosePieces.end()) {
+		return;
+	}
+
+	const Matrix3D parentMtx = parentObj->Get_Transform();
+	std::vector<LoosePiece> &pieces = it->second;
+	for (size_t i = 0; i < pieces.size(); ++i) {
+		if (pieces[i].obj == NULL) {
+			continue;
+		}
+		Matrix3D pieceMtx = parentMtx;
+		const Vector3 &off = pieces[i].boneOffset;
+		if (off.X != 0.0f || off.Y != 0.0f || off.Z != 0.0f) {
+			Vector3 rotated = parentMtx.Rotate_Vector(off);
+			pieceMtx.Adjust_X_Translation(rotated.X);
+			pieceMtx.Adjust_Y_Translation(rotated.Y);
+			pieceMtx.Adjust_Z_Translation(rotated.Z);
+		}
+		pieces[i].obj->Set_Transform(pieceMtx);
+
+		if (m_logBoneResolution) {
+			// Where a piece ACTUALLY landed, which is a different question from what the bone
+			// lookup returned -- a correct offset placed against a wrong parent transform looks
+			// identical to a wrong offset until you can see both numbers side by side.
+			const Vector3 pp = pieceMtx.Get_Translation();
+			const Vector3 pt = parentMtx.Get_Translation();
+			DEBUG_LOG(("WBBONE place  piece=%s parentAt=(%.2f %.2f %.2f) off=(%.2f %.2f %.2f) -> at=(%.2f %.2f %.2f)\n",
+				pieces[i].obj->Get_Name() ? pieces[i].obj->Get_Name() : "?",
+				pt.X, pt.Y, pt.Z, off.X, off.Y, off.Z, pp.X, pp.Y, pp.Z));
+		}
+	}
+}
+
+//=============================================================================
+// WbView3d::releaseLoosePieces
+//=============================================================================
+/** Remove pMapObj's loose pieces from the scene and forget them.
+
+Also drops its recorded bone-name labels and module render objects, which describe the build being
+torn down. That happens BEFORE the early-out below on purpose: an object whose bones all resolved to
+HTree pivots has no loose pieces at all, and returning early would leave those behind to be
+re-recorded on the next build -- doubling them every rebuild. */
+//=============================================================================
+void WbView3d::releaseLoosePieces(MapObject *pMapObj)
+{
+	m_attachBoneLabels.erase(pMapObj);
+	// Borrowed pointers (see m_moduleRenderObjs) -- forget them, never release them. The loose ones
+	// among them are released below; the rest belong to the scene or to their parent.
+	m_moduleRenderObjs.erase(pMapObj);
+
+	std::map<MapObject *, std::vector<LoosePiece> >::iterator it = m_loosePieces.find(pMapObj);
+	if (it == m_loosePieces.end()) {
+		return;
+	}
+	std::vector<LoosePiece> &pieces = it->second;
+	for (size_t i = 0; i < pieces.size(); ++i) {
+		if (pieces[i].obj != NULL) {
+			if (m_scene != NULL) {
+				m_scene->Remove_Render_Object(pieces[i].obj);
+			}
+			pieces[i].obj->Release_Ref();
+		}
+	}
+	m_loosePieces.erase(it);
+}
+
+//=============================================================================
+// WbView3d::attachOneRider
+//=============================================================================
+/** Create templateName's default model and hang it off parentObj's bone. Shared by the spawned
+and carried paths, which differ only in how they arrive at the bone. */
+//=============================================================================
+void WbView3d::attachOneRider(RenderObjClass *parentObj, const AsciiString &templateName,
+	Int boneIndex, Int playerColor)
+{
+	const ThingTemplate *tmpl =
+		TheThingFactory ? TheThingFactory->findTemplate(templateName, FALSE) : NULL;
+	if (tmpl == NULL) {
+		return;		// a rider whose template this install doesn't have
+	}
+
+	ModelConditionFlags noFlags;
+	noFlags.clear();
+	const AsciiString modelName = getBestModelNameWBPrev(tmpl, noFlags);
+	if (modelName.isEmpty() || strncmp(modelName.str(), "No ", 3) == 0) {
+		return;
+	}
+
+	RenderObjClass *riderObj = m_assetManager->Create_Render_Obj(modelName.str(),
+		tmpl->getAssetScale(), playerColor);
+	if (riderObj == NULL) {
+		return;
+	}
+	parentObj->Add_Sub_Object_To_Bone(riderObj, boneIndex);
+	riderObj->Release_Ref();	// the parent holds it now
+}
+
+//=============================================================================
+// WbView3d::getTreeModelBox
+//=============================================================================
+/** Object-space bounding box of a tree model, cached by model name.
+
+Creating a render object per tree per click would be far too slow on a forested map, and the
+box only depends on the asset -- so one lookup per distinct model, held for the session. */
+//=============================================================================
+Bool WbView3d::getTreeModelBox(const AsciiString &modelName, AABoxClass &boxOut)
+{
+	std::map<AsciiString, AABoxClass>::iterator it = m_treeBoxCache.find(modelName);
+	if (it != m_treeBoxCache.end()) {
+		boxOut = it->second;
+		return true;
+	}
+
+	RenderObjClass *robj = m_assetManager->Create_Render_Obj(modelName.str());
+	if (robj == NULL) {
+		return false;
+	}
+	robj->Get_Obj_Space_Bounding_Box(boxOut);
+	robj->Release_Ref();
+
+	m_treeBoxCache[modelName] = boxOut;
+	return true;
+}
+
+//=============================================================================
+// WbView3d::isHitBehindTerrain
+//=============================================================================
+/** True when the terrain surface is nearer to the camera than hitPoint, i.e. the thing that
+was hit is buried and not the thing the user can actually see at that pixel.
+
+Casts the camera-to-hitPoint segment at the heightmap. A terrain contact strictly closer to
+the camera than the hit means the ground occludes it. The small tolerance keeps an object
+resting ON the ground (its base coincident with the surface) selectable -- without it, float
+error at the contact point would randomly reject legitimate picks. */
+//=============================================================================
+Bool WbView3d::isHitBehindTerrain(const Vector3 &hitPoint)
+{
+	if (TheTerrainRenderObject == NULL || m_camera == NULL) {
+		return false;	// no terrain to occlude with -- keep the old behaviour
+	}
+
+	// With the terrain hidden (View > Show Terrain off), submerged and underground objects are
+	// exactly what the user is looking at, so nothing should be occluded by a surface that isn't
+	// being drawn. Reaching that buried geometry is the whole point of turning terrain off.
+	if (!getShowTerrain()) {
+		return false;
+	}
+
+	Vector3 camPos = m_camera->Get_Position();
+	if ((hitPoint - camPos).Length2() <= 0.0f) {
+		return false;	// degenerate segment (hit at the camera) -- nothing to compare against
+	}
+
+	// Cast only as far as the hit itself: a terrain contact along this segment is by definition
+	// in front of the hit, so there is no need to reason about hits past it.
+	LineSegClass ray(camPos, hitPoint);
+	CastResultStruct castResult;
+	RayCollisionTestClass rayCollide(ray, &castResult);
+	if (!TheTerrainRenderObject->Cast_Ray(rayCollide)) {
+		return false;	// ray never meets the ground -- nothing occludes the hit
+	}
+
+	// Fraction is along the segment, so it IS the ratio of terrain distance to hit distance.
+	// Anything closer than (1 - tolerance) is the ground genuinely standing in front.
+	const Real TERRAIN_OCCLUSION_TOLERANCE = 0.01f;	// ~1% of the pick distance
+	return (castResult.Fraction < 1.0f - TERRAIN_OCCLUSION_TOLERANCE);
 }
 
 //=============================================================================
@@ -1666,7 +4313,7 @@ BuildListInfo *WbView3d::pickedBuildObjectInView(CPoint viewPt)
 	Int i;
 	viewToDocCoords(viewPt, &cpt, false);
  	for (i=0; i<TheSidesList->getNumSides(); i++) {
-		SidesInfo *pSide = TheSidesList->getSideInfo(i);
+		SidesInfo *pSide = TheSidesList->getSideInfo(i); 
 		for (BuildListInfo *pBuild = pSide->getBuildList(); pBuild; pBuild = pBuild->getNext()) {
 			Coord3D center = *pBuild->getLocation();
 			center.x -= cpt.x;
@@ -1690,7 +4337,7 @@ BuildListInfo *WbView3d::pickedBuildObjectInView(CPoint viewPt)
 		Bool hit = m_intersector->Intersect_Screen_Point_Layer( logX, logY, *m_buildLayer );
 		if( hit ) {
  			for (i=0; i<TheSidesList->getNumSides(); i++) {
-				SidesInfo *pSide = TheSidesList->getSideInfo(i);
+				SidesInfo *pSide = TheSidesList->getSideInfo(i); 
 				for (BuildListInfo *pBuild = pSide->getBuildList(); pBuild; pBuild = pBuild->getNext()) {
 					if (pBuild->getRenderObj() == m_intersector->Result.IntersectedRenderObject) {
 						return pBuild;
@@ -1700,7 +4347,7 @@ BuildListInfo *WbView3d::pickedBuildObjectInView(CPoint viewPt)
 		}
 	}
 
-	return nullptr;
+	return NULL;
 }
 
 // ----------------------------------------------------------------------------
@@ -1718,14 +4365,14 @@ Bool WbView3d::viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain)
 	Vector3 intersection(0,0,0);
 	// determine the ray corresponding to the camera and distance to projection plane
 	Matrix3D camera_matrix = m_camera->Get_Transform();
-
+	
 	Vector3 camera_location  = m_camera->Get_Position();
 
 	Vector3 rayLocation;
 	Vector3 rayDirection;
 	Vector3 rayDirectionPt;
 	// the projected ray has the same origin as the camera
-	rayLocation = camera_location;
+	rayLocation = camera_location; 
 	// determine the location of the screen coordinate in camera-model space
 	const ViewportClass &viewport = m_camera->Get_Viewport();
 
@@ -1753,7 +4400,7 @@ Bool WbView3d::viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain)
 	// Note - there are 2 ways to track.  One is for tools (like paint texture)
 	// that follow the terrain.  They want to track the terrain, so the texturing
 	// follows the cursor.  Most tools, however, don't want to jump up & down clifs
-	// and such.  So they use a fixed z plane when tracking, so things don't move
+	// and such.  So they use a fixed z plane when tracking, so things don't move 
 	// depending what you move over.
 	Bool followTerrain = true;
 	if (WbApp()->isCurToolLocked()) {
@@ -1768,8 +4415,8 @@ Bool WbView3d::viewToDocCoords(CPoint curPt, Coord3D *newPt, Bool constrain)
 			intersection = castResult.ContactPoint;
 			m_curTrackingZ = intersection.Z;
 			result = true;
-		}
-	}
+		}  // end if
+	} 
 	if (!result) {
 		intersection.X = Vector3::Find_X_At_Z(m_curTrackingZ, rayLocation, rayDirectionPt);
 		intersection.Y = Vector3::Find_Y_At_Z(m_curTrackingZ, rayLocation, rayDirectionPt);
@@ -1846,14 +4493,14 @@ Bool WbView3d::viewToDocCoordZ(CPoint curPt, Coord3D *newPt, Real theZ)
 	Vector3 intersection(0,0,0);
 	// determine the ray corresponding to the camera and distance to projection plane
 	Matrix3D camera_matrix = m_camera->Get_Transform();
-
+	
 	Vector3 camera_location  = m_camera->Get_Position();
 
 	Vector3 rayLocation;
 	Vector3 rayDirection;
 	Vector3 rayDirectionPt;
 	// the projected ray has the same origin as the camera
-	rayLocation = camera_location;
+	rayLocation = camera_location; 
 	// determine the location of the screen coordinate in camera-model space
 	const ViewportClass &viewport = m_camera->Get_Viewport();
 
@@ -1888,7 +4535,7 @@ Bool WbView3d::viewToDocCoordZ(CPoint curPt, Coord3D *newPt, Real theZ)
 }
 
 // ----------------------------------------------------------------------------
-void WbView3d::updateHysteresis()
+void WbView3d::updateHysteresis(void)
 {
 	CRect client;
 	GetClientRect(&client);
@@ -1901,14 +4548,14 @@ void WbView3d::updateHysteresis()
 	Vector3 intersection(0,0,0);
 	// determine the ray corresponding to the camera and distance to projection plane
 	Matrix3D camera_matrix = m_camera->Get_Transform();
-
+	
 	Vector3 camera_location  = m_camera->Get_Position();
 
 	Vector3 rayLocation;
 	Vector3 rayDirection;
 	Vector3 rayDirectionPt;
 	// the projected ray has the same origin as the camera
-	rayLocation = camera_location;
+	rayLocation = camera_location; 
 	// determine the location of the screen coordinate in camera-model space
 	const ViewportClass &viewport = m_camera->Get_Viewport();
 
@@ -1989,27 +4636,27 @@ void WbView3d::updateHysteresis()
 // ----------------------------------------------------------------------------
 Bool WbView3d::docToViewCoords(Coord3D curPt, CPoint* newPt)
 {
-	Bool coordInsideFrustum = true;
+	Bool coordInsideFrustrum = true;
 	Vector3 world;
 	Vector3 screen;
 	newPt->x = -1000;
 	newPt->y = -1000;
 	if (m_heightMapRenderObj) {
-		curPt.z += m_heightMapRenderObj->getHeightMapHeight(curPt.x, curPt.y, nullptr);
+		curPt.z += m_heightMapRenderObj->getHeightMapHeight(curPt.x, curPt.y, NULL);
 	}
 
 	world.Set( curPt.x, curPt.y, curPt.z );
 	if (m_camera->Project( screen, world ) != CameraClass::INSIDE_FRUSTUM) {
-		coordInsideFrustum = false;
+		coordInsideFrustrum = false;
 	} else {
-		coordInsideFrustum = true;
+		coordInsideFrustrum = true;
 	}
 
 	CRect rClient;
 	GetClientRect(&rClient);
 
 	//
-	// note that the screen coord returned from the project W3D camera
+	// note that the screen coord returned from the project W3D camera 
 	// gave us a screen coords that range from (-1,-1) bottom left to
 	// (1,1) top right ... we are turning that into (0,0) upper left
 	// coords now
@@ -2022,11 +4669,109 @@ Bool WbView3d::docToViewCoords(Coord3D curPt, CPoint* newPt)
 	newPt->x = rClient.left + sx;
 	newPt->y = rClient.top + sy;
 
-	return coordInsideFrustum;
+	return coordInsideFrustrum;
 }
 
+
+Int WbView3d::parseHexColorFromProfile(const char* section, const char* key, const char* defaultHex)
+{
+    CString str = AfxGetApp()->GetProfileString(section, key, defaultHex);
+
+#ifdef _UNICODE
+    char buffer[16];
+    WideCharToMultiByte(CP_ACP, 0, str, -1, buffer, sizeof(buffer), NULL, NULL);
+    unsigned int color = 0;
+    sscanf(buffer, "%x", &color);
+#else
+    unsigned int color = 0;
+    sscanf(str, "%x", &color);
+#endif
+
+    color &= 0xFFFFFF;
+
+    // 🔥 Swap Red and Blue to match Windows COLORREF
+    unsigned int r = (color >> 16) & 0xFF;
+    unsigned int g = (color >> 8) & 0xFF;
+    unsigned int b = (color >> 0) & 0xFF;
+    color = (b << 16) | (g << 8) | (r << 0);
+
+    return (Int)color;
+}
+
+
 // ----------------------------------------------------------------------------
-void WbView3d::redraw()
+// Load the 5 customizable entity-icon colors from the profile into DrawObject's
+// static color slots. This used to run inside redraw() -- 5 GetProfileString
+// (registry/INI) reads on every paint, thousands per session. The values only
+// change when the user edits them, so read them once at init and re-call this
+// from the icon-color settings handler if/when one is added.
+void WbView3d::reloadIconColors()
+{
+	if (!m_drawObject)
+		return;
+	m_drawObject->setRoadIconColor(     parseHexColorFromProfile(ICON_COLOR_SECTION, "Roads",     "FFFF00"));
+	m_drawObject->setWaypointIconColor( parseHexColorFromProfile(ICON_COLOR_SECTION, "Waypoints", "00FF00"));
+	m_drawObject->setUnitIconColor(     parseHexColorFromProfile(ICON_COLOR_SECTION, "Units",     "FF00FF"));
+	m_drawObject->setTreeIconColor(     parseHexColorFromProfile(ICON_COLOR_SECTION, "Trees",     "00FF00"));
+	m_drawObject->setDefaultIconColor(  parseHexColorFromProfile(ICON_COLOR_SECTION, "Default",   "00FFFF"));
+}
+
+
+// void WbView3d::addMapObjectIfVisible(MapObject *pMapObj)
+// {
+//     if (!pMapObj) return;
+
+//     const Coord3D* loc = pMapObj->getLocation();
+//     SphereClass bounds(Vector3(loc->x, loc->y, loc->z), THE_RADIUS);
+//     Bool isCulled = m_camera->Cull_Sphere(bounds);
+
+//     if (isCulled) {
+//         return;
+//     }
+
+//     RenderObjClass* renderObj = NULL;
+//     Real scale = 1.0;
+//     AsciiString modelName = getModelNameAndScale(pMapObj, &scale, BODY_PRISTINE);
+//     if (!modelName.isEmpty() && strncmp(modelName.str(), "No ", 3) != 0) {
+//         renderObj = m_assetManager->Create_Render_Obj(modelName.str(), scale, 0);
+
+//         if (renderObj) {
+//             pMapObj->setRenderObj(renderObj);
+
+//             // 🛠 Fix: adjust z by terrain height
+//             Coord3D finalLoc = *loc;
+//             if (m_heightMapRenderObj) {
+//                 finalLoc.z += m_heightMapRenderObj->getHeightMapHeight(finalLoc.x, finalLoc.y, NULL);
+//             }
+
+//             Matrix3D renderObjPos(true); // Identity
+//             renderObjPos.Translate(finalLoc.x, finalLoc.y, finalLoc.z);
+//             renderObjPos.Rotate_Z(pMapObj->getAngle());
+//             renderObj->Set_Transform(renderObjPos);
+
+//             m_scene->Add_Render_Object(renderObj);
+//             REF_PTR_RELEASE(renderObj); // Scene owns it now
+//         }
+//     }
+// }
+
+
+// void WbView3d::updateVisibleMapObjects()
+// {
+//     // Step 1: Clean up previous render objects
+//     resetRenderObjects();
+
+//     // Step 2: Loop through ALL MapObjects and add if visible
+//     MapObject* pMapObj = MapObject::getFirstMapObject();
+//     while (pMapObj)
+//     {
+//         addMapObjectIfVisible(pMapObj);
+//         pMapObj = pMapObj->getNext();
+//     }
+// }
+
+// ----------------------------------------------------------------------------
+void WbView3d::redraw(void) 
 {
 	if (m_updateCount > 0) {
 		return;
@@ -2040,36 +4785,84 @@ void WbView3d::redraw()
 	if (!m_ww3dInited) {
 		return;
 	}
-
+#ifdef RTS_HAS_QT
+	if (m_deviceResetFailed) {
+		// A failed device reset released all DX8 resources without re-acquiring them
+		// (Reset_Device returns before ReAcquireResources on TestCooperativeLevel /
+		// Reset failure), so rendering would deref freed buffers (e.g. the heightmap's
+		// m_vertexBufferTiles in On_Frame_Update). Retry the reset; skip the frame
+		// until the device comes back.
+		if (WW3D::Set_Device_Resolution(m_actualWinSize.x, m_actualWinSize.y, true) != WW3D_ERROR_OK) {
+			return;
+		}
+		m_deviceResetFailed = false;
+	}
+#endif
+	
 	setupCamera();
 
 	DEBUG_ASSERTCRASH((m_heightMapRenderObj),("oops"));
 	if (m_heightMapRenderObj) {
-		if (m_needToLoadRoads) {
-			m_heightMapRenderObj->loadRoadsAndBridges(nullptr,FALSE);
-			m_heightMapRenderObj->worldBuilderUpdateBridgeTowers( m_assetManager, m_scene );
+		if (m_needToLoadRoads && m_showRoads) {
+			m_heightMapRenderObj->loadRoadsAndBridges(NULL,FALSE);
+			// m_heightMapRenderObj->worldBuilderUpdateBridgeTowers( m_assetManager, m_scene );
 			m_needToLoadRoads = false;
 		}
 		++m_updateCount;
 		Int curTicks = GetTickCount();
-		RefRenderObjListIterator lightListIt(&m_lightList);
+		RefRenderObjListIterator lightListIt(&m_lightList);	
 		m_heightMapRenderObj->updateCenter(m_camera, &m_cameraTarget, &lightListIt);
 		m_heightMapRenderObj->On_Frame_Update();
 		--m_updateCount;
 
 		curTicks = GetTickCount()-curTicks;
 //		if (curTicks>2) {
-//			WWDEBUG_SAY(("%d ms for updateCenter, %d FPS", curTicks, 1000/curTicks));
+//			WWDEBUG_SAY(("%d ms for updateCenter, %d FPS\n", curTicks, 1000/curTicks));
 //		}
 	}
+
+	// const Int COLOR_GREN = 0x00FF00; // Reserved for waypoint path
+	// const Int COLOR_YLLW = 0xFFFF00; // Reserved for roads
+	// const Int COLOR_PINK = 0xFF00FF; // Reserved for units
+	// const Int COLOR_CYAN = 0x00FFFF; // Reserved for anything else
+	// AfxGetApp()->GetProfileString(APP_SECTION, "Color16", "0");
+
 	if (m_drawObject) {
-		m_drawObject->setDrawObjects(m_showObjects,
+		// Icon colors are cached in DrawObject's static slots; they are loaded once in
+		// initWW3D() via reloadIconColors() (not re-read here -- each parse is a registry
+		// hit, and this runs every paint). Call reloadIconColors() if the keys change.
+		m_drawObject->setDrawObjects(
+			m_showObjects, 
 			m_showWaypoints || WaypointTool::isActive(),
-			m_showPolygonTriggers || PolygonTool::isActive(),
-      m_showBoundingBoxes, m_showSightRanges, m_showWeaponRanges, m_showSoundCircles, m_highlightTestArt, m_showLetterbox);
+			m_showPolygonTriggers || PolygonTool::isActive() || WaterTool::isActive(),
+			m_showBoundingBoxes, 
+			m_showSightRanges, 
+			m_showWeaponRanges, 
+			m_showSoundCircles, 
+			m_highlightTestArt, 
+			m_showLetterbox,
+			m_showWater,
+			m_showObjectsSelected,
+			m_useFixedColoredWaypoints
+		);
 	}
 
-	WW3D::Update_Logic_Frame_Time(TheFramePacer->getLogicTimeStepMilliseconds());
+	// Animations advance by the time that actually passed, not a fixed step per redraw,
+	// so the extra repaints a mouse move triggers do not speed them up. The cap keeps a
+	// long stall from jumping them forward.
+	LARGE_INTEGER animFreq;
+	LARGE_INTEGER animNow;
+	::QueryPerformanceFrequency(&animFreq);
+	::QueryPerformanceCounter(&animNow);
+	Real animStepMs = TheFramePacer->getLogicTimeStepMilliseconds();
+	if (m_lastAnimTick != 0) {
+		animStepMs = (Real)((double)(animNow.QuadPart - m_lastAnimTick) * 1000.0 / (double)animFreq.QuadPart);
+		if (animStepMs > 100.0f) {
+			animStepMs = 100.0f;
+		}
+	}
+	m_lastAnimTick = animNow.QuadPart;
+	WW3D::Update_Logic_Frame_Time(animStepMs);
 	WW3D::Sync(WW3D::Get_Fractional_Sync_Milliseconds() >= WWSyncMilliseconds);
 
 	m_buildRedMultiplier += (GetTickCount()-m_time)/500.0f;
@@ -2077,6 +4870,12 @@ void WbView3d::redraw()
 		m_buildRedMultiplier = 0;
 	}
 
+	// Advance + tick the particle preview and queue its render, mirroring the game's
+	// "update then render" order (W3DDisplay). Must run before render()'s WW3D flush, where
+	// the queued particles actually draw. No-op unless "Render Particles" is on.
+	WBParticleRuntime::tick();
+
+	// updateVisibleMapObjects();
 	render();
 
 	TheFramePacer->update();
@@ -2084,24 +4883,391 @@ void WbView3d::redraw()
 	m_time = ::GetTickCount();
 }
 
+#if defined(BUILD_WITH_D3D9)
+// Full-target quad sampling the label layer 1:1, shifted by (dx, dy) pixels.
+static void drawLabelLayerQuad(IDirect3DDevice8 *dev, Int w, Int h, Real dx, Real dy)
+{
+	struct TLVertex { Real x, y, z, rhw; Real u, v; };
+	const Real x0 = dx - 0.5f;
+	const Real y0 = dy - 0.5f;
+	const Real x1 = x0 + (Real)w;
+	const Real y1 = y0 + (Real)h;
+	TLVertex verts[4] = {
+		{ x0, y0, 0.0f, 1.0f, 0.0f, 0.0f },
+		{ x1, y0, 0.0f, 1.0f, 1.0f, 0.0f },
+		{ x0, y1, 0.0f, 1.0f, 0.0f, 1.0f },
+		{ x1, y1, 0.0f, 1.0f, 1.0f, 1.0f },
+	};
+	DX8_SET_FVF(dev, D3DFVF_XYZRHW | D3DFVF_TEX1);
+	dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, verts, sizeof(TLVertex));
+}
+
+/** Old-mode labels with shadow. Every string goes through D3DX once, into an offscreen
+    layer holding premultiplied color and coverage; the layer then composites twice,
+    shifted one pixel as a black shadow and in place as the text. This replaces the
+    second DrawText per string that the shadow used to cost. */
+Bool WbView3d::drawLabelsLayered()
+{
+	IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
+	if (dev == NULL || m_labelSprite == NULL || m3DFont == NULL) {
+		return false;
+	}
+
+	IDirect3DSurface8 *oldTarget = NULL;
+	if (FAILED(dev->GetRenderTarget(0, &oldTarget)) || oldTarget == NULL) {
+		return false;
+	}
+	D3DSURFACE_DESC targetDesc;
+	oldTarget->GetDesc(&targetDesc);
+	const Int w = (Int)targetDesc.Width;
+	const Int h = (Int)targetDesc.Height;
+
+	if (m_labelLayer != NULL) {
+		D3DSURFACE_DESC have;
+		m_labelLayer->GetLevelDesc(0, &have);
+		if ((Int)have.Width != w || (Int)have.Height != h) {
+			m_labelLayer->Release();
+			m_labelLayer = NULL;
+		}
+	}
+	if (m_labelLayer == NULL &&
+		FAILED(dev->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_labelLayer, NULL))) {
+		m_labelLayer = NULL;
+		oldTarget->Release();
+		return false;
+	}
+	IDirect3DSurface8 *layerSurface = NULL;
+	m_labelLayer->GetSurfaceLevel(0, &layerSurface);
+
+	IDirect3DStateBlock9 *saved = NULL;
+	dev->CreateStateBlock(D3DSBT_ALL, &saved);
+	IDirect3DSurface8 *oldDepth = NULL;
+	dev->GetDepthStencilSurface(&oldDepth);
+
+	// The layer is never multisampled, so the scene's depth buffer cannot stay bound.
+	dev->SetRenderTarget(0, layerSurface);
+	dev->SetDepthStencilSurface(NULL);
+	dev->Clear(0, NULL, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0);
+
+	dev->SetVertexShader(NULL);
+	dev->SetPixelShader(NULL);
+	dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+	dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+	dev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+	dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+	dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0x0F);
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	dev->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+	dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+	// Coverage accumulates as "over" so overlapping labels keep a correct alpha.
+	dev->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+	dev->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE);
+	dev->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
+	dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+	dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+
+	Bool drawn = false;
+	if (SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_DONOTSAVESTATE | WB_D3DXSPRITE_DONOTMODIFY_RENDERSTATE))) {
+		const Bool shadow = m_textShadow;
+		m_textShadow = false;
+		m_labelSpriteOpen = true;
+		drawLabels(NULL);
+		m_labelSpriteOpen = false;
+		m_textShadow = shadow;
+		m_labelSprite->End();
+		drawn = true;
+	}
+
+	dev->SetRenderTarget(0, oldTarget);
+	dev->SetDepthStencilSurface(oldDepth);
+
+	if (drawn) {
+		// Premultiplied composite: the shadow or outline keeps only coverage, the text keeps both.
+		dev->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+		dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+		dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		dev->SetTexture(0, m_labelLayer);
+		dev->SetRenderState(D3DRS_TEXTUREFACTOR, 0x00000000);
+		dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+		dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		if (m_textOutline) {
+			// A soft rim: the four edge neighbors only, each at 60% black.
+			dev->SetRenderState(D3DRS_TEXTUREFACTOR, 0x99000000);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+			drawLabelLayerQuad(dev, w, h, -1.0f, 0.0f);
+			drawLabelLayerQuad(dev, w, h, 1.0f, 0.0f);
+			drawLabelLayerQuad(dev, w, h, 0.0f, -1.0f);
+			drawLabelLayerQuad(dev, w, h, 0.0f, 1.0f);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+		} else {
+			drawLabelLayerQuad(dev, w, h, 1.0f, 1.0f);
+		}
+		dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		drawLabelLayerQuad(dev, w, h, 0.0f, 0.0f);
+		dev->SetTexture(0, NULL);
+	}
+
+	if (saved != NULL) {
+		saved->Apply();
+		saved->Release();
+	}
+	if (oldDepth != NULL) {
+		oldDepth->Release();
+	}
+	oldTarget->Release();
+	layerSurface->Release();
+	DX8Wrapper::Invalidate_Cached_Render_States();
+	return drawn;
+}
+#endif
+
+// ----------------------------------------------------------------------------
+// Draws a one-pixel rectangle outline into the D3D frame as pre-transformed lines.
+// The box is part of the presented frame, so it shows on every backend and never
+// strobes; GDI ::FrameRect on the window HDC is invisible under the D3D9 flip
+// model. The states it touches are restored afterwards, matching WBFontAtlas.
+static void drawFrameRect2D(IDirect3DDevice8 *dev, const RECT &box, UnsignedInt argb)
+{
+	struct TLVertex { Real x, y, z, rhw; UnsignedInt color; };
+
+	if (dev == NULL || box.right <= box.left || box.bottom <= box.top) {
+		return;
+	}
+
+	// FrameRect covers left..right-1 / top..bottom-1; the strip closes on its first corner.
+	const Real x0 = (Real)box.left;
+	const Real y0 = (Real)box.top;
+	const Real x1 = (Real)(box.right - 1);
+	const Real y1 = (Real)(box.bottom - 1);
+	TLVertex verts[5] = {
+		{ x0, y0, 0.0f, 1.0f, argb },
+		{ x1, y0, 0.0f, 1.0f, argb },
+		{ x1, y1, 0.0f, 1.0f, argb },
+		{ x0, y1, 0.0f, 1.0f, argb },
+		{ x0, y0, 0.0f, 1.0f, argb },
+	};
+
+	DWORD oldAlphaBlend, oldZEnable, oldZWrite, oldCull, oldLighting, oldFog, oldAlphaTest;
+	dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlphaBlend);
+	dev->GetRenderState(D3DRS_ZENABLE,          &oldZEnable);
+	dev->GetRenderState(D3DRS_ZWRITEENABLE,     &oldZWrite);
+	dev->GetRenderState(D3DRS_CULLMODE,         &oldCull);
+	dev->GetRenderState(D3DRS_LIGHTING,         &oldLighting);
+	dev->GetRenderState(D3DRS_FOGENABLE,        &oldFog);
+	dev->GetRenderState(D3DRS_ALPHATESTENABLE,  &oldAlphaTest);
+
+	DWORD oldColorOp, oldColorArg1, oldAlphaOp, oldAlphaArg1, oldColorOp1;
+	dev->GetTextureStageState(0, D3DTSS_COLOROP,   &oldColorOp);
+	dev->GetTextureStageState(0, D3DTSS_COLORARG1, &oldColorArg1);
+	dev->GetTextureStageState(0, D3DTSS_ALPHAOP,   &oldAlphaOp);
+	dev->GetTextureStageState(0, D3DTSS_ALPHAARG1, &oldAlphaArg1);
+	dev->GetTextureStageState(1, D3DTSS_COLOROP,   &oldColorOp1);
+
+	IDirect3DBaseTexture8 *oldTex = NULL;
+	dev->GetTexture(0, &oldTex);
+
+#if defined(BUILD_WITH_D3D9)
+	// A bound shader pair would ignore the pre-transformed vertices; draw fixed-function.
+	IDirect3DVertexShader9 *oldVS = NULL;
+	IDirect3DPixelShader9 *oldPS = NULL;
+	dev->GetVertexShader(&oldVS);
+	dev->GetPixelShader(&oldPS);
+	dev->SetVertexShader(NULL);
+	dev->SetPixelShader(NULL);
+#else
+	DWORD oldPS = 0;
+	dev->GetPixelShader(&oldPS);
+	dev->SetPixelShader(0);
+#endif
+
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ZENABLE,          D3DZB_FALSE);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE,     FALSE);
+	dev->SetRenderState(D3DRS_CULLMODE,         D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING,         FALSE);
+	dev->SetRenderState(D3DRS_FOGENABLE,        FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE,  FALSE);
+
+	dev->SetTexture(0, NULL);
+	dev->SetTextureStageState(0, D3DTSS_COLOROP,   D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   D3DTOP_SELECTARG1);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP,   D3DTOP_DISABLE);
+
+	DX8_SET_FVF(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	dev->DrawPrimitiveUP(D3DPT_LINESTRIP, 4, verts, sizeof(TLVertex));
+
+#if defined(BUILD_WITH_D3D9)
+	dev->SetVertexShader(oldVS);
+	dev->SetPixelShader(oldPS);
+	if (oldVS) {
+		oldVS->Release();
+	}
+	if (oldPS) {
+		oldPS->Release();
+	}
+#else
+	dev->SetPixelShader(oldPS);
+#endif
+
+	dev->SetTexture(0, oldTex);
+	if (oldTex) {
+		oldTex->Release();
+	}
+	dev->SetTextureStageState(0, D3DTSS_COLOROP,   oldColorOp);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, oldColorArg1);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP,   oldAlphaOp);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, oldAlphaArg1);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP,   oldColorOp1);
+
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlphaBlend);
+	dev->SetRenderState(D3DRS_ZENABLE,          oldZEnable);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE,     oldZWrite);
+	dev->SetRenderState(D3DRS_CULLMODE,         oldCull);
+	dev->SetRenderState(D3DRS_LIGHTING,         oldLighting);
+	dev->SetRenderState(D3DRS_FOGENABLE,        oldFog);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE,  oldAlphaTest);
+
+	DX8Wrapper::Invalidate_Cached_Render_States();
+}
+
 // ----------------------------------------------------------------------------
 void WbView3d::render()
 {
+	WBPerfScope perfRender("render");
 	++m_updateCount;
 
 	if (WW3D::Begin_Render(true,true,Vector3(0.5f,0.5f,0.5f), TheWaterTransparency->m_minWaterOpacity) == WW3D_ERROR_OK)
 	{
-
+		
 		DEBUG_ASSERTCRASH((m_heightMapRenderObj),("oops"));
 
-
+		
 		if (m_heightMapRenderObj) {
 			m_heightMapRenderObj->Set_Hidden((m_showTerrain ? 0 : 1));
 			m_heightMapRenderObj->doTextures(true);
 		}
-		m_scene->Set_Polygon_Mode(SceneClass::FILL);
+		// Full wireframe mode renders the entire scene (terrain, objects, roads, bridges)
+		// in LINE mode with textures off, replacing the solid pass.  The legacy
+		// m_showWireframe path (below) is an additive POINT overlay on top of the solid
+		// render and is left unchanged.
+		m_scene->Set_Polygon_Mode(m_showFullWireframe ? SceneClass::LINE : SceneClass::FILL);
+		m_baseBuildScene->Set_Polygon_Mode(m_showFullWireframe ? SceneClass::LINE : SceneClass::FILL);
+		if (m_showFullWireframe && m_heightMapRenderObj) {
+			m_heightMapRenderObj->doTextures(false);
+		}
 		// Render 3D scene
-		WW3D::Render(m_scene,m_camera);
+
+		try {
+			// === Per-frame MapObject-based culling ===
+			if ((m_showModels || m_showShadows) &&
+				m_scene && m_heightMapRenderObj && m_camera && TheW3DShadowManager && m_lod != 3)
+			{
+				MapObject *pObj = MapObject::getFirstMapObject();
+				Vector3 camPos = m_camera->Get_Position();
+				
+				// Default
+				float generalCullDistance;
+				float maxShadowDist;
+				float propCullDistance;
+
+				if (m_lod == 1) {
+					generalCullDistance = 2000.0f;
+					maxShadowDist       = 1500.0f;
+					propCullDistance    = 1500.0f;
+				} else {
+					generalCullDistance = 2500.0f;
+					maxShadowDist       = 2500.0f;
+					propCullDistance    = 2000.0f;
+				}
+
+				
+				const float generalCullDistSq = generalCullDistance * generalCullDistance;
+				const float propCullDistSq    = propCullDistance * propCullDistance;
+				const float maxShadowDistSq   = maxShadowDist * maxShadowDist;
+
+				while (pObj)
+				{
+					const ThingTemplate *t = pObj->getThingTemplate();
+					if (!t) { 
+						pObj = pObj->getNext();
+						continue; 
+					}
+
+					Coord3D loc = *pObj->getLocation();
+					loc.z += m_heightMapRenderObj->getHeightMapHeight(loc.x, loc.y, NULL);
+
+					float radius = max(max(t->getTemplateGeometryInfo().getMajorRadius(),
+										t->getTemplateGeometryInfo().getMinorRadius()), 20.0f);
+
+					SphereClass bounds(Vector3(loc.x, loc.y, loc.z), radius);
+					bool culled = m_camera->Cull_Sphere(bounds);
+
+					// === Global distance culling (applies to everything) ===
+					float dx = camPos.X - loc.x;
+					float dy = camPos.Y - loc.y;
+					float dz = camPos.Z - loc.z;
+					float distSq = dx*dx + dy*dy + dz*dz;
+
+					if (!culled && distSq > generalCullDistSq) {
+						culled = true;
+					}
+
+					// === Extra distance-based culling for misc props ===
+					if (!culled && t->getEditorSorting() == ES_MISC_MAN_MADE || t->getEditorSorting() == ES_MISC_NATURAL) {
+						if (distSq > propCullDistSq) {
+							culled = true;
+						}
+					}
+
+					if (RenderObjClass *robj = pObj->getRenderObj()) {
+						// bool farLOD = (distSq > (doodooDistance * doodooDistance)); // or whatever threshold
+						// robj->Force_Degraded_Render(farLOD);
+						robj->Set_Hidden(culled);
+					}
+
+					if (m_showShadows) {
+						if (Shadow *shadow = pObj->getShadowObj()) {
+							if (shadow) {
+								shadow->enableShadowRender(distSq <= maxShadowDistSq && !culled);
+							}
+						}
+					}
+
+					pObj = pObj->getNext();
+				}
+			}
+		}
+		catch (...) {
+			DEBUG_LOG(("Culling pass threw an exception — skipping this frame.\n"));
+		}
+
+		WW3D::Render(m_scene,m_camera);	
+		// Only the main scene fills the sun shadow map. RTS3DScene redoes the depth pass on every
+		// render, so keep it off for the build-list, wireframe, tracking and overlay passes below.
+		const Bool wantShadowMap = TheGlobalData->m_useShadowMap;
+		TheWritableGlobalData->m_useShadowMap = false;
 		Vector3 amb = m_baseBuildScene->Get_Ambient_Light();
 		Vector3 newAmb(amb);
 		Real mul = m_buildRedMultiplier;
@@ -2110,48 +5276,213 @@ void WbView3d::render()
 		newAmb.X *= mul;
 		newAmb.Y *= gMul;
 		if (newAmb.X>1) newAmb.X = 1;
-		m_baseBuildScene->Set_Ambient_Light(newAmb);
+		m_baseBuildScene->Set_Ambient_Light(newAmb); 
 		WW3D::Render(m_baseBuildScene,m_camera);
 		m_baseBuildScene->Set_Ambient_Light(amb);
+
+		if (m_showFullWireframe) {
+			// Restore solid fill / textures so subsequent passes (overlays, labels) draw normally.
+			m_scene->Set_Polygon_Mode(SceneClass::FILL);
+			m_baseBuildScene->Set_Polygon_Mode(SceneClass::FILL);
+			if (m_heightMapRenderObj) {
+				m_heightMapRenderObj->doTextures(true);
+			}
+		}
 
 		if (m_showWireframe) {
 			if (m_heightMapRenderObj) {
 				m_heightMapRenderObj->doTextures(false);
-				m_scene->Set_Polygon_Mode(SceneClass::LINE);
+				m_scene->Set_Polygon_Mode(SceneClass::POINT);
 				// Render 3D scene
-				WW3D::Render(m_scene,m_camera);
-				WW3D::Render(m_baseBuildScene,m_camera);
+				WW3D::Render(m_scene,m_camera);	
+				WW3D::Render(m_baseBuildScene,m_camera);	
 				m_heightMapRenderObj->doTextures(true);
 			}
-		}
+		} 
 		if (m_showObjToolTrackingObj && m_objectToolTrackingObj) {
 			m_transparentObjectsScene->Add_Render_Object(m_objectToolTrackingObj);
 			DX8TextureCategoryClass::SetForceMultiply(true);
 			TheDX8MeshRenderer.Enable_Lighting(false);
 			Real lightLevel = 1.0f;
-			m_transparentObjectsScene->Set_Ambient_Light(Vector3(lightLevel,lightLevel,lightLevel));
+			if(m_validTerrain){
+				m_transparentObjectsScene->Set_Ambient_Light(Vector3(lightLevel,lightLevel,lightLevel)); 
+			} else {
+				m_transparentObjectsScene->Set_Ambient_Light(Vector3(1.0f, 0.0f, 0.0f)); // Red light
+			}
 			WW3D::Render(m_transparentObjectsScene, m_camera);
 			TheDX8MeshRenderer.Enable_Lighting(true);
 			DX8TextureCategoryClass::SetForceMultiply(false);
 			m_transparentObjectsScene->Remove_Render_Object(m_objectToolTrackingObj);
 		}
 
-		// Draw the 3d obj icons on top of the rest of the data.
-		WW3D::Render(m_overlayScene,m_camera);
-		//if (mytext) mytext->Render();
-		if (m3DFont) {
-			drawLabels(nullptr);
+		// Selection overlay: tint every selected object's render obj with a highlight
+		// color.  Reuses the same force-multiply / colored-ambient pass as the object
+		// tool tracking object above.  Cyan reads clearly as "selected" and contrasts
+		// with the existing red (invalid terrain) and green (range circle) feedback.
+		//
+		// The selected objects normally live in m_scene; we temporarily add them to the
+		// transparent scene for this extra tinted pass, then restore their scene
+		// membership.  Because Add/Remove_Render_Object clobbers the object's Scene
+		// back-pointer, we collect exactly the objects we added and re-point them at
+		// m_scene afterwards (they were never removed from m_scene's render list).
+		if (m_showSelectionOverlay) {
+			Int numSelected = 0;
+			for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
+				if (pObj->isSelected()) {
+					RenderObjClass *robj = pObj->getRenderObj();
+					if (robj && !robj->Is_Hidden() && robj->Get_Scene() == m_scene) {
+						m_transparentObjectsScene->Add_Render_Object(robj);
+						++numSelected;
+					}
+				}
+			}
+			if (numSelected > 0) {
+				Vector3 savedAmbient = m_transparentObjectsScene->Get_Ambient_Light();
+				DX8TextureCategoryClass::SetForceMultiply(true);
+				TheDX8MeshRenderer.Enable_Lighting(false);
+				m_transparentObjectsScene->Set_Ambient_Light(Vector3(0.2f, 1.0f, 1.0f)); // cyan highlight
+				WW3D::Render(m_transparentObjectsScene, m_camera);
+				TheDX8MeshRenderer.Enable_Lighting(true);
+				DX8TextureCategoryClass::SetForceMultiply(false);
+				m_transparentObjectsScene->Set_Ambient_Light(savedAmbient);
+
+				// Remove from the transparent scene and restore the m_scene back-pointer.
+				// The objects were never removed from m_scene's render list; Add/Remove
+				// only clobbered their Scene pointer, which we re-point at m_scene here.
+				for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
+					if (pObj->isSelected()) {
+						RenderObjClass *robj = pObj->getRenderObj();
+						if (robj && robj->Get_Scene() == m_transparentObjectsScene) {
+							m_transparentObjectsScene->Remove_Render_Object(robj);
+							robj->Notify_Added(m_scene);
+						}
+					}
+				}
+			}
 		}
 
+		// Wave editor: draw any placed water-track waves on top of the terrain, but ONLY
+		// while the wave editor is the selected palette tool. We check getSelTool() (not
+		// getCurTool()) so transient Space/Alt/Ctrl tool swaps don't turn the waves off
+		// mid-edit. When the wave tool isn't selected we never call flush(), so the wave
+		// renderer's per-frame cost (update() + a D3D camera apply) is gone entirely --
+		// that lingering cost was felt as a small select/deselect delay.
+		//
+		// flush() gates on m_showSoftWaterEdge (the user's View > Show Soft Water setting),
+		// so we force it on just for this call and restore it immediately -- this lets the
+		// editor's waves draw even with soft water off, without persisting the change or
+		// clobbering the user's setting. flush() internally calls update(), so no separate
+		// animation tick is needed.
+		if (TheWaterTracksRenderSystem && WaveEditorTool::isEditorActive()) {
+			Bool savedSoftWater = TheGlobalData->m_showSoftWaterEdge;
+			TheWritableGlobalData->m_showSoftWaterEdge = true;
+			RenderInfoClass rinfo(*m_camera);
+			TheWaterTracksRenderSystem->flush(rinfo);
+			TheWritableGlobalData->m_showSoftWaterEdge = savedSoftWater;
+		}
+
+		// Draw the 3d obj icons on top of the rest of the data.
+		WW3D::Render(m_overlayScene,m_camera);
+		TheWritableGlobalData->m_useShadowMap = wantShadowMap;
+
+		// Viewport labels, Old (D3DX) mode: draw directly with m3DFont inside the
+		// frame (flicker-free). drawLabels(NULL) takes the m3DFont->DrawText path.
+		// In New (GDI) mode the labels are drawn instead in OnPaint() via ::TextOut.
+		// In Atlas mode the object/status/trigger labels are queued as glyph quads
+		// during drawLabels(NULL) and flushed in ONE DrawPrimitiveUP at end() --
+		// vs ~11ms/frame of per-string ID3DXFont::DrawText with names on (measured;
+		// see wbbench). HUD text (cash/timer/tooltip) still draws via m3DFont so it
+		// can never go stale.
+		const double labelsStart = WBPerf::nowMs();
+		if (m_labelRenderer == 2 && m_fontAtlas.isValid()) {
+			IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
+			// Use the back-buffer dimensions (m_actualWinSize), not the client rect;
+			// label projection uses m_actualWinSize too, and mixing the two stretches
+			// the XYZRHW text quads.
+			m_fontAtlas.begin(dev, m_actualWinSize.x, m_actualWinSize.y);
+			drawLabels(NULL);
+			m_fontAtlas.end();
+		} else if (m3DFont && m_labelRenderer == 0) {
+#if defined(BUILD_WITH_D3D9)
+			// D3DX9 flushes every DrawText that has no sprite; a shared sprite batches
+			// the whole emit into one flush at End(), which is what the 11 ms was.
+			const Bool savedShadow = m_textShadow;
+			if ((m_textShadow || m_textOutline) && drawLabelsLayered()) {
+				// drawn through the offscreen layer
+			} else {
+				// Without the layer an outline falls back to the per-string shadow.
+				m_textShadow = savedShadow || m_textOutline;
+				if (m_labelSprite != NULL && SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_ALPHABLEND))) {
+					m_labelSpriteOpen = true;
+					drawLabels(NULL);
+					m_labelSpriteOpen = false;
+					m_labelSprite->End();
+				} else {
+					drawLabels(NULL);
+				}
+				m_textShadow = savedShadow;
+			}
+#else
+			// D3D8 has no label layer, so an outline shows as the per-string shadow.
+			const Bool savedShadow = m_textShadow;
+			m_textShadow = savedShadow || m_textOutline;
+			drawLabels(NULL);
+			m_textShadow = savedShadow;
+#endif
+		}
+		if (WBPerf::isEnabled()) {
+			WBPerf::addSection("labels", WBPerf::nowMs() - labelsStart);
+		}
+
+		// Drag-select box, in-frame so it shows in every label mode and on D3D9.
+		// A subtract box (Shift+Ctrl+drag) draws red so the mode is obvious while dragging.
+		if (m_doRectFeedback) {
+			drawFrameRect2D(DX8Wrapper::_Get_D3D_Device8(), m_feedbackBox,
+				m_rectFeedbackSubtract ? 0xFFFF3030 : 0xFFFFA500);
+		}
+
+		// Ruler length/diameter readout, drawn next to the ruler. Done here (inside the
+		// D3D frame, via m3DFont) so it doesn't strobe -- the ruler line itself is drawn
+		// in DrawObject::drawRulerFeedback(). Independent of the label-renderer mode.
+		if (hasFrameFont() && m_doRulerFeedback != RULER_NONE) {
+			CString rulerText;
+			Coord3D labelWorld;
+			const TCHAR *rulerUnits = RulerTool::getUseMeters() ? _T("m") : _T("ft");
+			if (m_doRulerFeedback == RULER_CIRCLE) {
+				rulerText.Format(_T("Diameter: %.1f %s"), RulerTool::toDisplayUnits(m_rulerLength * 2.0f), rulerUnits);
+				labelWorld = m_rulerPoints[0];
+			} else {
+				rulerText.Format(_T("Length: %.1f %s"), RulerTool::toDisplayUnits(m_rulerLength), rulerUnits);
+				// Midpoint of the line segment.
+				labelWorld.x = 0.5f * (m_rulerPoints[0].x + m_rulerPoints[1].x);
+				labelWorld.y = 0.5f * (m_rulerPoints[0].y + m_rulerPoints[1].y);
+				labelWorld.z = 0.5f * (m_rulerPoints[0].z + m_rulerPoints[1].z);
+			}
+
+			CPoint labelPt;
+			docToViewCoords(labelWorld, &labelPt);
+			// Nudge up a little so the text sits above the line, not on it.
+			RECT rct = { labelPt.x + 6, labelPt.y - 22, labelPt.x + 306, labelPt.y + 8 };
+			fontDrawText(
+				rulerText,
+				rulerText.GetLength(),
+				&rct,
+				DT_LEFT | DT_TOP | DT_NOCLIP | DT_SINGLELINE,
+				0xFF00FF00 // Green, matching the ruler line
+			);
+		}
 
 		WW3D::End_Render();
 	}
 	--m_updateCount;
+	WBPerf::frameEnd();
 }
 
 // ----------------------------------------------------------------------------
 BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	//{{AFX_MSG_MAP(WbView3d)
+	ON_WM_SETFOCUS()
+	ON_WM_KILLFOCUS()
 	ON_WM_CREATE()
 	ON_WM_PAINT()
 	ON_WM_SIZE()
@@ -2161,6 +5492,10 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_WM_SHOWWINDOW()
 	ON_COMMAND(ID_VIEW_SHOWWIREFRAME, OnViewShowwireframe)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWWIREFRAME, OnUpdateViewShowwireframe)
+	ON_COMMAND(ID_VIEW_SHOWFULLWIREFRAME, OnViewShowfullwireframe)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWFULLWIREFRAME, OnUpdateViewShowfullwireframe)
+	ON_COMMAND(ID_VIEW_SHOWSELECTIONOVERLAY, OnViewShowselectionoverlay)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWSELECTIONOVERLAY, OnUpdateViewShowselectionoverlay)
 	ON_WM_ERASEBKGND()
 	ON_COMMAND(ID_VIEW_SHOWENTIRE3DMAP, OnViewShowentire3dmap)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWENTIRE3DMAP, OnUpdateViewShowentire3dmap)
@@ -2179,8 +5514,17 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWSHADOWS, OnUpdateViewShowshadows)
 	ON_COMMAND(ID_EDIT_SHADOWS, OnEditShadows)
 	ON_COMMAND(ID_EDIT_MAPSETTINGS, OnEditMapSettings)
+	ON_COMMAND(ID_REMOVEBOUNDARIES, OnClearAllExtraBoundaries)
 	ON_COMMAND(ID_VIEW_SHOWIMPASSABLEAREAS, OnViewShowimpassableareas)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWIMPASSABLEAREAS, OnUpdateViewShowimpassableareas)
+	ON_COMMAND(ID_DEBUG_PATHFIND_CLIFF, OnDebugPathfindCliff)
+	ON_UPDATE_COMMAND_UI(ID_DEBUG_PATHFIND_CLIFF, OnUpdateDebugPathfindCliff)
+	ON_COMMAND(ID_DEBUG_PATHFIND_WATER, OnDebugPathfindWater)
+	ON_UPDATE_COMMAND_UI(ID_DEBUG_PATHFIND_WATER, OnUpdateDebugPathfindWater)
+	ON_COMMAND(ID_DEBUG_PATHFIND_OBJECTS, OnDebugPathfindObjects)
+	ON_UPDATE_COMMAND_UI(ID_DEBUG_PATHFIND_OBJECTS, OnUpdateDebugPathfindObjects)
+	ON_COMMAND(ID_DEBUG_PATHFIND_PASSABILITY, OnDebugPathfindPassability)
+	ON_UPDATE_COMMAND_UI(ID_DEBUG_PATHFIND_PASSABILITY, OnUpdateDebugPathfindPassability)
 	ON_COMMAND(ID_VIEW_IMPASSABLEAREAOPTIONS, OnImpassableAreaOptions)
 	ON_COMMAND(ID_VIEW_PARTIALMAPSIZE_96X96, OnViewPartialmapsize96x96)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_PARTIALMAPSIZE_96X96, OnUpdateViewPartialmapsize96x96)
@@ -2192,6 +5536,12 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_PARTIALMAPSIZE_128X128, OnUpdateViewPartialmapsize128x128)
 	ON_COMMAND(ID_VIEW_SHOWMODELS, OnViewShowModels)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWMODELS, OnUpdateViewShowModels)
+	ON_COMMAND(ID_VIEW_ANIMATEMODELS, OnViewAnimateModels)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_ANIMATEMODELS, OnUpdateViewAnimateModels)
+	ON_COMMAND(ID_VIEW_BONENAMES, OnViewBoneNames)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_BONENAMES, OnUpdateViewBoneNames)
+	ON_COMMAND(ID_VIEW_LOGBONERESOLUTION, OnViewLogBoneResolution)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LOGBONERESOLUTION, OnUpdateViewLogBoneResolution)
 	ON_COMMAND(ID_VIEW_BOUNDINGBOXES, OnViewBoundingBoxes)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_BOUNDINGBOXES, OnUpdateViewBoundingBoxes)
 	ON_COMMAND(ID_VIEW_SIGHTRANGES, OnViewSightRanges)
@@ -2206,12 +5556,134 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_GARRISONED, OnUpdateViewGarrisoned)
 	ON_COMMAND(ID_VIEW_LAYERS_LIST, OnViewLayersList)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_LAYERS_LIST, OnUpdateViewLayersList)
+	ON_COMMAND(ID_VIEW_MINIMAP, OnViewMinimap)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_MINIMAP, OnUpdateViewMinimap)
+	ON_COMMAND(ID_MINIMAP_SHOWOBJECTS, OnMinimapShowObjects)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_SHOWOBJECTS, OnUpdateMinimapShowObjects)
+	ON_COMMAND(ID_MINIMAP_SHOWROADS, OnMinimapShowRoads)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_SHOWROADS, OnUpdateMinimapShowRoads)
+	ON_COMMAND(ID_MINIMAP_SHOWBORDER, OnMinimapShowBorder)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_SHOWBORDER, OnUpdateMinimapShowBorder)
+	ON_COMMAND(ID_MINIMAP_FULLEXTENT, OnMinimapFullExtent)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_FULLEXTENT, OnUpdateMinimapFullExtent)
+	ON_COMMAND(ID_MINIMAP_CULLOBJECTS, OnMinimapCullObjects)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_CULLOBJECTS, OnUpdateMinimapCullObjects)
+	ON_COMMAND(ID_MINIMAP_SNAP45, OnMinimapSnap45)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_SNAP45, OnUpdateMinimapSnap45)
+	ON_COMMAND(ID_MINIMAP_REFRESH_OFF, OnMinimapRefreshOff)
+	ON_COMMAND(ID_MINIMAP_REFRESH_16, OnMinimapRefresh16)
+	ON_COMMAND(ID_MINIMAP_REFRESH_33, OnMinimapRefresh33)
+	ON_COMMAND(ID_MINIMAP_REFRESH_100, OnMinimapRefresh100)
+	ON_COMMAND(ID_MINIMAP_REFRESH_250, OnMinimapRefresh250)
+	ON_COMMAND(ID_MINIMAP_REFRESH_1000, OnMinimapRefresh1000)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_OFF, OnUpdateMinimapRefreshOff)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_16, OnUpdateMinimapRefresh16)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_33, OnUpdateMinimapRefresh33)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_100, OnUpdateMinimapRefresh100)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_250, OnUpdateMinimapRefresh250)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_REFRESH_1000, OnUpdateMinimapRefresh1000)
+	ON_COMMAND(ID_MINIMAP_RES_256, OnMinimapRes256)
+	ON_COMMAND(ID_MINIMAP_RES_512, OnMinimapRes512)
+	ON_COMMAND(ID_MINIMAP_RES_1024, OnMinimapRes1024)
+	ON_COMMAND(ID_MINIMAP_RES_2048, OnMinimapRes2048)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_RES_256, OnUpdateMinimapRes256)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_RES_512, OnUpdateMinimapRes512)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_RES_1024, OnUpdateMinimapRes1024)
+	ON_UPDATE_COMMAND_UI(ID_MINIMAP_RES_2048, OnUpdateMinimapRes2048)
 	ON_COMMAND(ID_VIEW_SHOWMAPBOUNDARIES, OnViewShowMapBoundaries)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWMAPBOUNDARIES, OnUpdateViewShowMapBoundaries)
+	ON_COMMAND(ID_VIEW_SHOWWAVELINES, OnViewShowWaveLines)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWWAVELINES, OnUpdateViewShowWaveLines)
+	ON_COMMAND(ID_VIEW_RULERGRID, OnViewShowRulerGrid)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_RULERGRID, OnUpdateViewShowRulerGrid)
+	ON_COMMAND(ID_VIEW_SHOWTRACINGOVERLAY, OnViewShowTracingOverlay)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWTRACINGOVERLAY, OnUpdateViewShowTracingOverlay)
+	ON_COMMAND(ID_VIEW_SHOWSUBDRAW, OnViewShowSubDraw)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWSUBDRAW, OnUpdateViewShowSubDraw)
+	ON_COMMAND(ID_VIEW_SHOWFULLMODEL, OnViewShowFullModel)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWFULLMODEL, OnUpdateViewShowFullModel)
+	ON_COMMAND(ID_VIEW_SHOWBASERADIUS, OnViewShowBaseRadius)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWBASERADIUS, OnUpdateViewShowBaseRadius)
 	ON_COMMAND(ID_VIEW_SHOWAMBIENTSOUNDS, OnViewShowAmbientSounds)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWAMBIENTSOUNDS, OnUpdateViewShowAmbientSounds)
-  ON_COMMAND(ID_VIEW_SHOW_SOUND_CIRCLES, OnViewShowSoundCircles)
-  ON_UPDATE_COMMAND_UI(ID_VIEW_SHOW_SOUND_CIRCLES, OnUpdateViewShowSoundCircles)
+	ON_COMMAND(ID_VIEW_LISTEN_ENABLED, OnViewListenEnabled)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LISTEN_ENABLED, OnUpdateViewListenEnabled)
+	ON_COMMAND(ID_VIEW_LISTEN_PERMANENT, OnViewListenPermanent)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LISTEN_PERMANENT, OnUpdateViewListenPermanent)
+	ON_COMMAND(ID_VIEW_LISTEN_ALL, OnViewListenAll)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LISTEN_ALL, OnUpdateViewListenAll)
+	ON_COMMAND(ID_VIEW_LISTEN_NONE, OnViewListenNone)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LISTEN_NONE, OnUpdateViewListenNone)
+	ON_COMMAND(ID_VIEW_LISTEN_TOGGLE, OnViewListenToggle)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_LISTEN_TOGGLE, OnUpdateViewListenToggle)
+	ON_COMMAND(ID_VIEW_SHOWPLAYINGSOUNDS, OnViewShowPlayingSounds)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOWPLAYINGSOUNDS, OnUpdateViewShowPlayingSounds)
+	ON_COMMAND(ID_VIEW_SHOW_SOUND_CIRCLES, OnViewShowSoundCircles)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_SHOW_SOUND_CIRCLES, OnUpdateViewShowSoundCircles)
+
+
+	ON_COMMAND(ID_LOD_MODE_1, OnWindowLODMode1)
+	ON_UPDATE_COMMAND_UI(ID_LOD_MODE_1, OnUpdateOnWindowLODMode1)
+	ON_COMMAND(ID_LOD_MODE_2, OnWindowLODMode2)
+	ON_UPDATE_COMMAND_UI(ID_LOD_MODE_2, OnUpdateOnWindowLODMode2)
+	ON_COMMAND(ID_LOD_MODE_3, OnWindowLODMode3)
+	ON_UPDATE_COMMAND_UI(ID_LOD_MODE_3, OnUpdateOnWindowLODMode3)
+
+	ON_COMMAND(ID_MSAA_NONE, OnMSAANone)
+	ON_UPDATE_COMMAND_UI(ID_MSAA_NONE, OnUpdateMSAANone)
+	ON_COMMAND(ID_MSAA_2X, OnMSAA2X)
+	ON_UPDATE_COMMAND_UI(ID_MSAA_2X, OnUpdateMSAA2X)
+	ON_COMMAND(ID_MSAA_4X, OnMSAA4X)
+	ON_UPDATE_COMMAND_UI(ID_MSAA_4X, OnUpdateMSAA4X)
+	ON_COMMAND(ID_MSAA_8X, OnMSAA8X)
+	ON_UPDATE_COMMAND_UI(ID_MSAA_8X, OnUpdateMSAA8X)
+	ON_COMMAND(ID_VIEW_RESETDEVICE, OnResetDevice)
+	ON_COMMAND(ID_TEXFILTER_DEFAULT, OnTexFilterDefault)
+	ON_UPDATE_COMMAND_UI(ID_TEXFILTER_DEFAULT, OnUpdateTexFilterDefault)
+	ON_COMMAND(ID_TEXFILTER_ANISO16X, OnTexFilterAniso16X)
+	ON_UPDATE_COMMAND_UI(ID_TEXFILTER_ANISO16X, OnUpdateTexFilterAniso16X)
+	ON_COMMAND(ID_FX_SHADOWMAP, OnFxShadowMap)
+	ON_UPDATE_COMMAND_UI(ID_FX_SHADOWMAP, OnUpdateFxShadowMap)
+	ON_COMMAND(ID_FX_BLOOM, OnFxBloom)
+	ON_UPDATE_COMMAND_UI(ID_FX_BLOOM, OnUpdateFxBloom)
+	ON_COMMAND(ID_FX_EFFECTSHADERS, OnFxEffectShaders)
+	ON_UPDATE_COMMAND_UI(ID_FX_EFFECTSHADERS, OnUpdateFxEffectShaders)
+	ON_COMMAND(ID_FX_HQSKY, OnFxHQSky)
+	ON_UPDATE_COMMAND_UI(ID_FX_HQSKY, OnUpdateFxHQSky)
+	ON_COMMAND(ID_FX_NORMALMAPS, OnFxNormalMaps)
+	ON_UPDATE_COMMAND_UI(ID_FX_NORMALMAPS, OnUpdateFxNormalMaps)
+	ON_COMMAND(ID_FX_HEIGHTBLEND, OnFxHeightBlend)
+	ON_UPDATE_COMMAND_UI(ID_FX_HEIGHTBLEND, OnUpdateFxHeightBlend)
+	ON_COMMAND(ID_FX_SPECULAR, OnFxSpecular)
+	ON_UPDATE_COMMAND_UI(ID_FX_SPECULAR, OnUpdateFxSpecular)
+	ON_COMMAND(ID_TEXT_SHADOW, OnTextShadow)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_SHADOW, OnUpdateTextShadow)
+	ON_COMMAND(ID_TEXT_OUTLINE, OnTextOutline)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_OUTLINE, OnUpdateTextOutline)
+	ON_COMMAND(ID_TEXT_ANTIALIAS, OnTextAntialias)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_ANTIALIAS, OnUpdateTextAntialias)
+	ON_COMMAND(ID_TEXT_ANCHOR_DEFAULT, OnTextAnchorDefault)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_ANCHOR_DEFAULT, OnUpdateTextAnchorDefault)
+	ON_COMMAND(ID_TEXT_ANCHOR_NEW, OnTextAnchorNew)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_ANCHOR_NEW, OnUpdateTextAnchorNew)
+	ON_COMMAND(ID_TEXT_RENDERER_OLD, OnTextRendererOld)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_RENDERER_OLD, OnUpdateTextRendererOld)
+	ON_COMMAND(ID_TEXT_RENDERER_NEW, OnTextRendererNew)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_RENDERER_NEW, OnUpdateTextRendererNew)
+	ON_COMMAND(ID_TEXT_RENDERER_ATLAS, OnTextRendererAtlas)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_RENDERER_ATLAS, OnUpdateTextRendererAtlas)
+	ON_COMMAND(ID_TEXT_LABELCULL_OFF, OnTextLabelCullOff)
+	ON_COMMAND_RANGE(ID_FPSCAP_30, ID_FPSCAP_UNCAPPED, OnFpsCap)
+	ON_UPDATE_COMMAND_UI_RANGE(ID_FPSCAP_30, ID_FPSCAP_UNCAPPED, OnUpdateFpsCap)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_OFF, OnUpdateTextLabelCullOff)
+	ON_COMMAND(ID_TEXT_LABELCULL_NEAR, OnTextLabelCullNear)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_NEAR, OnUpdateTextLabelCullNear)
+	ON_COMMAND(ID_TEXT_LABELCULL_MEDIUM, OnTextLabelCullMedium)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_MEDIUM, OnUpdateTextLabelCullMedium)
+	ON_COMMAND(ID_TEXT_LABELCULL_FAR, OnTextLabelCullFar)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_LABELCULL_FAR, OnUpdateTextLabelCullFar)
+
+	ON_COMMAND(ID_REVALIDATE_RENDER, OnRefreshSceneObjects)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -2245,7 +5717,7 @@ void WbView3d::initWW3D()
 {
 	// only want to do once per instance, but do lazily.
 	if (!m_ww3dInited) {
-
+		
 
 
 		m_ww3dInited = true;
@@ -2255,78 +5727,89 @@ void WbView3d::initWW3D()
 		WW3D::Set_Prelit_Mode(WW3D::PRELIT_MODE_VERTEX);
 
 		initAssets();
-		WW3D::Init(m_hWnd);
+		WW3D::Init(m_hWnd);	
 		WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
 		WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
 
 		bogusTacticalView.setWidth(m_actualWinSize.x);
 		bogusTacticalView.setHeight(m_actualWinSize.y);
 		bogusTacticalView.setOrigin(0,0);
-		if (WW3D::Set_Render_Device(0, m_actualWinSize.x, m_actualWinSize.y, 32, true, true) != WW3D_ERROR_OK)
+		if (WW3D::Set_Render_Device(0, m_actualWinSize.x, m_actualWinSize.y, 32, true, true) != WW3D_ERROR_OK) 
 		{
 			// Getting the device at the default bit depth (32) didn't work, so try
 			// getting a 16 bit display.  (Voodoo 1-3 only supported 16 bit.) jba.
-			if (WW3D::Set_Render_Device(0, m_actualWinSize.x, m_actualWinSize.y, 16, true, true) != WW3D_ERROR_OK)
+			if (WW3D::Set_Render_Device(0, m_actualWinSize.x, m_actualWinSize.y, 16, true, true) != WW3D_ERROR_OK) 
 			{
 				DEBUG_CRASH(("Couldn't set render device."));
 			}
 		}
 
-		IDirect3DDevice8* pDev = DX8Wrapper::_Get_D3D_Device8();
-		if (pDev) {
+		createLabelFont();
+		if (m_labelRenderer == 0 && m3DFont == NULL) {
+			m_labelRenderer = 2;	// Old needs the D3DX font; Atlas is its in-frame equivalent
+		}
 
-//			CDC* pDC = GetDC();
-			LOGFONT logFont;
-			logFont.lfHeight = 20;
-			logFont.lfWidth = 0;
-			logFont.lfEscapement = 0;
-			logFont.lfOrientation = 0;
-			logFont.lfWeight = FW_REGULAR;
-			logFont.lfItalic = FALSE;
-			logFont.lfUnderline = FALSE;
-			logFont.lfStrikeOut = FALSE;
-			logFont.lfCharSet = ANSI_CHARSET;
-			logFont.lfOutPrecision = OUT_DEFAULT_PRECIS;
-			logFont.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-			logFont.lfQuality = DEFAULT_QUALITY;
-			logFont.lfPitchAndFamily = DEFAULT_PITCH;
-			strcpy(logFont.lfFaceName, "Arial");
-
-			HFONT hFont = CreateFontIndirect(&logFont);
-			if (hFont) {
-				D3DXCreateFont(pDev, hFont, &m3DFont);
-				DeleteObject(hFont);
-			} else {
-				m3DFont = nullptr;
-			}
-
-		} else {
-			m3DFont = nullptr;
+		int texFilterMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TexFilterMode", 0);
+		if (texFilterMode == 1) {
+			WW3D::Set_Anisotropy_Level(16);
+			WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
 		}
 
 		WW3D::Enable_Static_Sort_Lists(true);
 		WW3D::Set_Thumbnail_Enabled(false);
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
 
+		// FX Shaders: the game creates these in W3DDisplay::init / W3DTerrainVisual::init, which
+		// WorldBuilder never runs. The shadow map comes first because the shader manager picks its
+		// depth shaders from the map's format. Shockwaves, laser glow and ambient occlusion are left
+		// out: the first two only come from game Drawables / FXLists, and the occlusion pass would
+		// darken every one of the extra scene renders below.
+		if (TheW3DShadowMap == nullptr)
+		{
+			TheW3DShadowMap = new W3DShadowMap;
+			TheW3DShadowMap->init();
+		}
 		W3DShaderManager::init();
+		if (TheW3DBloom == nullptr)
+		{
+			TheW3DBloom = new W3DBloom;
+		}
+		if (TheW3DSoftParticles == nullptr)
+		{
+			TheW3DSoftParticles = new W3DSoftParticles;
+		}
+		if (TheW3DSkyClouds == nullptr)
+		{
+			TheW3DSkyClouds = new W3DSkyClouds;
+		}
 		init3dScene();
 		m_layer = new LayerClass( m_scene, m_camera );
 		m_buildLayer = new LayerClass( m_baseBuildScene, m_camera );
 		m_intersector = new IntersectionClass();
 		m_drawObject = new DrawObject();
 		m_overlayScene->Add_Render_Object(m_drawObject);
+		reloadIconColors();		// load EntityIconColor profile values once (not per redraw)
 
 #if 1
 		TheWritableGlobalData->m_useShadowVolumes = true;
 		TheWritableGlobalData->m_useShadowDecals = true;
+		// TheWritableGlobalData->m_useTreeSway = false;
 		TheWritableGlobalData->m_enableBehindBuildingMarkers = false;	//this is only for the game.
-		if (TheW3DShadowManager==nullptr)
+		TheWritableGlobalData->m_textureReductionFactor = 0;
+		if (TheW3DShadowManager==NULL)
 		{	TheW3DShadowManager = new W3DShadowManager;
- 			TheW3DShadowManager->init();
+ 			TheW3DShadowManager->init();			
 		}
 #endif
 		updateLights();
 		resetRenderObjects();
+
+		// Wave editor: create the water-track system so the Wave Editor tool can
+		// place/render/save waves directly in WorldBuilder (no game launch).
+		if (!TheWaterTracksRenderSystem) {
+			TheWaterTracksRenderSystem = new WaterTracksRenderSystem;
+			TheWaterTracksRenderSystem->init();
+		}
 	}
 }
 
@@ -2334,99 +5817,397 @@ void WbView3d::initWW3D()
 // WbView3d message handlers
 
 // ----------------------------------------------------------------------------
-int WbView3d::OnCreate(LPCREATESTRUCT lpCreateStruct)
+int WbView3d::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
 	if (WbView::OnCreate(lpCreateStruct) == -1)
 		return -1;
-
+	
 	// install debug callbacks
 	WWDebug_Install_Message_Handler(WWDebug_Message_Callback);
 	WWDebug_Install_Assert_Handler(WWAssert_Callback);
 
-	m_timer = SetTimer(0, UPDATE_TIME, nullptr);
+	m_timer = SetTimer(0, UPDATE_TIME, NULL);
 
 	initWW3D();
+
+	// Live particle preview: a startup-only opt-in (read once here, after the asset/particle
+	// subsystems exist). It is NOT toggled at runtime -- standing the particle runtime up/down
+	// live proved fragile, so the checkbox only writes the profile flag and asks for a restart;
+	// this is where the flag actually takes effect. Default OFF.
+	if (WBQtObject_GetRenderParticles() != 0)
+	{
+		WBParticleRuntime::setEnabled(true);
+	}
+
 	TheWritableGlobalData->m_useCloudMap = AfxGetApp()->GetProfileInt("GameOptions", "cloudMap", 0);
 	AfxGetApp()->WriteProfileInt("GameOptions", "cloudMap", TheGlobalData->m_useCloudMap);	// Just in case it wasn't already there
  	m_partialMapSize = AfxGetApp()->GetProfileInt("GameOptions", "partialMapSize", 97);
 
 	m_showLayersList = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", 0);
 	m_showMapBoundaries = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowMapBoundaries", 0);
+	m_showWaveLines = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWaveLines", 1);	// default ON
 	m_showAmbientSounds = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowAmbientSounds", 0);
-  m_showSoundCircles = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSoundCircles", 0);
+	m_showPlayingSounds = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowPlayingSounds", 0);
+	// View > Listen To Map. Default OFF: playing a map's ambient sounds is opt-in, and it is the
+	// only thing that makes WB pump the audio engine at all (see OnTimer).
+	m_listenMode = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ListenToMap", WB_LISTEN_NONE);
+	if (m_listenMode < WB_LISTEN_NONE || m_listenMode > WB_LISTEN_ALL)
+	{
+		m_listenMode = WB_LISTEN_NONE;
+	}
+	m_showBaseRadius = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowBaseRadius", 1);
+	m_showSubDraw = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSubDraw", 1);
+	// Default OFF: showing an object's spawned crew changes what the map LOOKS like without
+	// changing what it IS, so it must be opted into rather than surprising anyone.
+	m_showFullModel = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowFullModel", 0);
+	// Default OFF: looping animations keep the viewport repainting every frame (see the
+	// idle-skip in OnTimer), so this is opt-in rather than a silent perf cost.
+	m_animateModels = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AnimateModels", 0);
+	m_showBoneNames = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowBoneNames", 0);
+	m_logBoneResolution = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LogBoneResolution", 0);
+	m_showSoundCircles = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSoundCircles", 0);
+	m_showRulerGrid = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowRulerGrid", 1);
+	m_showTracingOverlay = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTracingOverlay", 0);
+
+	// Load persisted tracing-overlay appearance (opacity + interpolation) from the
+	// [Appearance] section and push it into DrawObject so the overlay is correct
+	// before the settings dialog is ever opened.
+	TracingOverlayOptions::loadAndApplySettings();
+
+
+	// The tracing overlay is per-map (data\editor\<mapname>.png or .dds). If the
+	// setting was left on but no overlay file exists for this map, warn and clear
+	// it so we don't draw nothing.
+	if (DrawObject::resolveTracingOverlayPath().isEmpty())
+	{
+		if(m_showTracingOverlay){
+			AsciiString base = DrawObject::getTracingOverlayBaseName();
+
+			// PNG can be any size, so it gets this map's exact extents; DDS wants
+			// power-of-two, so it gets those extents rounded up.
+			AsciiString pngSuffix;
+			AsciiString ddsSuffix;
+			Int pngW, pngH, ddsW, ddsH;
+			if (DrawObject::getTracingOverlayRecommendedSize(pngW, pngH, ddsW, ddsH)) {
+				pngSuffix.format("   (recommended %d x %d)", pngW, pngH);
+				ddsSuffix.format("   (recommended %d x %d, power of two)", ddsW, ddsH);
+			}
+
+			AsciiString msg;
+			msg.format(
+				"Missing tracing overlay texture:\n\n"
+				"    %s.png%s\n"
+				"    %s.dds%s\n\n"
+				"The tracing overlay will not be displayed until a PNG or DDS file "
+				"with one of these names is present.",
+				base.str(), pngSuffix.str(), base.str(), ddsSuffix.str());
+			::MessageBeep(MB_ICONERROR);
+			AfxMessageBox(msg.str(), MB_ICONERROR | MB_OK);
+		}
+		m_showTracingOverlay = 0;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTracingOverlay", m_showTracingOverlay ? 1 : 0);
+	}
+
+	if (m_showObjects &&
+		::AfxGetApp()->GetProfileInt(TOOLTIP_SECTION, "ShowObjectIconsWarningShown", 0) == 0)
+	{
+		AfxMessageBox(
+			"Showing ALL object icons can noticeably slow down rendering performance.\n\n"
+			"You may want to disable this option, since the updated version now allows "
+			"you to rotate objects simply by selecting them, no need to display all icons.",
+			MB_OK | MB_ICONWARNING
+		);
+
+		::AfxGetApp()->WriteProfileInt(TOOLTIP_SECTION, "ShowObjectIconsWarningShown", 1);
+	}
+
 
 	DrawObject::setDoBoundaryFeedback(m_showMapBoundaries);
+	DrawObject::setDoWaveFeedback(m_showWaveLines);
+	DrawObject::setDoGridFeedback(m_showRulerGrid);
 	DrawObject::setDoAmbientSoundFeedback(m_showAmbientSounds);
+	DrawObject::setDoPlayingSoundFeedback(m_showPlayingSounds);
+	DrawObject::setDoTracingOverlayFeedback(m_showTracingOverlay);
+	DrawObject::setDoBaseRadiusFeedback(m_showBaseRadius);
+
+	startEditTimer();
+
 	return 0;
 }
 
 // ----------------------------------------------------------------------------
-void WbView3d::OnPaint()
-{
+void WbView3d::OnPaint() 
+{	
 
 	PAINTSTRUCT ps;
 	HDC hdc = ::BeginPaint(m_hWnd, &ps);
+	if (!m_firstPaint && deferPaintForFpsCap()) {
+		::EndPaint(m_hWnd, &ps);
+		return;
+	}
 	if (!m_firstPaint) {
 		redraw();
 	}
-	drawLabels(hdc);
+	// New (GDI) mode only: draw labels with raw ::TextOut onto the window HDC, after
+	// the D3D frame has been presented by redraw()/End_Render(). This is what strobes
+	// (the next flip wipes it) -- accepted trade-off. Old (D3DX) mode draws labels
+	// inside the frame in render(), so we must NOT also draw them here. The D3D9
+	// flip model never shows GDI on the window, so that build has no GDI mode.
+#if !defined(BUILD_WITH_D3D9)
+	if (m_labelRenderer == 1) {
+		// GDI has no outline pass, so an outline shows as the shadow.
+		const Bool savedShadow = m_textShadow;
+		m_textShadow = savedShadow || m_textOutline;
+		drawLabels(hdc);
+		m_textShadow = savedShadow;
+	}
+#endif
 	::EndPaint(m_hWnd, &ps);
+	// Record the view state we just painted, so OnTimer can skip timer repaints until
+	// something actually changes (all renderer modes -- see the idle skip in OnTimer;
+	// in GDI mode this also suppresses the strobe-inducing buffer flip). Not on the
+	// first paint: redraw() was skipped, so nothing was actually rendered yet.
+	if (!m_firstPaint) {
+		m_lastGdiPaintKey = buildLabelKey();
+		m_haveGdiPaintKey = true;
+	}
 	if (m_firstPaint) {
 		CMainFrame::GetMainFrame()->adjustWindowSize();
 		m_firstPaint = false;
 	}
 	DX8Wrapper::SetCleanupHook(this);
-
+	
 }
 
-//////////////////////////////////////////////////////////////////////////
-/// Draw a (not very good) circle into the hdc
-void WbView3d::drawCircle( HDC hdc, const Coord3D & centerPoint, Real radius, COLORREF color )
+Real getWaterHeightIfUnderwaterx(Real x, Real y)
 {
-  CPoint rulerPoints[2];
-  Coord3D pnt;
-  Real angle = 0.0f;
-  Real inc = PI/4.0f;
+    ICoord3D iLoc;
+    iLoc.x = (floor(x + 0.5f));
+    iLoc.y = (floor(y + 0.5f));
+    iLoc.z = 0;
 
-  // Create and select a correctly colored pen. Remember the old one so that it can be restored.
-  HPEN pen = CreatePen(PS_SOLID, 2, color);
-  HPEN penOld = (HPEN)SelectObject(hdc, pen);
+    for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+        if (!pTrig->isWaterArea()) {
+            continue;
+        }
 
+        if (pTrig->pointInTrigger(iLoc)) {
+            Real waterZ = pTrig->getPoint(0)->z;
+            Real terrainZ = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+            if (terrainZ < waterZ) {
+                return waterZ;
+            }
+        }
+    }
 
-  // Get the starting point on the circumference of the circle.
-  pnt.x = centerPoint.x + radius * (Real)cosf(angle);
-  pnt.y = centerPoint.y + radius * (Real)sinf(angle);
-  pnt.z = centerPoint.z;
-  docToViewCoords(pnt, &rulerPoints[0]);
+    return -FLT_MAX; // Not underwater
+}
 
-  angle += inc;
-  for(; angle <= 2.0f * PI; angle += inc) {
-		// Get a new point on the circumference of the circle.
-		pnt.x = centerPoint.x + radius * (Real)cosf(angle);
-    pnt.y = centerPoint.y + radius * (Real)sinf(angle);
-    pnt.z = centerPoint.z;
+void WbView3d::drawCircle(HDC hdc, const Coord3D& centerPoint, Real radius, COLORREF color)
+{
+    CPoint rulerPoints[2];
+    Coord3D pnt;
+    Real angle = 0.0f;
+    Real inc = PI / 24.0f; // smoother circle
 
-    docToViewCoords(pnt, &rulerPoints[1]);
+    // Create and select a correctly colored pen. Remember the old one so that it can be restored.
+    HPEN pen = CreatePen(PS_SOLID, 2, color);
+    HPEN penOld = (HPEN)SelectObject(hdc, pen);
 
-    ::Polyline(hdc, rulerPoints, 2);
+    // Get the starting point on the circumference of the circle.
+    pnt.x = centerPoint.x + radius * cosf(angle);
+    pnt.y = centerPoint.y + radius * sinf(angle);
 
-    // Remember the last point to use as the starting point for the next line.
-    rulerPoints[0].x = rulerPoints[1].x;
-    rulerPoints[0].y = rulerPoints[1].y;
-  }
+    // Sample terrain height
+    pnt.z = TheTerrainRenderObject->getHeightMapHeight(pnt.x, pnt.y, NULL);
 
-  // Restore previous pen.
-  SelectObject(hdc, penOld);
-  // Delete new pen.
-  DeleteObject(pen);
+    // Optional: Adjust for water if enabled
+    if (m_showWater) {
+        Real waterHeight = getWaterHeightIfUnderwaterx(pnt.x, pnt.y);
+        if (waterHeight != -FLT_MAX) {
+            pnt.z = waterHeight + 4.5f;
+        }
+    }
+
+    docToViewCoords(pnt, &rulerPoints[0]);
+
+    angle += inc;
+    for (; angle <= 2.0f * PI + 0.001f; angle += inc) {
+        // Calculate next point on circle
+        pnt.x = centerPoint.x + radius * cosf(angle);
+        pnt.y = centerPoint.y + radius * sinf(angle);
+
+        // Sample terrain height
+        pnt.z = TheTerrainRenderObject->getHeightMapHeight(pnt.x, pnt.y, NULL);
+
+        // Optional: Adjust for water if needed
+        if (m_showWater) {
+            Real waterHeight = getWaterHeightIfUnderwaterx(pnt.x, pnt.y);
+            if (waterHeight != -FLT_MAX) {
+                pnt.z = waterHeight + 4.5f;
+            }
+        }
+
+        docToViewCoords(pnt, &rulerPoints[1]);
+
+        ::Polyline(hdc, rulerPoints, 2); // draw the segment
+
+        // Prepare next segment
+        rulerPoints[0] = rulerPoints[1];
+    }
+
+    SelectObject(hdc, penOld);
+    DeleteObject(pen);
 }
 
 
-void WbView3d::drawLabels()
+
+void WbView3d::startEditTimer()
+{
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc) {
+		DEBUG_LOG(("Map Name: %s\n", pDoc->getMapPath()));
+	}
+
+    if (!m_isTimerRunning) {
+        m_editStartTime = ::GetTickCount();
+        m_isTimerRunning = true;
+    }
+}
+
+void WbView3d::pauseEditTimer()
+{
+    if (m_isTimerRunning) {
+        DWORD currentTime = ::GetTickCount();
+        m_totalEditTime += (currentTime - m_editStartTime);
+        m_isTimerRunning = false;
+    }
+}
+
+void WbView3d::resetEditTimer()
+{
+    m_totalEditTime = 0;
+    m_editStartTime = ::GetTickCount();
+    m_isTimerRunning = true;
+}
+
+DWORD WbView3d::getEditTimeInSeconds()
+{
+    DWORD totalTime = m_totalEditTime;
+    
+    if (m_isTimerRunning) {
+        DWORD currentTime = ::GetTickCount();
+        totalTime += (currentTime - m_editStartTime);
+    }
+    
+    return totalTime / 1000; // Convert milliseconds to seconds
+}
+
+AsciiString WbView3d::formatEditTime()
+{
+    DWORD totalSeconds = getEditTimeInSeconds();
+    
+    DWORD hours = totalSeconds / 3600;
+    DWORD minutes = (totalSeconds % 3600) / 60;
+    DWORD seconds = totalSeconds % 60;
+    
+    char buffer[64];
+    sprintf(buffer, "Total Edit Time: %02d:%02d:%02d", hours, minutes, seconds);
+    
+    return AsciiString(buffer);
+}
+
+void WbView3d::setEditTime(DWORD seconds)
+{
+	resetEditTimer();
+	m_totalEditTime = seconds * 1000; // Convert seconds to milliseconds
+	startEditTimer();
+}
+
+// --- viewport-label vertex-batch cache --------------------------------------
+
+Bool WbView3d::LabelCacheKey::operator==(const LabelCacheKey &o) const
+{
+	for (int i = 0; i < 12; ++i)
+		if (camXform[i] != o.camXform[i]) return false;
+	return winW == o.winW && winH == o.winH && lod == o.lod &&
+		showNames == o.showNames && showModels == o.showModels &&
+		showWaypoints == o.showWaypoints && showNamesExtra == o.showNamesExtra &&
+		showPolygonTriggers == o.showPolygonTriggers &&
+		lightFeedback == o.lightFeedback && timeOfDay == o.timeOfDay &&
+		labelAnchorMode == o.labelAnchorMode && epoch == o.epoch;
+}
+
+// Snapshot everything drawLabels() reads to decide label geometry / positions /
+// colours. If this matches the previous frame, the cached vertex batch can be
+// re-issued instead of rebuilt.
+WbView3d::LabelCacheKey WbView3d::buildLabelKey()
+{
+	LabelCacheKey k;
+	if (m_camera) {
+		const Matrix3D &m = m_camera->Get_Transform();
+		for (int r = 0; r < 3; ++r)
+			for (int c = 0; c < 4; ++c)
+				k.camXform[r * 4 + c] = m[r][c];
+	} else {
+		for (int i = 0; i < 12; ++i) k.camXform[i] = 0.0f;
+	}
+	k.winW = m_actualWinSize.x;
+	k.winH = m_actualWinSize.y;
+	k.lod = m_lod;
+	k.showNames = isNamesVisible();
+	k.showModels = m_showModels;
+	k.showWaypoints = m_showWaypoints;
+	k.showNamesExtra = m_showNamesExtra;
+	k.showPolygonTriggers = m_showPolygonTriggers;
+	k.lightFeedback = m_doLightFeedback;
+	k.timeOfDay = (Int)TheGlobalData->m_timeOfDay;
+	k.labelAnchorMode = m_labelAnchorMode;
+	k.epoch = m_labelEpoch;
+	return k;
+}
+
+void WbView3d::drawLabels(void)
 {
 	CDC * pDC = GetDC();
 	drawLabels(pDC->m_hDC);
 	ReleaseDC(pDC);
+}
+
+void WbView3d::drawStatusLabels(CPoint basePt, int offset, const char* text, void* m3DFont, HDC hdc) {
+	CPoint labelPt = basePt;
+	labelPt.y += offset * 15;
+
+	int red = 0, green = 255, blue = 255;
+	AsciiString label = text;
+
+	// Route by the label-renderer mode (member m_labelRenderer), not by m3DFont
+	// nullness: Old (0) uses the in-frame D3DX font, New (1) uses raw GDI ::TextOut,
+	// Atlas (2) queues glyph quads into the m_fontAtlas batch.
+	if (m_labelRenderer == 2 && !hdc) {
+		UnsignedInt argb = 0xFF000000 | (red << 16) | (green << 8) | blue;
+		m_fontAtlas.drawText(labelPt.x + 1, labelPt.y, label.str(), label.getLength(),
+			argb, m_textShadow);
+	} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
+		if (m_textShadow) {
+			RECT shadowRct = { labelPt.x + 2, labelPt.y + 1, labelPt.x + 2, labelPt.y + 1 };
+			fontDrawText(label.str(), label.getLength(), &shadowRct,
+				DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
+		}
+		DWORD textColor = 0xFF000000 | (red << 16) | (green << 8) | blue;
+		RECT rct = { labelPt.x + 1, labelPt.y, labelPt.x + 1, labelPt.y };
+		fontDrawText(label.str(), label.getLength(), &rct,
+			DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, textColor);
+	} else if (m_labelRenderer == 1 && hdc) {
+		::SetBkMode(hdc, TRANSPARENT);
+		if (m_textShadow) {
+			::SetTextColor(hdc, RGB(0, 0, 0));
+			::TextOut(hdc, labelPt.x + 2, labelPt.y + 1, label.str(), label.getLength());
+		}
+		::SetTextColor(hdc, RGB(red, green, blue));
+		::TextOut(hdc, labelPt.x + 1, labelPt.y, label.str(), label.getLength());
+	}
 }
 
 /// This is actually draw any 2d graphics and/or feedback.
@@ -2434,145 +6215,731 @@ void WbView3d::drawLabels(HDC hdc)
 {
 	Coord3D selectedPos;	//position of selected object
 	Real	selectedRadius=120.0f;	//default distance of lightfeeback model from object
-	selectedPos.x=0;selectedPos.y=0;selectedPos.z=0;
+	selectedPos.x=0;selectedPos.y=0;selectedPos.z=0; 
+
+	// === TEMPORARY DEBUG LABEL: Draw "test" near the mouse cursor with white text and black outline ===
+	// if (PointerTool::isMouseDown() && !PointerTool::isDragSelecting()) {
+	// 	CPoint pt;
+	// 	GetCursorPos(&pt);         // screen coords
+	// 	ScreenToClient(&pt);       // convert to client coords
+
+	// 	const int x = pt.x + 32;   // Increased offset to move text further right
+	// 	const int y = pt.y + 8;
+	// 	const CString text = _T(PointerTool::getLastPointerInfoString());
+	// 	const int len = text.GetLength();
+
+	// 	SetBkMode(hdc, TRANSPARENT);
+
+	// 	// Draw outline (black) around the text
+	// 	SetTextColor(hdc, RGB(0, 0, 0));
+	// 	::TextOut(hdc, x - 1, y,     text, len);
+	// 	::TextOut(hdc, x + 1, y,     text, len);
+	// 	::TextOut(hdc, x,     y - 1, text, len);
+	// 	::TextOut(hdc, x,     y + 1, text, len);
+	// 	::TextOut(hdc, x - 1, y - 1, text, len);
+	// 	::TextOut(hdc, x + 1, y - 1, text, len);
+	// 	::TextOut(hdc, x - 1, y + 1, text, len);
+	// 	::TextOut(hdc, x + 1, y + 1, text, len);
+
+	// 	// Draw main text (white)
+	// 	SetTextColor(hdc, RGB(255, 255, 255));
+	// 	::TextOut(hdc, x, y, text, len);
+	// }
+
+	// DEBUG_LOG(("AutoEdgeOutTool::isActive() = %d\n", AutoEdgeOutTool::isActive() ? 1 : 0));
+	// DEBUG_LOG(("PointerTool::isDragSelecting() = %d\n", PointerTool::isDragSelecting() ? 1 : 0));
+	// DEBUG_LOG(("PointerTool::isMouseDown() = %d\n", PointerTool::isMouseDown() ? 1 : 0));
+
+
+	int totalWorldCash = 0;
 
 	// Draw labels.
-	MapObject *pMapObj;
-	if (isNamesVisible())
-	{
-		for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) {
-			AsciiString name;
-			Coord3D pos;
+	//
+	// The per-object work splits into two parts: a COMPUTE prepass (projection,
+	// terrain-height lookup, property dictionary reads, name/color/status
+	// resolution into one LabelRecord per object) and an EMIT pass (DrawText /
+	// drawStatusLabels). The prepass used to run on the WBParallel worker pool,
+	// but measurement (2026-06) showed it costs ~0.4ms serial vs ~0.2ms parallel
+	// on a 2300-object map while the emit costs 11-21ms -- so it now runs serial,
+	// which also keeps engine getters (Dict, templates, render objects) off
+	// worker threads. (The emit's DrawText cost is intrinsic to D3DX8 -- see the
+	// comment at the emit pass.)
+	struct LabelRecord {
+		bool   project;					// passed projection + LOD cull -> has name/status labels to emit
+		CPoint pt;
+		// up to 4 name labels (base + 3 waypoint paths), precomputed
+		int          nameCount;
+		AsciiString  nameText[4];
+		int          nameSlot[4];		// original i (0..3) -> vertical offset
+		UnsignedInt  nameArgb[4];
+		// status labels (only when m_showNamesExtra), in emit order
+		bool         showStatus;
+		int          statusCount;
+		const char  *statusText[7];
+		// reductions consumed after the loop
+		int          cashPartial;
+		bool         feedback;			// this is the selected object for light feedback
+		Coord3D      selPos;
+		Real         selRadius;
+	};
 
-			if (pMapObj->getFlags() & FLAG_DONT_RENDER) {
-				continue;
+	// Snapshot the object list so the records can be indexed by position.
+	std::vector<MapObject*> objs;
+	for (MapObject *o = MapObject::getFirstMapObject(); o; o = o->getNext())
+		objs.push_back(o);
+	const int objCount = (int)objs.size();
+
+	std::vector<LabelRecord> recs(objCount);
+
+	// Projection target space. The two renderers draw into DIFFERENT pixel spaces:
+	//  - Old (D3DX): label quads are composited into the D3D back buffer, whose size
+	//    is m_actualWinSize (a fixed/forced resolution that the driver stretches to
+	//    fill the window). Project into m_actualWinSize so the quads land correctly.
+	//  - New (GDI): ::TextOut draws into the window's client HDC at 1:1 client pixels.
+	//    Project into the client rect (and offset by its origin) or the text lands
+	//    offset/scaled relative to the stretched 3D image.
+	// Resolved once here; the prepass only reads it.
+	Int projW, projH, projOriginX, projOriginY;
+	if (m_labelRenderer == 1) {
+		CRect rClientProj;
+		GetClientRect(&rClientProj);
+		projW = rClientProj.Width();
+		projH = rClientProj.Height();
+		projOriginX = rClientProj.left;
+		projOriginY = rClientProj.top;
+	} else {
+		projW = m_actualWinSize.x;
+		projH = m_actualWinSize.y;
+		projOriginX = 0;
+		projOriginY = 0;
+	}
+
+	// Look-at point on the terrain for the distant-label cull below. Using the
+	// camera TARGET (where you're aiming on the ground) rather than the camera
+	// POSITION makes the cull zoom-independent: zooming moves the camera in/out
+	// along the view ray but leaves m_cameraTarget on the same ground point, so
+	// the same objects stay labeled at any zoom level.
+	Vector3 camTarget = m_cameraTarget;
+
+	{
+		for (int oi = 0; oi < objCount; ++oi) {
+			MapObject *pMapObj = objs[oi];
+			LabelRecord &rec = recs[oi];
+			rec.project = false;
+			rec.nameCount = 0;
+			rec.showStatus = false;
+			rec.statusCount = 0;
+			rec.cashPartial = 0;
+			rec.feedback = false;
+			rec.selRadius = 0.0f;
+
+			const ThingTemplate *tmpl;
+			tmpl = pMapObj->getThingTemplate();
+			if (tmpl && tmpl->isKindOf(KINDOF_SUPPLY_SOURCE)) {
+				const ModuleInfo& modInfo = tmpl->getBehaviorModuleInfo();
+
+				for (int i = 0; i < modInfo.getCount(); ++i) {
+					if (modInfo.getNthName(i).compare("SupplyWarehouseDockUpdate") == 0) {
+						const ModuleData* moduleData = modInfo.getNthData(i);
+						if (!moduleData) continue;
+
+						const SupplyWarehouseDockUpdateModuleData* dockData =
+							static_cast<const SupplyWarehouseDockUpdateModuleData*>(moduleData);
+
+						int boxes = dockData->m_startingBoxesData;
+
+						// Add to running total (cash value)
+						rec.cashPartial += static_cast<int>(boxes * TheGlobalData->m_baseValuePerSupplyBox);
+					}
+				}
 			}
 
-			if (m_doLightFeedback && pMapObj->isSelected())
-			{	//find out position of selected object in order to use it for light feedback tracking.
-				selectedPos=*pMapObj->getLocation();
-				selectedPos.z = m_heightMapRenderObj->getHeightMapHeight(selectedPos.x, selectedPos.y, nullptr);
-				RenderObjClass *selRobj=pMapObj->getRenderObj();
-				if (selRobj)
-				{
+			if (!isNamesVisible()) continue;
+
+			if (pMapObj->getFlags() & FLAG_DONT_RENDER) continue;
+
+			Coord3D pos = *pMapObj->getLocation();
+			float terrainZ = m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, NULL);
+			pos.z += terrainZ;
+
+			// Label anchor mode. Default (0): anchor at the object's ground point (legacy;
+			// the label then drifts relative to a tall marker as the camera orbits).
+			// New (1): anchor ON the object -- at the vertical center of its visible
+			// representation -- so the label sits on the model and tracks it as the camera
+			// orbits. Covers all viewport-label kinds:
+			//   - objects with a loaded render model -> bounding-sphere center (mid-height);
+			//   - flag-style markers with no model (ambient sounds = ES_AUDIO, and waypoints)
+			//     -> mid-height of the pole drawn by DrawObject (poleHeight 20 -> ~10);
+			//   - anything else flat (e.g. scorches) -> ground anchor.
+			// Reads static geometry/template data only.
+			if (m_labelAnchorMode == 1) {
+				if (RenderObjClass *ro = pMapObj->getRenderObj()) {
+					SphereClass s;
+					ro->Get_Obj_Space_Bounding_Sphere(s);
+					pos.z += s.Center.Z;		// center of the model, not its top
+				} else {
+					const ThingTemplate *att = pMapObj->getThingTemplate();
+					Bool isAudioFlag = att && att->getEditorSorting() == ES_AUDIO;
+					if (isAudioFlag || pMapObj->isWaypoint())
+						pos.z += 15.0f;		// mid-pole (poleHeight 20 / 2 + slack), per DrawObject.cpp
+				}
+			}
+
+			// Light feedback logic
+			if (m_doLightFeedback && pMapObj->isSelected()) {
+				rec.feedback = true;
+				rec.selPos = pos;
+				rec.selPos.z = terrainZ;
+				rec.selRadius = 120.0f;
+
+				if (RenderObjClass *selRobj = pMapObj->getRenderObj()) {
 					SphereClass sphere;
 					selRobj->Get_Obj_Space_Bounding_Sphere(sphere);
-					selectedRadius=sphere.Radius + sphere.Center.Length()+20.0f;
+					rec.selRadius = sphere.Radius + sphere.Center.Length() + 20.0f;
 				}
-
 			}
 
-			if (pMapObj->isWaypoint() && m_showWaypoints) {
+			// Get base name from object properties
+			Bool exists;
+			AsciiString objectDictName = pMapObj->getProperties()->getAsciiString(TheKey_objectName, &exists);
+			AsciiString name;
+
+			Bool isRenderableObject = !(pMapObj->getFlags() & (FLAG_ROAD_FLAGS | FLAG_BRIDGE_FLAGS));
+			if (!objectDictName.isEmpty() && isRenderableObject && (m_showModels || pMapObj->isSelected())) {
+				name = objectDictName;
+			} else if (pMapObj->isWaypoint() && m_showWaypoints) {
 				name = pMapObj->getWaypointName();
-				pos = *pMapObj->getLocation();
-				pos.z = m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, nullptr);
-			} else if (pMapObj->getThingTemplate() && !(pMapObj->getFlags() & (FLAG_ROAD_FLAGS|FLAG_BRIDGE_FLAGS)) &&
-								 pMapObj->getRenderObj() == nullptr && !pMapObj->getThingTemplate()->isKindOf(KINDOF_OPTIMIZED_TREE)) {
+			} else if (pMapObj->getThingTemplate() && isRenderableObject && m_showModels &&
+				!pMapObj->getRenderObj() && !pMapObj->getThingTemplate()->isKindOf(KINDOF_OPTIMIZED_TREE)) {
 				name = pMapObj->getThingTemplate()->getName();
-				pos = *pMapObj->getLocation();
-				pos.z += m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, nullptr);
 			}
-			Int i;
-			for (i=0; i<4; i++) {
-				Bool exists;
-				switch(i) {
-					case 0 : break;
-					case 1: name = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel1, &exists); break;
-					case 2: name = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel2, &exists); break;
-					case 3: name = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel3, &exists); break;
-					default: name.clear();
+
+			// Check if any of the custom status flags are true
+			bool hasStatusLabel = false;
+
+			// Show only if opposite of default
+			bool value;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectIndestructible, &exists);
+			if (exists && value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectUnsellable, &exists);
+			if (exists && value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectTargetable, &exists);
+			if (exists && value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectPowered, &exists);
+			if (exists && !value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectRecruitableAI, &exists);
+			if (exists && !value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectEnabled, &exists);
+			if (exists && !value) hasStatusLabel = true;
+
+			value = pMapObj->getProperties()->getBool(TheKey_objectSelectable, &exists);
+			if (exists && !value) hasStatusLabel = true;
+
+
+			if(!m_showModels && !pMapObj->isSelected()){
+				hasStatusLabel = false;
+			}
+
+			// Skip label projection if completely nameless + no status
+			if (name.isEmpty() && !m_showWaypoints && objectDictName.isEmpty() && !hasStatusLabel) continue;
+
+			// Anchor to the object's true world position. (A world-space X nudge here
+			// projects to a different screen direction at every camera angle, making the
+			// label "float" around the object as you rotate -- so don't add one.)
+			Vector3 world(pos.x, pos.y, pos.z);
+			Vector3 screen;
+			if (CameraClass::INSIDE_FRUSTUM != m_camera->Project(screen, world)) continue;
+
+			// Map into the renderer's pixel space (back buffer for D3DX, client rect
+			// for GDI; see projW/projH/projOrigin* resolved above).
+			Int sx, sy;
+			W3DLogicalScreenToPixelScreenHackedForWBLabels(
+				screen.X, screen.Y,
+				&sx, &sy,
+				projW, projH
+			);
+
+			CPoint pt(projOriginX + sx, projOriginY + sy - 5);
+
+			// Skip Projection if not visible to this area
+			if(m_lod == 1){
+				CPoint center(projOriginX + projW / 2, projOriginY + projH / 2);
+				int dx = pt.x - center.x;
+				int dy = pt.y - center.y;
+				int distSq = dx * dx + dy * dy;
+				if (distSq > 300 * 300) continue;
+			}
+
+			// Distant-label cull (Text Rendering > Reduce labels). A level-of-detail
+			// "potato saver": drop labels for objects far from where the camera is
+			// LOOKING so dense maps stay readable and cheap. Measured as ground (XY)
+			// distance in WORLD units from the look-at target, not screen pixels:
+			//  - screen-center pixels wrongly culled the bottom-of-screen objects
+			//    (nearest the camera in the tilted view) while keeping far ones, and
+			//  - distance from the camera POSITION scaled with zoom (zoom out -> the
+			//    camera recedes -> everything tripped the threshold and vanished).
+			// Distance from the look-at target avoids both: it's zoom-independent and
+			// centered on what you're inspecting. Standalone from the LOD-mode-1
+			// screen cull above; works at any LOD level. 0 = Off.
+			if (m_labelCull != 0) {
+				float cullDist;
+				switch (m_labelCull) {
+					case 1:  cullDist =  800.0f; break;	// Near
+					case 2:  cullDist = 1500.0f; break;	// Medium
+					default: cullDist = 2500.0f; break;	// Far
 				}
-				if (!name.isEmpty() && m_showWaypoints) {
-					CPoint pt;
-					Vector3 world, screen;
-					world.Set( pos.x+MAP_XY_FACTOR/2, pos.y, pos.z );
-					if (CameraClass::INSIDE_FRUSTUM != m_camera->Project( screen, world )) {
+				float ddx = camTarget.X - pos.x;
+				float ddy = camTarget.Y - pos.y;
+				if (ddx*ddx + ddy*ddy > cullDist * cullDist) continue;
+			}
+
+			rec.project = true;
+			rec.pt = pt;
+
+			// Resolve all name labels: base + waypoint path labels.
+			for (Int i = 0; i < 4; i++) {
+				AsciiString label;
+				if (i == 0) {
+					label = name;
+				} else if (m_showWaypoints) {
+					switch (i) {
+						case 1: label = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel1, &exists); break;
+						case 2: label = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel2, &exists); break;
+						case 3: label = pMapObj->getProperties()->getAsciiString(TheKey_waypointPathLabel3, &exists); break;
+					}
+				}
+
+				if (label.isEmpty()) continue;
+
+				if (!m_showNamesExtra) {
+					AsciiString lower = label;
+					lower.toLower();
+					if (lower.startsWith("waypoint"))
+						continue; // skip clutter
+				}
+
+				Int red = 255, green = 255, blue = 255;
+
+				if (i == 0) {
+					if (!objectDictName.isEmpty()) {
+						red = 255;
+						green = 255;
+						blue = 0; // Yellow-ish
+					} else {
+						red = 0;
+						green = 255;
+						blue = 0; // Green
+					}
+				}
+
+				int n = rec.nameCount++;
+				rec.nameText[n] = label;
+				rec.nameSlot[n] = i;
+				rec.nameArgb[n] = 0xFF000000 | (red << 16) | (green << 8) | blue;
+			}
+
+			// Resolve status labels (emitted after the name lines).
+			if(m_showNamesExtra){
+				rec.showStatus = true;
+
+				if (pMapObj->getProperties()->getBool(TheKey_objectIndestructible, &exists) && exists)
+					rec.statusText[rec.statusCount++] = "Indestructible";
+
+				if (pMapObj->getProperties()->getBool(TheKey_objectUnsellable, &exists) && exists)
+					rec.statusText[rec.statusCount++] = "Unsellable";
+
+				if (pMapObj->getProperties()->getBool(TheKey_objectTargetable, &exists) && exists)
+					rec.statusText[rec.statusCount++] = "Targetable";
+
+				bool isPowered = pMapObj->getProperties()->getBool(TheKey_objectPowered, &exists);
+				if (exists && !isPowered)
+					rec.statusText[rec.statusCount++] = "Not Powered";
+
+				bool isEnabled = pMapObj->getProperties()->getBool(TheKey_objectEnabled, &exists);
+				if (exists && !isEnabled)
+					rec.statusText[rec.statusCount++] = "Not Enabled";
+
+				bool isAIRecruitable = pMapObj->getProperties()->getBool(TheKey_objectRecruitableAI, &exists);
+				if (exists && !isAIRecruitable)
+					rec.statusText[rec.statusCount++] = "Not AI Recruitable";
+
+				bool isSelectable = pMapObj->getProperties()->getBool(TheKey_objectSelectable, &exists);
+				if (exists && !isSelectable)
+					rec.statusText[rec.statusCount++] = "Not Selectable";
+			}
+		}
+	}
+
+	// Emit pass. With names on this is the dominant label cost (~11ms/frame on a
+	// 2300-object map, vs ~0.5ms for the whole prepass above): ID3DXFont::DrawText
+	// GDI-rasterizes and uploads each string per call, inside D3DX8. Measured
+	// (A/B alternating every 100 frames, 2026-06): wrapping the whole emit in one
+	// explicit Begin()/End() changes NOTHING (11.4ms either way), so don't try
+	// that again. The cost is inherent to per-string DrawText; judged acceptable
+	// for an inspection-mode overlay rather than worth a custom text path.
+	if (true) {
+		for (int oi = 0; oi < objCount; ++oi) {
+			const LabelRecord &rec = recs[oi];
+
+			totalWorldCash += rec.cashPartial;
+
+			if (rec.feedback) {
+				selectedPos = rec.selPos;
+				selectedRadius = rec.selRadius;
+			}
+
+			if (!rec.project) continue;
+
+			for (int n = 0; n < rec.nameCount; ++n) {
+				CPoint labelPt = rec.pt;
+				labelPt.y += rec.nameSlot[n] * 15;
+
+				const AsciiString &label = rec.nameText[n];
+				UnsignedInt argb = rec.nameArgb[n];
+				int red   = (argb >> 16) & 0xFF;
+				int green = (argb >>  8) & 0xFF;
+				int blue  =  argb        & 0xFF;
+
+				if (m_labelRenderer == 2 && !hdc) {
+					m_fontAtlas.drawText(labelPt.x + 1, labelPt.y, label.str(),
+						label.getLength(), argb, m_textShadow);
+				} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
+					if (m_textShadow) {
+						RECT shadowRct = { labelPt.x + 2, labelPt.y + 1, labelPt.x + 2, labelPt.y + 1 };
+						fontDrawText(label.str(), label.getLength(), &shadowRct,
+							DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
+					}
+					DWORD textColor = 0xFF000000 | (red << 16) | (green << 8) | blue;
+					RECT rct = { labelPt.x + 1, labelPt.y, labelPt.x + 1, labelPt.y };
+					fontDrawText(label.str(), label.getLength(), &rct,
+						DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, textColor);
+				} else if (m_labelRenderer == 1 && hdc) {
+					::SetBkMode(hdc, TRANSPARENT);
+					if (m_textShadow) {
+						::SetTextColor(hdc, RGB(0, 0, 0));
+						::TextOut(hdc, labelPt.x + 2, labelPt.y + 1, label.str(), label.getLength());
+					}
+					::SetTextColor(hdc, RGB(red, green, blue));
+					::TextOut(hdc, labelPt.x + 1, labelPt.y, label.str(), label.getLength());
+				}
+			}
+
+			if (rec.showStatus) {
+				// Status lines go below the last name line in use; waypoint path labels take lines 1-3.
+				int statusOffset = 1;
+				for (int n = 0; n < rec.nameCount; ++n) {
+					if (rec.nameSlot[n] + 1 > statusOffset) {
+						statusOffset = rec.nameSlot[n] + 1;
+					}
+				}
+				for (int s = 0; s < rec.statusCount; ++s)
+					drawStatusLabels(rec.pt, statusOffset++, rec.statusText[s], m3DFont, hdc);
+			}
+		}
+
+		// View > Models > Show Bone Names. The bones a map.ini object attaches its draw modules
+		// to (AttachToBoneInAnotherModule), drawn AT the point each one resolved to, so a piece
+		// sitting in the wrong place can be read against the bone that put it there.
+		//
+		// Colour says which of the two lookups found it -- and those are genuinely different
+		// things, which is the whole reason this overlay exists:
+		//   GREEN = an HTree pivot   (Get_Bone_Index; only HLod models have these)
+		//   CYAN  = a named sub-object (Get_Sub_Object_By_Name; works on a plain mesh)
+		// A publisher that is a plain MeshClass can only ever resolve the second way.
+		//
+		// Recorded at build time in the module loop -- the bones are read from model hierarchies
+		// that only exist there -- so this pass just projects and emits.
+		if (m_showBoneNames && isNamesVisible()) {
+			for (std::map<MapObject *, std::vector<AttachBoneLabel> >::const_iterator bIt =
+					m_attachBoneLabels.begin(); bIt != m_attachBoneLabels.end(); ++bIt) {
+				MapObject *pMapObj = bIt->first;
+				if (pMapObj == NULL || (pMapObj->getFlags() & FLAG_DONT_RENDER)) {
+					continue;
+				}
+
+				// The offsets are parent-relative, so rotate them by the object's heading the
+				// same way placeLoosePieces does -- otherwise the labels stay put while the
+				// pieces they describe swing around with the object.
+				const Coord3D *loc = pMapObj->getLocation();
+				const Real angle = pMapObj->getAngle();
+				const Real cosA = (Real)cos(angle);
+				const Real sinA = (Real)sin(angle);
+				const Real baseZ = m_heightMapRenderObj->getHeightMapHeight(loc->x, loc->y, NULL);
+
+				const std::vector<AttachBoneLabel> &bones = bIt->second;
+				for (size_t bi = 0; bi < bones.size(); ++bi) {
+					const Vector3 &off = bones[bi].offset;
+					Vector3 world(
+						loc->x + (off.X * cosA - off.Y * sinA),
+						loc->y + (off.X * sinA + off.Y * cosA),
+						loc->z + baseZ + off.Z);
+
+					Vector3 screen;
+					if (CameraClass::INSIDE_FRUSTUM != m_camera->Project(screen, world)) {
 						continue;
 					}
-					if (!name.isEmpty()) {
-						CPoint pt;
-						Vector3 world, screen;
-						world.Set( pos.x+MAP_XY_FACTOR/2, pos.y, pos.z );
-						if (CameraClass::INSIDE_FRUSTUM != m_camera->Project( screen, world )) {
-							continue;
+					Int sx, sy;
+					W3DLogicalScreenToPixelScreenHackedForWBLabels(screen.X, screen.Y,
+						&sx, &sy, projW, projH);
+
+					// Above the piece, clear of the object's own name labels.
+					CPoint pt(projOriginX + sx, projOriginY + sy - 20);
+
+					const AsciiString &label = bones[bi].name;
+					Int red, green, blue;
+					if (bones[bi].fromSubObject) {
+						red = 0; green = 255; blue = 255;		// cyan: named sub-object
+					} else {
+						red = 0; green = 255; blue = 0;			// green: HTree pivot
+					}
+					const UnsignedInt argb = 0xFF000000 | (red << 16) | (green << 8) | blue;
+
+					if (m_labelRenderer == 2 && !hdc) {
+						m_fontAtlas.drawText(pt.x + 1, pt.y, label.str(),
+							label.getLength(), argb, m_textShadow);
+					} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
+						if (m_textShadow) {
+							RECT shadowRct = { pt.x + 2, pt.y + 1, pt.x + 2, pt.y + 1 };
+							fontDrawText(label.str(), label.getLength(), &shadowRct,
+								DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xFF000000);
 						}
-
-						CRect rClient;
-						GetClientRect(&rClient);
-
-						//
-						// note that the screen coord returned from the project W3D camera
-						// gave us a screen coords that range from (-1,-1) bottom left to
-						// (1,1) top right ... we are turning that into (0,0) upper left
-						// coords now
-						//
-						Int sx, sy;
-						W3DLogicalScreenToPixelScreen( screen.X, screen.Y,
-																					 &sx, &sy,
-																					 rClient.right-rClient.left, rClient.bottom-rClient.top );
-						pt.x = rClient.left+sx;
-						pt.y = rClient.top+sy;
-						pt.y += i*15;
-
-						Int red, green;
-						if (i==0) {
-							red = 0; green = 255;
-						} else {
-							red = 255, green = 0;
+						RECT rct = { pt.x + 1, pt.y, pt.x + 1, pt.y };
+						fontDrawText(label.str(), label.getLength(), &rct,
+							DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, argb);
+					} else if (m_labelRenderer == 1 && hdc) {
+						::SetBkMode(hdc, TRANSPARENT);
+						if (m_textShadow) {
+							::SetTextColor(hdc, RGB(0, 0, 0));
+							::TextOut(hdc, pt.x + 2, pt.y + 1, label.str(), label.getLength());
 						}
+						::SetTextColor(hdc, RGB(red, green, blue));
+						::TextOut(hdc, pt.x + 1, pt.y, label.str(), label.getLength());
+					}
+				}
+			}
+		}
 
-						if (m3DFont && !hdc) {
-							RECT rct;
-							pt.y -= 5;
-							pt.x += 1;
-							rct.top = rct.bottom = pt.y;
-							rct.left = rct.right = pt.x;
-							m3DFont->DrawText(name.str(), name.getLength(), &rct,
-								DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xAF000000 + (red<<16) + (green<<8));
+		/**
+		 * Adriane [Deathscythe]
+		 * Lets support the labels of poly triggers cause why not
+		 */
+		PolygonTrigger *pTrig;
+		for (pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+			AsciiString triggerName = pTrig->getTriggerName();
+			if (!triggerName.isEmpty() && pTrig->getNumPoints() > 0 && m_showPolygonTriggers && isNamesVisible()) {
+				// Loop through all points of the polygon
+				for (Int i = 0; i < pTrig->getNumPoints(); ++i) {
+					ICoord3D iLoc = *pTrig->getPoint(i); // Get each point
+					Coord3D loc;
+					loc.x = iLoc.x;
+					loc.y = iLoc.y;
+					loc.z = m_heightMapRenderObj->getHeightMapHeight(loc.x, loc.y, NULL);
 
-						} else if (!m3DFont) {
-							//docToViewCoords(pos, &pt);
-							::SetBkMode(hdc, TRANSPARENT);
-							pt.y -= 5;
-							pt.x += 1;
-							::SetTextColor(hdc, RGB(red,green,0));
-							::TextOut(hdc, pt.x, pt.y, name.str(), name.getLength());
+					Vector3 world, screen;
+					CPoint pt;
+
+					// Anchor to the true trigger-point position (no world-space X nudge,
+					// which would make the label drift around the point on camera rotation).
+					world.Set(loc.x, loc.y, loc.z);
+					if (CameraClass::INSIDE_FRUSTUM != m_camera->Project(screen, world)) {
+						continue;
+					}
+
+					// Renderer pixel space (back buffer for D3DX, client rect for GDI;
+					// see projW/projH/projOrigin* resolved above).
+					Int sx, sy;
+					W3DLogicalScreenToPixelScreenHackedForWBLabels(screen.X, screen.Y,
+												&sx, &sy,
+												projW, projH);
+					pt.x = projOriginX + sx;
+					pt.y = projOriginY + sy;
+
+					// Draw the label for each point
+					if (m_labelRenderer == 2 && !hdc) {
+						m_fontAtlas.drawText(pt.x, pt.y, triggerName.str(),
+							triggerName.getLength(), 0xAFFF8800, m_textShadow);
+					} else if (m_labelRenderer == 0 && m3DFont && !hdc) {
+						if (m_textShadow) {
+							RECT shadowRct;
+							shadowRct.top = shadowRct.bottom = pt.y + 1;
+							shadowRct.left = shadowRct.right = pt.x + 1;
+							fontDrawText(triggerName.str(), triggerName.getLength(), &shadowRct,
+											DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE,
+											0xFF000000);
 						}
+						RECT rct;
+						rct.top = rct.bottom = pt.y;
+						rct.left = rct.right = pt.x;
+						fontDrawText(triggerName.str(), triggerName.getLength(), &rct,
+										DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE,
+										0xAFFF8800);
+					} else if (m_labelRenderer == 1 && hdc) {
+						::SetBkMode(hdc, TRANSPARENT);
+						if (m_textShadow) {
+							::SetTextColor(hdc, RGB(0, 0, 0));
+							::TextOut(hdc, pt.x + 1, pt.y + 1, triggerName.str(), triggerName.getLength());
+						}
+						::SetTextColor(hdc, RGB(238, 130, 238));
+						::TextOut(hdc, pt.x, pt.y, triggerName.str(), triggerName.getLength());
 					}
 				}
 			}
 		}
 	}
 
-	// Draw tracking box.
-	if (hdc && m_doRectFeedback) {
-		CBrush brush;
-		// green brush for drawing the grid.
-		brush.CreateSolidBrush(RGB(0,255,0));
-		::FrameRect(hdc, &m_feedbackBox, (HBRUSH)brush.GetSafeHandle());
-	}
+	// DEBUG_LOG(("PointerTool::isMouseDown() = %d\n", PointerTool::isMouseDown() ? 1 : 0));
+	// DEBUG_LOG(("AutoEdgeOutTool::isActive() = %d\n", AutoEdgeOutTool::isActive() ? 1 : 0));
+	// DEBUG_LOG(("PointerTool::isDragSelecting() = %d\n", PointerTool::isDragSelecting() ? 1 : 0));
+	//  BE WARNED -- DO NOT ENABLE THIS DUDE WHEN DRAGGING OR ELSE THE DRAG RECT WILL BE BROKEN UNDER POINTER TOOL
+	if ((PointerTool::isMouseDown() || AutoEdgeOutTool::isActive() || ObjectTool::isActive()) 
+			&& !PointerTool::isDragSelecting()
+		) {
+		const CString text = _T(PointerTool::getLastPointerInfoString());
+		// DEBUG_LOG(("PointerTool::getLastPointerInfoString() returned: \"%s\"\n", (LPCTSTR)text));
+		if (text.IsEmpty() || ((m_labelRenderer == 0 || m_labelRenderer == 2) && !hasFrameFont()))
+			return;
 
-	if (hdc && m_doRulerFeedback) {
-		if (m_doRulerFeedback == RULER_LINE) {
-      // Change world coords to screen viewport coords.
-      CPoint rulerPoints[2];
-      docToViewCoords(m_rulerPoints[0], &rulerPoints[0]);
-      docToViewCoords(m_rulerPoints[1], &rulerPoints[1]);
+		// Get mouse position
+		CPoint pt;
+		GetCursorPos(&pt);
+		ScreenToClient(&pt);
 
-      // Create and select a green pen. Remember the old one so that it can be restored.
-      HPEN pen = CreatePen(PS_SOLID, 2, RGB(0,255,0));
-      HPEN penOld = (HPEN)SelectObject(hdc, pen);
-      // Draw the line ruler.
-			::Polyline(hdc, rulerPoints, 2);
+		const int offsetX = 32;
+		const int offsetY = 8;
+		const int width   = 300;
+		const int height  = 50;
 
-      // Restore previous pen.
-      SelectObject(hdc, penOld);
-      // Delete new pen.
-      DeleteObject(pen);
-		} else if (m_doRulerFeedback == RULER_CIRCLE) {
-      drawCircle( hdc, m_rulerPoints[0], m_rulerLength, RGB( 0, 255, 0 ) );
+		// Base draw rect
+		RECT baseRect = {
+			pt.x + offsetX,
+			pt.y + offsetY,
+			pt.x + offsetX + width,
+			pt.y + offsetY + height
+		};
+
+		// Outline color (black)
+		const DWORD outlineColor = 0xFF000000;
+		// Main text color (white)
+		const DWORD mainColor = 0xFFFFFFFF;
+
+		// Offsets for outline (4 directions: N/E/S/W). The 4 diagonals were dropped
+		// to halve the per-label outline draw count (8 DrawText calls -> 4); the text
+		// stays outlined on all sides, only the diagonal corners are slightly thinner.
+		const int outlineOffsets[4][2] = {
+			{-1,  0}, { 1,  0}, { 0, -1}, { 0,  1}
+		};
+
+		// HUD text below stays on m3DFont in Atlas mode (2) too: it changes without
+		// the labels changing (tooltip follows the mouse, timer ticks), and a handful
+		// of DrawText calls cost ~0.1ms -- only the O(N) object labels need batching.
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
+			// Draw outline
+			for (int i = 0; i < 4; ++i) {
+				RECT outlineRect = baseRect;
+				OffsetRect(&outlineRect, outlineOffsets[i][0], outlineOffsets[i][1]);
+				fontDrawText(
+					text,
+					text.GetLength(),
+					&outlineRect,
+					DT_LEFT | DT_TOP | DT_NOCLIP | DT_WORDBREAK,
+					outlineColor
+				);
+			}
+
+			// Draw main text
+			fontDrawText(
+				text,
+				text.GetLength(),
+				&baseRect,
+				DT_LEFT | DT_TOP | DT_NOCLIP | DT_WORDBREAK,
+				mainColor
+			);
+		} else if (m_labelRenderer == 1 && hdc) {
+			::SetBkMode(hdc, TRANSPARENT);
+			::SetTextColor(hdc, RGB(0, 0, 0));
+			for (int i = 0; i < 4; ++i) {
+				::TextOut(hdc, baseRect.left + outlineOffsets[i][0], baseRect.top + outlineOffsets[i][1],
+					text, text.GetLength());
+			}
+			::SetTextColor(hdc, RGB(255, 255, 255));
+			::TextOut(hdc, baseRect.left, baseRect.top, text, text.GetLength());
 		}
 	}
+
+	CString text;
+	text.Format(_T("Total world cash: %d"), totalWorldCash);
+
+	const int offsetX = 10;
+	const int offsetY = 10;
+
+	if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
+		RECT rct = { offsetX, offsetY, offsetX + 400, offsetY + 30 };
+		fontDrawText(
+			text,
+			text.GetLength(),
+			&rct,
+			DT_LEFT | DT_TOP | DT_NOCLIP | DT_SINGLELINE,
+			0xFFFFFFFF
+		);
+	} else if (m_labelRenderer == 1 && hdc) {
+		::SetBkMode(hdc, TRANSPARENT);
+		::SetTextColor(hdc, RGB(255, 255, 255));
+		::TextOut(hdc, offsetX, offsetY, text, text.GetLength());
+	}
+
+    // === EDIT TIMER DISPLAY (Bottom Left) ===
+    AsciiString editTimeStr = formatEditTime();
+	if(editTimeStr.isEmpty() == false){
+		CRect rClient;
+		GetClientRect(&rClient);
+
+		const int offsetX = 10;
+		const int offsetY = rClient.bottom + 70;
+
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
+			RECT rct = { offsetX, offsetY, offsetX + 400, offsetY + 30 };
+			fontDrawText(
+				editTimeStr.str(),
+				editTimeStr.getLength(),
+				&rct,
+				DT_LEFT | DT_TOP | DT_NOCLIP | DT_SINGLELINE,
+				0xFFFFFFFF // White color
+			);
+		} else if (m_labelRenderer == 1 && hdc) {
+			::SetBkMode(hdc, TRANSPARENT);
+			::SetTextColor(hdc, RGB(255, 255, 255));
+			::TextOut(hdc, offsetX, offsetY, editTimeStr.str(), editTimeStr.getLength());
+		}
+	}
+
+	if (CMainFrame::GetMainFrame()->showAutoSaveMessage()){
+		CString autoSaveText = _T("Auto-saving in 10 seconds...");
+
+		if ((m_labelRenderer == 0 || m_labelRenderer == 2) && hasFrameFont() && !hdc) {
+			RECT rct = { offsetX, offsetY + 20, offsetX + 400, offsetY + 50 };
+			fontDrawText(
+				autoSaveText,
+				autoSaveText.GetLength(),
+				&rct,
+				DT_LEFT | DT_TOP | DT_NOCLIP | DT_SINGLELINE,
+				0xFFFFFF00 // Yellow color
+			);
+		} else if (m_labelRenderer == 1 && hdc) {
+			::SetBkMode(hdc, TRANSPARENT);
+			::SetTextColor(hdc, RGB(255, 255, 0)); // Yellow color
+			::TextOut(hdc, offsetX, offsetY + 20, autoSaveText, autoSaveText.GetLength());
+		}
+	}
+
+	// Ruler feedback is now drawn inside the D3D frame by DrawObject (via the line
+	// renderer) instead of with GDI here -- GDI-on-a-flipping-back-buffer made it
+	// strobe and barely show. See DrawObject::drawRulerFeedback().
 
 	if (hdc && m_doLightFeedback)
 	{	//Draw Lines to indicate the direction of each light source
@@ -2588,12 +6955,12 @@ void WbView3d::drawLabels(HDC hdc)
 						selectedPos.y - m_lightDirection[lIndex].y*selectedRadius,
 						selectedPos.z - m_lightDirection[lIndex].z*selectedRadius);
 
-			if (m_lightFeedbackMesh[lIndex] == nullptr)
+			if (m_lightFeedbackMesh[lIndex] == NULL)
 			{	char nameBuf[64];
-				snprintf(nameBuf, ARRAY_SIZE(nameBuf), "WB_LIGHT%d", lIndex+1);
+				sprintf(nameBuf,"WB_LIGHT%d",lIndex+1);
 				m_lightFeedbackMesh[lIndex]=WW3DAssetManager::Get_Instance()->Create_Render_Obj(nameBuf);
 			}
-			if (m_lightFeedbackMesh[lIndex]==nullptr) {
+			if (m_lightFeedbackMesh[lIndex]==NULL) {
 				break;
 			}
 			Matrix3D lightMat;
@@ -2611,7 +6978,7 @@ void WbView3d::drawLabels(HDC hdc)
 				GetClientRect(&rClient);
 
 				//
-				// note that the screen coord returned from the project W3D camera
+				// note that the screen coord returned from the project W3D camera 
 				// gave us a screen coords that range from (-1,-1) bottom left to
 				// (1,1) top right ... we are turning that into (0,0) upper left
 				// coords now
@@ -2631,21 +6998,21 @@ void WbView3d::drawLabels(HDC hdc)
 				rayPoints[1].y= rClient.top+syEnd;
 
 				HPEN pen=CreatePen( PS_SOLID,2, LightColors[lIndex]);
-				HPEN penOld = (HPEN)SelectObject(hdc, pen);
+				HPEN penOld = (HPEN)SelectObject(hdc, pen); 
 				Polyline(hdc,rayPoints,2);
 				SelectObject(hdc, penOld);	//restore previous pen
 				DeleteObject(pen);	//delete new pen
 			}
 #endif	//DRAW_LIGHT_DIRECTION_RAYS
-		}
+		}//end for
 	}
 	else
 	{	if (!m_doLightFeedback)
-		{	//not in light feedback mode.  Make sure the temporary feedback models are gone
+		{	//not in light feedback mode.  Make sure the temporary feeback models are gone
 
 			for (Int lIndex=0; lIndex<MAX_GLOBAL_LIGHTS; lIndex++)
 			{
-				if (m_lightFeedbackMesh[lIndex] != nullptr)
+				if (m_lightFeedbackMesh[lIndex] != NULL)
 				{	m_lightFeedbackMesh[lIndex]->Remove();
 					REF_PTR_RELEASE(m_lightFeedbackMesh[lIndex]);
 				}
@@ -2656,35 +7023,38 @@ void WbView3d::drawLabels(HDC hdc)
 
 
 // ----------------------------------------------------------------------------
-void WbView3d::OnSize(UINT nType, int cx, int cy)
+void WbView3d::OnSize(UINT nType, int cx, int cy) 
 {
 	WbView::OnSize(nType, cx, cy);
 
 }
 
 // ----------------------------------------------------------------------------
-BOOL WbView3d::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
+BOOL WbView3d::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt) 
 {
 	if (m_trackingMode == TRACK_NONE) {
+
+		// Holding Shift zooms faster (coarse zoom for quickly covering distance).
+		const Int wheelBoost = (nFlags & MK_SHIFT) ? 4 : 1;
 
 		//WST 11/21/02 New Triple speed camera zoom request by designers
 		if (getCurrentZoom() > 2.0f)
 		{
-			m_mouseWheelOffset += zDelta;
+			m_mouseWheelOffset += zDelta * wheelBoost;
 		}
 		else if (getCurrentZoom() > 1.0f)
 		{
-			m_mouseWheelOffset += zDelta/2;
+			m_mouseWheelOffset += zDelta * wheelBoost / 2;
 		}
 		else
 		{
-			m_mouseWheelOffset += zDelta/8;
+			m_mouseWheelOffset += zDelta * wheelBoost / 8;
 		}
 
 		MSG msg;
 		while (::PeekMessage(&msg, m_hWnd, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE)) {
 			zDelta = (short) HIWORD(msg.wParam);    // wheel rotation
-			m_mouseWheelOffset += zDelta;
+			m_mouseWheelOffset += zDelta * wheelBoost;
 		}
 		redraw();
 		updateHysteresis();
@@ -2700,6 +7070,7 @@ void WbView3d::setDefaultCamera()
 
 	m_mouseWheelOffset = 0;
 	m_cameraAngle = 0;
+	m_cameraAngleRaw = 0;
 	m_FXPitch = 1.0f;
 	if (m_centerPt.X < 0) m_centerPt.X = 0;
 	if (m_centerPt.Y < 0) m_centerPt.Y = 0;
@@ -2732,7 +7103,7 @@ void WbView3d::setDefaultCamera()
 	}
 
 	if (m_heightMapRenderObj) {
-		m_groundLevel = m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, nullptr);
+		m_groundLevel = m_heightMapRenderObj->getHeightMapHeight(pos.x, pos.y, NULL);
 	}
 
 	//m_cameraOffset.z = m_groundLevel+TheGlobalData->m_cameraHeight;
@@ -2755,10 +7126,24 @@ void WbView3d::setDefaultCamera()
 }
 
 // ----------------------------------------------------------------------------
+// Round an angle (radians) to the nearest 45-degree (PI/4) step.
+static Real snapAngleTo45(Real a)
+{
+	const Real step = PI / 4.0f;
+	return step * floor(a / step + 0.5f);
+}
+
 void WbView3d::rotateCamera(Real delta)
 {
 	if (m_projection) return; // camera doesn't rotate in top down view.
-	m_cameraAngle += delta;
+	// Accumulate the raw (unsnapped) angle so a continuous drag keeps building up even
+	// while the displayed angle is pinned to a 45-degree step. Then derive the actual
+	// camera angle: when Angle Snap Lock is on, snap the raw to the nearest 45-degree
+	// step, so the camera ratchets notch-to-notch (0,45,90,...) as you drag. Without the
+	// separate raw accumulator, snapping m_cameraAngle in place would discard the drag
+	// each event and the camera would never advance past the first step.
+	m_cameraAngleRaw += delta;
+	m_cameraAngle = m_snapCameraAngle45 ? snapAngleTo45(m_cameraAngleRaw) : m_cameraAngleRaw;
 	redraw();
 	drawLabels();
 	CMainFrame::GetMainFrame()->handleCameraChange();
@@ -2785,14 +7170,14 @@ void WbView3d::setCameraPitch(Real absolutePitch)
 }
 
 // ----------------------------------------------------------------------------
-Real WbView3d::getCameraPitch()
+Real WbView3d::getCameraPitch(void)
 {
 	return m_FXPitch;
 }
 
 
 //WST 10.17.2002 ----------------------------------------------------------------------------
-Real WbView3d::getCurrentZoom()
+Real WbView3d::getCurrentZoom(void)
 {
 	float zOffset = - m_mouseWheelOffset / 1200; //WST 11/21/02 new triple speed camera zoom.
 	Real zoom = 1.0f;
@@ -2801,7 +7186,7 @@ Real WbView3d::getCurrentZoom()
 		Real zAbs = zOffset + zPos;
 		if (zAbs<0) zAbs = -zAbs;
 		if (zAbs<0.01) zAbs = 0.01f;
-		//DEBUG_LOG(("zOffset = %.2f, zAbs = %.2f, zPos = %.2f", zOffset, zAbs, zPos));
+		//DEBUG_LOG(("zOffset = %.2f, zAbs = %.2f, zPos = %.2f\n", zOffset, zAbs, zPos));	
 		if (zOffset > 0) {
 			zOffset *= zAbs;
 		}	else if (zOffset < -0.3f) {
@@ -2810,30 +7195,169 @@ Real WbView3d::getCurrentZoom()
 		if (zOffset < -0.6f) {
 			zOffset = -0.3f + zOffset/2.0f;
 		}
-		//DEBUG_LOG(("zOffset = %.2f", zOffset));
+		//DEBUG_LOG(("zOffset = %.2f\n", zOffset));
 		zoom = zAbs;
 	}
 	return zoom;
 }
 
 // ----------------------------------------------------------------------------
+static const UINT WB_FPSCAP_TIMER = 0xF9C;
+
+// Repaints requested faster than the cap (mouse moves invalidate on every event) are
+// folded into one repaint at the end of the current frame slot. Nothing sleeps, so
+// input stays responsive and the last presented frame stays on screen meanwhile.
+Bool WbView3d::deferPaintForFpsCap()
+{
+	if (m_fpsCap <= 0 || m_lastAnimTick == 0) {
+		return false;
+	}
+	LARGE_INTEGER freq;
+	LARGE_INTEGER now;
+	::QueryPerformanceFrequency(&freq);
+	::QueryPerformanceCounter(&now);
+	const double elapsedMs = (double)(now.QuadPart - m_lastAnimTick) * 1000.0 / (double)freq.QuadPart;
+	const double slotMs = 1000.0 / (double)m_fpsCap;
+	// Timers fire late, so a repaint within 10% of its slot goes through, or the cap undershoots.
+	if (elapsedMs >= slotMs * 0.9) {
+		return false;
+	}
+	if (!m_fpsCapTimerSet) {
+		UINT waitMs = (UINT)(slotMs - elapsedMs + 0.5);
+		if (waitMs < 1) {
+			waitMs = 1;
+		}
+		SetTimer(WB_FPSCAP_TIMER, waitMs, NULL);
+		m_fpsCapTimerSet = true;
+	}
+	return true;
+}
+
+void WbView3d::OnFpsCap(UINT id)
+{
+	switch (id) {
+		case ID_FPSCAP_30:  m_fpsCap = 30;  break;
+		case ID_FPSCAP_60:  m_fpsCap = 60;  break;
+		case ID_FPSCAP_120: m_fpsCap = 120; break;
+		default:            m_fpsCap = 0;   break;
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "FpsCap", m_fpsCap);
+	Invalidate(false);
+}
+
+void WbView3d::OnUpdateFpsCap(CCmdUI* pCmdUI)
+{
+	Int cap = 0;
+	switch (pCmdUI->m_nID) {
+		case ID_FPSCAP_30:  cap = 30;  break;
+		case ID_FPSCAP_60:  cap = 60;  break;
+		case ID_FPSCAP_120: cap = 120; break;
+		default:            cap = 0;   break;
+	}
+	pCmdUI->SetCheck(m_fpsCap == cap);
+}
+
 void WbView3d::OnTimer(UINT nIDEvent)
 {
-	if (getLastDrawTime()+UPDATE_TIME<::GetTickCount())
-	{
+	if (nIDEvent == WB_FPSCAP_TIMER) {
+		KillTimer(WB_FPSCAP_TIMER);
+		m_fpsCapTimerSet = false;
 		Invalidate(false);
+		return;
 	}
+
+	// View > Listen To Map: the audio engine only starts/updates queued events inside
+	// TheAudio->update(), which WB otherwise never pumps. Gated on an active listen mode so a
+	// session with the feature off behaves exactly as before and never runs the engine's audio
+	// update at all. Deliberately ahead of the repaint throttle below -- audio needs a steady
+	// tick to keep 3D positions current, and it must not be tied to whether a frame is drawn.
+	if (m_listenMode != WB_LISTEN_NONE && TheAudio != NULL)
+	{
+		startListenSounds();	// no-ops once the map's sounds are already playing
+		TheAudio->update();
+	}
+
+	// A Debug menu overlay went stale (an object moved, terrain or water was edited).  The tint
+	// is applied while the terrain mesh is built, so it only repaints on a heightmap update --
+	// service that here, coalesced, so a band-select or a brush stroke costs one rebuild per
+	// tick instead of one per object or per edit.
+	//
+	// Held off entirely while the mouse is down: dragging an object fires invalObject on every
+	// mouse move, and rebuilding the terrain mid-drag would rasterize every footprint again for
+	// a tint the user is still moving.  The flag survives, so the rebuild happens once on
+	// release.  Tracking mode covers the terrain tools, whose strokes are equally chatty.
+	{
+		const Bool interactingNow = (m_trackingMode != TRACK_NONE) || PointerTool::isMouseDown();
+		if (!interactingNow && WBHeightMap::takeOverlayRefreshPending())
+		{
+			refreshPathfindOverlay();
+		}
+	}
+
+	if (getLastDrawTime()+UPDATE_TIME >= ::GetTickCount())
+		return;		// throttle: at most one repaint per UPDATE_TIME
+
+	// Idle repaint coalescing (all renderer modes): the timer free-runs at ~60 Hz, but a
+	// static view produces byte-identical frames, so skip the repaint until something
+	// actually changes, an interaction is in progress, or the low-rate fallback elapses.
+	// Originally GDI-mode-only (to suppress its strobe); the same change detection is
+	// equally valid for the D3DX and Atlas modes, which simply hold their last frame.
+	{
+		const UINT IDLE_FALLBACK_MS = 5000;	// max stale-frame time when "idle"
+
+		Bool interacting = (m_trackingMode != TRACK_NONE) || PointerTool::isMouseDown();
+		LabelCacheKey key = buildLabelKey();
+		Bool changed = !m_haveGdiPaintKey || !(key == m_lastGdiPaintKey);
+		Bool fallbackDue = (getLastDrawTime() + IDLE_FALLBACK_MS) < ::GetTickCount();
+
+		// Water-track waves animate every frame and their overlay lines live in
+		// OnPaint, so the view is not actually "static" while any wave exists -
+		// keep repainting so the animation and the cyan wave lines stay live.
+		Bool wavesActive = (TheWaterTracksRenderSystem &&
+												(TheWaterTracksRenderSystem->getWaveCount() > 0 ||
+												 TheWaterTracksRenderSystem->hasPreviewWave()));
+
+		// Live particle emitters animate every frame too -- keep repainting while any exist.
+		Bool particlesActive = WBParticleRuntime::hasActiveEmitters();
+
+		// Model animations (View > Animate Models) advance off WW3D::Sync in redraw(), so the view
+		// is never really "static" while any are playing -- keep repainting or they would freeze
+		// until the idle fallback fires. Gated on the count actually applied by the last scene
+		// build, not just the menu toggle, so enabling the option on a map with nothing animated
+		// still idles (matching wavesActive / particlesActive, which query real state).
+		Bool modelAnimsActive = m_animateModels && (m_animatedModelCount > 0);
+
+		// Mouse-tracking overlays that move WITHOUT a button held or a camera change:
+		// the ruler readout, the drag-select rect, and the object-tool placement ghost.
+		// None of them are covered by the paint key, so keep free-running while active.
+		Bool overlayActive = (m_doRulerFeedback != RULER_NONE) || m_doRectFeedback ||
+			m_showObjToolTrackingObj;
+
+		// Show Playing Sounds rings whatever is audible right now, and sounds start and stop on
+		// their own (the listen sweep, or the engine culling one out of earshot) with nothing
+		// else about the view changing. The paint key does not cover them, so keep repainting
+		// while the overlay is up or a stopped sound would leave its ring on screen.
+		Bool playingSoundsShown = m_showPlayingSounds && (m_listenMode != WB_LISTEN_NONE);
+
+		if (!interacting && !changed && !fallbackDue && !wavesActive && !particlesActive &&
+			!overlayActive && !modelAnimsActive && !playingSoundsShown)
+		{
+			return;		// static view: leave the last frame (+ any GDI text) on screen
+		}
+	}
+
+	Invalidate(false);
 }
 
 // ----------------------------------------------------------------------------
-void WbView3d::OnDestroy()
+void WbView3d::OnDestroy() 
 {
 	killTheTimer();
-	WbView::OnDestroy();
+	WbView::OnDestroy();	
 }
 
 // ----------------------------------------------------------------------------
-void WbView3d::OnShowWindow(BOOL bShow, UINT nStatus)
+void WbView3d::OnShowWindow(BOOL bShow, UINT nStatus) 
 {
 	WbView::OnShowWindow(bShow, nStatus);
 }
@@ -2843,7 +7367,7 @@ void WbView3d::OnShowWindow(BOOL bShow, UINT nStatus)
 //=============================================================================
 /** Scrolls the window. */
 //=============================================================================
-void WbView3d::scrollInView(Real xScroll, Real yScroll, Bool end)
+void WbView3d::scrollInView(Real xScroll, Real yScroll, Bool end) 
 {
 	m_centerPt.X += xScroll;
 	m_centerPt.Y += yScroll;
@@ -2855,7 +7379,7 @@ void WbView3d::scrollInView(Real xScroll, Real yScroll, Bool end)
 	CMainFrame::GetMainFrame()->handleCameraChange();
 }
 
-void WbView3d::OnViewShowwireframe()
+void WbView3d::OnViewShowwireframe() 
 {
 	m_showWireframe = !m_showWireframe;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", m_showWireframe?1:0);
@@ -2867,74 +7391,125 @@ void WbView3d::OnUpdateViewShowwireframe(CCmdUI* pCmdUI)
 
 }
 
-BOOL WbView3d::OnEraseBkgnd(CDC* pDC)
+void WbView3d::OnViewShowfullwireframe()
+{
+	m_showFullWireframe = !m_showFullWireframe;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowFullWireframe", m_showFullWireframe?1:0);
+}
+
+void WbView3d::OnUpdateViewShowfullwireframe(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showFullWireframe?1:0);
+}
+
+void WbView3d::OnViewShowselectionoverlay()
+{
+	m_showSelectionOverlay = !m_showSelectionOverlay;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSelectionOverlay", m_showSelectionOverlay?1:0);
+	// Repaint the minimap so its selection halos appear/disappear with the toggle.
+	if (TheMinimapDialog)
+		TheMinimapDialog->requestRebuild(false);
+}
+
+void WbView3d::OnUpdateViewShowselectionoverlay(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showSelectionOverlay?1:0);
+}
+
+BOOL WbView3d::OnEraseBkgnd(CDC* pDC) 
 {
 	// Never erase the background.  The 3d view always draws the entire
 	// window, so erasing just makes it flicker.  jba.
 	return true; // act like we erased.
 }
 
-void WbView3d::OnViewShowentire3dmap()
+void WbView3d::OnViewShowentire3dmap() 
 {
-	m_showEntireMap = !m_showEntireMap;
+	if(m_showEntireMap && WBQtObject_GetTutorialPrompts()){
+		::MessageBeep(MB_ICONINFORMATION);
+		int response = ::AfxMessageBox(
+			"You may have accidentally pressed CTRL+A. Are you sure you want to toggle the full map view?", 
+			MB_YESNO | MB_ICONQUESTION
+		);
+
+		if (response == IDNO){
+			return;
+		}
+	}
+
+	m_showEntireMap = !m_showEntireMap;	
 	IRegion2D range = {0,0,0,0};
 	this->updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", m_showEntireMap?1:0);
 }
 
-void WbView3d::OnUpdateViewShowentire3dmap(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowentire3dmap(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_showEntireMap?1:0);
 }
 
-void WbView3d::OnViewShowtopdownview()
+void WbView3d::OnViewShowtopdownview() 
 {
 	m_projection = !m_projection;
-	m_heightMapRenderObj->setFlattenHeights(m_projection);
-	invalObjectInView(nullptr);
+	// m_heightMapRenderObj->setFlattenHeights(m_projection);
+	invalObjectInView(NULL);
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", m_projection?1:0);
 }
 
-void WbView3d::OnUpdateViewShowtopdownview(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowtopdownview(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_projection?1:0);
 }
 
-void WbView3d::OnViewShowclouds()
+void WbView3d::OnViewShowclouds() 
 {
 	TheWritableGlobalData->m_useCloudMap = !TheGlobalData->m_useCloudMap;
 	AfxGetApp()->WriteProfileInt("GameOptions", "cloudMap", TheGlobalData->m_useCloudMap);
 }
 
-void WbView3d::OnUpdateViewShowclouds(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowclouds(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(TheGlobalData->m_useCloudMap?1:0);
 }
 
-void WbView3d::OnViewShowmacrotexture()
+void WbView3d::OnViewShowmacrotexture() 
 {
 	Bool show = !TheGlobalData->m_useLightMap;
 	TheWritableGlobalData->m_useLightMap = show;
 }
 
-void WbView3d::OnUpdateViewShowmacrotexture(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowmacrotexture(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(TheGlobalData->m_useLightMap?1:0);
 }
 
-void WbView3d::OnEditSelectmacrotexture()
+void WbView3d::OnEditSelectmacrotexture() 
 {
+#ifdef RTS_HAS_QT
+	WBQtSelectMacrotexture_Run(::AfxGetMainWnd()->GetSafeHwnd());
+	return;
+#endif
 	SelectMacrotexture dlg;
 
 	// The macrotexture dialog sets the macrotexture in the 3d engine.
 	dlg.DoModal();
-
+	
 }
 
-void WbView3d::OnViewShowshadows()
+void WbView3d::OnViewShowshadows() 
 {
 	m_showShadows = !m_showShadows;
+	
+    /**
+     * Adriane [Deathscythe] Bug fix
+     * We need to apply the setting change first before we check.
+     * These values are checked when adding shadows, so they should be updated before that.
+     */
+	TheWritableGlobalData->m_useShadowDecals = m_showShadows;
+	TheWritableGlobalData->m_useShadowVolumes = m_showShadows;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", m_showShadows?1:0);
+
 	if (m_showShadows) {
 		int w,h,bits;
 		Bool windowed;
@@ -2945,17 +7520,15 @@ void WbView3d::OnViewShowshadows()
 			m_showShadows = false;
 		} else {
 			resetRenderObjects();
-			invalObjectInView(nullptr);
+			invalObjectInView(NULL);
 		}
 	} else {
 		TheW3DShadowManager->removeAllShadows();
 	}
-	TheWritableGlobalData->m_useShadowDecals = m_showShadows;
-	TheWritableGlobalData->m_useShadowVolumes = m_showShadows;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", m_showShadows?1:0);
+
 }
 
-void WbView3d::OnUpdateViewShowshadows(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowshadows(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_showShadows?1:0);
 }
@@ -2994,119 +7567,203 @@ void WbView3d::OnUpdateViewShowExtraBlends(CCmdUI* pCmdUI)
 
 void WbView3d::OnEditMapSettings()
 {
+#ifdef RTS_HAS_QT
+	if (WBQtMapSettings_Run(::AfxGetMainWnd()->GetSafeHwnd()) != 0)
+	{
+		resetRenderObjects();
+		invalObjectInView(NULL);
+	}
+	return;
+#endif
 	MapSettings dlg;
 
 	if (dlg.DoModal() == IDOK) {
 		resetRenderObjects();
-		invalObjectInView(nullptr);
+		invalObjectInView(NULL);
 	}
 }
 
-void WbView3d::OnEditShadows()
+void WbView3d::OnClearAllExtraBoundaries()
+{
+	::MessageBeep(MB_ICONINFORMATION);
+	int response = ::AfxMessageBox(
+		"You are about to clear all extra boundaries. Are you sure you want to continue? This action cannot be undone.",
+		MB_YESNO | MB_ICONQUESTION
+	);
+
+	if (response == IDNO){
+		return;
+	}
+
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	pDoc->removeAllExtraBoundaries();
+    // RemoveAllExtraBoundariesUndoable *pUndo = new RemoveAllExtraBoundariesUndoable(pDoc);
+    // pDoc->AddAndDoUndoable(pUndo);
+    // REF_PTR_RELEASE(pUndo);
+}
+
+void WbView3d::OnEditShadows() 
 {
 	if (!m_showShadows) {
 		OnViewShowshadows(); // turn them on.
 	}
+#ifdef RTS_HAS_QT
+	WBQtShadowOptions_Run(::AfxGetMainWnd()->GetSafeHwnd());
+	return;
+#endif
 	ShadowOptions dlg;
 	dlg.DoModal();
 }
 
-void WbView3d::OnViewShowModels()
+void WbView3d::OnRefreshSceneObjects() 
+{
+	resetRenderObjects();
+	invalObjectInView(NULL);
+}
+
+void WbView3d::OnViewShowModels() 
 {
 	setShowModels(!getShowModels());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowModels", getShowModels()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
-void WbView3d::OnUpdateViewShowModels(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowModels(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowModels()?1:0);
 }
 
+void WbView3d::OnViewAnimateModels()
+{
+	m_animateModels = !m_animateModels;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AnimateModels", m_animateModels?1:0);
+	// The animation is applied when the render object is built, so rebuild the scene for the
+	// toggle to affect objects that are already placed (not just newly-added ones).
+	resetRenderObjects();
+	invalObjectInView(NULL);
+}
+
+void WbView3d::OnUpdateViewAnimateModels(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_animateModels?1:0);
+}
+
+void WbView3d::OnViewBoneNames()
+{
+	m_showBoneNames = !m_showBoneNames;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBoneNames", m_showBoneNames?1:0);
+	// The labels are recorded while objects are built, so anything already placed has none yet
+	// the first time this is switched on -- rebuild rather than wait for the next edit.
+	resetRenderObjects();
+	invalObjectInView(NULL);
+}
+
+void WbView3d::OnUpdateViewBoneNames(CCmdUI* pCmdUI)
+{
+	// Rides the label system, so it needs labels on (Show Labels, Alt+4) to show anything.
+	pCmdUI->Enable(isNamesVisible()?TRUE:FALSE);
+	pCmdUI->SetCheck(m_showBoneNames?1:0);
+}
+
+void WbView3d::OnViewLogBoneResolution()
+{
+	m_logBoneResolution = !m_logBoneResolution;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LogBoneResolution", m_logBoneResolution?1:0);
+	// The lookups only run while objects are built, so turning this on has to rebuild to log
+	// anything -- otherwise it would appear to do nothing until the next edit.
+	resetRenderObjects();
+	invalObjectInView(NULL);
+}
+
+void WbView3d::OnUpdateViewLogBoneResolution(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_logBoneResolution?1:0);
+}
+
 // MLL C&C3
-void WbView3d::OnViewBoundingBoxes()
+void WbView3d::OnViewBoundingBoxes() 
 {
 	setShowBoundingBoxes(!getShowBoundingBoxes());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBoundingBoxes", getShowBoundingBoxes()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
 // MLL C&C3
-void WbView3d::OnUpdateViewBoundingBoxes(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewBoundingBoxes(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowBoundingBoxes()?1:0);
 }
 
 
 // MLL C&C3
-void WbView3d::OnViewSightRanges()
+void WbView3d::OnViewSightRanges() 
 {
 	setShowSightRanges(!getShowSightRanges());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSightRanges", getShowSightRanges()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
 // MLL C&C3
-void WbView3d::OnUpdateViewSightRanges(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewSightRanges(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowSightRanges()?1:0);
 }
 
 // MLL C&C3
-void WbView3d::OnViewWeaponRanges()
+void WbView3d::OnViewWeaponRanges() 
 {
 	setShowWeaponRanges(!getShowWeaponRanges());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWeaponRanges", getShowWeaponRanges()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
 // MLL C&C3
-void WbView3d::OnUpdateViewWeaponRanges(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewWeaponRanges(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowWeaponRanges()?1:0);
 }
 
 // MLL C&C3
-void WbView3d::OnHighlightTestArt()
+void WbView3d::OnHighlightTestArt() 
 {
 	setHighlightTestArt(!getHighlightTestArt());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "HighlightTestArt", getHighlightTestArt()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
 // MLL C&C3
-void WbView3d::OnUpdateHighlightTestArt(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateHighlightTestArt(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getHighlightTestArt()?1:0);
 }
 
 
 // MLL C&C3
-void WbView3d::OnShowLetterbox()
+void WbView3d::OnShowLetterbox() 
 {
 	setShowLetterbox(!getShowLetterbox());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowLetterBox", getShowLetterbox()?1:0);
 }
 // MLL C&C3
-void WbView3d::OnUpdateShowLetterbox(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateShowLetterbox(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowLetterbox()?1:0);
 }
 
 
-void WbView3d::OnViewGarrisoned()
+void WbView3d::OnViewGarrisoned() 
 {
 	setShowGarrisoned(!getShowGarrisoned());
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowGarrisoned", getShowGarrisoned()?1:0);
 	resetRenderObjects();
-	invalObjectInView(nullptr);
+	invalObjectInView(NULL);
 }
-void WbView3d::OnUpdateViewGarrisoned(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewGarrisoned(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(getShowGarrisoned()?1:0);
 }
 
-void WbView3d::OnViewShowimpassableareas()
+void WbView3d::OnViewShowimpassableareas() 
 {
 	Bool showImpassable = false;
 	if (TheTerrainRenderObject) {
@@ -3118,7 +7775,7 @@ void WbView3d::OnViewShowimpassableareas()
 	}
 }
 
-void WbView3d::OnUpdateViewShowimpassableareas(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewShowimpassableareas(CCmdUI* pCmdUI) 
 {
 	Bool showImpassable = false;
 	if (TheTerrainRenderObject) {
@@ -3127,9 +7784,73 @@ void WbView3d::OnUpdateViewShowimpassableareas(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(showImpassable?1:0);
 }
 
+//=============================================================================
+// Debug menu -- pathfind cell overlay
+//=============================================================================
+/** Forces the whole terrain mesh to rebuild so the overlay tint is applied or removed. */
+void WbView3d::refreshPathfindOverlay(void)
+{
+	IRegion2D range = {0,0,0,0};
+	updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
+}
+
+void WbView3d::OnDebugPathfindCliff()
+{
+	WBHeightMap::setShowPathfindCliff(!WBHeightMap::getShowPathfindCliff());
+	refreshPathfindOverlay();
+}
+
+void WbView3d::OnUpdateDebugPathfindCliff(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(WBHeightMap::getShowPathfindCliff()?1:0);
+}
+
+void WbView3d::OnDebugPathfindWater()
+{
+	WBHeightMap::setShowPathfindWater(!WBHeightMap::getShowPathfindWater());
+	refreshPathfindOverlay();
+}
+
+void WbView3d::OnUpdateDebugPathfindWater(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(WBHeightMap::getShowPathfindWater()?1:0);
+}
+
+void WbView3d::OnDebugPathfindObjects()
+{
+	WBHeightMap::setShowPathfindObjects(!WBHeightMap::getShowPathfindObjects());
+	refreshPathfindOverlay();
+}
+
+void WbView3d::OnUpdateDebugPathfindObjects(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(WBHeightMap::getShowPathfindObjects()?1:0);
+}
+
+void WbView3d::OnDebugPathfindPassability()
+{
+	WBHeightMap::setShowPassability(!WBHeightMap::getShowPassability());
+	refreshPathfindOverlay();
+}
+
+void WbView3d::OnUpdateDebugPathfindPassability(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(WBHeightMap::getShowPassability()?1:0);
+}
+
 void WbView3d::OnImpassableAreaOptions()
 {
 	if (TheTerrainRenderObject) {
+#ifdef RTS_HAS_QT
+		// Qt mode: the native dialog live-applies the slope and reverts it on cancel; then
+		// refresh the height map exactly like the MFC path below.
+		WBQtImpassableOptions_Run(::AfxGetMainWnd()->GetSafeHwnd());
+		{
+			IRegion2D range = {0,0,0,0};
+			updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
+		}
+		return;
+#endif
 		{
 			ImpassableOptions opts;
 			opts.SetDefaultSlopeToShow(TheTerrainRenderObject->getViewImpassableAreaSlope());
@@ -3139,72 +7860,72 @@ void WbView3d::OnImpassableAreaOptions()
 				TheTerrainRenderObject->setViewImpassableAreaSlope(opts.GetDefaultSlope());
 			}
 		}
-
+		
 		IRegion2D range = {0,0,0,0};
 		updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	}
 }
 
-void WbView3d::OnViewPartialmapsize96x96()
+void WbView3d::OnViewPartialmapsize96x96() 
 {
 	m_partialMapSize = 97;
 	AfxGetApp()->WriteProfileInt("GameOptions", "partialMapSize", m_partialMapSize);
-	m_showEntireMap = false;
+	m_showEntireMap = false;	
 	IRegion2D range = {0,0,0,0};
 	WbDoc()->GetHeightMap()->setDrawOrg(0, 0);
 	updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
 }
 
-void WbView3d::OnUpdateViewPartialmapsize96x96(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewPartialmapsize96x96(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_partialMapSize == 97?1:0);
 }
 
-void WbView3d::OnViewPartialmapsize192x192()
+void WbView3d::OnViewPartialmapsize192x192() 
 {
 	m_partialMapSize = 192;
 	AfxGetApp()->WriteProfileInt("GameOptions", "partialMapSize", m_partialMapSize);
-	m_showEntireMap = false;
+	m_showEntireMap = false;	
 	IRegion2D range = {0,0,0,0};
 	WbDoc()->GetHeightMap()->setDrawOrg(0, 0);
 	updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
 }
 
-void WbView3d::OnUpdateViewPartialmapsize192x192(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewPartialmapsize192x192(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_partialMapSize == 192?1:0);
 }
 
-void WbView3d::OnViewPartialmapsize160x160()
+void WbView3d::OnViewPartialmapsize160x160() 
 {
 	m_partialMapSize = 161;
 	AfxGetApp()->WriteProfileInt("GameOptions", "partialMapSize", m_partialMapSize);
-	m_showEntireMap = false;
+	m_showEntireMap = false;	
 	IRegion2D range = {0,0,0,0};
 	WbDoc()->GetHeightMap()->setDrawOrg(0, 0);
 	updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
 }
 
-void WbView3d::OnUpdateViewPartialmapsize160x160(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewPartialmapsize160x160(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_partialMapSize == 161?1:0);
 }
 
-void WbView3d::OnViewPartialmapsize128x128()
+void WbView3d::OnViewPartialmapsize128x128() 
 {
 	m_partialMapSize = 129;
 	AfxGetApp()->WriteProfileInt("GameOptions", "partialMapSize", m_partialMapSize);
-	m_showEntireMap = false;
+	m_showEntireMap = false;	
 	IRegion2D range = {0,0,0,0};
 	WbDoc()->GetHeightMap()->setDrawOrg(0, 0);
 	updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
 }
 
-void WbView3d::OnUpdateViewPartialmapsize128x128(CCmdUI* pCmdUI)
+void WbView3d::OnUpdateViewPartialmapsize128x128(CCmdUI* pCmdUI) 
 {
 	pCmdUI->SetCheck(m_partialMapSize == 129?1:0);
 }
@@ -3213,6 +7934,21 @@ void WbView3d::OnViewLayersList()
 {
 	m_showLayersList = !m_showLayersList;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", m_showLayersList ? 1 : 0);
+#ifdef RTS_HAS_QT
+	// Qt mode: toggle the Qt Layers window; the hidden MFC dialog stays the model owner and
+	// keeps updates enabled while the Qt window is up (updateUIFromList feeds the Qt push).
+	if (m_showLayersList)
+	{
+		WBQtLayers_Open(AfxGetMainWnd()->GetSafeHwnd());
+		TheLayersList->enableUpdates();
+	}
+	else
+	{
+		WBQtLayers_Close();
+		TheLayersList->disableUpdates();
+	}
+	return;
+#endif
 	TheLayersList->ShowWindow(m_showLayersList ? SW_SHOW : SW_HIDE);
 	if (m_showLayersList) {
 		TheLayersList->enableUpdates();
@@ -3224,6 +7960,216 @@ void WbView3d::OnViewLayersList()
 void WbView3d::OnUpdateViewLayersList(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_showLayersList ? 1 : 0);
+}
+
+void WbView3d::OnViewMinimap()
+{
+#ifdef RTS_HAS_QT
+	// Qt mode: the live MFC minimap is hosted inside a Qt tool window (QWinHost); toggle
+	// that window. The hosted dialog's IsWindowVisible tracks it, so the menu checkmark
+	// and every refresh gate keep working unchanged.
+	if (TheMinimapDialog)
+	{
+		if (WBQtMinimap_IsOpen())
+		{
+			WBQtMinimap_Close();
+			::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowMinimap", 0);
+		}
+		else
+		{
+			WBQtMinimap_Open(AfxGetMainWnd()->GetSafeHwnd(), TheMinimapDialog->GetSafeHwnd());
+			::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowMinimap", 1);
+			TheMinimapDialog->rebuildTerrain();
+		}
+	}
+	return;
+#endif
+	if (TheMinimapDialog)
+	{
+		Bool visible = TheMinimapDialog->IsWindowVisible();
+		TheMinimapDialog->ShowWindow(visible ? SW_HIDE : SW_SHOW);
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowMinimap", visible ? 0 : 1);
+		if (!visible)
+			TheMinimapDialog->rebuildTerrain();
+	}
+}
+
+void WbView3d::OnUpdateViewMinimap(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->IsWindowVisible() ? 1 : 0);
+}
+
+#ifdef RTS_HAS_QT
+// Startup restore (Qt mode): reopen the Layers List / Minimap Qt tool windows if they were
+// open when WB last closed. In MFC mode CMainFrame::OnCreate did this via ShowWindow from
+// the saved ShowLayersList / ShowMinimap flags, but the Qt windows need the Qt main window
+// as their owner and it does not exist that early -- so the open is deferred here, called
+// once from InitInstance's tail after the main window + doc exist. Open-only (no toggle):
+// mirrors the open branch of OnViewLayersList / OnViewMinimap without flipping any state.
+void WbView3d::qtRestoreStartupWindows()
+{
+	CWnd *mainWnd = AfxGetMainWnd();
+	if (mainWnd == NULL)
+	{
+		return;
+	}
+
+	// Layers List: m_showLayersList was seeded from the profile at view init.
+	if (m_showLayersList && TheLayersList)
+	{
+		WBQtLayers_Open(mainWnd->GetSafeHwnd());
+		TheLayersList->enableUpdates();
+	}
+
+	// Minimap: keyed off the same ShowMinimap profile flag the toggle writes.
+	if (TheMinimapDialog
+		&& AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowMinimap", 0)
+		&& !WBQtMinimap_IsOpen())
+	{
+		WBQtMinimap_Open(mainWnd->GetSafeHwnd(), TheMinimapDialog->GetSafeHwnd());
+		TheMinimapDialog->rebuildTerrain();
+	}
+}
+#endif
+
+// --- Minimap submenu: Show Objects ------------------------------------------
+void WbView3d::OnMinimapShowObjects()
+{
+	if (TheMinimapDialog)
+		TheMinimapDialog->setShowObjects(!TheMinimapDialog->getShowObjects());
+}
+void WbView3d::OnUpdateMinimapShowObjects(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getShowObjects() ? 1 : 0);
+}
+void WbView3d::OnMinimapShowRoads()
+{
+	if (TheMinimapDialog)
+		TheMinimapDialog->setShowRoads(!TheMinimapDialog->getShowRoads());
+}
+void WbView3d::OnUpdateMinimapShowRoads(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getShowRoads() ? 1 : 0);
+}
+void WbView3d::OnMinimapShowBorder()
+{
+	if (TheMinimapDialog)
+		TheMinimapDialog->setShowBorder(!TheMinimapDialog->getShowBorder());
+}
+void WbView3d::OnUpdateMinimapShowBorder(CCmdUI* pCmdUI)
+{
+	// The orange border only draws in full-extent mode (it would just trace the minimap
+	// edge otherwise), so gray it out when full extent is off.
+	pCmdUI->Enable(TheMinimapDialog != NULL && TheMinimapDialog->getFullExtent());
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getShowBorder() ? 1 : 0);
+}
+void WbView3d::OnMinimapFullExtent()
+{
+	if (TheMinimapDialog)
+		TheMinimapDialog->setFullExtent(!TheMinimapDialog->getFullExtent());
+}
+void WbView3d::OnUpdateMinimapFullExtent(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getFullExtent() ? 1 : 0);
+}
+void WbView3d::OnMinimapCullObjects()
+{
+	if (TheMinimapDialog)
+		TheMinimapDialog->setCullObjects(!TheMinimapDialog->getCullObjects());
+}
+void WbView3d::OnUpdateMinimapCullObjects(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getCullObjects() ? 1 : 0);
+}
+
+// --- Minimap menu: Angle Snap Lock (camera rotation -> 45-degree steps) -------
+void WbView3d::OnMinimapSnap45()
+{
+	m_snapCameraAngle45 = !m_snapCameraAngle45;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "SnapCameraAngle45", m_snapCameraAngle45 ? 1 : 0);
+	if (!m_projection)
+	{
+		// Re-derive the camera angle from the raw accumulator: snap to the nearest
+		// 45-degree step when enabling (lands on-grid immediately), or restore the
+		// free raw angle when disabling.
+		m_cameraAngle = m_snapCameraAngle45 ? snapAngleTo45(m_cameraAngleRaw) : m_cameraAngleRaw;
+		redraw();
+		drawLabels();
+		CMainFrame::GetMainFrame()->handleCameraChange();
+	}
+}
+void WbView3d::OnUpdateMinimapSnap45(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TRUE);
+	pCmdUI->SetCheck(m_snapCameraAngle45 ? 1 : 0);
+}
+
+// --- Minimap submenu: Refresh Rate (radio) ----------------------------------
+void WbView3d::OnMinimapRefreshOff()  { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(0); }
+void WbView3d::OnMinimapRefresh16()   { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(16); }
+void WbView3d::OnMinimapRefresh33()   { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(33); }
+void WbView3d::OnMinimapRefresh100()  { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(100); }
+void WbView3d::OnMinimapRefresh250()  { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(250); }
+void WbView3d::OnMinimapRefresh1000() { if (TheMinimapDialog) TheMinimapDialog->setRefreshDelayMs(1000); }
+void WbView3d::OnUpdateMinimapRefreshOff(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 0 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRefresh16(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 16 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRefresh33(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 33 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRefresh100(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 100 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRefresh250(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 250 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRefresh1000(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getRefreshDelayMs() == 1000 ? 1 : 0);
+}
+
+// --- Minimap submenu: Resolution (radio) ------------------------------------
+void WbView3d::OnMinimapRes256()  { if (TheMinimapDialog) TheMinimapDialog->setResolution(256); }
+void WbView3d::OnMinimapRes512()  { if (TheMinimapDialog) TheMinimapDialog->setResolution(512); }
+void WbView3d::OnMinimapRes1024() { if (TheMinimapDialog) TheMinimapDialog->setResolution(1024); }
+void WbView3d::OnMinimapRes2048() { if (TheMinimapDialog) TheMinimapDialog->setResolution(2048); }
+void WbView3d::OnUpdateMinimapRes1024(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getResolution() == 1024 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRes256(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getResolution() == 256 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRes512(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getResolution() == 512 ? 1 : 0);
+}
+void WbView3d::OnUpdateMinimapRes2048(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(TheMinimapDialog != NULL);
+	pCmdUI->SetCheck(TheMinimapDialog && TheMinimapDialog->getResolution() == 2048 ? 1 : 0);
 }
 
 void WbView3d::OnViewShowMapBoundaries()
@@ -3238,6 +8184,136 @@ void WbView3d::OnUpdateViewShowMapBoundaries(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(m_showMapBoundaries ? 1 : 0);
 }
 
+void WbView3d::OnViewShowWaveLines()
+{
+	setShowWaveLines(!m_showWaveLines);
+}
+
+void WbView3d::setShowWaveLines(Bool show)
+{
+	m_showWaveLines = show;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWaveLines", m_showWaveLines ? 1 : 0);
+	DrawObject::setDoWaveFeedback(m_showWaveLines);
+	Invalidate(false);
+}
+
+void WbView3d::OnUpdateViewShowWaveLines(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showWaveLines ? 1 : 0);
+}
+
+void WbView3d::OnViewShowRulerGrid()
+{
+	m_showRulerGrid = !m_showRulerGrid;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowRulerGrid", m_showRulerGrid ? 1 : 0);
+	DrawObject::setDoGridFeedback(m_showRulerGrid);
+}
+
+void WbView3d::OnUpdateViewShowRulerGrid(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showRulerGrid ? 1 : 0);
+}
+
+void WbView3d::OnViewShowTracingOverlay()
+{
+	m_showTracingOverlay = !m_showTracingOverlay;
+
+	if (m_showTracingOverlay)
+	{
+		// The overlay file is per-map: data\editor\<mapname>.png (or .dds), where
+		// <mapname> is the current map's name (falls back to "trace_overlay" if
+		// the map hasn't been saved yet).
+		AsciiString base = DrawObject::getTracingOverlayBaseName();
+
+		if(!g_alreadyHintedTraceOverlay){
+			// Tell the user where to put the file and what proportions to author
+			// it at, using the current map's cell extents.
+			AsciiString hint;
+			hint.format(
+				"This feature overlays a texture on the map.\n\n"
+				"Place a PNG or DDS image at one of:\n"
+				"    %s.png\n"
+				"    %s.dds\n"
+				"(relative to your game directory; PNG is preferred if both exist).\n\n",
+				base.str(), base.str());
+
+			CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+			WorldHeightMapEdit *pMap = pDoc ? pDoc->GetHeightMap() : NULL;
+			if (pMap) {
+				AsciiString dims;
+				dims.format(
+					"For correct proportions, author the image to your map's extents:\n"
+					"    %d x %d cells.",
+					pMap->getXExtent(), pMap->getYExtent());
+				hint.concat(dims);
+			}
+
+			AfxMessageBox(hint.str(), MB_ICONINFORMATION | MB_OK);
+			g_alreadyHintedTraceOverlay = true;
+		}
+
+		AsciiString overlayPath = DrawObject::resolveTracingOverlayPath();
+		if (overlayPath.isEmpty())
+		{
+			// PNG can be any size, so it gets this map's exact extents; DDS wants
+			// power-of-two, so it gets those extents rounded up.
+			AsciiString pngSuffix;
+			AsciiString ddsSuffix;
+			Int pngW, pngH, ddsW, ddsH;
+			if (DrawObject::getTracingOverlayRecommendedSize(pngW, pngH, ddsW, ddsH)) {
+				pngSuffix.format("   (recommended %d x %d)", pngW, pngH);
+				ddsSuffix.format("   (recommended %d x %d, power of two)", ddsW, ddsH);
+			}
+
+			AsciiString msg;
+			msg.format(
+				"Missing texture:\n\n"
+				"    %s.png%s\n"
+				"    %s.dds%s\n\n"
+				"The tracing overlay will not be displayed until a PNG or DDS file "
+				"with one of these names is present.",
+				base.str(), pngSuffix.str(), base.str(), ddsSuffix.str());
+
+			AfxMessageBox(msg.str(), MB_ICONERROR | MB_OK);
+
+			m_showTracingOverlay = 0;
+
+		}
+
+		// A texture exists and the overlay is on -- open the modeless settings
+		// dialog. It stays up and applies opacity / interpolation live (on the
+		// fly) as the user drags the slider or changes the combo.
+		if (m_showTracingOverlay)
+		{
+#ifdef RTS_HAS_QT
+			// Qt mode: the native Qt settings window; falls back to the MFC dialog only
+			// when Qt is not up yet (returns 0).
+			if (!WBQtTracingOverlay_Open(::AfxGetMainWnd()->GetSafeHwnd()))
+			{
+				TracingOverlayOptions::showDialog(this);
+			}
+#else
+			TracingOverlayOptions::showDialog(this);
+#endif
+		}
+	}
+	else
+	{
+		// Overlay turned off -- close the settings dialog if it is open.
+#ifdef RTS_HAS_QT
+		WBQtTracingOverlay_Close();
+#endif
+		TracingOverlayOptions::closeDialog();
+	}
+
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTracingOverlay", m_showTracingOverlay ? 1 : 0);
+	DrawObject::setDoTracingOverlayFeedback(m_showTracingOverlay);
+}
+
+void WbView3d::OnUpdateViewShowTracingOverlay(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showTracingOverlay ? 1 : 0);
+}
 
 void WbView3d::OnViewShowAmbientSounds()
 {
@@ -3246,9 +8322,318 @@ void WbView3d::OnViewShowAmbientSounds()
 	DrawObject::setDoAmbientSoundFeedback(m_showAmbientSounds);
 }
 
+void WbView3d::OnViewShowPlayingSounds()
+{
+	m_showPlayingSounds = !m_showPlayingSounds;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowPlayingSounds", m_showPlayingSounds ? 1 : 0);
+	DrawObject::setDoPlayingSoundFeedback(m_showPlayingSounds);
+	Invalidate(false);
+}
+
+void WbView3d::OnUpdateViewShowPlayingSounds(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showPlayingSounds ? 1 : 0);
+	// Only meaningful while something is actually playing.
+	pCmdUI->Enable(m_listenMode != WB_LISTEN_NONE);
+}
+
 void WbView3d::OnUpdateViewShowAmbientSounds(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_showAmbientSounds ? 1 : 0);
+}
+
+// ----------------------------------------------------------------------------
+// View > Listen To Map
+//
+// Hands the map's ambient sounds to TheAudio as positional 3D events, so panning the camera
+// around the map sounds like the game does. WB inits TheAudio but never pumps it (see the
+// update call in OnTimer, which only runs while a listen mode is active), and the microphone
+// follows PlaceholderView, whose camera accessors are fed from setupCamera().
+//
+// Sounds are read straight off each MapObject's dict rather than going through Drawable/Object
+// like the game does -- WB has no Drawable for a map object, so Object::updateObjValuesFromMapObject
+// (the game's equivalent of this) is not reachable here.
+// ----------------------------------------------------------------------------
+// The object's ambient sound: its own dict override if it has one, else the sound its
+// ThingTemplate declares (what most props on a map actually use). Empty == no ambient sound.
+AsciiString WbView3d::getAmbientSoundName(MapObject *pMapObj) const
+{
+	Bool exists = false;
+	AsciiString soundName = pMapObj->getProperties()->getAsciiString(TheKey_objectSoundAmbient, &exists);
+	if (exists && !soundName.isEmpty())
+	{
+		return soundName;
+	}
+	const ThingTemplate *tt = pMapObj->getThingTemplate();
+	if (tt == NULL)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	const AudioEventRTS *tmplSound = tt->getSoundAmbient();
+	if (tmplSound == NULL)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	return tmplSound->getEventName();
+}
+
+// Fills outSoundName with the sound to play when it returns true, so the caller does not have to
+// resolve it a second time.
+Bool WbView3d::shouldListenToObject(MapObject *pMapObj, AsciiString *outSoundName) const
+{
+	if (pMapObj == NULL || m_listenMode == WB_LISTEN_NONE)
+	{
+		return false;
+	}
+	// Roads, bridges, waypoints and scorches never carry an ambient sound.
+	if (pMapObj->getFlags() & (FLAG_ROAD_FLAGS|FLAG_BRIDGE_FLAGS))
+	{
+		return false;
+	}
+
+	AsciiString soundName = getAmbientSoundName(pMapObj);
+	if (soundName.isEmpty())
+	{
+		return false;
+	}
+
+	const AudioEventInfo *info = TheAudio->findAudioEventInfo(soundName);
+	if (info == NULL)
+	{
+		return false;
+	}
+	if (outSoundName != NULL)
+	{
+		*outSoundName = soundName;
+	}
+
+	switch (m_listenMode)
+	{
+		case WB_LISTEN_ALL:
+			return true;
+
+		case WB_LISTEN_PERMANENT:
+			// "Permanent" == loops forever with no loop count, i.e. it never stops on its own.
+			return info->isPermanentSound();
+
+		case WB_LISTEN_ENABLED:
+		{
+			// The per-object "enabled" checkbox in Object Properties. Absent means the object
+			// never had its ambient sound customized, which the game treats as enabled.
+			Bool enabledExists = false;
+			Bool enabled = pMapObj->getProperties()->getBool(TheKey_objectSoundAmbientEnabled, &enabledExists);
+			return !enabledExists || enabled;
+		}
+	}
+	return false;
+}
+
+// How often the sweep below re-checks the map. Sounds are submitted once and the engine drops
+// any that are out of earshot AT THAT MOMENT (SoundManager::canPlayNow culls on distance), so
+// without a periodic re-check a sound you panned away from never comes back when you pan to it
+// again. The game has no such problem because a Drawable re-starts its own ambient sound; WB has
+// no Drawable, so this sweep plays that role.
+#define LISTEN_SWEEP_INTERVAL_MS 1000
+
+void WbView3d::startListenSounds(void)
+{
+	if (m_listenMode == WB_LISTEN_NONE || TheAudio == NULL)
+	{
+		return;
+	}
+
+	// Rate-limited: this walks every map object, and re-checking at frame rate would be wasteful
+	// (and pointless -- the listener cannot move far in 16ms). A zero timestamp means no sweep
+	// has run yet (fresh view, or stopListenSounds reset it), so the first one runs immediately.
+	const UnsignedInt now = ::GetTickCount();
+	if (m_lastListenSweepTime != 0 && (now - m_lastListenSweepTime) < LISTEN_SWEEP_INTERVAL_MS)
+	{
+		return;
+	}
+	m_lastListenSweepTime = now;
+
+	for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+	{
+		AsciiString soundName;
+		if (!shouldListenToObject(pMapObj, &soundName))
+		{
+			continue;
+		}
+
+		// Already audible? Leave it alone -- addAudioEvent does NOT dedupe, so re-submitting a
+		// playing sound would stack a second voice on it every sweep. Anything else (it walked
+		// out of earshot, or a one-shot finished) drops its stale handle and starts again;
+		// erase by key is a no-op when there is nothing to forget.
+		std::map<MapObject *, AudioHandle>::iterator known = m_listenHandles.find(pMapObj);
+		if (known != m_listenHandles.end() && TheAudio->isCurrentlyPlaying(known->second))
+		{
+			continue;
+		}
+		m_listenHandles.erase(pMapObj);
+
+		AudioEventRTS event(soundName);
+		event.setPosition(pMapObj->getLocation());
+		AudioHandle h = TheAudio->addAudioEvent(&event);
+		if (h != AHSV_NoSound)
+		{
+			m_listenHandles[pMapObj] = h;
+		}
+	}
+}
+
+// Is this object's ambient sound audible right now? Asks the engine rather than trusting the
+// handle map, because a sound can stop on its own (walked out of earshot, one-shot finished)
+// between sweeps and the map only learns that on the next sweep.
+Bool WbView3d::isListenSoundPlaying(MapObject *pMapObj) const
+{
+	if (m_listenMode == WB_LISTEN_NONE || TheAudio == NULL || m_listenHandles.empty())
+	{
+		return false;
+	}
+	std::map<MapObject *, AudioHandle>::const_iterator it = m_listenHandles.find(pMapObj);
+	if (it == m_listenHandles.end())
+	{
+		return false;
+	}
+	return TheAudio->isCurrentlyPlaying(it->second);
+}
+
+// An object is going away (deleted, or moved out of the list): forget its sound so the handle
+// map never holds a pointer to a dead MapObject. Its voice is left to finish on its own -- the
+// engine owns it, and ambient sounds are short or looping-and-distance-culled.
+void WbView3d::forgetListenSound(MapObject *pMapObj)
+{
+	if (!m_listenHandles.empty())
+	{
+		m_listenHandles.erase(pMapObj);
+	}
+}
+
+void WbView3d::stopListenSounds(void)
+{
+	if (TheAudio != NULL)
+	{
+		// Everything this feature starts is a world sound, so this leaves music/UI alone.
+		TheAudio->stopAudio(AudioAffect_Sound3D);
+	}
+	// The handles are dead now; keeping them would make the next sweep think everything is still
+	// playing and start nothing. Also drops pointers to objects a map reload is about to free.
+	m_listenHandles.clear();
+	m_lastListenSweepTime = 0;
+}
+
+void WbView3d::restartListenSounds(void)
+{
+	stopListenSounds();
+	startListenSounds();
+}
+
+// The four modes are a radio group: picking one replaces the current mode rather than toggling.
+static void wbSetListenMode(WbView3d *pView, Int *pMode, Int newMode)
+{
+	if (*pMode == newMode)
+	{
+		return;
+	}
+	*pMode = newMode;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ListenToMap", newMode);
+	pView->restartListenSounds();
+}
+
+void WbView3d::OnViewListenEnabled()
+{
+	wbSetListenMode(this, &m_listenMode, WB_LISTEN_ENABLED);
+}
+
+void WbView3d::OnUpdateViewListenEnabled(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetRadio(m_listenMode == WB_LISTEN_ENABLED ? 1 : 0);
+}
+
+void WbView3d::OnViewListenPermanent()
+{
+	wbSetListenMode(this, &m_listenMode, WB_LISTEN_PERMANENT);
+}
+
+void WbView3d::OnUpdateViewListenPermanent(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetRadio(m_listenMode == WB_LISTEN_PERMANENT ? 1 : 0);
+}
+
+void WbView3d::OnViewListenAll()
+{
+	wbSetListenMode(this, &m_listenMode, WB_LISTEN_ALL);
+}
+
+void WbView3d::OnUpdateViewListenAll(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetRadio(m_listenMode == WB_LISTEN_ALL ? 1 : 0);
+}
+
+void WbView3d::OnViewListenNone()
+{
+	wbSetListenMode(this, &m_listenMode, WB_LISTEN_NONE);
+}
+
+void WbView3d::OnUpdateViewListenNone(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetRadio(m_listenMode == WB_LISTEN_NONE ? 1 : 0);
+}
+
+// Toolbar play/pause: a one-button shortcut across the Listen To Map radio group, so the common
+// "let me hear the map" / "quiet please" flip doesn't need the submenu. Anything that is currently
+// making noise (Enabled / Permanent / All) pauses to NONE; silence resumes to ALL. Resuming to ALL
+// rather than the mode we came from keeps the button honest: it is drawn as a plain play/pause
+// pair, so it must not depend on hidden state the icon can't show. The submenu still selects the
+// narrower Enabled / Permanent modes, and its radio marks follow along because everything routes
+// through the same wbSetListenMode.
+void WbView3d::OnViewListenToggle()
+{
+	wbSetListenMode(this, &m_listenMode,
+		(m_listenMode == WB_LISTEN_NONE) ? WB_LISTEN_ALL : WB_LISTEN_NONE);
+}
+
+void WbView3d::OnUpdateViewListenToggle(CCmdUI* pCmdUI)
+{
+	// Pushed in while sound is playing, so the button shows what is happening rather than what
+	// clicking it would do.
+	pCmdUI->SetCheck(m_listenMode != WB_LISTEN_NONE ? 1 : 0);
+}
+
+void WbView3d::OnViewShowBaseRadius() {
+	m_showBaseRadius = !m_showBaseRadius;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBaseRadius", m_showBaseRadius ? 1 : 0);
+	DrawObject::setDoBaseRadiusFeedback(m_showBaseRadius);
+}
+
+void WbView3d::OnUpdateViewShowBaseRadius(CCmdUI* pCmdUI) {
+	pCmdUI->SetCheck(m_showBaseRadius ? 1 : 0);
+}
+
+void WbView3d::OnViewShowSubDraw()
+{
+	m_showSubDraw = !m_showSubDraw;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSubDraw", m_showSubDraw ? 1 : 0);
+	resetRenderObjects();
+	invalObjectInView(nullptr);
+}
+
+void WbView3d::OnUpdateViewShowSubDraw(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showSubDraw ? 1 : 0);
+}
+
+void WbView3d::OnViewShowFullModel()
+{
+	m_showFullModel = !m_showFullModel;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowFullModel", m_showFullModel ? 1 : 0);
+	resetRenderObjects();
+	invalObjectInView(nullptr);
+}
+
+void WbView3d::OnUpdateViewShowFullModel(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_showFullModel ? 1 : 0);
 }
 
 void WbView3d::OnViewShowSoundCircles()
@@ -3256,7 +8641,7 @@ void WbView3d::OnViewShowSoundCircles()
   m_showSoundCircles = !m_showSoundCircles;
   ::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoundCircles", m_showSoundCircles ? 1 : 0);
   resetRenderObjects();
-  invalObjectInView(nullptr);
+  invalObjectInView(NULL);
 }
 
 void WbView3d::OnUpdateViewShowSoundCircles(CCmdUI* pCmdUI)
@@ -3264,3 +8649,626 @@ void WbView3d::OnUpdateViewShowSoundCircles(CCmdUI* pCmdUI)
   pCmdUI->SetCheck(m_showSoundCircles ? 1 : 0);
 }
 
+void WbView3d::OnWindowLODMode1() 
+{
+    m_lod = 1;
+	m_showObjectsSelected = true;
+	m_showObjects = false;
+	TheWritableGlobalData->m_useLightMap = false;
+	TheWritableGlobalData->m_showSoftWaterEdge = false;
+	TheWritableGlobalData->m_useShadowDecals = false;
+	TheWritableGlobalData->m_useShadowVolumes = false;
+
+	// TheWritableGlobalData->m_textureReductionFactor = 4;
+	// if (WW3D::Get_Texture_Reduction() != TheWritableGlobalData->m_textureReductionFactor)
+	// {	WW3D::Set_Texture_Reduction(TheWritableGlobalData->m_textureReductionFactor,32);
+	// 	// TheGameLODManager->setCurrentTextureReduction(TheWritableGlobalData->m_textureReductionFactor);
+	// 	if( TheTerrainRenderObject ) 
+  	// 		TheTerrainRenderObject->setTextureLOD( TheWritableGlobalData->m_textureReductionFactor );
+	// }
+	// ReleaseResources();       // Optional: free current resources first
+	// ReAcquireResources();     // Re-load all textures with the new reduction factor
+
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", 0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LODMode", 1);
+	resetRenderObjects();
+	invalObjectInView(nullptr);
+}
+
+void WbView3d::OnUpdateOnWindowLODMode1(CCmdUI* pCmdUI) 
+{
+    pCmdUI->SetCheck(m_lod == 1);
+}
+
+void WbView3d::OnWindowLODMode2() 
+{
+    m_lod = 2; 
+	m_showObjectsSelected = true;
+	m_showObjects = false;
+	TheWritableGlobalData->m_useLightMap = true;
+	TheWritableGlobalData->m_showSoftWaterEdge = true;
+	TheWritableGlobalData->m_useShadowDecals = true;
+	TheWritableGlobalData->m_useShadowVolumes = true;
+
+	// TheWritableGlobalData->m_textureReductionFactor = 1;
+	// if (WW3D::Get_Texture_Reduction() != TheWritableGlobalData->m_textureReductionFactor)
+	// {	WW3D::Set_Texture_Reduction(TheWritableGlobalData->m_textureReductionFactor,32);
+	// 	// TheGameLODManager->setCurrentTextureReduction(TheWritableGlobalData->m_textureReductionFactor);
+	// 	if( TheTerrainRenderObject ) 
+  	// 		TheTerrainRenderObject->setTextureLOD( TheWritableGlobalData->m_textureReductionFactor );
+	// }
+	// ReleaseResources();       // Optional: free current resources first
+	// ReAcquireResources();     // Re-load all textures with the new reduction factor
+
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LODMode", 2);
+	resetRenderObjects();
+	invalObjectInView(nullptr);
+}
+
+void WbView3d::OnUpdateOnWindowLODMode2(CCmdUI* pCmdUI) 
+{
+    pCmdUI->SetCheck(m_lod == 2);
+}
+
+void WbView3d::OnWindowLODMode3() 
+{
+    m_lod = 3; 
+	TheWritableGlobalData->m_useLightMap = true;
+	TheWritableGlobalData->m_showSoftWaterEdge = true;
+	TheWritableGlobalData->m_useShadowDecals = true;
+	TheWritableGlobalData->m_useShadowVolumes = true;
+	// m_showObjectsSelected = false;
+	// m_showObjects = true;
+	// TheWritableGlobalData->m_textureReductionFactor = 0;
+	// if (WW3D::Get_Texture_Reduction() != TheWritableGlobalData->m_textureReductionFactor)
+	// {	WW3D::Set_Texture_Reduction(TheWritableGlobalData->m_textureReductionFactor,32);
+	// 	// TheGameLODManager->setCurrentTextureReduction(TheWritableGlobalData->m_textureReductionFactor);
+	// 	if( TheTerrainRenderObject ) 
+  	// 		TheTerrainRenderObject->setTextureLOD( TheWritableGlobalData->m_textureReductionFactor );
+	// }
+	// ReleaseResources();       // Optional: free current resources first
+	// ReAcquireResources();     // Re-load all textures with the new reduction factor
+	
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", 1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIconsSelected", 0);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons",1);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LODMode", 3);
+	resetRenderObjects();
+	invalObjectInView(nullptr);
+}
+
+void WbView3d::OnUpdateOnWindowLODMode3(CCmdUI* pCmdUI)
+{
+    pCmdUI->SetCheck(m_lod == 3);
+}
+
+// Shift+F5: manual device reset/reload for when the 3D viewport dies (device lost after
+// sleep / lock / another app grabbing exclusive mode) and the automatic retry never
+// recovers it. Same guarded reset as reset3dEngineDisplaySize/redraw: a failed reset
+// leaves every DX8 resource released without re-acquiring, so remember the failure and
+// let redraw() keep retrying instead of rendering freed buffers.
+void WbView3d::OnResetDevice()
+{
+	if (!m_ww3dInited) {
+		return;
+	}
+#ifdef RTS_HAS_QT
+	m_deviceResetFailed =
+		(WW3D::Set_Device_Resolution(m_actualWinSize.x, m_actualWinSize.y, true) != WW3D_ERROR_OK);
+	// A successful reset re-renders the same scene, so it is visually silent -- confirm it
+	// ran (the failure toast also tells the user the retry loop is now waiting on the device).
+	if (m_deviceResetFailed) {
+		WBQtToast_Show("D3D device reset FAILED (device still lost) - retrying every frame", 5000, 0);
+	} else {
+		WBQtToast_Show("D3D device reset", 2500, 0);
+	}
+#else
+	WW3D::Set_Device_Resolution(m_actualWinSize.x, m_actualWinSize.y, true);
+#endif
+	Invalidate(false);
+}
+
+void WbView3d::setMSAA(D3DMULTISAMPLE_TYPE type)
+{
+	WW3D::Set_MSAA_Mode((WW3D::MultiSampleModeEnum)type);
+	DX8Wrapper::Reset_Device(true);
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "MSAAMode", (int)type);
+}
+
+void WbView3d::OnMSAANone() { setMSAA(D3DMULTISAMPLE_NONE); }
+void WbView3d::OnMSAA2X()   { setMSAA(D3DMULTISAMPLE_2_SAMPLES); }
+void WbView3d::OnMSAA4X()   { setMSAA(D3DMULTISAMPLE_4_SAMPLES); }
+void WbView3d::OnMSAA8X()   { setMSAA(D3DMULTISAMPLE_8_SAMPLES); }
+
+void WbView3d::OnUpdateMSAANone(CCmdUI* pCmdUI) { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_NONE); }
+void WbView3d::OnUpdateMSAA2X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_2X); }
+void WbView3d::OnUpdateMSAA4X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_4X); }
+void WbView3d::OnUpdateMSAA8X(CCmdUI* pCmdUI)   { pCmdUI->SetCheck(WW3D::Get_MSAA_Mode() == WW3D::MULTISAMPLE_MODE_8X); }
+
+void WbView3d::setTextureFilter(int mode)
+{
+	if (mode == 1) {
+		WW3D::Set_Anisotropy_Level(16);
+		WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC);
+	} else {
+		WW3D::Set_Anisotropy_Level(2);
+		WW3D::Set_Texture_Filter(TextureFilterClass::TEXTURE_FILTER_BILINEAR);
+	}
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TexFilterMode", mode);
+}
+
+void WbView3d::OnTexFilterDefault()  { setTextureFilter(0); }
+void WbView3d::OnTexFilterAniso16X() { setTextureFilter(1); }
+
+void WbView3d::OnUpdateTexFilterDefault(CCmdUI* pCmdUI)  { pCmdUI->SetCheck(WW3D::Get_Texture_Filter() != TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC); }
+void WbView3d::OnUpdateTexFilterAniso16X(CCmdUI* pCmdUI) { pCmdUI->SetCheck(WW3D::Get_Texture_Filter() == TextureFilterClass::TEXTURE_FILTER_ANISOTROPIC); }
+
+// ----------------------------------------------------------------------------
+// FX Shaders (Level Of Detail menu): the D3D9 effects the game switches through Options.ini.
+// The game's values, loaded with GameData, are the defaults; WorldBuilder.ini overrides them.
+static Bool readFxSetting(const char *key, Bool gameDefault)
+{
+	return ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, key, gameDefault ? 1 : 0) != 0;
+}
+
+static void writeFxSetting(const char *key, Bool value)
+{
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, key, value ? 1 : 0);
+}
+
+// Effects the backend or the hardware cannot draw stay greyed out. SetCheck always runs so the
+// Qt menu bar treats the item as checkable.
+static void updateFxItem(CCmdUI* pCmdUI, Bool checked, Bool available)
+{
+	pCmdUI->Enable(available ? TRUE : FALSE);
+	pCmdUI->SetCheck((checked && available) ? 1 : 0);
+}
+
+static Bool fxD3D9Available()
+{
+#if defined(BUILD_WITH_D3D9)
+	return true;
+#else
+	return false;
+#endif
+}
+
+void WbView3d::loadFxShaderSettings()
+{
+	TheWritableGlobalData->m_useShadowMap = readFxSetting("FxShadowMap", TheGlobalData->m_useShadowMap);
+	TheWritableGlobalData->m_useBloom = readFxSetting("FxBloom", TheGlobalData->m_useBloom);
+	setEffectShaders(readFxSetting("FxEffectShaders",
+		TheGlobalData->m_useFlameShaders || TheGlobalData->m_useElectricShaders ||
+		TheGlobalData->m_useLaserShaders || TheGlobalData->m_useCryoShaders));
+	TheWritableGlobalData->m_useHQSky = readFxSetting("FxHQSky", TheGlobalData->m_useHQSky);
+	TheWritableGlobalData->m_useNormalMaps = readFxSetting("FxNormalMaps", TheGlobalData->m_useNormalMaps);
+	TheWritableGlobalData->m_useHeightBlend = readFxSetting("FxHeightBlend", TheGlobalData->m_useHeightBlend);
+	TheWritableGlobalData->m_useSpecular = readFxSetting("FxSpecular", TheGlobalData->m_useSpecular);
+}
+
+void WbView3d::setEffectShaders(Bool on)
+{
+	TheWritableGlobalData->m_useSoftParticles = on;
+	TheWritableGlobalData->m_useFlameShaders = on;
+	TheWritableGlobalData->m_useElectricShaders = on;
+	TheWritableGlobalData->m_useLaserShaders = on;
+	TheWritableGlobalData->m_useCryoShaders = on;
+}
+
+void WbView3d::OnFxShadowMap()
+{
+	TheWritableGlobalData->m_useShadowMap = !TheGlobalData->m_useShadowMap;
+	writeFxSetting("FxShadowMap", TheGlobalData->m_useShadowMap);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxShadowMap(CCmdUI* pCmdUI)
+{
+	// The map only fills when Show Shadows is on, like the game's 3D/2D shadow options.
+	updateFxItem(pCmdUI, TheGlobalData->m_useShadowMap, TheW3DShadowMap != nullptr && TheW3DShadowMap->isAvailable());
+}
+
+void WbView3d::OnFxBloom()
+{
+	TheWritableGlobalData->m_useBloom = !TheGlobalData->m_useBloom;
+	writeFxSetting("FxBloom", TheGlobalData->m_useBloom);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxBloom(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useBloom, TheW3DBloom != nullptr);
+}
+
+void WbView3d::OnFxEffectShaders()
+{
+	setEffectShaders(!TheGlobalData->m_useFlameShaders);
+	writeFxSetting("FxEffectShaders", TheGlobalData->m_useFlameShaders);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxEffectShaders(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useFlameShaders, fxD3D9Available() && TheW3DSoftParticles != nullptr);
+}
+
+void WbView3d::OnFxHQSky()
+{
+	TheWritableGlobalData->m_useHQSky = !TheGlobalData->m_useHQSky;
+	writeFxSetting("FxHQSky", TheGlobalData->m_useHQSky);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxHQSky(CCmdUI* pCmdUI)
+{
+	// Draws through the cloud map, so View > Show Clouds has to be on as well.
+	updateFxItem(pCmdUI, TheGlobalData->m_useHQSky, fxD3D9Available() && TheW3DSkyClouds != nullptr);
+}
+
+void WbView3d::OnFxNormalMaps()
+{
+	TheWritableGlobalData->m_useNormalMaps = !TheGlobalData->m_useNormalMaps;
+	writeFxSetting("FxNormalMaps", TheGlobalData->m_useNormalMaps);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxNormalMaps(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useNormalMaps, fxD3D9Available());
+}
+
+void WbView3d::OnFxHeightBlend()
+{
+	TheWritableGlobalData->m_useHeightBlend = !TheGlobalData->m_useHeightBlend;
+	writeFxSetting("FxHeightBlend", TheGlobalData->m_useHeightBlend);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxHeightBlend(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useHeightBlend, W3DShaderManager::supportsTerrainHeightBlend());
+}
+
+void WbView3d::OnFxSpecular()
+{
+	TheWritableGlobalData->m_useSpecular = !TheGlobalData->m_useSpecular;
+	writeFxSetting("FxSpecular", TheGlobalData->m_useSpecular);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateFxSpecular(CCmdUI* pCmdUI)
+{
+	updateFxItem(pCmdUI, TheGlobalData->m_useSpecular, fxD3D9Available());
+}
+
+void WbView3d::OnTextShadow()
+{
+	m_textShadow = !m_textShadow;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextShadow", m_textShadow ? 1 : 0);
+	if (m_textShadow && m_textOutline) {
+		m_textOutline = false;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextOutline", 0);
+		createLabelFont();		// the atlas bakes the outline into its glyphs
+	}
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextShadow(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_textShadow);
+}
+
+void WbView3d::OnTextOutline()
+{
+	m_textOutline = !m_textOutline;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextOutline", m_textOutline ? 1 : 0);
+	if (m_textOutline && m_textShadow) {
+		m_textShadow = false;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextShadow", 0);
+	}
+	createLabelFont();		// the atlas bakes the outline into its glyphs
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextOutline(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_textOutline);
+}
+
+// ----------------------------------------------------------------------------
+// (Re)build the viewport label glyph atlas, honoring the antialias setting.
+// Viewport labels are rendered as textured quads from this atlas (see render()),
+// so the text is part of the presented D3D frame and never flickers. Safe to call
+// again at runtime to apply the AA toggle (build() releases the old atlas).
+// Also (re)creates the D3DX label font: D3DX8 from the SDK on D3D8, D3DX9 from the
+// runtime-loaded d3dx9 DLL on D3D9 (m3DFont stays NULL when that DLL is missing).
+void WbView3d::createLabelFont()
+{
+	if (m3DFont) {
+		releaseD3DXFont();
+		m3DFont = NULL;
+	}
+
+	IDirect3DDevice8* pDev = DX8Wrapper::_Get_D3D_Device8();
+	if (!pDev)
+		return;
+
+	LOGFONT logFont;
+	logFont.lfHeight = 20;
+	logFont.lfWidth = 0;
+	logFont.lfEscapement = 0;
+	logFont.lfOrientation = 0;
+	logFont.lfWeight = FW_REGULAR;
+	logFont.lfItalic = FALSE;
+	logFont.lfUnderline = FALSE;
+	logFont.lfStrikeOut = FALSE;
+	logFont.lfCharSet = ANSI_CHARSET;
+	logFont.lfOutPrecision = OUT_DEFAULT_PRECIS;
+	logFont.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+	logFont.lfQuality = m_textAntialias ? ANTIALIASED_QUALITY : DEFAULT_QUALITY;
+	logFont.lfPitchAndFamily = DEFAULT_PITCH;
+	strcpy(logFont.lfFaceName, "Arial");
+
+#if defined(BUILD_WITH_D3D9)
+	m3DFont = WBD3DX9CreateFont(pDev, logFont);
+	if (m3DFont != NULL) {
+		((ID3DXFont*)m3DFont)->PreloadCharacters(32, 126);	// rasterize the ASCII glyphs now, not on first use
+		m_labelSprite = WBD3DX9CreateSprite(pDev);
+	}
+#else
+	HFONT hFont = CreateFontIndirect(&logFont);
+	if (hFont) {
+		D3DXCreateFont(pDev, hFont, &m3DFont);
+		DeleteObject(hFont);
+	}
+#endif
+
+	// Also (re)build the glyph atlas for the Atlas renderer mode, matching the
+	// D3DX font above (Arial 20, regular) so the modes look comparable. Honors
+	// the same antialias toggle.
+	m_fontAtlas.build("Arial", 20, false, m_textAntialias ? true : false, m_textOutline ? true : false);
+#if defined(BUILD_WITH_D3D9)
+	// Without the d3dx9 DLL the HUD text draws from its own atlas, whose per-frame
+	// mini batches never disturb the label batch that reissue() replays.
+	m_hudAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
+#endif
+}
+
+void WbView3d::releaseD3DXFont()
+{
+#if defined(BUILD_WITH_D3D9)
+	if (m_labelSprite != NULL) {
+		m_labelSprite->Release();
+		m_labelSprite = NULL;
+	}
+	m_labelSpriteOpen = false;
+	if (m_labelLayer != NULL) {
+		m_labelLayer->Release();
+		m_labelLayer = NULL;
+	}
+#endif
+	if (m3DFont) {
+		((ID3DXFont*)m3DFont)->Release();
+	}
+	m3DFont = NULL;
+}
+
+Bool WbView3d::hasFrameFont() const
+{
+#if defined(BUILD_WITH_D3D9)
+	return m3DFont != NULL || m_hudAtlas.isValid();
+#else
+	return m3DFont != NULL;
+#endif
+}
+
+// In-frame text for the HUD and ruler: the D3DX font, or on D3D9 without the d3dx9
+// DLL the HUD glyph atlas. The atlas path honors DT_LEFT|DT_TOP placement only and
+// splits DT_WORDBREAK text on newlines, which is how the tooltip strings are laid out.
+void WbView3d::fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color)
+{
+	if (str == NULL || len <= 0 || rct == NULL) {
+		return;
+	}
+#if defined(BUILD_WITH_D3D9)
+	if (m3DFont != NULL) {
+		ID3DXSprite *sprite = m_labelSpriteOpen ? m_labelSprite : NULL;
+		((ID3DXFont*)m3DFont)->DrawTextA(sprite, str, len, (RECT*)rct, flags, color);
+		return;
+	}
+	if (!m_hudAtlas.isValid()) {
+		return;
+	}
+	IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
+	if (dev == NULL) {
+		return;
+	}
+	m_hudAtlas.begin(dev, m_actualWinSize.x, m_actualWinSize.y);
+	Int y = rct->top;
+	Int lineStart = 0;
+	for (Int i = 0; i <= len; ++i) {
+		if (i == len || str[i] == '\n') {
+			if (i > lineStart) {
+				m_hudAtlas.drawText(rct->left, y, str + lineStart, i - lineStart, color, false);
+			}
+			y += m_hudAtlas.lineHeight();
+			lineStart = i + 1;
+		}
+	}
+	m_hudAtlas.end();
+#else
+	if (m3DFont != NULL) {
+		((ID3DXFont*)m3DFont)->DrawText(str, len, (RECT*)rct, flags, color);
+	}
+#endif
+}
+
+void WbView3d::OnTextAntialias()
+{
+	m_textAntialias = !m_textAntialias;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextAntialias", m_textAntialias ? 1 : 0);
+	createLabelFont();		// rebuild the font with the new quality
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextAntialias(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_textAntialias);
+}
+
+// Label anchor mode: Default (ground) vs New (object center-height). Presented as a
+// radio pair under Text Rendering.
+void WbView3d::OnTextAnchorDefault()
+{
+	m_labelAnchorMode = 0;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 0);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextAnchorDefault(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelAnchorMode == 0);
+}
+
+void WbView3d::OnTextAnchorNew()
+{
+	m_labelAnchorMode = 1;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 1);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextAnchorNew(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelAnchorMode == 1);
+}
+
+// Label renderer: Old (D3DX m3DFont, drawn inside the D3D frame -> no flicker) vs
+// New (raw GDI ::TextOut on the window HDC -> sharper but strobes, because D3D8 has no
+// way to draw GDI into the presented frame; D3D9's flip model never shows it, and
+// drawing it into the frame through GetDC stalls the GPU, so it is off there) vs Atlas (WBFontAtlas glyph quads, also
+// in-frame: the object/status/trigger labels are batched into ONE DrawPrimitiveUP --
+// ~11ms/frame cheaper than Old with names on, see wbbench). Radio trio under Text
+// Rendering.
+void WbView3d::OnTextRendererOld()
+{
+	if (m3DFont == NULL) {
+		OnTextRendererAtlas();	// no D3DX font (D3D9 without the d3dx9 DLL)
+		return;
+	}
+	m_labelRenderer = 0;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextRendererOld(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(m3DFont != NULL);
+	pCmdUI->SetCheck(m_labelRenderer == 0);
+}
+
+void WbView3d::OnTextRendererNew()
+{
+#if defined(BUILD_WITH_D3D9)
+	OnTextRendererAtlas();
+#else
+	m_labelRenderer = 1;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 1);
+	Invalidate();
+#endif
+}
+
+void WbView3d::OnUpdateTextRendererNew(CCmdUI* pCmdUI)
+{
+#if defined(BUILD_WITH_D3D9)
+	pCmdUI->Enable(FALSE);
+	pCmdUI->SetCheck(0);
+#else
+	pCmdUI->SetCheck(m_labelRenderer == 1);
+#endif
+}
+
+void WbView3d::OnTextRendererAtlas()
+{
+	m_labelRenderer = 2;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 2);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextRendererAtlas(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelRenderer == 2);
+}
+
+// Distant-label cull presets (Text Rendering > Cull Distant Labels). Radio group:
+// 0 = Off, 1 = Near, 2 = Medium, 3 = Far. See the cull in drawLabels(); the radius
+// is a resolution-relative fraction of the viewport, not a fixed pixel count.
+void WbView3d::OnTextLabelCullOff()
+{
+	m_labelCull = 0;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelCull", 0);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextLabelCullOff(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelCull == 0);
+}
+
+void WbView3d::OnTextLabelCullNear()
+{
+	m_labelCull = 1;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelCull", 1);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextLabelCullNear(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelCull == 1);
+}
+
+void WbView3d::OnTextLabelCullMedium()
+{
+	m_labelCull = 2;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelCull", 2);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextLabelCullMedium(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelCull == 2);
+}
+
+void WbView3d::OnTextLabelCullFar()
+{
+	m_labelCull = 3;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LabelCull", 3);
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextLabelCullFar(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_labelCull == 3);
+}
+
+void WbView3d::OnKillFocus(CWnd* pNewWnd)
+{
+	if (CMainFrame::GetMainFrame() && !CMainFrame::GetMainFrame()->isFocusedOnScripting()) {
+		pauseEditTimer();
+	}
+
+    WbView::OnKillFocus(pNewWnd);
+}
+
+void WbView3d::OnSetFocus(CWnd* pOldWnd)
+{
+    startEditTimer();
+    WbView::OnSetFocus(pOldWnd);
+}

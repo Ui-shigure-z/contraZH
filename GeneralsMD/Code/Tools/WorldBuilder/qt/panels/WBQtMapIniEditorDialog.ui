@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WBQtMapIniEditorDialog</class>
+ <widget class="QWidget" name="WBQtMapIniEditorDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>820</width>
+    <height>620</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>INI Editor</string>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout" stretch="0,0,1,0">
+   <item>
+    <layout class="QHBoxLayout" name="commandRow">
+     <item>
+      <widget class="QPushButton" name="saveButton">
+       <property name="text">
+        <string>Save</string>
+       </property>
+       <property name="toolTip">
+        <string>Write the file back to disk (Ctrl+S).</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="reloadButton">
+       <property name="text">
+        <string>Reload</string>
+       </property>
+       <property name="toolTip">
+        <string>Re-read the file from disk, discarding unsaved edits.</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="Line" name="cmdSep1">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="undoButton">
+       <property name="text">
+        <string>Undo</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="redoButton">
+       <property name="text">
+        <string>Redo</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="Line" name="cmdSep2">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="whitespaceBox">
+       <property name="text">
+        <string>Show whitespace</string>
+       </property>
+       <property name="toolTip">
+        <string>Render spaces and tabs, so mixed indentation is visible.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="checkSyntaxBox">
+       <property name="text">
+        <string>Check syntax</string>
+       </property>
+       <property name="toolTip">
+        <string>Underline structural problems: a stray End, a block left unclosed, a key with no value.</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="autoCompleteBox">
+       <property name="text">
+        <string>Autocomplete</string>
+       </property>
+       <property name="toolTip">
+        <string>Suggest names from the game data as you type. Ctrl+Space opens a searchable list (works even with this off).</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="showErrorsBox">
+       <property name="text">
+        <string>Show errors</string>
+       </property>
+       <property name="toolTip">
+        <string>List the lines with a problem. Click one to jump to it in the file.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="checkNamesBox">
+       <property name="text">
+        <string>Check names</string>
+       </property>
+       <property name="toolTip">
+        <string>Underline object, upgrade and command button names the game data does not define. Right-click one for suggested replacements.</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="commandSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>Close</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="findRow">
+     <item>
+      <widget class="QLabel" name="findLabel">
+       <property name="text">
+        <string>Find:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="findEdit">
+       <property name="placeholderText">
+        <string>text to find (Ctrl+F, F3 for next)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="findNextButton">
+       <property name="text">
+        <string>Find Next</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="findPrevButton">
+       <property name="text">
+        <string>Find Previous</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="matchCaseBox">
+       <property name="text">
+        <string>Match case</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QWidget" name="editorHost" native="true">
+     <layout class="QVBoxLayout" name="editorHostLay">
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

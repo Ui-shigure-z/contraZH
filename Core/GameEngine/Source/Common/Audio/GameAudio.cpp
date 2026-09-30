@@ -976,6 +976,14 @@ Bool AudioManager::isCurrentSpeakerTypeSurroundSound()
 //-------------------------------------------------------------------------------------------------
 Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 {
+	// Every check below is about player affiliation (mine / ally / enemy / observed). With no
+	// player list there is no local player to compare against -- WorldBuilder previews a map's
+	// ambient sounds without a running game -- so nothing is filtered out.
+	if( !ThePlayerList )
+	{
+		return TRUE;
+	}
+
 	Player *localPlayer = ThePlayerList->getLocalPlayer();
 	if( !localPlayer->isPlayerActive() )
 	{

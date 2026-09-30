@@ -229,6 +229,8 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "CHEAT_SHOW_COMMAND_SET",									  GameMessage::MSG_CHEAT_SHOW_COMMAND_SET },
 	{ "CHEAT_SHOW_WEAPON_SET",									  GameMessage::MSG_CHEAT_SHOW_WEAPON_SET },
 	{ "CHEAT_SHOW_ARMOR_SET",									  GameMessage::MSG_CHEAT_SHOW_ARMOR_SET },
+	{ "CHEAT_SHOW_LASER_NAME",									  GameMessage::MSG_CHEAT_SHOW_LASER_NAME },
+	{ "CHEAT_SHOW_LASER_BEAM_BLOCK",							  GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK },
 	{ "CHEAT_CYCLE_CAMERA_MODE",							  GameMessage::MSG_CHEAT_CYCLE_CAMERA_MODE },
 	{ "CHEAT_CYCLE_SKYBOX",									  GameMessage::MSG_CHEAT_CYCLE_SKYBOX },
 	{ "CHEAT_CYCLE_TERRAIN_MODE",							  GameMessage::MSG_CHEAT_CYCLE_TERRAIN_MODE },
@@ -1019,6 +1021,28 @@ void MetaMap::generateMetaMap()
 		if (map->m_key == MK_NONE)
 		{
 			map->m_key = MK_SLASH;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Ctrl+, is free in Contra's CommandMap.ini; RTS_DEBUG builds give it to DEMO_BEGIN_ADJUST_DEFAULTPITCH below instead.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_LASER_NAME);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_COMMA;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Show the W3DLaserDraw module tags of each laser beam.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_PERIOD;
 			map->m_transition = DOWN;
 			map->m_modState = CTRL;
 			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);

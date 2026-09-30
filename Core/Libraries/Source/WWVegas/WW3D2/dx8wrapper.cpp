@@ -1950,8 +1950,12 @@ void DX8Wrapper::End_Scene(bool flip_frames)
 				hr=static_cast<IDirect3DDevice9Ex*>(_Get_D3D_Device8())->PresentEx(nullptr, nullptr, nullptr, nullptr, 0);
 			}
 			else
-#endif
+			{
+				hr=_Get_D3D_Device8()->Present(nullptr, nullptr, nullptr, nullptr);
+			}
+#else
 			hr=_Get_D3D_Device8()->Present(nullptr, nullptr, nullptr, nullptr);
+#endif
 		}
 
 		DX8_RECORD_DX8_CALLS();
@@ -1993,7 +1997,6 @@ void DX8Wrapper::End_Scene(bool flip_frames)
 			Set_Render_Device(-1, -1, -1, -1, -1, false, true, true);
 		}
 		else if (hr==D3DERR_DEVICEHUNG) {
-			// A GPU timeout on D3D9Ex; a reset puts the device back in a default state
 			DX8_ErrorCode(hr);
 			RENDER_LOG(("DX8Wrapper::End_Scene is resetting the device after a GPU timeout."));
 			Reset_Device();
@@ -2966,7 +2969,7 @@ void DX8Wrapper::Create_Scene_Target()
 	}
 	if (FAILED(hr))
 	{
-		// The swap chain is already single sampled, so MSAA is off for this device
+		// The swap chain is already single sampled, so it needs no reset
 		RENDER_LOG(("MSAA scene target creation failed, disabling MSAA"));
 		Release_Scene_Target();
 		MultiSampleAntiAliasing = D3DMULTISAMPLE_NONE;
@@ -3500,10 +3503,11 @@ IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(unsigned int width, unsigned
 	WWASSERT(format!=D3DFMT_P8);
 
 #if defined(BUILD_WITH_D3D9)
-	// SCRATCH would match CreateImageSurface most closely, but the device cannot
-	// touch a scratch surface, and callers such as the shroud both lock these and
-	// use them as a copy source. SYSTEMMEM allows both.
-	DX8CALL(CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SYSTEMMEM, &surface, nullptr));
+	// SYSTEMMEM lets the device copy from the surface; SCRATCH takes the formats it rejects, such as DXT and A8
+	if (FAILED(_Get_D3D_Device8()->CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SYSTEMMEM, &surface, nullptr)))
+	{
+		DX8CALL(CreateOffscreenPlainSurface(width, height, WW3DFormat_To_D3DFormat(format), D3DPOOL_SCRATCH, &surface, nullptr));
+	}
 #else
 	DX8CALL(CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface));
 #endif
@@ -3634,9 +3638,8 @@ HRESULT DX8Wrapper::_Copy_DX8_Rects(
 		const RECT& src_rect = pSourceRectsArray[i];
 		const POINT dest_point = pDestPointsArray ? pDestPointsArray[i] : origin;
 
-		// Reading a render target back to the CPU is its own call in D3D9, and it
-		// copies whole surfaces only. A sub-rect goes through a full-size copy first.
-		if ((src_desc.Usage & D3DUSAGE_RENDERTARGET) && dest_desc.Pool == D3DPOOL_SYSTEMMEM)
+		// GetRenderTargetData only copies whole surfaces into system memory, so anything else is staged through one
+		if ((src_desc.Usage & D3DUSAGE_RENDERTARGET) && dest_desc.Pool != D3DPOOL_DEFAULT)
 		{
 			// GetRenderTargetData cannot read a multisampled surface, so it is resolved first
 			IDirect3DSurface8* source = pSourceSurface;
@@ -3647,11 +3650,15 @@ HRESULT DX8Wrapper::_Copy_DX8_Rects(
 				if (resolved != nullptr)
 				{
 					DX8CALL_HRES(StretchRect(pSourceSurface, nullptr, resolved, nullptr, D3DTEXF_NONE), hr);
-					source = resolved;
+					if (SUCCEEDED(hr))
+					{
+						source = resolved;
+					}
 				}
 			}
 
-			const bool whole = src_rect.left == 0 && src_rect.top == 0 && dest_point.x == 0 && dest_point.y == 0 &&
+			const bool whole = dest_desc.Pool == D3DPOOL_SYSTEMMEM &&
+				src_rect.left == 0 && src_rect.top == 0 && dest_point.x == 0 && dest_point.y == 0 &&
 				(UINT)src_rect.right == src_desc.Width && (UINT)src_rect.bottom == src_desc.Height &&
 				dest_desc.Width == src_desc.Width && dest_desc.Height == src_desc.Height &&
 				dest_desc.Format == src_desc.Format;

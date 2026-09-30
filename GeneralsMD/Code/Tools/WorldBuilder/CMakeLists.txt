@@ -1,4 +1,7 @@
 set(WORLDBUILDER_SRC
+    # TheSuperHackers @build Build the shared local MCP bridge into WorldBuilder.
+    "${CMAKE_SOURCE_DIR}/Core/Tools/WorldBuilderMcp/WorldBuilderMcpBridge.cpp"
+    "${CMAKE_SOURCE_DIR}/Core/Tools/WorldBuilderMcp/WorldBuilderMcpBridge.h"
     "src/addplayerdialog.cpp"
     "src/AutoEdgeOutTool.cpp"
     "src/BaseBuildProps.cpp"
@@ -15,6 +18,7 @@ set(WORLDBUILDER_SRC
     "src/CFixTeamOwnerDialog.cpp"
     "src/ContourOptions.cpp"
     "src/CUndoable.cpp"
+    "src/DialogFont.cpp"
     "src/DrawObject.cpp"
     "src/EditAction.cpp"
     "src/EditCondition.cpp"
@@ -32,6 +36,16 @@ set(WORLDBUILDER_SRC
     "src/GlobalLightOptions.cpp"
     "src/GroveOptions.cpp"
     "src/GroveTool.cpp"
+    "include/MapGen/WBPerlinNoise.h"
+    "include/MapGen/WBMapGenSettings.h"
+    "include/MapGen/WBMapGenerator.h"
+    "include/MapGen/WBMapGenDoc.h"
+    "src/MapGen/WBPerlinNoise.cpp"
+    "src/MapGen/WBMapGenSettings.cpp"
+    "src/MapGen/WBMapGenerator.cpp"
+    "src/MapGen/WBMapGenDoc.cpp"
+    "include/MapGen/WBMapGenAssets.h"
+    "src/MapGen/WBMapGenAssets.cpp"
     "src/HandScrollTool.cpp"
     "src/ImpassableOptions.cpp"
     "src/LayersList.cpp"
@@ -39,6 +53,7 @@ set(WORLDBUILDER_SRC
     "src/MainFrm.cpp"
     "src/mapobjectprops.cpp"
     "src/MapPreview.cpp"
+    "src/MinimapDialog.cpp"
     "src/MapSettings.cpp"
     "src/MeshMoldOptions.cpp"
     "src/MeshMoldTool.cpp"
@@ -62,9 +77,12 @@ set(WORLDBUILDER_SRC
     "src/RoadTool.cpp"
     "src/RulerOptions.cpp"
     "src/RulerTool.cpp"
+    "src/WaveEditorOptions.cpp"
+    "src/WaveEditorTool.cpp"
     "src/SaveMap.cpp"
     "src/ScorchOptions.cpp"
     "src/ScorchTool.cpp"
+    "src/StochasticTool.cpp"
     "src/ScriptActionsFalse.cpp"
     "src/ScriptActionsTrue.cpp"
     "src/ScriptConditions.cpp"
@@ -85,17 +103,64 @@ set(WORLDBUILDER_SRC
     "src/TerrainSwatches.cpp"
     "src/TileTool.cpp"
     "src/Tool.cpp"
+    "src/TracingOverlayOptions.cpp"
     "src/WaterOptions.cpp"
     "src/WaterTool.cpp"
     "src/WaypointOptions.cpp"
     "src/WaypointTool.cpp"
+    "src/WBFontAtlas.cpp"
+    "src/WBPerf.cpp"
+    "src/WBD3DX9Font.cpp"
+"src/WBPngTexture.cpp"
     "src/WBFrameWnd.cpp"
     "src/WBHeightMap.cpp"
+    "src/WBParticleRuntime.cpp"
+    "include/WBParticleRuntime.h"
     "src/WBPopupSlider.cpp"
+    "src/WBQtHostBridge.cpp"
+    "src/WBQtFeatherBridge.cpp"
+    "src/WBQtBrushBridge.cpp"
+    "src/WBQtMoundBridge.cpp"
+    "src/WBQtRulerBridge.cpp"
+    "src/WBQtRampBridge.cpp"
+    "src/WBQtObjectBridge.cpp"
+    "src/WBQtScriptBridge.cpp"
+    "src/WBQtBuildListBridge.cpp"
+    "src/WBQtTerrainMaterialBridge.cpp"
+    "src/WBQtBlendMaterialBridge.cpp"
+    "src/WBQtFenceBridge.cpp"
+    "src/WBQtRoadBridge.cpp"
+    "src/WBQtWaterBridge.cpp"
+    "src/WBQtWaypointBridge.cpp"
+    "src/WBQtGroveBridge.cpp"
+    "src/WBQtScorchBridge.cpp"
+    "src/WBQtMeshMoldBridge.cpp"
+    "src/WBQtObjectPropsBridge.cpp"
+    "src/WBQtWaveBridge.cpp"
+    "src/WBQtStochasticBridge.cpp"
+    "src/WBQtGlobalLightBridge.cpp"
+    "src/WBQtCameraBridge.cpp"
+    "src/WBQtMapGenBridge.cpp"
+    "src/WBQtAnimScrubBridge.cpp"
+    "src/WBQtLayersBridge.cpp"
+    "src/WBQtScriptEditBridge.cpp"
+    "src/WBQtCondActBridge.cpp"
+    "src/WBQtParamBridge.cpp"
+    "src/WBQtMiscModalsBridge.cpp"
+    "src/WBQtPlayerListBridge.cpp"
+    "src/WBQtTeamsBridge.cpp"
+    "src/WBQtMapFileBridge.cpp"
+    "src/WBQtPickUnitBridge.cpp"
+    "src/WBQtChromeBridge.cpp"
+    "src/WBQtEntityFinderBridge.cpp"
+    "src/WBQtMapIniEditorBridge.cpp"
+    "src/WBQtTerrainModalBridge.cpp"
+    "src/WBQtTracingOverlayBridge.cpp"
     "src/wbview.cpp"
     "src/wbview3d.cpp"
     "src/WHeightMapEdit.cpp"
     "src/WorldBuilder.cpp"
+    "src/ToastDialog.cpp"
     "src/WorldBuilderDoc.cpp"
     "src/WorldBuilderView.cpp"
     "include/addplayerdialog.h"
@@ -114,6 +179,7 @@ set(WORLDBUILDER_SRC
     "include/CFixTeamOwnerDialog.h"
     "include/ContourOptions.h"
     "include/CUndoable.h"
+    "include/DialogFont.h"
     "include/DrawObject.h"
     "include/EditAction.h"
     "include/EditCondition.h"
@@ -138,6 +204,7 @@ set(WORLDBUILDER_SRC
     "include/MainFrm.h"
     "include/mapobjectprops.h"
     "include/MapPreview.h"
+    "include/MinimapDialog.h"
     "include/MapSettings.h"
     "include/MeshMoldOptions.h"
     "include/MeshMoldTool.h"
@@ -161,8 +228,11 @@ set(WORLDBUILDER_SRC
     "include/RoadTool.h"
     "include/RulerOptions.h"
     "include/RulerTool.h"
+    "include/WaveEditorOptions.h"
+    "include/WaveEditorTool.h"
     "include/SaveMap.h"
     "include/ScorchOptions.h"
+    "include/StochasticTool.h"
     "include/ScorchTool.h"
     "include/ScriptActionsFalse.h"
     "include/ScriptActionsTrue.h"
@@ -183,28 +253,54 @@ set(WORLDBUILDER_SRC
     "include/TerrainSwatches.h"
     "include/TileTool.h"
     "include/Tool.h"
+    "include/TracingOverlayOptions.h"
     "include/WaterOptions.h"
     "include/WaterTool.h"
     "include/WaypointOptions.h"
     "include/WaypointTool.h"
     "include/WBFrameWnd.h"
     "include/WBHeightMap.h"
+    "include/WBTutorialPrompts.h"
     "include/wbview.h"
     "include/wbview3d.h"
     "include/WHeightMapEdit.h"
+    "include/ToastDialog.h"
+    "include/CustomConfigProfile.h"
     "include/WorldBuilder.h"
     "include/WorldBuilderDoc.h"
     "include/WorldBuilderView.h"
 )
 
+# Stamp the current git short commit hash into a generated header (WBBuildStamp.h) so the startup
+# WARNING box can show the exact build it came from (WB_BUILD_COMMIT). A custom TARGET (not a
+# custom command keyed on an output file) runs its COMMAND on every build, so the hash is always
+# re-checked; GitCommitStamp.cmake only rewrites the header when the hash actually changes, so an
+# unchanged commit leaves the header's mtime untouched and does not force a recompile.
+find_package(Git QUIET)
+set(WB_BUILD_STAMP "${CMAKE_CURRENT_BINARY_DIR}/WBBuildStamp.h")
+add_custom_target(z_worldbuilder_buildstamp
+    BYPRODUCTS "${WB_BUILD_STAMP}"
+    COMMAND "${CMAKE_COMMAND}"
+        -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
+        -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -DOUT_FILE=${WB_BUILD_STAMP}
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/GitCommitStamp.cmake"
+    COMMENT "Stamping git commit into WBBuildStamp.h"
+    VERBATIM)
+
 add_executable(z_worldbuilder WIN32)
 
 target_sources(z_worldbuilder PRIVATE ${WORLDBUILDER_SRC})
 
+# Depend on the stamp target so the header is regenerated before WorldBuilder.cpp compiles.
+add_dependencies(z_worldbuilder z_worldbuilder_buildstamp)
+
 target_include_directories(z_worldbuilder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    "${CMAKE_SOURCE_DIR}/Core/Tools/WorldBuilderMcp"
     include
     res
+    "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 target_precompile_headers(z_worldbuilder PRIVATE
@@ -217,6 +313,7 @@ target_precompile_headers(z_worldbuilder PRIVATE
 
 target_link_libraries(z_worldbuilder PRIVATE
     d3d8lib
+    stb
     imm32
     vfw32
     winmm
@@ -227,10 +324,310 @@ target_link_libraries(z_worldbuilder PRIVATE
 )
 
 if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
-    target_link_options(z_worldbuilder PRIVATE /NODEFAULTLIB:libci.lib /NODEFAULTLIB:libc.lib)
+    # /LARGEADDRESSAWARE lets this 32-bit exe use up to 4GB of address space on
+    # 64-bit Windows (instead of the default 2GB), giving big maps more RAM headroom.
+    #
+    # /PDBALTPATH:%_PDB% embeds only the PDB *filename* in the exe (not the absolute
+    # build path). WorldBuilder opens its own PDB at startup to symbolicate crash
+    # dumps; without this, a copy of the exe deployed elsewhere (e.g. a game install)
+    # reaches back via the embedded absolute path and holds the build-dir PDB open,
+    # which then makes the linker fail with LNK1201 on the next build. With just the
+    # filename, the running copy looks beside itself and never locks the build PDB.
+    target_link_options(z_worldbuilder PRIVATE /LARGEADDRESSAWARE /PDBALTPATH:%_PDB% /NODEFAULTLIB:libci.lib /NODEFAULTLIB:libc.lib)
     target_compile_definitions(z_worldbuilder PRIVATE _AFXDLL)
     target_sources(z_worldbuilder PRIVATE res/WorldBuilder.rc)
-    set_target_properties(z_worldbuilder PROPERTIES OUTPUT_NAME "WorldBuilderZH${RTS_BUILD_OUTPUT_SUFFIX}")
+    # Per-config exe names so a Debug and a Release build deployed to the same folder
+    # don't clobber each other. The Qt build is named for what it is (WorldBuilderZH_Qt.exe);
+    # the plain MFC build keeps the historical _d/_r scheme. Other configs (Internal/Profile
+    # are Release-config; MinSizeRel/RelWithDebInfo) keep the base name.
+    if(RTS_ENABLE_WORLDBUILDER_QT AND RTS_D3D_BACKEND STREQUAL "D3D9")
+        # The D3D9 build ships side by side with the D3D8 one.
+        set_target_properties(z_worldbuilder PROPERTIES
+            OUTPUT_NAME WorldBuilderZH_Qt_D3D9
+            OUTPUT_NAME_DEBUG WorldBuilderZH_Qt_D3D9_d
+            OUTPUT_NAME_RELEASE WorldBuilderZH_Qt_D3D9)
+    elseif(RTS_ENABLE_WORLDBUILDER_QT)
+        set_target_properties(z_worldbuilder PROPERTIES
+            OUTPUT_NAME WorldBuilderZH_Qt
+            OUTPUT_NAME_DEBUG WorldBuilderZH_Qt_d
+            OUTPUT_NAME_RELEASE WorldBuilderZH_Qt)
+    else()
+        set_target_properties(z_worldbuilder PROPERTIES
+            OUTPUT_NAME "WorldBuilderZH${RTS_BUILD_OUTPUT_SUFFIX}"
+            OUTPUT_NAME_DEBUG "WorldBuilderZH_d${RTS_BUILD_OUTPUT_SUFFIX}"
+            OUTPUT_NAME_RELEASE "WorldBuilderZH_r${RTS_BUILD_OUTPUT_SUFFIX}")
+    endif()
 else()
     set_target_properties(z_worldbuilder PROPERTIES OUTPUT_NAME "worldbuilderzh${RTS_BUILD_OUTPUT_SUFFIX}")
+endif()
+
+# --- Experimental Qt coexistence (Phase 1 of MFC -> Qt migration) ----------------
+# OFF by default; when OFF nothing below runs and z_worldbuilder is byte-for-byte the
+# normal MFC build. When ON, all Qt code lives in a SEPARATE static lib so AUTOMOC
+# only scans the handful of Qt files (never the big hand-maintained MFC source list).
+# Configure with a 32-bit Qt5, e.g. -DCMAKE_PREFIX_PATH=C:/Qt/5.15.2/msvc2019.
+if(RTS_ENABLE_WORLDBUILDER_QT)
+    find_package(Qt5 COMPONENTS Widgets REQUIRED)
+
+    # qmfcapp.cpp is the ONLY translation unit that mixes MFC (afxwin.h) and Qt; the
+    # rest is pure Qt reached through the opaque WBQtBridge facade.
+    add_library(z_worldbuilder_qt STATIC
+        "qt/3rdparty/qtwinmigrate/qmfcapp.cpp"
+        "qt/3rdparty/qtwinmigrate/qmfcapp.h"
+        "qt/3rdparty/qtwinmigrate/qwinwidget.cpp"
+        "qt/3rdparty/qtwinmigrate/qwinwidget.h"
+        "qt/3rdparty/qtwinmigrate/qwinhost.cpp"
+        "qt/3rdparty/qtwinmigrate/qwinhost.h"
+        "qt/WBQtBridge.cpp"
+        "qt/WBQtBridge.h"
+        "qt/WBQtTheme.cpp"
+        "qt/WBQtTheme.h"
+        "qt/WBQtComboStyle.cpp"
+        "qt/WBQtComboStyle.h"
+        "qt/WBQtTreeStyle.cpp"
+        "qt/WBQtTreeStyle.h"
+        "qt/WBQtNameMatch.h"
+        "qt/WBQtWindowPos.cpp"
+        "qt/WBQtWindowPos.h"
+        "qt/WBQtPanelBridge.h"
+        "qt/WBQtOptionsPanels.cpp"
+        "qt/WBQtScriptWindow.cpp"
+        "qt/WBQtScriptWindow.h"
+        "qt/WBQtScriptWindow.ui"
+        "qt/WBQtChrome.cpp"
+        "qt/WBQtChrome.h"
+        "qt/WBQtMainWindow.cpp"
+        "qt/WBQtMainWindow.h"
+        "qt/WBQtShortcuts.cpp"
+        "qt/WBQtShortcuts.h"
+        "qt/WBQtMessageBox.cpp"
+        "qt/WBQtMessageBox.h"
+        "qt/WBQtChromeBridge.h"
+        "qt/WBQtToast.cpp"
+        "qt/WBQtToast.h"
+        "qt/WBQtPreviewImage.h"
+        "qt/panels/WBQtFeatherPanel.cpp"
+        "qt/panels/WBQtFeatherPanel.h"
+        "qt/panels/WBQtFeatherPanel.ui"
+        "qt/panels/WBQtBrushPanel.cpp"
+        "qt/panels/WBQtBrushPanel.h"
+        "qt/panels/WBQtBrushPanel.ui"
+        "qt/panels/WBQtMoundPanel.cpp"
+        "qt/panels/WBQtMoundPanel.h"
+        "qt/panels/WBQtMoundPanel.ui"
+        "qt/panels/WBQtRulerPanel.cpp"
+        "qt/panels/WBQtRulerPanel.h"
+        "qt/panels/WBQtRulerPanel.ui"
+        "qt/panels/WBQtRampPanel.cpp"
+        "qt/panels/WBQtRampPanel.h"
+        "qt/panels/WBQtRampPanel.ui"
+        "qt/panels/WBQtObjectPanel.cpp"
+        "qt/panels/WBQtObjectPanel.h"
+        "qt/panels/WBQtObjectPanel.ui"
+        "qt/panels/WBQtBuildListPanel.cpp"
+        "qt/panels/WBQtBuildListPanel.h"
+        "qt/panels/WBQtBuildListPanel.ui"
+        "qt/panels/WBQtTerrainMaterialPanel.cpp"
+        "qt/panels/WBQtTerrainMaterialPanel.h"
+        "qt/panels/WBQtTerrainMaterialPanel.ui"
+        "qt/panels/WBQtBlendMaterialPanel.cpp"
+        "qt/panels/WBQtBlendMaterialPanel.h"
+        "qt/panels/WBQtBlendMaterialPanel.ui"
+        "qt/panels/WBQtFencePanel.cpp"
+        "qt/panels/WBQtFencePanel.h"
+        "qt/panels/WBQtFencePanel.ui"
+        "qt/panels/WBQtRoadPanel.cpp"
+        "qt/panels/WBQtRoadPanel.h"
+        "qt/panels/WBQtRoadPanel.ui"
+        "qt/panels/WBQtWaterPanel.cpp"
+        "qt/panels/WBQtWaterPanel.h"
+        "qt/panels/WBQtWaterPanel.ui"
+        "qt/panels/WBQtWaypointPanel.cpp"
+        "qt/panels/WBQtWaypointPanel.h"
+        "qt/panels/WBQtWaypointPanel.ui"
+        "qt/panels/WBQtGrovePanel.cpp"
+        "qt/panels/WBQtGrovePanel.h"
+        "qt/panels/WBQtGrovePanel.ui"
+        "qt/panels/WBQtScorchPanel.cpp"
+        "qt/panels/WBQtScorchPanel.h"
+        "qt/panels/WBQtScorchPanel.ui"
+        "qt/panels/WBQtMeshMoldPanel.cpp"
+        "qt/panels/WBQtMeshMoldPanel.h"
+        "qt/panels/WBQtMeshMoldPanel.ui"
+        "qt/panels/WBQtObjectPropsPanel.cpp"
+        "qt/panels/WBQtObjectPropsPanel.h"
+        "qt/panels/WBQtObjectPropsPanel.ui"
+        "qt/panels/WBQtScrubSpinBox.cpp"
+        "qt/panels/WBQtScrubSpinBox.h"
+        "qt/panels/WBQtWavePanel.cpp"
+        "qt/panels/WBQtWavePanel.h"
+        "qt/panels/WBQtWavePanel.ui"
+        "qt/panels/WBQtStochasticPanel.cpp"
+        "qt/panels/WBQtStochasticPanel.h"
+        "qt/panels/WBQtStochasticBridge.h"
+        "qt/panels/WBQtGlobalLightPanel.cpp"
+        "qt/panels/WBQtGlobalLightPanel.h"
+        "qt/panels/WBQtGlobalLightPanel.ui"
+        "qt/panels/WBQtMapGenDialog.cpp"
+        "qt/panels/WBQtMapGenDialog.h"
+        "qt/panels/WBQtMapGenDialog.ui"
+        "qt/panels/WBQtMapGenBridge.h"
+        "qt/panels/WBQtCameraPanel.cpp"
+        "qt/panels/WBQtCameraPanel.h"
+        "qt/panels/WBQtCameraPanel.ui"
+        "qt/panels/WBQtAnimScrubPanel.cpp"
+        "qt/panels/WBQtAnimScrubPanel.h"
+        "qt/panels/WBQtAnimScrubPanel.ui"
+        "qt/panels/WBQtLayersPanel.cpp"
+        "qt/panels/WBQtLayersPanel.h"
+        "qt/panels/WBQtLayersPanel.ui"
+        "qt/panels/WBQtMinimapHost.cpp"
+        "qt/panels/WBQtMinimapBridge.h"
+        "qt/panels/WBQtScriptEditDialog.cpp"
+        "qt/panels/WBQtScriptEditDialog.h"
+        "qt/panels/WBQtScriptEditListTab.ui"
+        "qt/panels/WBQtScriptEditDialog.ui"
+        "qt/panels/WBQtScriptEditBridge.h"
+        "qt/panels/WBQtCondActDialog.cpp"
+        "qt/panels/WBQtCondActDialog.h"
+        "qt/panels/WBQtCondActDialog.ui"
+        "qt/panels/WBQtCondActBridge.h"
+        "qt/panels/WBQtParamDialog.cpp"
+        "qt/panels/WBQtParamDialog.h"
+        "qt/panels/WBQtGroupDialog.ui"
+        "qt/panels/WBQtObjectPickDialog.ui"
+        "qt/panels/WBQtCoordDialog.ui"
+        "qt/panels/WBQtParamDialog.ui"
+        "qt/panels/WBQtParamBridge.h"
+        "qt/panels/WBQtMiscModals.cpp"
+        "qt/panels/WBQtMiscModals.h"
+        "qt/panels/WBQtShadowDialog.ui"
+        "qt/panels/WBQtNewHeightMapDialog.ui"
+        "qt/panels/WBQtMapSettingsDialog.ui"
+        "qt/panels/WBQtMacrotextureDialog.ui"
+        "qt/panels/WBQtImpassableDialog.ui"
+        "qt/panels/WBQtFixTeamOwnerDialog.ui"
+        "qt/panels/WBQtExportScriptsDialog.ui"
+        "qt/panels/WBQtBaseBuildPropsDialog.ui"
+        "qt/panels/WBQtMiscModalsBridge.h"
+        "qt/panels/WBQtPlayerListDialog.cpp"
+        "qt/panels/WBQtPlayerListDialog.h"
+        "qt/panels/WBQtAddPlayerDialog.ui"
+        "qt/panels/WBQtPlayerListDialog.ui"
+        "qt/panels/WBQtPlayerListBridge.h"
+        "qt/panels/WBQtTeamsDialog.cpp"
+        "qt/panels/WBQtTeamsDialog.h"
+        "qt/panels/WBQtTeamsDialog.ui"
+        "qt/panels/WBQtTeamsBridge.h"
+        "qt/panels/WBQtTeamSheetDialog.cpp"
+        "qt/panels/WBQtTeamSheetDialog.h"
+        "qt/panels/WBQtTeamSheetDialog.ui"
+        "qt/panels/WBQtMapFileDialogs.cpp"
+        "qt/panels/WBQtMapFileDialogs.h"
+        "qt/panels/WBQtSaveMapDialog.ui"
+        "qt/panels/WBQtOpenMapDialog.ui"
+        "qt/panels/WBQtMapIniReport.cpp"
+        "qt/panels/WBQtMapIniReport.h"
+        "qt/panels/WBQtMapIniReportPrivate.h"
+        "qt/panels/WBQtMapIniReportDialog.ui"
+        "qt/panels/WBQtMapIniEditorDialog.cpp"
+        "qt/panels/WBQtMapIniEditorDialog.h"
+        "qt/panels/WBQtMapIniEditorDialog.ui"
+        "qt/panels/WBQtMapIniEditorBridge.h"
+        "qt/panels/WBQtMapFileBridge.h"
+        "qt/panels/WBQtPickUnitDialog.cpp"
+        "qt/panels/WBQtPickUnitDialog.h"
+        "qt/panels/WBQtPickUnitDialog.ui"
+        "qt/panels/WBQtReplaceReportDialog.cpp"
+        "qt/panels/WBQtReplaceReportDialog.h"
+        "qt/panels/WBQtReplaceReportDialog.ui"
+        "qt/panels/WBQtPickUnitBridge.h"
+        "qt/panels/WBQtEntityFinderDialog.cpp"
+        "qt/panels/WBQtEntityFinderDialog.h"
+        "qt/panels/WBQtEntityFinderDialog.ui"
+        "qt/panels/WBQtEntityFinderBridge.h"
+        "qt/panels/WBQtTerrainModalDialog.cpp"
+        "qt/panels/WBQtTerrainModalDialog.h"
+        "qt/panels/WBQtTerrainModalDialog.ui"
+        "qt/panels/WBQtTerrainModalBridge.h"
+        "qt/panels/WBQtTracingOverlayWindow.cpp"
+        "qt/panels/WBQtTracingOverlayWindow.h"
+        "qt/panels/WBQtTracingOverlayWindow.ui"
+        "qt/panels/WBQtTracingOverlayBridge.h")
+
+    set_target_properties(z_worldbuilder_qt PROPERTIES AUTOMOC ON AUTOUIC ON)
+
+    target_include_directories(z_worldbuilder_qt PRIVATE
+        qt
+        qt/panels
+        res
+        qt/3rdparty/qtwinmigrate)
+
+    # _AFXDLL: match the exe's shared-MFC config so afxwin.h resolves identically in
+    # qmfcapp.cpp. NOMINMAX: keep windows.h min/max macros from breaking Qt headers in
+    # that mixed TU. RTS_HAS_QT: compile-time gate for the bootstrap calls.
+    target_compile_definitions(z_worldbuilder_qt PRIVATE _AFXDLL NOMINMAX RTS_HAS_QT)
+
+    # WB_QT_KEYDEBUG: opt-in [WBDBG] OutputDebugString traces for the Qt inversion
+    # (WBQtDebug.h). Off by default; configure with -DWB_QT_KEYDEBUG=ON to enable. Forwarded
+    # to both the qt lib and the exe so WorldBuilder.cpp can log too.
+    option(WB_QT_KEYDEBUG "Emit [WBDBG] Qt-inversion key/focus debug traces" OFF)
+    if(WB_QT_KEYDEBUG)
+        target_compile_definitions(z_worldbuilder_qt PRIVATE WB_QT_KEYDEBUG)
+    endif()
+
+    # dwmapi: DwmSetWindowAttribute for the dark title bar (WBQtTheme).
+    # Qt5::GuiPrivate: qwinwidget.cpp uses the qpa platform-native-interface (a Qt private
+    # header) to resolve a QWindow's HWND for MFC embedding.
+    # comctl32: SetWindowSubclass for the on-screen clamp of tracked windows (WBQtWindowPos).
+    target_link_libraries(z_worldbuilder_qt PUBLIC Qt5::Widgets PRIVATE Qt5::GuiPrivate dwmapi comctl32)
+
+    # Link the Qt lib into the exe and turn on the guarded bootstrap in WorldBuilder.cpp.
+    target_link_libraries(z_worldbuilder PRIVATE z_worldbuilder_qt)
+    target_compile_definitions(z_worldbuilder PRIVATE RTS_HAS_QT)
+    if(WB_QT_KEYDEBUG)
+        target_compile_definitions(z_worldbuilder PRIVATE WB_QT_KEYDEBUG)
+    endif()
+
+    # WorldBuilder is an MFC app: it already has MFC's WinMain and no main(). Stop Qt's
+    # CMake config from auto-linking qtmain.lib (which supplies a WinMain -> main shim and
+    # would otherwise cause "unresolved external symbol _main").
+    set_target_properties(z_worldbuilder PROPERTIES Qt5_NO_LINK_QTMAIN ON)
+
+    # Copy the Qt runtime (Qt5 DLLs + platforms/qwindows.dll) next to the exe so a dev
+    # run straight from the build tree resolves the Qt libraries and platform plugin.
+    get_target_property(_qt5_qmake Qt5::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt5_bin "${_qt5_qmake}" DIRECTORY)
+    add_custom_command(TARGET z_worldbuilder POST_BUILD
+        COMMAND "${_qt5_bin}/windeployqt.exe"
+                --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime
+                "$<IF:$<CONFIG:Debug>,--debug,--release>"
+                "$<TARGET_FILE:z_worldbuilder>"
+        COMMENT "Deploying Qt runtime next to WorldBuilder (RTS_ENABLE_WORLDBUILDER_QT)"
+        VERBATIM)
+
+    # --- Publish staging (cmake --build --preset publish) -----------------------
+    # The z_worldbuilder_publish target collects a distributable WorldBuilder into
+    # RTS_WORLDBUILDER_PUBLISH_DIR: the exe, its pdb (WorldBuilder symbolicates its
+    # own crash dumps from a pdb found beside the exe, see /PDBALTPATH above), and
+    # the Qt runtime laid out by windeployqt (Qt5 DLLs + platforms/styles/
+    # imageformats plugins). MFC/VC runtime DLLs are NOT staged: the exe is _AFXDLL
+    # and expects the VC++ redistributable on the target machine, exactly like the
+    # shipped game.
+    set(RTS_WORLDBUILDER_PUBLISH_DIR "${CMAKE_SOURCE_DIR}/publish" CACHE PATH
+        "Folder the z_worldbuilder_publish target stages the exe + Qt runtime into")
+    add_custom_target(z_worldbuilder_publish
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RTS_WORLDBUILDER_PUBLISH_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:z_worldbuilder>" "${RTS_WORLDBUILDER_PUBLISH_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_PDB_FILE:z_worldbuilder>" "${RTS_WORLDBUILDER_PUBLISH_DIR}"
+        COMMAND "${_qt5_bin}/windeployqt.exe"
+                --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime
+                "$<IF:$<CONFIG:Debug>,--debug,--release>"
+                --dir "${RTS_WORLDBUILDER_PUBLISH_DIR}"
+                "$<TARGET_FILE:z_worldbuilder>"
+        COMMENT "Publishing WorldBuilder + Qt runtime to ${RTS_WORLDBUILDER_PUBLISH_DIR}"
+        VERBATIM)
+    add_dependencies(z_worldbuilder_publish z_worldbuilder)
 endif()

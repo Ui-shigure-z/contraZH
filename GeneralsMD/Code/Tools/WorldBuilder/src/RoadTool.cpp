@@ -36,6 +36,13 @@
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
 #include "GameClient/Line2D.h"
+#include "ToastDialog.h"
+#include "WBTutorialPrompts.h"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtToast.h"
+#endif
+
+static bool g_roadSelectTooltip = false;
 //
 // RoadTool class.
 //
@@ -51,6 +58,8 @@ RoadTool::~RoadTool()
 {
 	m_mapObj = nullptr;
 }
+
+#define ROAD_SNAP_DISTANCE (static_cast<float>(atof(::AfxGetApp()->GetProfileString("RoadOptionPanel", "RoadSnappingDistance", "1.0"))))
 //-----------------------------------------------------------------------------
 //         Public Functions
 //-----------------------------------------------------------------------------
@@ -153,6 +162,27 @@ void RoadTool::activate()
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_ROAD_OPTIONS);
 	RoadOptions::updateSelection();
 	DrawObject::setDoBrushFeedback(false);
+
+	if(!g_roadSelectTooltip && WBQtObject_GetTutorialPrompts())
+	{
+#ifdef RTS_HAS_QT
+		if (WBQtToast_Show("Hold Ctrl and click a road point to select all connected road points. \n (All Object Icons must be viewable first.)", 20000, 1))
+		{
+			g_roadSelectTooltip = true;
+		}
+		else
+		{
+#endif
+		CToastDialog* pToast = new CToastDialog(
+		_T("Hold Ctrl and click a road point to select all connected road points. \n (All Object Icons must be viewable first.)"),
+		20000, true);
+		pToast->Create(CToastDialog::IDD);
+		pToast->ShowWindow(SW_SHOWNOACTIVATE);
+		g_roadSelectTooltip = true;
+#ifdef RTS_HAS_QT
+		}
+#endif
+	}
 }
 
 /** Execute the tool on mouse up - Place a road segment. */
@@ -301,10 +331,16 @@ void RoadTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBu
 		pNew3->setSelected(true);
 	}
 
+	// ::MessageBeep(MB_OK);
+	// pView->Invalidate();  
+	// pDoc->updateAllViews();
 }
 /** Move the end of the road segment. */
 void RoadTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
+	pView->Invalidate();  
+	pDoc->updateAllViews();   
+
 	if (m != TRACK_L) return;
 
 	Coord3D loc1 ;

@@ -28,8 +28,10 @@
 #include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
 #include "TileTool.h"
+#include "PointerTool.h"
 #include "Common/TerrainTypes.h"
 #include "W3DDevice/GameClient/TerrainTex.h"
+#include "AutoEdgeOutTool.h"	  
 
 BlendMaterial *BlendMaterial::m_staticThis = nullptr;
 
@@ -39,9 +41,14 @@ static Int defaultMaterialIndex = -1;
 // BlendMaterial dialog
 
 Int BlendMaterial::m_currentBlendTexture(-1);
+Bool BlendMaterial::m_hvgap(true);
+Bool BlendMaterial::m_dgap(true);
+Bool BlendMaterial::m_revalblends(true);
 
 BlendMaterial::BlendMaterial(CWnd* pParent /*=nullptr*/) :
 	m_updating(false)
+	// m_hvgap(false),
+	// m_dgap(false)
 {
 	//{{AFX_DATA_INIT(BlendMaterial)
 		// NOTE: the ClassWizard will add member initialization here
@@ -57,14 +64,85 @@ void BlendMaterial::DoDataExchange(CDataExchange* pDX)
 	//}}AFX_DATA_MAP
 }
 
+void BlendMaterial::OnToggleMirror()
+{
+	AutoEdgeOutTool::toggleMirror();
+}
+
+void BlendMaterial::OnToggleMirrorX()
+{
+	AutoEdgeOutTool::toggleMirrorX();
+}
+
+void BlendMaterial::OnToggleMirrorY()
+{
+	AutoEdgeOutTool::toggleMirrorY();
+}
+
+void BlendMaterial::OnToggleMirrorXY()
+{
+	AutoEdgeOutTool::toggleMirrorXY();
+}
+
 
 BEGIN_MESSAGE_MAP(BlendMaterial, COptionsPanel)
+	ON_BN_CLICKED(IDC_HVGAP, OnHorizontalAndVerticalGap)
+	ON_BN_CLICKED(IDC_DGAP, OnDiagonalGap)
+	ON_BN_CLICKED(IDC_REVALIDATEBLENDS, OnReevaluateBlends)
+
+	ON_BN_CLICKED(IDC_TOGGLE_MIRROR, OnToggleMirror)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORX, OnToggleMirrorX)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORY, OnToggleMirrorY)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORXY, OnToggleMirrorXY)
 	//{{AFX_MSG_MAP(BlendMaterial)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
 // BlendMaterial data access method.
+
+void BlendMaterial::OnReevaluateBlends() 
+{
+	m_revalblends = !m_revalblends;
+	updateBlendPointerToolTip();
+}
+
+
+void BlendMaterial::OnHorizontalAndVerticalGap() 
+{
+	m_hvgap = !m_hvgap;
+	updateBlendPointerToolTip();
+}
+
+void BlendMaterial::OnDiagonalGap() 
+{
+	m_dgap = !m_dgap;
+	updateBlendPointerToolTip();
+}
+
+void BlendMaterial::updateBlendPointerToolTip()
+{
+	CString text;
+
+	bool hasAny = (m_hvgap || m_dgap || m_revalblends);
+
+	if (hasAny) {
+		if (m_hvgap)
+			text += "HV";
+		if (m_hvgap && (m_dgap || m_revalblends))
+			text += "\r\n";
+
+		if (m_dgap)
+			text += "Diag";
+		if (m_dgap && m_revalblends)
+			text += "\r\n";
+
+		if (m_revalblends)
+			text += "Reblend";
+	}
+
+	PointerTool::setLastPointerInfoString(text);
+}
 
 /// Set foreground texture and invalidate swatches.
 void BlendMaterial::setBlendTexClass(Int texClass)
@@ -113,14 +191,18 @@ BOOL BlendMaterial::OnInitDialog()
 
 	m_updating = true;
 	CWnd *pWnd = GetDlgItem(IDC_TERRAIN_TREEVIEW);
-	CRect rect;
-	pWnd->GetWindowRect(&rect);
+	if (pWnd)
+		pWnd->ShowWindow(SW_HIDE);
 
-	ScreenToClient(&rect);
-	rect.DeflateRect(2,2,2,2);
-	m_terrainTreeView.Create(TVS_HASLINES|TVS_LINESATROOT|TVS_HASBUTTONS|
-		TVS_SHOWSELALWAYS|TVS_DISABLEDRAGDROP, rect, this, IDC_TERRAIN_TREEVIEW);
-	m_terrainTreeView.ShowWindow(SW_SHOW);
+	CRect rect;
+	// pWnd->GetWindowRect(&rect);
+
+	// Adriane [ Deathscythe ] -- Working but disabled since we dont have any other options in the tree anyways other than alpha blend
+	// ScreenToClient(&rect);
+	// rect.DeflateRect(2,2,2,2);
+	// m_terrainTreeView.Create(TVS_HASLINES|TVS_LINESATROOT|TVS_HASBUTTONS|
+	// 	TVS_SHOWSELALWAYS|TVS_DISABLEDRAGDROP, rect, this, IDC_TERRAIN_TREEVIEW);
+	// m_terrainTreeView.ShowWindow(SW_SHOW);
 
 	pWnd = GetDlgItem(IDC_TERRAIN_SWATCHES);
 	pWnd->GetWindowRect(&rect);
@@ -130,6 +212,16 @@ BOOL BlendMaterial::OnInitDialog()
 	//m_terrainSwatches.ShowWindow(SW_SHOW);
 
 	m_staticThis = this;
+
+	CButton* button = (CButton*)m_staticThis->GetDlgItem(IDC_REVALIDATEBLENDS);
+	button->SetCheck(m_revalblends);
+
+	button = (CButton*)m_staticThis->GetDlgItem(IDC_HVGAP);
+	button->SetCheck(m_hvgap);
+
+	button = (CButton*)m_staticThis->GetDlgItem(IDC_DGAP);
+	button->SetCheck(m_dgap);
+
 	updateTextures();
 	m_updating = false;
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -226,6 +318,10 @@ void BlendMaterial::addTerrain(const char *pPath, Int terrainNdx, HTREEITEM pare
 //* Create the tree view of textures from the textures in pMap. */
 void BlendMaterial::updateTextures()
 {
+	if (m_terrainTreeView.GetSafeHwnd() == NULL)
+	{
+		return;	// tree view is intentionally disabled (see OnInitDialog) -- nothing to populate
+	}
 	m_updating = true;
 	m_terrainTreeView.DeleteAllItems();
 	Int i;

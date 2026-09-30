@@ -1,0 +1,323 @@
+// WBQtOptionsPanels.cpp -- the generic Qt host for migrated option panels.
+//
+// Implements WBQt_ShowOptionsPanel / WBQt_HideOptionsPanel (called from
+// CMainFrame::showOptionsDialog). A single cached QWinWidget rooted in the MFC frame owns
+// every migrated panel (each a top-level Qt::Tool window floating over the frame). The
+// dialogID->panel registry below is the ONE place new panels are wired in (Phase 3 has
+// only Feather); everything else in showOptionsDialog stays generic.
+//
+// Qt + Win32 only (no afx). resource.h is pure #defines (Qt-safe) -- it gives the dialog
+// IDs without coupling to MFC.
+#include "WBQtPanelBridge.h"
+#include "qwinwidget.h"
+#include "panels/WBQtFeatherPanel.h"
+#include "panels/WBQtBrushPanel.h"
+#include "panels/WBQtMoundPanel.h"
+#include "panels/WBQtRulerPanel.h"
+#include "panels/WBQtRampPanel.h"
+#include "panels/WBQtObjectPanel.h"
+#include "panels/WBQtBuildListPanel.h"
+#include "panels/WBQtTerrainMaterialPanel.h"
+#include "panels/WBQtBlendMaterialPanel.h"
+#include "panels/WBQtFencePanel.h"
+#include "panels/WBQtRoadPanel.h"
+#include "panels/WBQtWaterPanel.h"
+#include "panels/WBQtWaypointPanel.h"
+#include "panels/WBQtGrovePanel.h"
+#include "panels/WBQtScorchPanel.h"
+#include "panels/WBQtMeshMoldPanel.h"
+#include "panels/WBQtObjectPropsPanel.h"
+#include "panels/WBQtWavePanel.h"
+#include "panels/WBQtStochasticPanel.h"
+#include "resource.h"
+
+#include <QApplication>
+#include <QEvent>
+#include <QSet>
+#include <QWidget>
+
+#include <qt_windows.h>
+
+// Defined in WBQtBridge.cpp: the main window when inverted, else an invisible
+// QWinWidget bridge rooted in the MFC frame. Never hide() the result.
+QWidget *WBQt_CreateOwnerBridgeWidget(void *frameHwnd);
+
+static QWidget    *g_panelOwner = NULL;	// owner for the floating option panels
+static QWidget    *g_currentPanel = NULL;
+static int         g_currentDialogID = 0;
+
+// Panels seeded once at the registry Top/Left. After that a panel keeps its own geometry
+// (Qt preserves it across hide/show), so re-showing it -- e.g. when Ctrl transiently swaps
+// to the pointer tool and back -- must NOT snap it back to the registry coords and discard
+// the user's drag. Only the first show of a given panel positions it.
+static QSet<QWidget*> g_positionedPanels;
+
+// Tier 5: persist a dragged panel's position. MFC's COptionsPanel::OnMove wrote the shared
+// OPTIONS_PANEL_SECTION Top/Left on every move; this filter does the same for the Qt panels
+// (one instance, installed on each panel at its first show). Programmatic seeding happens
+// while the panel is still hidden, so the isVisible() gate keeps the seed itself from being
+// echoed back into the profile.
+class WBQtPanelMoveSaver : public QObject
+{
+public:
+	explicit WBQtPanelMoveSaver(QObject *owner)
+		: QObject(owner)
+	{
+	}
+
+protected:
+	virtual bool eventFilter(QObject *obj, QEvent *event)
+	{
+		if (event->type() == QEvent::Move && obj->isWidgetType())
+		{
+			QWidget *w = static_cast<QWidget *>(obj);
+			if (w->isVisible() && !(w->windowState() & Qt::WindowMinimized))
+			{
+				// frameGeometry: MFC saved GetWindowRect (frame coords), and the seed
+				// re-applies via move(), which also targets the frame corner.
+				const QRect frame = w->frameGeometry();
+				WBQtPanels_SaveWindowPos(frame.top(), frame.left());
+			}
+		}
+		return QObject::eventFilter(obj, event);
+	}
+};
+
+static WBQtPanelMoveSaver *g_panelMoveSaver = NULL;
+
+// Map a dialog ID to its (lazily created, cached) Qt panel, or NULL if not migrated.
+static QWidget *wbQtPanelFor(int dialogID, QWidget *owner)
+{
+	static WBQtFeatherPanel *featherPanel = NULL;
+	static WBQtBrushPanel   *brushPanel = NULL;
+	static WBQtMoundPanel   *moundPanel = NULL;
+	static WBQtRulerPanel   *rulerPanel = NULL;
+	static WBQtRampPanel    *rampPanel = NULL;
+	static WBQtObjectPanel  *objectPanel = NULL;
+	static WBQtBuildListPanel *buildListPanel = NULL;
+	static WBQtTerrainMaterialPanel *terrainMaterialPanel = NULL;
+	static WBQtBlendMaterialPanel   *blendMaterialPanel = NULL;
+	static WBQtFencePanel           *fencePanel = NULL;
+	static WBQtRoadPanel            *roadPanel = NULL;
+	static WBQtWaterPanel           *waterPanel = NULL;
+	static WBQtWaypointPanel        *waypointPanel = NULL;
+	static WBQtGrovePanel           *grovePanel = NULL;
+	static WBQtScorchPanel          *scorchPanel = NULL;
+	static WBQtMeshMoldPanel        *meshMoldPanel = NULL;
+	static WBQtObjectPropsPanel     *objectPropsPanel = NULL;
+	static WBQtWavePanel            *wavePanel = NULL;
+	static WBQtStochasticPanel      *stochasticPanel = NULL;
+
+	switch (dialogID)
+	{
+		case IDD_FEATHER_OPTIONS:
+			if (featherPanel == NULL)
+			{
+				featherPanel = new WBQtFeatherPanel(owner);
+			}
+			return featherPanel;
+
+		case IDD_BRUSH_OPTIONS:
+			if (brushPanel == NULL)
+			{
+				brushPanel = new WBQtBrushPanel(owner);
+			}
+			return brushPanel;
+
+		case IDD_MOUND_OPTIONS:
+			if (moundPanel == NULL)
+			{
+				moundPanel = new WBQtMoundPanel(owner);
+			}
+			return moundPanel;
+
+		case IDD_RULER_OPTIONS:
+			if (rulerPanel == NULL)
+			{
+				rulerPanel = new WBQtRulerPanel(owner);
+			}
+			return rulerPanel;
+
+		case IDD_RAMP_OPTIONS:
+			if (rampPanel == NULL)
+			{
+				rampPanel = new WBQtRampPanel(owner);
+			}
+			return rampPanel;
+
+		case IDD_OBJECT_OPTIONS:
+			if (objectPanel == NULL)
+			{
+				objectPanel = new WBQtObjectPanel(owner);
+			}
+			return objectPanel;
+
+		case IDD_BUILD_LIST_PANEL:
+			if (buildListPanel == NULL)
+			{
+				buildListPanel = new WBQtBuildListPanel(owner);
+			}
+			return buildListPanel;
+
+		case IDD_TERRAIN_MATERIAL:
+			if (terrainMaterialPanel == NULL)
+			{
+				terrainMaterialPanel = new WBQtTerrainMaterialPanel(owner);
+			}
+			return terrainMaterialPanel;
+
+		case IDD_BLEND_MATERIAL:
+			if (blendMaterialPanel == NULL)
+			{
+				blendMaterialPanel = new WBQtBlendMaterialPanel(owner);
+			}
+			return blendMaterialPanel;
+
+		case IDD_FENCE_OPTIONS:
+			if (fencePanel == NULL)
+			{
+				fencePanel = new WBQtFencePanel(owner);
+			}
+			return fencePanel;
+
+		case IDD_ROAD_OPTIONS:
+			if (roadPanel == NULL)
+			{
+				roadPanel = new WBQtRoadPanel(owner);
+			}
+			return roadPanel;
+
+		case IDD_WATER_OPTIONS:
+			if (waterPanel == NULL)
+			{
+				waterPanel = new WBQtWaterPanel(owner);
+			}
+			return waterPanel;
+
+		case IDD_WAYPOINT_OPTIONS:
+			if (waypointPanel == NULL)
+			{
+				waypointPanel = new WBQtWaypointPanel(owner);
+			}
+			return waypointPanel;
+
+		case IDD_GROVE_OPTIONS:
+			if (grovePanel == NULL)
+			{
+				grovePanel = new WBQtGrovePanel(owner);
+			}
+			return grovePanel;
+
+		case IDD_SCORCH_OPTIONS:
+			if (scorchPanel == NULL)
+			{
+				scorchPanel = new WBQtScorchPanel(owner);
+			}
+			return scorchPanel;
+
+		case IDD_MESHMOLD_OPTIONS:
+			if (meshMoldPanel == NULL)
+			{
+				meshMoldPanel = new WBQtMeshMoldPanel(owner);
+			}
+			return meshMoldPanel;
+
+		case IDD_MAPOBJECT_PROPS:
+			if (objectPropsPanel == NULL)
+			{
+				objectPropsPanel = new WBQtObjectPropsPanel(owner);
+			}
+			return objectPropsPanel;
+
+		case IDD_WAVE_EDITOR_OPTIONS:
+			if (wavePanel == NULL)
+			{
+				wavePanel = new WBQtWavePanel(owner);
+			}
+			return wavePanel;
+
+		case IDD_STOCHASTIC_OPTIONS:
+			if (stochasticPanel == NULL)
+			{
+				stochasticPanel = new WBQtStochasticPanel(owner);
+			}
+			return stochasticPanel;
+
+		default:
+			return NULL;
+	}
+}
+
+extern "C" int WBQt_ShowOptionsPanel(void *frameHwnd, int dialogID, int x, int y, int w, int h)
+{
+	if (qApp == NULL || frameHwnd == NULL)
+	{
+		return 0;
+	}
+
+	if (g_panelOwner == NULL)
+	{
+		g_panelOwner = WBQt_CreateOwnerBridgeWidget(frameHwnd);
+	}
+
+	QWidget *panel = wbQtPanelFor(dialogID, g_panelOwner);
+	if (panel == NULL)
+	{
+		return 0;	// not a migrated panel -- let the caller show the MFC dialog
+	}
+
+	// Show WITHOUT stealing activation from the 3D viewport, matching the MFC panels'
+	// ShowWindow(SW_SHOWNA). Otherwise the viewport goes to the background and its brush
+	// cursor / feedback doesn't refresh on a tool switch until the viewport is clicked.
+	panel->setAttribute(Qt::WA_ShowWithoutActivating, true);
+
+	// Already showing this panel? Do nothing -- re-positioning on every tool re-activation
+	// (e.g. clicking the 3D viewport) would fight the user's drag. Matches the MFC
+	// showOptionsDialog "dialogID == m_curDialogID && visible -> return" early-out.
+	if (panel == g_currentPanel && panel->isVisible())
+	{
+		return 1;
+	}
+
+	if (g_currentPanel != NULL && g_currentPanel != panel)
+	{
+		g_currentPanel->hide();
+	}
+
+	// Position via Qt setGeometry in SCREEN coords (this is a top-level Qt::Tool window),
+	// NOT Win32 SetWindowPos -- see the Phase 2 viewport-host lesson. Seed the position only
+	// the FIRST time this panel is shown; later shows keep whatever the user dragged it to
+	// (a hidden Qt widget retains its geometry), so a Ctrl-driven pointer-tool swap that
+	// hides and re-shows the panel doesn't reset its position.
+	if (!g_positionedPanels.contains(panel))
+	{
+		// move() places the FRAME corner of a top-level widget (== the MFC SetWindowPos /
+		// GetWindowRect coords the profile stores); setGeometry would place the client
+		// area and creep the panel down-right by the frame size now that positions are
+		// written back on every drag.
+		panel->move(x, y);
+		panel->resize(w, h);
+		g_positionedPanels.insert(panel);
+		if (g_panelMoveSaver == NULL)
+		{
+			g_panelMoveSaver = new WBQtPanelMoveSaver(g_panelOwner);
+		}
+		panel->installEventFilter(g_panelMoveSaver);
+	}
+	panel->show();
+	panel->raise();
+
+	g_currentPanel = panel;
+	g_currentDialogID = dialogID;
+	return 1;
+}
+
+extern "C" void WBQt_HideOptionsPanel(void)
+{
+	if (g_currentPanel != NULL)
+	{
+		g_currentPanel->hide();
+		g_currentPanel = NULL;
+		g_currentDialogID = 0;
+	}
+}

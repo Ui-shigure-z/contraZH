@@ -40,6 +40,11 @@ protected:
 	static Int m_brushWidth;
 	static Int m_brushFeather;
 
+	static Bool m_enableMirror;
+	static Bool m_mirrorX;   // left/right
+    static Bool m_mirrorY;   // top/bottom
+    static Bool m_mirrorDiag; // diagonal only (XY corner)
+
 public:
 	MoundTool();
 	virtual ~MoundTool() override;
@@ -52,12 +57,27 @@ public:
 	static void setWidth(Int width);
 	static void setFeather(Int feather);
 
+	static void toggleMirror() { m_enableMirror = !m_enableMirror; }
+	static void toggleMirrorX() { m_mirrorX = !m_mirrorX; }
+	static void toggleMirrorY() { m_mirrorY = !m_mirrorY; }
+	static void toggleMirrorXY() { m_mirrorDiag = !m_mirrorDiag; }
+
+	static Bool getEnableMirror(void) {return m_enableMirror;};
+	static Bool getMirrorX(void) {return m_mirrorX;};
+	static Bool getMirrorY(void) {return m_mirrorY;};
+	static Bool getMirrorXY(void) {return m_mirrorDiag;};
+	
+
+
 public:
-	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual WorldHeightMapEdit *getHeightMap() override {return m_htMapEditCopy;};
-	virtual void activate() override; ///< Become the current tool.
+	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual WorldHeightMapEdit *getHeightMap(void) {return m_htMapEditCopy;};
+
+	void applyMoundAt(CPoint ndx, CWorldBuilderDoc* pDoc, IRegion2D& partialRange);
+	virtual void activate(); ///< Become the current tool.
+	virtual void abandonStroke(void); ///< Drop an uncommitted stroke on a tool swap.
 };
 
 /*************************************************************************

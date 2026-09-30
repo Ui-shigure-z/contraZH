@@ -567,6 +567,11 @@ public:  // ********************************************************************
 	// only when toggled on.
 	virtual void toggleArmorSetOverlay( void ) { m_armorSetOverlayOn = !m_armorSetOverlayOn; }
 	virtual Bool isArmorSetOverlayOn( void ) const { return m_armorSetOverlayOn; }
+	// Laser template name and W3DLaserDraw module tags, drawn at the middle of each beam.
+	virtual void toggleLaserNameOverlay( void ) { m_laserNameOverlayOn = !m_laserNameOverlayOn; }
+	virtual Bool isLaserNameOverlayOn( void ) const { return m_laserNameOverlayOn; }
+	virtual void toggleLaserBeamBlockOverlay( void ) { m_laserBeamBlockOverlayOn = !m_laserBeamBlockOverlayOn; }
+	virtual Bool isLaserBeamBlockOverlayOn( void ) const { return m_laserBeamBlockOverlayOn; }
 #endif
 	void freeMessageResources();				///< free resources for the ui messages
 	void freeCustomUiResources();				///< free resources for custom ui elements
@@ -1229,6 +1234,8 @@ protected:
 	Bool												m_commandSetOverlayOn;
 	Bool												m_weaponSetOverlayOn;
 	Bool												m_armorSetOverlayOn;
+	Bool												m_laserNameOverlayOn;
+	Bool												m_laserBeamBlockOverlayOn;
 #endif
 
 	Color												m_messageColor1;

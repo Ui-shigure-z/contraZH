@@ -46,6 +46,43 @@ public:
 	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
+#ifdef RTS_HAS_QT
+// Qt seam (Tier 3b-2): the Qt Teams dialog drives THIS dialog created hidden -- the
+// working-copy m_sides model and every handler (new/copy/delete/move/import/export, the
+// team property sheet, the fix-owner validation) are reused verbatim. All definitions live
+// in src/WBQtTeamsBridge.cpp (member functions may be defined in any TU).
+public:
+	static CTeamsDialog *qtOpen(void);
+	static void qtClose(int accepted);
+	static CTeamsDialog *qtInstance(void);
+	int  qtPlayerCount(void);
+	void qtPlayerName(int i, char *buf, int cap);
+	int  qtPlayerCurSel(void);
+	void qtSelectPlayer(int i);
+	int  qtTeamRowCount(void);
+	void qtTeamRowText(int row, int col, char *buf, int cap);
+	int  qtTeamRowSelected(int row);
+	void qtSelectTeamRow(int row);
+	int  qtIsCtrlEnabled(int ctrlId);
+	void qtNewTeam(void);
+	void qtDeleteTeam(void);
+	void qtCopyTeam(void);
+	void qtEditTeam(void);
+	void qtSelectTeamMembers(void);
+	void qtMoveUpTeam(void);
+	void qtMoveDownTeam(void);
+	void qtExportTeams(void);
+	void qtImportTeams(void);
+	void qtCommit(void);
+	// Tier 3b-3: the Qt team property sheet binds hidden Team* pages to the current team.
+	void *qtCurTeamDict(void);
+	void *qtSides(void);
+	int  qtCurTeamIsDefault(void);
+	// De-bridged (windowless) refresh of the bridge-side view model from m_sides (== updateUI
+	// minus the controls; rebuildRows == the REBUILD_TEAMS bit). Defined in WBQtTeamsBridge.cpp.
+	void qtMRefresh(int rebuildRows);
+#endif
+
 // Implementation
 protected:
 
@@ -64,12 +101,21 @@ protected:
 	afx_msg void OnSelectTeamMembers();
 	afx_msg void OnMoveDownTeam();
 	afx_msg void OnMoveUpTeam();
+	// afx_msg void OnSizing(UINT fwSide, LPRECT pRect);
+	afx_msg void OnExpandOrShrink();
+
+	static Bool ParseTeamsDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData);
+	
+	afx_msg void OnExportTeams();
+	afx_msg void OnImportTeams();
+
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
 	Int								m_updating;
 	SidesList						m_sides;
 	Int								m_curTeam;
+	AsciiString                     m_importTargetPlayer;
 
 	enum
 	{
@@ -81,6 +127,8 @@ protected:
 		REBUILD_ALL = 0xff
 	};
 
+	Bool m_expanded;
+
 	void updateUI(Int whatToRebuild);
 	void validateTeamOwners();
 	Bool isValidTeamOwner( AsciiString ownerName );
@@ -89,6 +137,9 @@ protected:
 private:
 	void UpdateTeamsList();
 
+	// Required for bug fix for the move and down button - Adriane [Deathscythe]
+	int findNextTeamIndex(int curIndex); 
+	int findPrevTeamIndex(int curIndex);
 };
 
 //{{AFX_INSERT_LOCATION}}

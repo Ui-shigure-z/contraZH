@@ -41,6 +41,7 @@
 #include "WorldBuilder.h"	// for MAX_OBJECTS_IN_MAP
 #include "Common/UnicodeString.h"
 
+static Bool g_freshWarning = true;
 
 // base mostly virtual class.
 
@@ -199,6 +200,105 @@ void WBDocUndoable::Undo()
 }
 
 /*************************************************************************
+**                             AddBoundaryUndoable
+***************************************************************************/
+//
+// AddBoundaryUndoable - destructor.
+//
+AddBoundaryUndoable::~AddBoundaryUndoable(void)
+{
+	m_pDoc = NULL;  // not ref counted.
+	if (m_boundaryToAdd && !m_addedToList) {
+		delete m_boundaryToAdd;
+		m_boundaryToAdd=NULL;
+	}
+}
+
+//
+// AddBoundaryUndoable - create a new undoable.	Adds a polygon trigger.
+//
+AddBoundaryUndoable::AddBoundaryUndoable(CWorldBuilderDoc *pDoc, ICoord2D *pBoundaryToAdd):
+	m_pDoc(NULL),
+	m_boundaryToAdd(NULL)
+{
+	m_pDoc = pDoc; // not ref counted.
+		if (pBoundaryToAdd)
+		m_boundaryToAdd = new ICoord2D(*pBoundaryToAdd); // ← allocate a copy on the heap
+}
+//
+/// Add the boundary.
+//
+void AddBoundaryUndoable::Do(void)
+{
+	// The call to LayersList must be done here because only the WorldBuilder knows about Layers.
+	// TheLayersList->addPolygonTriggerToLayersList(m_trigger, m_trigger->getLayerName()); 
+	// PolygonTrigger::addPolygonTrigger(m_trigger);
+	m_pDoc->addBoundary(m_boundaryToAdd);
+	m_addedToList = true;
+}
+
+//
+// Remove the boundary.
+//
+void AddBoundaryUndoable::Undo(void)
+{
+	// The call to LayersList must be done here because only the WorldBuilder knows about Layers.
+	// TheLayersList->removePolygonTriggerFromLayersList(m_trigger);
+	// PolygonTrigger::removePolygonTrigger(m_trigger);
+	m_pDoc->removeLastBoundary();
+	m_addedToList = false;
+}
+
+
+// /*************************************************************************
+// **                             RemoveAllExtraBoundariesUndoable
+// ***************************************************************************/
+// //
+// // Constructor — snapshot current boundaries
+// //
+// RemoveAllExtraBoundariesUndoable::RemoveAllExtraBoundariesUndoable(CWorldBuilderDoc *pDoc)
+//     : m_pDoc(pDoc)
+// {
+//     if (m_pDoc) {
+//         // Save all existing boundaries for undo
+//         m_oldBoundaries = m_pDoc->getBoundaries();
+//     }
+// }
+
+// //
+// // Destructor
+// //
+// RemoveAllExtraBoundariesUndoable::~RemoveAllExtraBoundariesUndoable(void)
+// {
+//     m_pDoc = NULL;
+// }
+
+// //
+// // Do — clear all extra boundaries (keep only first)
+// //
+// void RemoveAllExtraBoundariesUndoable::Do(void)
+// {
+//     if (m_pDoc) {
+//         m_pDoc->removeAllExtraBoundaries();
+//     }
+// }
+
+// //
+// // Undo — restore previous boundaries
+// //
+// void RemoveAllExtraBoundariesUndoable::Undo(void)
+// {
+//     if (!m_pDoc)
+//         return;
+
+//     m_pDoc->clearBoundaries(); // make sure we have a function to clear all boundaries fully
+//     for (size_t i = 0; i < m_oldBoundaries.size(); ++i) {
+//         ICoord2D b = m_oldBoundaries[i];
+//         m_pDoc->addBoundary(&b);
+//     }
+// }
+
+/*************************************************************************
 **                             AddObjectUndoable
 ***************************************************************************/
 //
@@ -281,7 +381,8 @@ void AddObjectUndoable::Do()
 		pCur = pCur->getNext();
 	}
 
-	if (numObjects >= MAX_OBJECTS_IN_MAP) {
+	if (numObjects >= MAX_OBJECTS_IN_MAP && g_freshWarning) {
+		g_freshWarning = false;
 		CString str, loadStr;
 		loadStr.Format(IDS_MAX_OBJECTS, MAX_OBJECTS_IN_MAP);
 		AfxMessageBox(loadStr, MB_APPLMODAL | MB_ICONEXCLAMATION | MB_OK);
@@ -380,6 +481,18 @@ void MoveInfo::SetThingTemplate(CWorldBuilderDoc *pDoc, const ThingTemplate* thi
 
 void MoveInfo::SetName(CWorldBuilderDoc *pDoc, AsciiString name)
 {
+	m_newName = name;
+	DoMove(pDoc);
+}
+
+void MoveInfo::SetRoadType(CWorldBuilderDoc *pDoc, AsciiString name)
+{
+	/**  Adriane [Deathscythe] -- this will save the old name and automatically triggering 
+	 * the UNUSED check (as of 29/11/2025) under DoMove and UndoMove which reverts the name change.
+	 * 
+	 * I still dont know why m_oldName where not set before, but this should fix the undo issue.
+	 */
+	m_oldName = m_objectToModify->getName().str();
 	m_newName = name;
 	DoMove(pDoc);
 }
@@ -530,6 +643,22 @@ void ModifyObjectUndoable::SetName(AsciiString name)
 		WbView3d *p3View = m_pDoc->GetActive3DView();
 		p3View->resetRenderObjects();
 		p3View->invalObjectInView(nullptr);
+	}
+}
+
+void ModifyObjectUndoable::SetRoadType(AsciiString newRoadType)
+{
+	MoveInfo *pCur = m_moveList;
+	while (pCur) {
+		pCur->SetRoadType(m_pDoc, newRoadType);
+		pCur = pCur->m_next;
+	}
+	m_inval = true;
+	if (m_inval) 
+	{
+		WbView3d *p3View = m_pDoc->GetActive3DView();
+		p3View->resetRenderObjects();
+		p3View->invalObjectInView(NULL);
 	}
 }
 

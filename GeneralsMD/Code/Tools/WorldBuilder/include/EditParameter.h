@@ -59,6 +59,18 @@ public:
 	static Bool loadTransports(CComboBox *pCombo, AsciiString match = AsciiString::TheEmptyString);
 	static Bool loadObjectTypeList(CComboBox *pCombo, std::vector<AsciiString> *strings = nullptr, AsciiString match = AsciiString::TheEmptyString);
 
+#ifdef RTS_HAS_QT
+	// Qt seam (Tier 2c): model access for the Qt parameter dialogs. Defined in
+	// src/WBQtParamBridge.cpp (member statics may be defined in any TU) so the protected
+	// load* combo fillers below are reused verbatim.
+	static Int qtDescribe(Parameter *pParm, AsciiString unitName, CComboBox *pCombo, AsciiString *captionOut, Int *kindOut, Int *showAudioOut, Int *initialSelOut, AsciiString *initialTextOut);
+	static Int qtStore(Parameter *pParm, const char *text, Int selIndex);
+	static void qtPreviewAudio(Parameter *pParm, const char *eventName);
+	static Int qtLoadSubroutineScripts(CComboBox *pCombo);
+	// Every command button name (== loadCommandButtons' catalog), for the batch name matcher.
+	static void qtCollectCommandButtons(std::vector<AsciiString> &out);
+#endif
+
 protected:
 	static Bool loadSides(CComboBox *pCombo, AsciiString match = AsciiString::TheEmptyString);
 	static Bool loadTriggerAreas(CComboBox *pCombo, AsciiString match = AsciiString::TheEmptyString);
@@ -97,6 +109,8 @@ protected:
 	static void loadConditionParameter(Script *pScr, Parameter::ParameterType type, CComboBox *pCombo);
 	static Bool loadActionParameter(Script *pScr, Parameter::ParameterType type, CComboBox *pCombo, AsciiString match);
 	static Bool loadFlags(CComboBox *pCombo, AsciiString match = AsciiString::TheEmptyString);
+	static char* trimSpaces(char* str);  // required for fixing the bug under command buttons extra spaces at the end - Adriane [Deathscythe]
+	
 
 
 protected:
@@ -123,6 +137,7 @@ protected:
 	virtual void OnOK() override;
 	virtual void OnCancel() override;
 	afx_msg void OnPreviewSound();
+	afx_msg void OnComboSelChange();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

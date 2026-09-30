@@ -33,12 +33,19 @@
 #include "MainFrm.h"
 #include "DrawObject.h"
 #include "Common/WellKnownKeys.h"
+#include "ToastDialog.h"
+#include "WBTutorialPrompts.h"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtToast.h"
+#endif
+
 
 //
 // WaypointTool class.
 //
 
 Bool WaypointTool::m_isActive = false;
+static bool g_waypointSelectTooltip = false;
 
 
 /// Constructor
@@ -65,6 +72,27 @@ void WaypointTool::activate()
 	WaypointOptions::update();
 	DrawObject::setDoBrushFeedback(false);
 	m_isActive = true;
+
+	if(!g_waypointSelectTooltip && WBQtObject_GetTutorialPrompts())
+	{
+#ifdef RTS_HAS_QT
+		if (WBQtToast_Show("Hold Ctrl and click a waypoint to select all connected waypoints.", 20000, 1))
+		{
+			g_waypointSelectTooltip = true;
+		}
+		else
+		{
+#endif
+		CToastDialog* pToast = new CToastDialog(
+		_T("Hold Ctrl and click a waypoint to select all connected waypoints."),
+		20000, true);
+		pToast->Create(CToastDialog::IDD);
+		pToast->ShowWindow(SW_SHOWNOACTIVATE);
+		g_waypointSelectTooltip = true;
+#ifdef RTS_HAS_QT
+		}
+#endif
+	}
 }
 
 // Pick a waypoint.
@@ -151,6 +179,7 @@ void WaypointTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWo
 	}
 	DrawObject::setWaypointDragFeedback(m_mouseDownPt, docPt);
 	pView->Invalidate();
+	pDoc->updateAllViews();
 }
 
 /** Execute the tool on mouse up - Place an object. */

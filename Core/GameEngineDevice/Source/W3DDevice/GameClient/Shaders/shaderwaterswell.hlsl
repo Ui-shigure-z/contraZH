@@ -8,6 +8,11 @@
 // one inside it and snapped to its own world lattice, so vertices never slide across the swell.
 // Near a level's edge the odd vertices fold onto the coarser lattice, and the water texture
 // coordinates and colour are made here.
+//
+// FLAT passes flat water and rivers through unlifted, as ps_3_0 needs a vertex shader beside it.
+//
+// Every build hands the pixel shader the water's openness, 0 at the shore and 1 far enough out to
+// count as open sea, from each map cell's distance to dry ground. Enclosed water swells less.
 
 sampler2D SwellMap : register(s0);   // vertex texture sampler 0
 sampler2D GroundMap : register(s1);  // terrain heights as high and low bytes, vertex texture sampler 1
@@ -19,8 +24,10 @@ float4 ClipW        : register(c3);
 float4 Swell        : register(c4);   // x = world to texcoord scale, y = height, zw = drift
 float4 SwellSample  : register(c5);   // y = mip level
 float4 SwellChannel : register(c6);   // picks the channel holding height
+sampler2D OpenMap : register(s2);    // each map cell's distance to dry ground, vertex texture sampler 2
 float4 GroundMapping : register(c13); // world xy to ground texcoords: xy scale, zw offset
 float4 GroundDecode  : register(c14); // xy = high and low byte weights, z = 1 when the ground is bound
+float4 OpenParams    : register(c15); // x = stored distance to openness, y = 1 to read the distance, z = openness otherwise, w = swell kept in enclosed water
 
 #if RADIAL
 float4 Level        : register(c7);   // xy = this level's lattice origin, z = water level, w = cell size
@@ -51,6 +58,7 @@ struct VsOut
     float2 BaseUV     : TEXCOORD0;
     float2 EdgeUV     : TEXCOORD1;
     float3 WorldPos   : TEXCOORD2;
+    float Openness    : TEXCOORD3;
 };
 
 float Layer(float2 uv, float mip)
@@ -62,6 +70,12 @@ float Height(float2 world, float mip)
 {
     float2 uv = world * Swell.x;
     return (0.65f * Layer(uv + Swell.zw, mip) + 0.35f * Layer(uv * 1.7f - Swell.wz * 1.3f, mip + 0.77f)) * Swell.y;
+}
+
+float Openness(float2 world)
+{
+    float stored = tex2Dlod(OpenMap, float4(world * GroundMapping.xy + GroundMapping.zw, 0.0f, 0.0f)).r;
+    return lerp(OpenParams.z, saturate(stored * OpenParams.x), OpenParams.y);
 }
 
 // Waves reach full height in water twice their height deep and flatten towards the shore.
@@ -86,7 +100,12 @@ VsOut main(VsIn input)
     float mip = SwellSample.y;
     float level = input.Position.z;
 #endif
-    float4 world = float4(at, level + Height(at, mip) * Shoal(at, level), 1.0f);
+    float open = Openness(at);
+#if FLAT
+    float4 world = float4(input.Position, 1.0f);
+#else
+    float4 world = float4(at, level + Height(at, mip) * Shoal(at, level) * lerp(OpenParams.w, 1.0f, open), 1.0f);
+#endif
 
     VsOut output;
     output.Position = float4(dot(world, ClipX), dot(world, ClipY), dot(world, ClipZ), dot(world, ClipW));
@@ -101,5 +120,6 @@ VsOut main(VsIn input)
     output.EdgeUV = input.EdgeUV;
 #endif
     output.WorldPos = world.xyz;
+    output.Openness = open;
     return output;
 }

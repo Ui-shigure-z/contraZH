@@ -57,7 +57,8 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(ScorchOptions)
-	virtual BOOL OnInitDialog() override;
+	virtual BOOL OnInitDialog();
+	afx_msg void OnMove(int x, int y);
 	afx_msg void OnChangeScorchtype();
 	afx_msg void OnChangeSizeEdit();
 	//}}AFX_MSG
@@ -79,9 +80,19 @@ private:
 	Dict** getAllSelectedDictsData();
 
 public:
-	static void update();
-	static Scorches getScorchType() {return m_scorchtype;}
-	static Real getScorchSize() {return m_scorchsize;}
+	static void update(void);
+	static Scorches getScorchType(void) {return m_scorchtype;}
+	static Real getScorchSize(void) {return m_scorchsize;}
+#ifdef RTS_HAS_QT
+	// Qt panel support (WBQtScorchBridge): let the Qt Scorch panel read the current
+	// scorch type/size and drive the same Dict edits the MFC handlers do. Defined in
+	// src/WBQtScorchBridge.cpp; member statics so they can reach changeScorch()/changeSize()
+	// (which build the DictItemUndoable against the selected scorch objects).
+	static int qtGetScorchType(void);
+	static double qtGetScorchSize(void);
+	static void qtSetScorchType(int type);
+	static void qtSetScorchSize(double size);
+#endif
 
 	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
 	virtual void PopSliderChanged(const long sliderID, long theVal) override;

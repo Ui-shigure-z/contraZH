@@ -70,6 +70,9 @@ protected:
 	afx_msg void OnRaise();
 	afx_msg void OnRaiseLower();
 	afx_msg void OnLower();
+
+	afx_msg void OnOpenMoldsFolder();
+	afx_msg void OnOpenLinkCreateMolds();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -103,9 +106,33 @@ public:
 	static AsciiString getModelName() {if (m_staticThis) return m_staticThis->m_meshModelName; return "";};
 
 public:	 //PopupSliderOwner methods.
-	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
-	virtual void PopSliderChanged(const long sliderID, long theVal) override;
-	virtual void PopSliderFinished(const long sliderID, long theVal) override;
+	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial);
+	virtual void PopSliderChanged(const long sliderID, long theVal);
+	virtual void PopSliderFinished(const long sliderID, long theVal);
+
+#ifdef RTS_HAS_QT
+public:
+	// Qt panel support (WBQtMeshMoldBridge): let the Qt MeshMold panel drive the same
+	// selection statics MeshMoldTool reads (m_meshModelName / m_currentAngle / m_currentScale /
+	// m_currentHeight / m_doingPreview / m_raiseOnly / m_lowerOnly) and fire the same command
+	// handlers. Defined in src/WBQtMeshMoldBridge.cpp; member statics so they can reach the
+	// protected state / handlers via m_staticThis without churning MeshMoldOptions.cpp.
+	static void qtSelectModel(const char *name);
+	static int qtGetSelectedModel(char *nameOut, int cap);
+	static int qtGetAngle(void);
+	static void qtSetAngle(int angleDegrees);
+	static int qtGetScalePercent(void);
+	static void qtSetScalePercent(int scalePercent);
+	static int qtGetHeightRaw(void);
+	static void qtSetHeightRaw(int heightRaw);
+	static int qtGetPreview(void);
+	static void qtSetPreview(int on);
+	static void qtApplyMesh(void);
+	static int qtGetRaiseMode(void);
+	static void qtSetRaiseMode(int mode);
+	static void qtOpenMoldsFolder(void);
+	static void qtOpenLink(void);
+#endif
 };
 
 //{{AFX_INSERT_LOCATION}}

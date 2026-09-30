@@ -452,6 +452,11 @@ Bool OptionPreferences::getLaserShadersEnabled(void) const
 	return getBool("LaserShaders", TRUE);
 }
 
+Bool OptionPreferences::getCryoShadersEnabled(void) const
+{
+	return getBool("CryoShaders", TRUE);
+}
+
 Bool OptionPreferences::getDynamicLightsEnabled(void) const
 {
 	return getBool("DynamicLights", TRUE);
@@ -470,6 +475,11 @@ Bool OptionPreferences::getAmbientOcclusionEnabled(void) const
 Bool OptionPreferences::getHeightBlendEnabled(void) const
 {
 	return getBool("HeightBlend", TRUE);
+}
+
+Bool OptionPreferences::getHQSkyEnabled(void) const
+{
+	return getBool("HQSky", TRUE);
 }
 
 Int OptionPreferences::getVSyncMode(void) const

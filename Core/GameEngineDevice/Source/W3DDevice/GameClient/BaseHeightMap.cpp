@@ -100,8 +100,10 @@
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 
+#include "GameLogic/PolygonTrigger.h"
 
 extern FlatHeightMapRenderObjClass *TheFlatHeightMap;
 extern HeightMapRenderObjClass *TheHeightMap;
@@ -456,6 +458,11 @@ void BaseHeightMapRenderObjClass::ReleaseResources()
 	if (TheW3DLaserGlow)
 	{
 		TheW3DLaserGlow->ReleaseResources();
+	}
+
+	if (TheW3DSkyClouds)
+	{
+		TheW3DSkyClouds->ReleaseResources();
 	}
 
 	if (TheSnowManager)
@@ -1420,6 +1427,167 @@ Bool BaseHeightMapRenderObjClass::isCliffCell(Real x, Real y)
 	}
 	return logicHeightMap->getCliffState(iX, iY);
 }
+
+/**
+ * Adriane [Deathscythe] 
+ * -- Start new functions...
+ */
+
+ 
+//=============================================================================
+// BaseHeightMapRenderObjClass::loadRoadsOnly
+//=============================================================================
+/** Loads the roads from the map objects. */
+//=============================================================================
+void BaseHeightMapRenderObjClass::loadRoadsOnly()
+{	
+	if (DX8Wrapper::_Get_D3D_Device8() && (DX8Wrapper::_Get_D3D_Device8()->TestCooperativeLevel()) != D3D_OK)
+		return;	//device not ready to render anything
+
+#ifdef DO_ROADS
+	if (m_roadBuffer) {
+		m_roadBuffer->loadRoads();
+	}
+#endif
+}
+
+
+//=============================================================================
+// BaseHeightMapRenderObjClass::removeAllRoads
+//=============================================================================
+void BaseHeightMapRenderObjClass::removeAllRoads()
+{
+	if (m_roadBuffer) {
+		m_roadBuffer->clearAllRoads(); 
+	}
+
+	if (m_bridgeBuffer) {
+		m_bridgeBuffer->clearAllBridges();
+	}
+};
+
+
+Bool BaseHeightMapRenderObjClass::pleaseHelpMeIamUnderTheWata(Real x, Real y) {
+    return getWaterHeightIfUnderwater(x, y) != -FLT_MAX;
+}
+
+Real BaseHeightMapRenderObjClass::getWaterHeightIfUnderwater(Real x, Real y)
+{
+    ICoord3D iLoc;
+    iLoc.x = (floor(x + 0.5f));
+    iLoc.y = (floor(y + 0.5f));
+    iLoc.z = 0;
+
+    for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+        if (!pTrig->isWaterArea()) {
+            continue;
+        }
+
+        if (pTrig->pointInTrigger(iLoc)) {
+            Real waterZ = pTrig->getPoint(0)->z;
+            Real terrainZ = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+            if (terrainZ < waterZ) {
+                return waterZ;
+            }
+        }
+    }
+
+    return -FLT_MAX; // Not underwater
+}
+
+Bool BaseHeightMapRenderObjClass::isBadBuildLocation(Real x, Real y, Real angle, Real halfSizeX, Real halfSizeY)
+{
+	if (!m_map) {
+		return false;
+	}
+
+	WorldHeightMap* logicHeightMap = TheTerrainVisual ? TheTerrainVisual->getLogicHeightMap() : m_map;
+	const Int border = logicHeightMap->getBorderSizeInline();
+	const Int xExtent = logicHeightMap->getXExtent();
+	const Int yExtent = logicHeightMap->getYExtent();
+
+	const Real cosA = (Real)cos(angle);
+	const Real sinA = (Real)sin(angle);
+
+	const int numSamples = 5;
+
+	Real minH = FLT_MAX;
+	Real maxH = -FLT_MAX;
+	int numSolidSamples = 0;
+	int totalSamples = 0;
+
+	// Use center height as reference for floating detection
+	Int cx = (Int)(x / MAP_XY_FACTOR) + border;
+	Int cy = (Int)(y / MAP_XY_FACTOR) + border;
+
+	if (cx < 0) cx = 0;
+	if (cy < 0) cy = 0;
+	if (cx >= xExtent - 1) cx = xExtent - 2;
+	if (cy >= yExtent - 1) cy = yExtent - 2;
+
+	Real centerH = logicHeightMap->getHeight(cx, cy);
+
+	for (int i = -numSamples; i <= numSamples; ++i) {
+		for (int j = -numSamples; j <= numSamples; ++j) {
+
+			Real fx = (Real)i / (Real)numSamples;
+			Real fy = (Real)j / (Real)numSamples;
+
+			// Limit to circular footprint
+			if ((fx * fx + fy * fy) > 1.0f)
+				continue;
+
+			Real offsetX = fx * halfSizeX;
+			Real offsetY = fy * halfSizeY;
+
+			// Apply rotation
+			Real rotatedX = offsetX * cosA - offsetY * sinA;
+			Real rotatedY = offsetX * sinA + offsetY * cosA;
+
+			Real sampleX = x + rotatedX;
+			Real sampleY = y + rotatedY;
+
+			if (pleaseHelpMeIamUnderTheWata(sampleX, sampleY)) {
+				return true; // Reject build location if any part is underwater
+			}
+
+			Int ix = (Int)(sampleX / MAP_XY_FACTOR) + border;
+			Int iy = (Int)(sampleY / MAP_XY_FACTOR) + border;
+
+			if (ix < 0) ix = 0;
+			if (iy < 0) iy = 0;
+			if (ix >= xExtent - 1) ix = xExtent - 2;
+			if (iy >= yExtent - 1) iy = yExtent - 2;
+
+			Real h = logicHeightMap->getHeight(ix, iy);
+
+			if (h < minH) minH = h;
+			if (h > maxH) maxH = h;
+
+			// Floating check: compare to center height
+			if (fabs(h - centerH) < 5.0f) {
+				numSolidSamples++;
+			}
+
+			totalSamples++;
+
+			// Early out for uneven terrain
+			if ((maxH - minH) > 30.0f)
+				return true;
+		}
+	}
+
+	// Reject if not enough solid ground underneath
+	if (totalSamples > 0 && ((float)numSolidSamples / (float)totalSamples) < 0.7f) {
+		return true;
+	}
+
+	return false;
+}
+/**
+ * Adriane [Deathscythe] 
+ * -- End of new functions...
+ */
 
 //=============================================================================
 //=============================================================================
@@ -2994,5 +3162,15 @@ Bool BaseHeightMapRenderObjClass::useCloud()
 //=============================================================================
 TextureClass *BaseHeightMapRenderObjClass::getCloudTexture() const
 {
-	return useCloud() ? m_stageTwoTexture : nullptr;
+	return useCloud() ? cloudMapTexture() : nullptr;
+}
+
+//=============================================================================
+TextureClass *BaseHeightMapRenderObjClass::cloudMapTexture() const
+{
+	if (TheW3DSkyClouds != nullptr && TheW3DSkyClouds->isActive())
+	{
+		return TheW3DSkyClouds->getTexture();
+	}
+	return m_stageTwoTexture;
 }

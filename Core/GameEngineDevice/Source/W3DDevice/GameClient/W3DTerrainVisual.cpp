@@ -63,6 +63,7 @@
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "WW3D2/light.h"
@@ -217,6 +218,8 @@ W3DTerrainVisual::~W3DTerrainVisual()
 
 	delete TheW3DAmbientOcclusion;
 	TheW3DAmbientOcclusion = nullptr;
+	delete TheW3DSkyClouds;
+	TheW3DSkyClouds = nullptr;
 
 	delete TheW3DLaserGlow;
 	TheW3DLaserGlow = nullptr;
@@ -267,6 +270,7 @@ void W3DTerrainVisual::init()
 		TheW3DSoftParticles = NEW W3DSoftParticles;
 		TheW3DShockwaves = NEW W3DShockwaveManager;
 		TheW3DAmbientOcclusion = NEW W3DAmbientOcclusion;
+		TheW3DSkyClouds = NEW W3DSkyClouds;
 		TheW3DLaserGlow = NEW W3DLaserGlow;
 
 #ifdef DO_UNIT_TIMINGS

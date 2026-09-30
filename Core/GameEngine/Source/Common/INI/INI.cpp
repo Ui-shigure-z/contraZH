@@ -163,6 +163,35 @@ static const BlockParse theTypeTable[] =
 	{ "WindowTransition",               INI::parseWindowTransitions },
 };
 
+// Adriane [Deathscythe]  This is the only thing we required for the worldbuilder map.ini parsing
+static const BlockParse theWbTypeTable[] =
+{
+	{ "Object",							INI::parseObjectDefinition },
+	// Without this, findWBBlockParse returns NULL for an ObjectReskin block and loadWB takes the
+	// unrecognized-block path: skip to End, never parse, never create the template. Every reskin
+	// in a map.ini then simply does not exist in WorldBuilder -- findTemplate misses it, anything
+	// naming it in BuildVariations resolves to nothing, and the object draws as a bare label.
+	// (The naval map.ini declares 166 of them.)
+	{ "ObjectReskin",					INI::parseObjectReskinDefinition },
+	{ "ObjectCreationList",	            INI::parseObjectCreationListDefinition },
+
+	{ "SpecialPower",				    INI::parseSpecialPowerDefinition },
+
+	{ "ParticleSystem",			        INI::parseParticleSystemDefinition },
+	{ "Science",						INI::parseScienceDefinition },
+
+	{ "Armor",							INI::parseArmorDefinition },
+
+	{ "Weapon",							INI::parseWeaponTemplateDefinition },
+	{ "FXList",							INI::parseFXListDefinition },
+	{ "DamageFX",						INI::parseDamageFXDefinition },
+	
+	{ "AudioEvent",					    INI::parseAudioEventDefinition },
+
+	// { "WaterSet",						INI::parseWaterSettingDefinition },
+	{ "WaterTransparency",	            INI::parseWaterTransparencyDefinition},
+	{ NULL,									NULL },		// keep this last!
+};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS //////////////////////////////////////////////////////////////////////////////
@@ -350,6 +379,114 @@ static INIBlockParse findBlockParse(const char* token)
 }
 
 //-------------------------------------------------------------------------------------------------
+// World Builder INI Loader
+//-------------------------------------------------------------------------------------------------
+
+static INIBlockParse findWBBlockParse(const char* token) {
+    // DEBUG_LOG(("WB Searching for token: '%s'\n", token));
+
+    for (const BlockParse* parse = theWbTypeTable; parse->token; ++parse) {
+        // DEBUG_LOG(("WB Checking token: '%s'\n", parse->token));
+
+        if (strcmp(parse->token, token) == 0) {
+            // DEBUG_LOG(("WB Found match for token: '%s'\n", token));
+            return parse->parse;
+        }
+    }
+
+    // DEBUG_LOG(("WB Token not found: '%s'\n", token));
+    return NULL;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+/** Load and parse an INI file using World Builder's type table.
+    Skips unknown/unreadable blocks safely (until "End") */
+//-------------------------------------------------------------------------------------------------
+// Blocks loadWB skipped because they failed to parse (see the catch in the loop below).
+// WorldBuilder-only: read back through INI::friend_getWBSkippedBlocks for the load report.
+static std::vector<AsciiString> s_wbSkippedBlocks;
+
+const std::vector<AsciiString>& INI::friend_getWBSkippedBlocks(void)
+{
+    return s_wbSkippedBlocks;
+}
+
+void INI::loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer)
+{
+    setFPMode();
+
+    s_wbSkippedBlocks.clear();		// per-load, so the report only shows this file's skips
+    s_xfer = pXfer;
+    prepFile(filename, loadType);
+
+    try
+    {
+        while (!m_endOfFile)
+        {
+            readLine();
+            AsciiString currentLine = m_buffer;
+
+            const char* token = strtok(m_buffer, getSeps());
+            if (!token) 
+                continue; // empty line
+
+            INIBlockParse parse = findWBBlockParse(token);
+            if (parse)
+            {
+                try {
+                    (*parse)(this);
+                }
+                catch (...)
+                {
+                    // A block the parser RECOGNIZES but cannot finish -- typically a field the
+                    // installed data no longer defines, which is what a vanilla map.ini hits on a
+                    // modded install (and vice versa). Losing the whole file over one stale field
+                    // is worse than losing the block, so skip to this block's End and carry on,
+                    // exactly as the unrecognized-block path below already does. The block's
+                    // partial effects are left as-is; WorldBuilder tears the whole override set
+                    // down if the user declines the load.
+                    s_wbSkippedBlocks.push_back(currentLine);
+                    const char* blockEnd = "End";
+                    Bool skipDone = false;
+                    while (!skipDone && !m_endOfFile)
+                    {
+                        readLine();
+                        const char* endToken = strtok(m_buffer, getSeps());
+                        if (endToken && strcmp(endToken, blockEnd) == 0)
+                            skipDone = true;
+                    }
+                }
+            }
+            else
+            {
+                // --- Skip unreadable/unrecognized blocks ---
+                const char* blockEnd = "End";
+                Bool skipDone = false;
+                while (!skipDone && !m_endOfFile)
+                {
+                    readLine();
+                    const char* endToken = strtok(m_buffer, getSeps());
+                    if (endToken && strcmp(endToken, blockEnd) == 0)
+                        skipDone = true;
+                }
+            }
+        }
+    }
+    catch (...)
+    {
+        unPrepFile();
+        throw;
+    }
+	
+	// This will re-process the object names for the template -- very important code
+	TheThingFactory->postProcessLoad();
+
+    unPrepFile();
+}
+
+
+//-------------------------------------------------------------------------------------------------
 static INIFieldParseProc findFieldParse(const FieldParse* parseTable, const char* token, int& offset, const void*& userData)
 {
 	const FieldParse* parse = parseTable;
@@ -374,6 +511,67 @@ static INIFieldParseProc findFieldParse(const FieldParse* parseTable, const char
 		return nullptr;
 	}
 }
+
+
+//-------------------------------------------------------------------------------------------------
+void INI::loadObjectsOnly(AsciiString filename, Xfer* pXfer = NULL)
+{
+    setFPMode(); // ensure floating point consistency
+
+    s_xfer = pXfer;
+    prepFile(filename, INI_LOAD_CREATE_OVERRIDES); // use your standard load type
+
+    try
+    {
+        // debug_Log("Loading Objects only from INI: %s\n", filename.str());
+
+        while (!m_endOfFile)
+        {
+            readLine();
+            AsciiString currentLine = m_buffer;
+
+            const char* token = strtok(m_buffer, getSeps());
+            if (!token) 
+                continue; // empty line
+
+            // Only parse Object blocks
+            if (strcmp(token, "Object") == 0)
+            {
+                // debug_Log("Parsing Object block: %s\n", currentLine.str());
+                try
+                {
+                    INI::parseObjectDefinition(this);
+                }
+                catch (...)
+                {
+                    // debug_Log("Error parsing Object in line: %s\n", currentLine.str());
+                }
+            }
+            else
+            {
+                // debug_Log("Skipping unknown block: %s\n", token);
+                // Optional: skip entire block until "End"
+                const char* blockEnd = "End";
+                Bool skipDone = false;
+                while (!skipDone && !m_endOfFile)
+                {
+                    readLine();
+                    const char* endToken = strtok(m_buffer, getSeps());
+                    if (endToken && strcmp(endToken, blockEnd) == 0)
+                        skipDone = true;
+                }
+            }
+        }
+    }
+    catch (...)
+    {
+        unPrepFile();
+        throw;
+    }
+
+    unPrepFile();
+}
+
 
 //-------------------------------------------------------------------------------------------------
 /** Load and parse an INI file */

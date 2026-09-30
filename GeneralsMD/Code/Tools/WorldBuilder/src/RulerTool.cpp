@@ -29,10 +29,13 @@
 #include "WorldBuilderView.h"
 #include "wbview3d.h"
 #include "ObjectTool.h"
+#include "DrawObject.h"
 
 
 // Saved off so that static functions can access its members.
-RulerTool*	RulerTool::m_staticThis = nullptr;
+RulerTool*	RulerTool::m_staticThis = NULL;
+Bool		RulerTool::m_useMeters = FALSE;
+Bool		RulerTool::m_showGridOnActivate = TRUE;
 
 /// Constructor
 RulerTool::RulerTool() :
@@ -54,7 +57,19 @@ void RulerTool::activate()
 {
 	Tool::activate();
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_RULER_OPTIONS);
-	if (m_View != nullptr) {
+
+	// Only force the ruler grid overlay on if the option is enabled; otherwise leave
+	// the user's global Show Ruler Grid (Ctrl+Q) setting untouched.
+	if (m_showGridOnActivate) {
+		DrawObject::setDoGridFeedback(TRUE);
+	} else {
+		WbView3d *p3View = CWorldBuilderDoc::GetActive3DView();
+		if (p3View) {
+			DrawObject::setDoGridFeedback(p3View->getShowGridFeedback());
+		}
+	}
+
+	if (m_View != NULL) {
 		// Is it dangerous to assume that the pointer is still good?
 		m_View->doRulerFeedback(m_rulerType);
 	}
@@ -69,6 +84,8 @@ void RulerTool::deactivate()
 		m_View->doRulerFeedback(RULER_NONE);
 	}
 
+	WbView3d *p3View = CWorldBuilderDoc::GetActive3DView();
+	DrawObject::setDoGridFeedback(p3View->getShowGridFeedback());
 }
 
 /** Set the cursor. */
@@ -108,6 +125,9 @@ void RulerTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 	Coord3D cpt;
 	pView->viewToDocCoords(viewPt, &cpt, false);
 
+	// Snap point to world geometry
+	pView->snapPoint(&cpt);
+
 	if (m_rulerType == RULER_CIRCLE) {
 		Coord3D pt;
 		pt.x = cpt.x + m_savedLength;
@@ -146,7 +166,8 @@ void RulerTool::setLength(Real length)
 	}
 
 	CString str;
- 	str.Format("Diameter (in feet): %f", length * 2.0f);
+	const char *units = m_useMeters ? "meters" : "feet";
+	str.Format("Diameter (in %s): %f", units, toDisplayUnits(length * 2.0f));
 	CMainFrame::GetMainFrame()->SetMessageText(str);
 }
 
@@ -184,4 +205,23 @@ Real RulerTool::getLength()
 	}
 
 	return (0.0f);
+}
+
+void RulerTool::setShowGridOnActivate(Bool val)
+{
+	m_showGridOnActivate = val;
+
+	// If the ruler is the active tool, apply the change live so the user sees the
+	// grid appear/disappear immediately rather than on the next activation.
+	if (m_staticThis && m_staticThis->m_View) {
+		if (val) {
+			DrawObject::setDoGridFeedback(TRUE);
+		} else {
+			WbView3d *p3View = CWorldBuilderDoc::GetActive3DView();
+			if (p3View) {
+				DrawObject::setDoGridFeedback(p3View->getShowGridFeedback());
+			}
+		}
+		m_staticThis->m_View->Invalidate();
+	}
 }

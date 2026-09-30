@@ -66,16 +66,42 @@ protected:
 	Bool										m_updating;
 	static Int							m_currentBlendTexture;
 	CTreeCtrl								m_terrainTreeView;
+	static Bool  m_hvgap; //horizontal+vertical gap
+	static Bool  m_dgap;  //diagonal gap
+	static Bool  m_revalblends;
 
 protected:
 	void updateTextures();
 	void addTerrain(const char *pPath, Int terrainNdx, HTREEITEM parent);
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
 
-public:
-	static Int getBlendTexClass() {return m_currentBlendTexture;}
+	afx_msg void OnReevaluateBlends();
+	afx_msg void OnHorizontalAndVerticalGap();
+	afx_msg void OnDiagonalGap();
 
+	afx_msg void OnToggleMirror();
+	afx_msg void OnToggleMirrorX();
+	afx_msg void OnToggleMirrorY();
+	afx_msg void OnToggleMirrorXY();
+	
+
+public:
+	static void updateBlendPointerToolTip();
+	static Bool isHorizVertGap(void) {return m_hvgap;}
+	static Bool isDiagGap(void) {return m_dgap;}
+	static Bool isRevalBlends(void) {return m_revalblends;}
+
+	static Int getBlendTexClass(void) {return m_currentBlendTexture;}
 	static void setBlendTexClass(Int texClass);
+
+#ifdef RTS_HAS_QT
+	// Qt panel support (WBQtBlendMaterialBridge): let the Qt Blend Material panel drive the
+	// gap statics the same way the MFC On* handlers do (set the flag, refresh the tooltip).
+	// Defined in src/WBQtBlendMaterialBridge.cpp; static so they can reach the protected state.
+	static void qtSetHorizVertGap(Bool on);
+	static void qtSetDiagGap(Bool on);
+	static void qtSetRevalBlends(Bool on);
+#endif
 
 public:
 	Bool setTerrainTreeViewSelection(HTREEITEM parent, Int selection);

@@ -47,6 +47,44 @@ public:
 	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
+#ifdef RTS_HAS_QT
+// Qt seam (Tier 3b-1): the Qt Player List dialog drives THIS dialog created hidden -- the
+// working-copy m_sides model and every handler are reused verbatim (the Qt side writes the
+// hidden controls then calls the real handlers). All definitions live in
+// src/WBQtPlayerListBridge.cpp (member functions may be defined in any TU).
+public:
+	static PlayerListDlg *qtOpen(void);
+	static void qtClose(int accepted);
+	static PlayerListDlg *qtInstance(void);
+	int  qtListCount(int ctrlId);
+	void qtListText(int ctrlId, int i, char *buf, int cap);
+	int  qtListCurSel(int ctrlId);
+	int  qtListGetSel(int ctrlId, int i);
+	int  qtComboCount(int ctrlId);
+	void qtComboText(int ctrlId, int i, char *buf, int cap);
+	int  qtComboCurSel(int ctrlId);
+	void qtGetEditText(int ctrlId, char *buf, int cap);
+	int  qtGetCheck(int ctrlId);
+	int  qtIsCtrlEnabled(int ctrlId);
+	int  qtGetColorRGB(void);
+	int  qtCanAddPlayer(void);
+	void qtSelectPlayer(int i);
+	void qtSetName(const char *text);
+	void qtSetDisplayName(const char *text);
+	void qtSetIsComputer(int isComputer);
+	void qtSetFaction(const char *name);
+	void qtSetColorIndex(int i);
+	void qtSetColorRGB(int rgb);
+	void qtSetRelationSel(int isEnemy, const char *mask);
+	void qtNewPlayer(const char *factionTemplate);
+	void qtRemovePlayer(void);
+	void qtAddSkirmishPlayers(void);
+	void qtCommit(void);
+	// De-bridged (windowless) rebuild of the view model from m_sides (== updateTheUI
+	// minus the controls). Defined in src/WBQtPlayerListBridge.cpp.
+	void qtMRebuild(void);
+#endif
+
 // Implementation
 protected:
 

@@ -119,6 +119,9 @@ D3DPOOL DX8_Buffer_Pool(D3DPOOL pool);
 // D3D9 shaders are COM objects, so deleting one means releasing it
 #define DX8_DELETE_PIXEL_SHADER(dev, handle)  Release_D3D9_Shader(handle)
 #define DX8_DELETE_VERTEX_SHADER(dev, handle) Release_D3D9_Shader(handle)
+// D3D9 renamed the image surface and front buffer calls, and the copy must be in system memory
+#define DX8_CREATE_IMAGE_SURFACE(dev, w, h, fmt, out) (dev)->CreateOffscreenPlainSurface(w, h, fmt, D3DPOOL_SYSTEMMEM, out, nullptr)
+#define DX8_GET_FRONT_BUFFER(dev, surface) (dev)->GetFrontBufferData(0, surface)
 
 // Several device getters gained a leading swap chain index in D3D9
 #define DX8_SWAPCHAIN 0,
@@ -187,6 +190,8 @@ typedef unsigned char** DX8LockPointer;
 #define DX8_SET_FVF(dev, fvf) (dev)->SetVertexShader(fvf)
 #define DX8_DELETE_PIXEL_SHADER(dev, handle)  (dev)->DeletePixelShader(handle)
 #define DX8_DELETE_VERTEX_SHADER(dev, handle) (dev)->DeleteVertexShader(handle)
+#define DX8_CREATE_IMAGE_SURFACE(dev, w, h, fmt, out) (dev)->CreateImageSurface(w, h, fmt, out)
+#define DX8_GET_FRONT_BUFFER(dev, surface) (dev)->GetFrontBuffer(surface)
 
 #define DX8_SWAPCHAIN
 #define DX8_ENUM_FORMAT(fmt)

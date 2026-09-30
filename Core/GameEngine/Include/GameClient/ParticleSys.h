@@ -482,6 +482,18 @@ public:
 	};
 	LaserShaderMode m_laserShader;
 
+	// Auto shades the system as ice when its texture is in GameData.ini's CryoParticleTextures.
+	enum CryoShaderMode
+	{
+		CRYO_SHADER_INVALID = 0,
+		CRYO_SHADER_AUTO,
+		CRYO_SHADER_YES,
+		CRYO_SHADER_NO,
+
+		CRYO_SHADER_COUNT
+	};
+	CryoShaderMode m_cryoShader;
+
 	enum WindMotion
 	{
 		WIND_MOTION_INVALID = 0,
@@ -566,6 +578,12 @@ static const char *const LaserShaderModeNames[] =
 };
 static_assert(ARRAY_SIZE(LaserShaderModeNames) == ParticleSystemInfo::LASER_SHADER_COUNT + 1, "Incorrect array size");
 
+static const char *const CryoShaderModeNames[] =
+{
+	"NONE", "Auto", "Yes", "No", nullptr
+};
+static_assert(ARRAY_SIZE(CryoShaderModeNames) == ParticleSystemInfo::CRYO_SHADER_COUNT + 1, "Incorrect array size");
+
 #endif
 
 // Flame shading and heat haze settings. In ParticleSystem.ini a negative value, the default, takes GameData.ini's.
@@ -611,6 +629,10 @@ public:
 	Bool hasFlameTuning() const;	///< any FlameShaderTuning key is set on this system
 	/// GameData.ini's flame settings, with this template's own on top when it is not null.
 	static void resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning );
+	/// How much a cryo-shaded particle is drawn larger or smaller: this template's CryoParticleScale, else GameData.ini's.
+	Real getCryoParticleScale() const;
+	/// The same for an electric-shaded particle, from ElectricParticleScale.
+	Real getElectricParticleScale() const;
 
 protected:
 	friend class ParticleSystemManager;					///< @todo remove this friendship
@@ -631,6 +653,8 @@ protected:
 	mutable const ParticleSystemTemplate *m_slaveTemplate;		///< if non-null, use this to create a slave system
 
 	FlameShaderTuning					m_flameTuning;
+	Real											m_cryoParticleScale;						///< negative takes GameData.ini's
+	Real											m_electricParticleScale;				///< negative takes GameData.ini's
 
 	// template attribute data inherited from ParticleSystemInfo class
 };
@@ -715,6 +739,7 @@ public:
 	Bool isFlame();		///< draw with the flame shader
 	Bool isElectric();	///< draw with the electric shader
 	Bool isLaser();		///< draw streaks with the laser shader
+	Bool isCryo();		///< draw with the cryo shader, over any other
 
 	void setSlave( ParticleSystem *slave );			///< set a slave system for us
 	ParticleSystem *getSlave() { return m_slaveSystem; }
@@ -867,6 +892,8 @@ protected:
 	Bool							m_electricAuto;												///< the electric Auto answer
 	Bool							m_laserKnown;													///< the laser Auto answer is worked out
 	Bool							m_laserAuto;													///< the laser Auto answer
+	Bool							m_cryoKnown;													///< the cryo Auto answer is worked out
+	Bool							m_cryoAuto;														///< the cryo Auto answer
 
 
 	// the actual particle system data is inherited from ParticleSystemInfo

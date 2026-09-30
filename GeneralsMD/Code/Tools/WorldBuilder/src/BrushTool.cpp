@@ -40,6 +40,10 @@ Int BrushTool::m_brushWidth;
 Int BrushTool::m_brushFeather;
 Bool BrushTool::m_brushSquare;
 Int BrushTool::m_brushHeight;
+Bool BrushTool::m_enableMirror;
+Bool BrushTool::m_mirrorX;
+Bool BrushTool::m_mirrorY;
+Bool BrushTool::m_mirrorDiag;
 
 
 
@@ -103,6 +107,19 @@ void BrushTool::activate()
 	DrawObject::setBrushFeedbackParms(m_brushSquare, m_brushWidth, m_brushFeather);
 }
 
+/// Throw away an uncommitted stroke.
+/** The tool was swapped out between the mouse down and the mouse up, so the edit
+copies would otherwise stay ref'd until the next mouseDown released them. */
+void BrushTool::abandonStroke(void)
+{
+	if (m_htMapEditCopy == NULL && m_htMapFeatherCopy == NULL) {
+		return;
+	}
+	REF_PTR_RELEASE(m_htMapEditCopy);
+	REF_PTR_RELEASE(m_htMapFeatherCopy);
+	revertAbandonedPreview();
+}
+
 /// Start tool.
 /** Setup the tool to start brushing - make a copy of the height map
 to edit, another copy because we need it :), and call mouseMovedDown. */
@@ -128,6 +145,13 @@ void BrushTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBui
 {
 	if (m != TRACK_L) return;
 
+	// No stroke in progress (the tool was swapped in mid-drag, so it never got the
+	// matching mouseDown) - nothing to commit.
+	if (m_htMapEditCopy == NULL) {
+		REF_PTR_RELEASE(m_htMapFeatherCopy);
+		return;
+	}
+
 	WBDocUndoable *pUndo = new WBDocUndoable(pDoc, m_htMapEditCopy);
 	pDoc->AddAndDoUndoable(pUndo);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
@@ -135,69 +159,149 @@ void BrushTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBui
 	REF_PTR_RELEASE(m_htMapFeatherCopy);
 }
 
+/// Helper: apply brush strokes at a given center index.
+void BrushTool::applyBrushAt(CPoint ndx, WorldHeightMapEdit* pDoc_htMap, IRegion2D& partialRange)
+{
+    int brushWidth = m_brushWidth;
+    if (m_brushFeather > 0) {
+        brushWidth += 2 * m_brushFeather;
+    }
+    brushWidth += 2;
+
+    int sub = brushWidth / 2;
+    int add = brushWidth - sub;
+
+    Int i, j;
+    for (i = ndx.x - sub; i < ndx.x + add; i++) {
+        if (i < 0 || i >= m_htMapEditCopy->getXExtent()) continue;
+        for (j = ndx.y - sub; j < ndx.y + add; j++) {
+            if (j < 0 || j >= m_htMapEditCopy->getYExtent()) continue;
+
+            Real blendFactor;
+            if (m_brushSquare) {
+                blendFactor = calcSquareBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
+            } else {
+                blendFactor = calcRoundBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
+            }
+
+            Int curHeight  = m_htMapFeatherCopy->getHeight(i, j);
+            float fNewHeight = blendFactor * m_brushHeight + ((1.0f - blendFactor) * curHeight);
+            Int newHeight  = floor(fNewHeight + 0.5f);
+
+            if (m_brushHeight > curHeight) {
+                if (m_htMapEditCopy->getHeight(i, j) > newHeight)
+                    newHeight = m_htMapEditCopy->getHeight(i, j);
+            } else {
+                if (m_htMapEditCopy->getHeight(i, j) < newHeight)
+                    newHeight = m_htMapEditCopy->getHeight(i, j);
+            }
+            m_htMapEditCopy->setHeight(i, j, newHeight);
+        }
+    }
+
+    // Expand partial range to cover this stroke
+    if (ndx.x - brushWidth < partialRange.lo.x) partialRange.lo.x = ndx.x - brushWidth;
+    if (ndx.x + brushWidth > partialRange.hi.x) partialRange.hi.x = ndx.x + brushWidth;
+    if (ndx.y - brushWidth < partialRange.lo.y) partialRange.lo.y = ndx.y - brushWidth;
+    if (ndx.y + brushWidth > partialRange.hi.y) partialRange.hi.y = ndx.y + brushWidth;
+}
+
+
 /// Execute the tool.
 /** Apply the height brush at the current point. */
 void BrushTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
-	Coord3D cpt;
-	pView->viewToDocCoords(viewPt, &cpt);
-	DrawObject::setFeedbackPos(cpt);
+    Coord3D cpt;
+    pView->viewToDocCoords(viewPt, &cpt);
+    DrawObject::setFeedbackPos(cpt);
 
-	if (m != TRACK_L) return;
+    pView->Invalidate();
+    pDoc->updateAllViews();
+    if (m != TRACK_L) return;
 
-	pView->viewToDocCoords(viewPt, &cpt);
+    Bool shiftKey = (0x8000 & ::GetAsyncKeyState(VK_SHIFT)) != 0;
 
-	int brushWidth = m_brushWidth;
-	if (m_brushFeather>0) {
-		brushWidth += 2*m_brushFeather;
-	}
-	brushWidth += 2;
+    if (shiftKey)
+    {
+        CPoint ndx;
+        getCenterIndex(&cpt, m_brushWidth, &ndx, pDoc);
 
-	CPoint ndx;
-	getCenterIndex(&cpt, m_brushWidth, &ndx, pDoc);
+        WorldHeightMapEdit* pMap = pDoc->GetHeightMap();
+        if (ndx.x >= 0 && ndx.x < pMap->getXExtent() &&
+            ndx.y >= 0 && ndx.y < pMap->getYExtent())
+        {
+            Int cellHeight = pMap->getHeight(ndx.x, ndx.y);
+            setHeight(cellHeight);
+        }
+        return;
+    }
 
-	if (m_prevXIndex == ndx.x && m_prevYIndex == ndx.y) return;
+    // The stroke buffers are built in mouseDown.  A fast tool swap can retarget the
+    // tool between the down and the move, so the move arrives without them; bail
+    // rather than dereference null.  (The shift-key height pick above reads the
+    // document's height map, not these, so it runs before this guard.)
+    if (m_htMapEditCopy == NULL || m_htMapFeatherCopy == NULL)
+    {
+        return;
+    }
 
-	m_prevXIndex = ndx.x;
-	m_prevYIndex = ndx.y;
+    pView->viewToDocCoords(viewPt, &cpt);
 
-	int sub = brushWidth/2;
-	int add = brushWidth-sub;
+    CPoint ndx;
+    getCenterIndex(&cpt, m_brushWidth, &ndx, pDoc);
 
-	Int i, j;
-	for (i=ndx.x-sub; i<ndx.x+add; i++) {
-		if (i<0 || i>=m_htMapEditCopy->getXExtent()) {
-			continue;
-		}
-		for (j=ndx.y-sub; j<ndx.y+add; j++) {
-			if (j<0 || j>=m_htMapEditCopy->getYExtent()) {
-				continue;
-			}
-			Real blendFactor;
-			if (m_brushSquare) {
-				blendFactor = calcSquareBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
-			} else {
-				blendFactor = calcRoundBlendFactor(ndx, i, j, m_brushWidth, m_brushFeather);
-			}
-			Int curHeight = m_htMapFeatherCopy->getHeight(i,j);
-			float fNewHeight = blendFactor*m_brushHeight+((1.0f-blendFactor)*curHeight) ;
-			Int newHeight = floor(fNewHeight+0.5);
-			if (m_brushHeight > curHeight) {
-				if (m_htMapEditCopy->getHeight(i,j)>newHeight) {
-					newHeight = m_htMapEditCopy->getHeight(i,j);
-				}
-			} else {
-				if (m_htMapEditCopy->getHeight(i,j)<newHeight) {
-					newHeight = m_htMapEditCopy->getHeight(i,j);
-				}
-			}
-			m_htMapEditCopy->setHeight(i, j, newHeight);
-		}
-	}
-	IRegion2D partialRange;
-	partialRange.lo.x = ndx.x - brushWidth;
-	partialRange.hi.x = ndx.x + brushWidth;
-	partialRange.lo.y = ndx.y - brushWidth;
-	partialRange.hi.y = ndx.y + brushWidth;
-	pDoc->updateHeightMap(m_htMapEditCopy, true, partialRange);
+    if (m_prevXIndex == ndx.x && m_prevYIndex == ndx.y) return;
+    m_prevXIndex = ndx.x;
+    m_prevYIndex = ndx.y;
+
+    // Initialise the dirty region at the primary stroke position
+    int brushWidth = m_brushWidth;
+    if (m_brushFeather > 0) brushWidth += 2 * m_brushFeather;
+    brushWidth += 2;
+
+    IRegion2D partialRange;
+    partialRange.lo.x = ndx.x - brushWidth;
+    partialRange.hi.x = ndx.x + brushWidth;
+    partialRange.lo.y = ndx.y - brushWidth;
+    partialRange.hi.y = ndx.y + brushWidth;
+
+    // Primary stroke
+    applyBrushAt(ndx, m_htMapEditCopy, partialRange);
+
+    // Mirror across X centre (left/right)
+    if (m_enableMirror && (m_mirrorX || m_mirrorDiag))
+    {
+        CPoint mirrorX;
+        mirrorX.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+        mirrorX.y = ndx.y;
+        if (m_mirrorX)
+            applyBrushAt(mirrorX, m_htMapEditCopy, partialRange);
+
+        // Mirror across Y centre (top/bottom)
+        if (m_mirrorY)
+        {
+            CPoint mirrorY;
+            mirrorY.x = ndx.x;
+            mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+            applyBrushAt(mirrorY, m_htMapEditCopy, partialRange);
+        }
+
+        // Diagonal: opposite corner — only when both axes active, or diag toggle
+        if (m_mirrorDiag || (m_mirrorX && m_mirrorY))
+        {
+            CPoint mirrorXY;
+            mirrorXY.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+            mirrorXY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+            applyBrushAt(mirrorXY, m_htMapEditCopy, partialRange);
+        }
+    }
+    else if (m_mirrorY)
+    {
+        CPoint mirrorY;
+        mirrorY.x = ndx.x;
+        mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+        applyBrushAt(mirrorY, m_htMapEditCopy, partialRange);
+    }
+
+    pDoc->updateHeightMap(m_htMapEditCopy, true, partialRange);
 }

@@ -128,20 +128,20 @@ public:
 		Real ambientScale;	///< ambient colour as a fraction of the diffuse
 		Bool terrainOnly;	///< lights the ground and nothing standing on it
 	};
-	/// Each ground draw takes up to nine lights, six under standing water, and each mesh up to eight, as their registers allow.
-	enum { MAX_PIXEL_LIGHTS = 9, SEABED_PIXEL_LIGHTS = 6, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
+	/// Each ground draw takes up to eight lights, four under standing water, and each mesh up to eight, as their registers allow.
+	enum { MAX_PIXEL_LIGHTS = 8, SEABED_PIXEL_LIGHTS = 3, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
 	/// Sets the lights that may be drawn per pixel this frame, most important first. Draws name theirs by index.
 	static void setPixelLights(const PixelLight *lights, Int count);
 	static Int getPixelLightCount();
 	static const PixelLight &getPixelLight(Int index);
-	/// Lights the draws that follow with the given lights, up to nine, under the terrain, road, flat terrain
+	/// Lights the draws that follow with the given lights, up to eight, under the terrain, road, flat terrain
 	/// or point light shader in use. Null indices take the first count, the ones nearest the middle of the view.
 	static void setDrawPixelLights(const Int *indices, Int count);
 	/// The registers the terrain's seabed hex tiling reads, as terrainshadow.hlsl lays them out.
 	enum { SEABED_CONSTANTS = 5 };
-	/// Sets, once a frame, the atlas slot lookup, standing water mask and SEABED_CONSTANTS registers the
-	/// terrain's seabed hex tiling reads, or turns it off with nulls.
-	static void setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, const Vector4 *constants);
+	/// Sets, once a frame, the atlas slot lookup, standing water mask, painted stochastic terrain and
+	/// SEABED_CONSTANTS registers the terrain's seabed hex tiling reads, or turns it off with nulls.
+	static void setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, TextureClass *painted, const Vector4 *constants);
 	/// Whether the terrain can hex-tile its textures under standing water.
 	static Bool supportsTerrainSeabed();
 	/// Lights a terrain draw as setDrawPixelLights does, through the seabed shaders when it has standing water.
@@ -157,6 +157,17 @@ public:
 	/// Sets whether the terrain shaders read the normal atlas in TERRAIN_NORMAL_TEXTURE, and how strongly.
 	/// debug shows only the bump's shading, on grey.
 	static void setTerrainBumps(Bool enabled, Real strength, Bool debug);
+	/// Whether the terrain shaders will read the normal atlas, so the terrain should build and hand it over.
+	static Bool wantsTerrainNormalAtlas();
+	/// Sets the sun's glint on the ground, once a frame. gloss sharpens it, and albedo is how far it
+	/// follows the ground's brightness, from 0 not at all to 1 fully. An intensity of 0 turns it off.
+	static void setTerrainGlint(Bool enabled, Real intensity, Real gloss, Real albedo);
+	/// Whether the terrain and road shaders will glint, so the terrain should hand over its normals.
+	static Bool wantsTerrainGlint();
+	/// The gloss of terrain textures without their own.
+	static Real getTerrainGlintGloss();
+	/// Sets, once a frame, the glint's normals with their world xy mapping and getTerrainGlintMap's materials and scales, or turns it off with null.
+	static void setTerrainGlintMaps(TextureClass *normals, const Vector4 &mapping, TextureClass *materials, Real strengthScale, Real glossScale);
 	/// Sets a terrain stage's filters from the player's anisotropy or the mod's settings, whose mip is linear with bilinearMipLinear.
 	static void setTerrainTextureFilter(Int stage, Bool bilinearMipLinear);
 	/// Whether the terrain shaders can blend by height, so the terrain should hand over its height atlas.
@@ -198,6 +209,8 @@ public:
 	static Bool copyRenderTarget(IDirect3DTexture8 *&copy);
 	/// Scale in xy and offset in zw from clip space to the texel centres of a width by height copy of the render target.
 	static Vector4 getClipToTargetMapping(Real width, Real height);
+	/// Draws a quad over the viewport through identity transforms, its uv mapped from clip space by clipToTarget.
+	static void drawClipQuad(const Vector4 &clipToTarget);
 	static Bool isRenderingToTexture() {return m_renderingToTexture; }
 	static void drawViewport(Int color);	///<draws 2 triangles covering the current tactical viewport
 

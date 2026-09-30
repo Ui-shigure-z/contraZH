@@ -29,7 +29,7 @@ class Vector4;
 struct FlameShaderTuning;
 struct BeamShaderTuning;
 
-// Fades particle sprites near the surface behind them, shades flames as fire, electricity as arcs and beams as lasers, and draws the heat haze behind flames.
+// Fades particle sprites near the surface behind them, shades flames as fire, electricity as arcs, beams as lasers and cryo effects as ice, and draws the heat haze behind flames.
 class W3DSoftParticles : public SoftParticleHookClass
 {
 public:
@@ -47,6 +47,9 @@ public:
 
 	/// Whether laser beams and streaks get the laser effect at all, loading its shaders on first ask.
 	Bool laserEnabled();
+
+	/// Whether cryo beams, streaks and sprites get the cryo effect at all, loading its shaders on first ask.
+	Bool cryoEnabled();
 
 	/// The noise laser pulses run on, with pulse x = travel so far, y = world to noise scale, z = swing, which is 0 with laser shading off or no settings.
 	IDirect3DTexture8 *getLaserPulse(const BeamShaderTuning *pulses, Vector4 &pulse);
@@ -70,6 +73,7 @@ private:
 	void bindFlame(const FlameShaderTuning &tuning);
 	void bindElectric(const BeamShaderTuning &tuning, Bool beam);
 	void bindLaser(const BeamShaderTuning &tuning);
+	void bindCryo(const BeamShaderTuning &tuning, Bool beam);
 	Bool bindHaze(const ShaderClass &shader, const FlameShaderTuning &tuning);
 
 	DWORD m_depthShader;
@@ -83,6 +87,12 @@ private:
 	DWORD m_laserDepthShader;
 	DWORD m_laserHeightShader;
 	DWORD m_laserShader;
+	DWORD m_cryoDepthShader;
+	DWORD m_cryoHeightShader;
+	DWORD m_cryoShader;
+	DWORD m_cryoBeamDepthShader;
+	DWORD m_cryoBeamHeightShader;
+	DWORD m_cryoBeamShader;
 	DWORD m_hazeShader;
 	IDirect3DTexture8 *m_noise;
 	IDirect3DTexture8 *m_sceneCopy;

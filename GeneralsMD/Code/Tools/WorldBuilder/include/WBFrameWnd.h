@@ -65,13 +65,22 @@ class CWB3dFrameWnd : public CMainFrame
 	DECLARE_DYNCREATE(CWB3dFrameWnd)
 protected:
 	CWB3dFrameWnd();           // protected constructor used by dynamic creation
+	BOOL m_isFullScreen;
 // Operations
 public:
 // Overrides
 	virtual BOOL LoadFrame(UINT nIDResource,
 				DWORD dwDefaultStyle = WS_OVERLAPPEDWINDOW | FWS_ADDTOTITLE,
-				CWnd* pParentWnd = nullptr,
-				CCreateContext* pContext = nullptr) override;
+				CWnd* pParentWnd = NULL,
+				CCreateContext* pContext = NULL);
+	
+	void ExitFullScreen();
+	void EnterFullScreen();
+#ifdef RTS_HAS_QT
+	// Stage 1 inversion: InitialUpdateFrame calls ActivateFrame(SW_SHOW) on every doc
+	// open; keep the hidden frame hidden and activate the Qt main window instead.
+	virtual void ActivateFrame(int nCmdShow = -1);
+#endif
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CWB3dFrameWnd)
 	public:
@@ -82,6 +91,10 @@ protected:
 	// Generated message map functions
 	//{{AFX_MSG(CWB3dFrameWnd)
 	afx_msg void OnMove(int x, int y);
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnTimer(UINT nIDEvent);
+	afx_msg void OnWindowPreview1280x768();
+	afx_msg void OnUpdateWindowPreview1280x768(CCmdUI* pCmdUI);
 	afx_msg void OnWindowPreview1024x768();
 	afx_msg void OnUpdateWindowPreview1024x768(CCmdUI* pCmdUI);
 	afx_msg void OnWindowPreview640x480();
@@ -89,6 +102,7 @@ protected:
 	afx_msg void OnWindowPreview800x600();
 	afx_msg void OnUpdateWindowPreview800x600(CCmdUI* pCmdUI);
 	afx_msg void OnPaint();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

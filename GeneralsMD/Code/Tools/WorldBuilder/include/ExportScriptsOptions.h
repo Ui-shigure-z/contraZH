@@ -51,14 +51,22 @@ protected:
 	static Bool m_triggers;
 	static Bool m_allScripts;
 	static Bool m_sides;
+	static Bool m_teams;
 
 public:
-	Bool getDoUnits() {return m_units;}
-	Bool getDoWaypoints() {return m_waypoints;}
-	Bool getDoTriggers() {return m_triggers;}
-	Bool getDoAllScripts() {return m_allScripts;}
-	Bool getDoSides() {return m_sides;}
+	Bool getDoUnits(void) {return m_units;}
+	Bool getDoTeams(void) {return m_teams;}
+	Bool getDoWaypoints(void) {return m_waypoints;}
+	Bool getDoTriggers(void) {return m_triggers;}
+	Bool getDoAllScripts(void) {return m_allScripts;}
+	Bool getDoSides(void) {return m_sides;}
 
+#ifdef RTS_HAS_QT
+	// Qt seam (Tier 3a): write the persisted export flags from the native Qt modal. Defined
+	// in src/WBQtMiscModalsBridge.cpp so it can reach the protected statics.
+	static void qtStore(Bool units, Bool teams, Bool waypoints, Bool triggers, Bool sides, Bool allScripts);
+#endif
+	
 protected:
 
 	// Generated message map functions

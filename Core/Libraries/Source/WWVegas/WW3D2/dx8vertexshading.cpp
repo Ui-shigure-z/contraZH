@@ -25,6 +25,22 @@
 #include "shader.h"
 #include "ww3d.h"
 
+bool DX8VertexShadingClass::Has_Point_Light(LightEnvironmentClass * environment)
+{
+	if (environment == nullptr)
+	{
+		return false;
+	}
+	for (int i=0;i<environment->Get_Light_Count();++i)
+	{
+		if (environment->isPointLight(i))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 #if defined(BUILD_WITH_D3D9)
 
 DWORD DX8VertexShadingClass::Get_Device_Render_State(D3DRENDERSTATETYPE state)
@@ -38,6 +54,11 @@ DWORD DX8VertexShadingClass::Get_Device_Render_State(D3DRENDERSTATETYPE state)
 bool DX8VertexShadingClass::Is_Lit(VertexMaterialClass * material)
 {
 	return material != nullptr && material->Get_Lighting() && !WW3D::Is_Coloring_Enabled();
+}
+
+bool DX8VertexShadingClass::Are_Clip_Planes_Enabled()
+{
+	return Get_Device_Render_State(D3DRS_CLIPPLANEENABLE) != 0;
 }
 
 static float Vertex_Color_Weight(VertexMaterialClass::ColorSourceType source, unsigned fvf)
@@ -217,6 +238,15 @@ void DX8VertexShadingClass::Get_Stage_Constants(Vector4 * sources, Vector4 * col
 			columns[stage * 4 + column].Set(transform.m[0][column], transform.m[1][column], transform.m[2][column], transform.m[3][column]);
 		}
 	}
+}
+
+void DX8VertexShadingClass::Set_Material_Pass_Constants()
+{
+	Vector4 constants[CONSTANT_COUNT];
+	Get_View_Constants(constants);
+	Get_Stage_Constants(&constants[CONSTANT_STAGE_SOURCE], &constants[CONSTANT_STAGE_COLUMNS]);
+	DX8Wrapper::Set_Vertex_Shader_Constant(CONSTANT_VIEW_PROJECTION, &constants[CONSTANT_VIEW_PROJECTION], CONSTANT_VIEW + 3);
+	DX8Wrapper::Set_Vertex_Shader_Constant(CONSTANT_STAGE_SOURCE, &constants[CONSTANT_STAGE_SOURCE], CONSTANT_COUNT - CONSTANT_STAGE_SOURCE);
 }
 
 void DX8VertexShadingClass::Get_Material_Constants(PassType pass, VertexMaterialClass * material, unsigned fvf, const Vector4 & fog, Vector4 * constants)

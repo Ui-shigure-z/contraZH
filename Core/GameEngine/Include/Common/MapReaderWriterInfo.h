@@ -55,6 +55,7 @@
 #define K_LIGHTING_VERSION_3	3	// Added 2 additional global lights for terrain.
 #define K_WORLDDICT_VERSION_1 1
 #define K_MAPPREVIEW_VERSION_1 1
+#define K_STOCHASTIC_VERSION_1 1	// contraZH painted stochastic terrain; older builds skip the chunk.
 /** Virtual helper class, so that we can write map data using FILE* or CFile. */
 class OutputStream {
 public:

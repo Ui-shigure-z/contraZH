@@ -53,8 +53,19 @@ class RampOptions : public COptionsPanel
 		Bool shouldApplyTheRamp();
 		Real getRampWidth() { return m_rampWidth; }
 
+		// Drive the panel's state from the Qt replacement panel (WBQtRampBridge). RampTool
+		// reads m_rampWidth / the apply latch off TheRampOptions, so the Qt panel writes them
+		// here rather than duplicating the state.
+		void setRampWidthExternal(Real width) { m_rampWidth = width; }
+		void requestApply() { m_shouldApplyTheRamp = true; }
+
 		afx_msg void OnApply();
 		afx_msg void OnWidthChange();
+
+		afx_msg void OnToggleMirror();
+		afx_msg void OnToggleMirrorX();
+		afx_msg void OnToggleMirrorY();
+		afx_msg void OnToggleMirrorXY();
 
 	DECLARE_MESSAGE_MAP()
 };

@@ -161,6 +161,14 @@ if(WIN32)
     )
 endif()
 
+if(NOT IS_VS6_BUILD)
+    # WorldBuilder's thread pool (std::thread); nothing in the game uses it.
+    list(APPEND WWLIB_SRC
+        WBParallel.cpp
+        WBParallel.h
+    )
+endif()
+
 add_library(core_wwlib STATIC)
 set_target_properties(core_wwlib PROPERTIES OUTPUT_NAME wwlib)
 

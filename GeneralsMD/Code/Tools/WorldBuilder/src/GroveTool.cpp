@@ -36,7 +36,8 @@
 #include "DrawObject.h"
 #include "GroveOptions.h"
 #include "GameLogic/PolygonTrigger.h"
-#include "mapobjectprops.h"
+#include "MapObjectProps.h"
+#include "Common/ThingTemplate.h"
 
 #define DRAG_THRESHOLD	5
 #define MAX_TREE_RISE_OVER_RUN		(1.5f)
@@ -49,6 +50,18 @@ static Bool _positionIsTooCliffyForTrees(Coord3D pos);
 //-------------------------------------------------------------------------------------------------
 /** See if a location is underwater, and what the water height is. */
 //-------------------------------------------------------------------------------------------------
+// Fast guard: does the map have ANY water area trigger at all? Lets callers that
+// sample underwater-ness across a whole grid (e.g. the minimap) skip the per-point
+// localIsUnderwater scan entirely on the common no-water map.
+Bool localHasWaterAreas(void)
+{
+	for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
+		if (pTrig->isWaterArea())
+			return true;
+	}
+	return false;
+}
+
 Bool localIsUnderwater( Real x, Real y)
 {
 	ICoord3D iLoc;
@@ -71,7 +84,35 @@ Bool localIsUnderwater( Real x, Real y)
 	return false;
 }
 
+/**
+ * Adriane [Deathscythe]
+ * Non computationaly expensive suggested check :P 
+ */
+Bool localIsInsideMapObject(Real x, Real y)
+{
+	MapObject* pObj = MapObject::getFirstMapObject();
 
+	while (pObj) {
+		const ThingTemplate* t = pObj->getThingTemplate();
+		if (!t) {
+			pObj = pObj->getNext();
+			continue;
+		}
+
+		const Coord3D* pos = pObj->getLocation();
+		Real radius = t->getTemplateGeometryInfo().getMajorRadius();
+
+		Real dx = x - pos->x;
+		Real dy = y - pos->y;
+		if ((dx * dx + dy * dy) <= (radius * radius)) {
+			return true; // Point is inside structure boundary
+		}
+
+		pObj = pObj->getNext();
+	}
+
+	return false;
+}
 
 // plant a tree
 void GroveTool::plantTree( Coord3D *pos )
@@ -82,7 +123,7 @@ void GroveTool::plantTree( Coord3D *pos )
 
 
 	int runningCum = 0;
-	for (int i = 1; i <= 5; ++i) {
+	for (int i = 1; i <= 11; ++i) {
 		runningCum +=  TheGroveOptions->getNumType(i);
 		if (randVal < runningCum) {
 			if (TheGroveOptions->getTypeName(i).isEmpty()) {
@@ -108,13 +149,13 @@ void GroveTool::activate()
 void GroveTool::plantShrub( Coord3D *pos )
 {
 // TODO: Determine when we can tell something is a shurubbery, and plant it here - jkmcd
-//	addObj(pos, "Shrub");
+	addObj(pos, AsciiString("Bush07"));
 }
 
-void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView)
+void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView,  CWorldBuilderDoc *pDoc)
 {
-
-	int numTotalTrees = TheGroveOptions->getNumTrees();
+	const int minSize = 100; // pixels
+	bool smallBox = (abs(br.x - tl.x) < minSize && abs(br.y - tl.y) < minSize);
 
 	Coord3D tl3d, tr3d, bl3d;
 	pView->viewToDocCoords(tl, &tl3d);
@@ -130,6 +171,8 @@ void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView)
 	tr3d.x -= tl3d.x;
 	tr3d.y -= tl3d.y;
 	tr3d.z = 0;
+
+    int numTotalTrees = smallBox ? 1 : TheGroveOptions->getNumTrees();
 
 	for (int i = 0; i < numTotalTrees; ++i) {
 		Real trModifier = GameLogicRandomValueReal(0.0f, 1.0f);
@@ -148,12 +191,17 @@ void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView)
 		position.y = tlVec.Y;
 		position.z = 0;
 
-		// (maybe) don't put trees on steep slopes
+		// (maybe) don't put me inside someone
+		if(!TheGroveOptions->getCanPlaceOnCliffs() && localIsInsideMapObject(position.x, position.y)) {
+			continue;
+		}
+
 		// (maybe) tree must not be in the water
 		if (!TheGroveOptions->getCanPlaceInWater() && localIsUnderwater(position.x, position.y)) {
 			continue;
 		}
 
+		// (maybe) don't put trees on steep slopes
 		if (!TheGroveOptions->getCanPlaceOnCliffs() && _positionIsTooCliffyForTrees(position)) {
 			continue;
 		}
@@ -161,6 +209,54 @@ void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView)
 		plantTree(&position);
 	}
 }
+
+// void GroveTool::_plantGroveInBox(CPoint tl, CPoint br, WbView* pView, CWorldBuilderDoc *pDoc)
+// {
+// 	const int minSize = 100; // pixels
+// 	bool smallBox = (abs(br.x - tl.x) < minSize || abs(br.y - tl.y) < minSize);
+
+// 	Coord3D tl3d, tr3d, bl3d;
+// 	pView->viewToDocCoords(tl, &tl3d);
+// 	pView->viewToDocCoords(CPoint(tl.x, br.y), &bl3d);
+// 	pView->viewToDocCoords(CPoint(br.x, tl.y), &tr3d);
+
+// 	tl3d.z = 0;
+
+// 	bl3d.x -= tl3d.x;
+// 	bl3d.y -= tl3d.y;
+// 	tr3d.x -= tl3d.x;
+// 	tr3d.y -= tl3d.y;
+
+// 	int numTotal = smallBox ? 1 : TheGroveOptions->getNumTrees();
+// 	int numShrubs = numTotal / 3;
+// 	int numTrees = numTotal - numShrubs;
+
+// 	WorldHeightMapEdit *pMap = pDoc->GetHeightMap(); 
+
+// 	for (int i = 0; i < numTotal; ++i) {
+// 		Real trModifier = GameLogicRandomValueReal(0.0f, 1.0f);
+// 		Real blModifier = GameLogicRandomValueReal(0.0f, 1.0f);
+
+// 		Vector3 baseVec(tl3d.x, tl3d.y, 0);
+// 		baseVec = baseVec + Vector3(tr3d.x * trModifier, tr3d.y * trModifier, 0);
+// 		baseVec = baseVec + Vector3(bl3d.x * blModifier, bl3d.y * blModifier, 0);
+
+// 		Coord3D position = { baseVec.X, baseVec.Y, 0 };
+
+// 		if (localIsInsideMapObject(position.x, position.y) ||
+// 			(!TheGroveOptions->getCanPlaceInWater() && localIsUnderwater(position.x, position.y)) ||
+// 			(!TheGroveOptions->getCanPlaceOnCliffs() && _positionIsTooCliffyForTrees(position))) {
+// 			continue;
+// 		}
+
+// 		position.z = TheTerrainRenderObject ? TheTerrainRenderObject->getHeightMapHeight(position.x, position.y, NULL) : 0;
+
+// 		if (i < numShrubs)
+// 			plantShrub(&position);
+// 		else
+// 			plantTree(&position);
+// 	}
+// }
 
 /**
  * Plant a grove of trees, recursively.  Given a "seed location", create child
@@ -255,51 +351,79 @@ void GroveTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 	m_dragging = false;
 }
 
+/** OBSOLETE -- Execute the tool on mouse up - Place an object. */ 
+// void GroveTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) 
+// {
+// 	if (m != TRACK_L) return;
+
+// 	if (pView && m_dragging) {
+// 		CRect box;
+// 		box.left = viewPt.x;
+// 		box.top = viewPt.y;
+// 		box.right = m_downPt.x;
+// 		box.bottom = m_downPt.y;
+// 		box.NormalizeRect();
+// 		pView->doRectFeedback(false, box);
+// 		pView->Invalidate();
+
+// 		_plantGroveInBox(m_downPt, viewPt, pView);
+// 		if (m_headMapObj != NULL) {
+// 			AddObjectUndoable *pUndo = new AddObjectUndoable(pDoc, m_headMapObj);
+// 			pDoc->AddAndDoUndoable(pUndo);
+// 			REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
+// 			m_headMapObj = NULL; // undoable owns it now.
+// 		}
+// 		return;
+// 	}	
+
+// 	Coord3D loc;  
+	
+// 	pView->viewToDocCoords(m_downPt, &loc);
+
+// 	WorldHeightMapEdit *pMap = pDoc->GetHeightMap(); 
+// 	CPoint bounds;
+// 	bounds.x = pMap->getXExtent()*MAP_XY_FACTOR;
+// 	bounds.y = pMap->getYExtent()*MAP_XY_FACTOR; 
+// //	Real angle = 0;
+// 	Int depth = 3;		
+// 	Coord3D zeroDir;
+
+// 	zeroDir.x = 0.0f;
+// 	zeroDir.y = 0.0f;
+// 	zeroDir.z = 0.0f;
+// 	loc.z = TheTerrainRenderObject ? TheTerrainRenderObject->getHeightMapHeight( loc.x, loc.y, NULL ) : 0;
+
+// 	// grow tree grove out from here
+// 	plantGrove( loc, zeroDir, loc.z, depth, bounds );
+// 	if (m_headMapObj != NULL) {
+// 		AddObjectUndoable *pUndo = new AddObjectUndoable(pDoc, m_headMapObj);
+// 		pDoc->AddAndDoUndoable(pUndo);
+// 		REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
+// 		m_headMapObj = NULL; // undoable owns it now.
+// 	}
+// }
+
+
 /** Execute the tool on mouse up - Place an object. */
 void GroveTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
 	if (m != TRACK_L) return;
 
-	if (pView && m_dragging) {
-		CRect box;
-		box.left = viewPt.x;
-		box.top = viewPt.y;
-		box.right = m_downPt.x;
-		box.bottom = m_downPt.y;
-		box.NormalizeRect();
-		pView->doRectFeedback(false, box);
-		pView->Invalidate();
+	if (!pView) return;
 
-		_plantGroveInBox(m_downPt, viewPt, pView);
-		if (m_headMapObj != nullptr) {
-			AddObjectUndoable *pUndo = new AddObjectUndoable(pDoc, m_headMapObj);
-			pDoc->AddAndDoUndoable(pUndo);
-			REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
-			m_headMapObj = nullptr; // undoable owns it now.
-		}
-		return;
-	}
+	CRect box;
+	box.left = viewPt.x;
+	box.top = viewPt.y;
+	box.right = m_downPt.x;
+	box.bottom = m_downPt.y;
+	box.NormalizeRect();
+	pView->doRectFeedback(false, box);
+	pView->Invalidate();
 
-	Coord3D loc;
+	// Call the grove placement regardless of dragging, to support single clicks.
+	_plantGroveInBox(m_downPt, viewPt, pView, pDoc);
 
-	pView->viewToDocCoords(m_downPt, &loc);
-
-	WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
-	CPoint bounds;
-	bounds.x = pMap->getXExtent()*MAP_XY_FACTOR;
-	bounds.y = pMap->getYExtent()*MAP_XY_FACTOR;
-//	Real angle = 0;
-	Int depth = 3;
-	Coord3D zeroDir;
-
-	zeroDir.x = 0.0f;
-	zeroDir.y = 0.0f;
-	zeroDir.z = 0.0f;
-	loc.z = TheTerrainRenderObject ? TheTerrainRenderObject->getHeightMapHeight( loc.x, loc.y, nullptr ) : 0;
-
-	// grow tree grove out from here
-	plantGrove( loc, zeroDir, loc.z, depth, bounds );
-	if (m_headMapObj != nullptr) {
+	if (m_headMapObj != NULL) {
 		AddObjectUndoable *pUndo = new AddObjectUndoable(pDoc, m_headMapObj);
 		pDoc->AddAndDoUndoable(pUndo);
 		REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
@@ -334,7 +458,7 @@ void GroveTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 void GroveTool::addObj(Coord3D *pos, AsciiString name)
 {
 	MapObject *pCur = ObjectOptions::getObjectNamed(name);
-	DEBUG_ASSERTCRASH(pCur!=nullptr, ("oops"));
+	// DEBUG_ASSERTCRASH(pCur!=NULL, ("oops"));
 	if (!pCur) return;
 	Coord3D theLoc = *pos;
 	theLoc.z = 0;
@@ -346,87 +470,16 @@ void GroveTool::addObj(Coord3D *pos, AsciiString name)
 }
 
 
-#define SQRT_2	(1.41421356f)
+/**
+ * Adriane [Deathscythe] -- Bug fix
+ * Old check for cliff is broken -- since theres already a check under the 
+ * terrainrenderobject we just use that instead
+ */
 static Bool _positionIsTooCliffyForTrees(Coord3D pos)
 {
-	Coord3D otherPos;
+    if (TheTerrainRenderObject == NULL) {
+        return false;
+    }
 
-	otherPos = pos;
-	otherPos.x += MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / 1) > MAX_TREE_RISE_OVER_RUN) ||
-		  ((otherPos.z / pos.z / 1) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.y += MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / 1) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / 1) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.y -= MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / 1) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / 1) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.x -= MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / 1) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / 1) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.x += MAP_XY_FACTOR;
-	otherPos.y += MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.x += MAP_XY_FACTOR;
-	otherPos.y -= MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.x -= MAP_XY_FACTOR;
-	otherPos.y -= MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	otherPos = pos;
-	otherPos.x -= MAP_XY_FACTOR;
-	otherPos.y += MAP_XY_FACTOR;
-	otherPos.z = TheTerrainRenderObject->getHeightMapHeight(otherPos.x, otherPos.y, nullptr);
-
-	if (((pos.z / otherPos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN) ||
-			((otherPos.z / pos.z / SQRT_2) > MAX_TREE_RISE_OVER_RUN)) {
-		return true;
-	}
-
-	return false;
+    return TheTerrainRenderObject->isCliffCell(pos.x, pos.y);
 }
-#undef SQRT_2

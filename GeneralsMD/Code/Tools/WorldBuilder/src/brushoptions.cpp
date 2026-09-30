@@ -25,6 +25,9 @@
 #include "brushoptions.h"
 #include "WorldBuilderView.h"
 #include "BrushTool.h"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtPanelBridge.h"
+#endif
 
 BrushOptions *BrushOptions::m_staticThis = nullptr;
 Int BrushOptions::m_currentWidth = 0;
@@ -57,6 +60,9 @@ void BrushOptions::setFeather(Int feather)
 	CString buf;
 	buf.Format("%d", feather);
 	m_currentFeather = feather;
+#ifdef RTS_HAS_QT
+	WBQtBrush_PushFeather(feather);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_FEATHER_EDIT);
 		if (pEdit) pEdit->SetWindowText(buf);
@@ -70,6 +76,9 @@ void BrushOptions::setWidth(Int width)
 	CString buf;
 	buf.Format("%d", width);
 	m_currentWidth = width;
+#ifdef RTS_HAS_QT
+	WBQtBrush_PushWidth(width);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_SIZE_EDIT);
 		if (pEdit) pEdit->SetWindowText(buf);
@@ -81,6 +90,9 @@ void BrushOptions::setHeight(Int height)
 	char buffer[12];
 	snprintf(buffer, ARRAY_SIZE(buffer), "%d", height);
 	m_currentHeight = height;
+#ifdef RTS_HAS_QT
+	WBQtBrush_PushHeight(height);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_HEIGHT_EDIT);
 		if (pEdit) pEdit->SetWindowText(buffer);
@@ -104,6 +116,7 @@ BOOL BrushOptions::OnInitDialog()
 	m_brushFeatherPopup.SetupPopSliderButton(this, IDC_FEATHER_POPUP, this);
 	m_brushHeightPopup.SetupPopSliderButton(this, IDC_HEIGHT_POPUP, this);
 
+    m_currentHeight = 50;
 
 	m_staticThis = this;
 	m_updating = false;
@@ -270,12 +283,37 @@ void BrushOptions::PopSliderFinished(const long sliderID, long theVal)
 
 }
 
+void BrushOptions::OnToggleMirror()
+{
+	BrushTool::toggleMirror();
+}
+
+void BrushOptions::OnToggleMirrorX()
+{
+	BrushTool::toggleMirrorX();
+}
+
+void BrushOptions::OnToggleMirrorY()
+{
+	BrushTool::toggleMirrorY();
+}
+
+void BrushOptions::OnToggleMirrorXY()
+{
+	BrushTool::toggleMirrorXY();
+}
+
 
 BEGIN_MESSAGE_MAP(BrushOptions, COptionsPanel)
 	//{{AFX_MSG_MAP(BrushOptions)
 	ON_EN_CHANGE(IDC_FEATHER_EDIT, OnChangeFeatherEdit)
 	ON_EN_CHANGE(IDC_SIZE_EDIT, OnChangeSizeEdit)
 	ON_EN_CHANGE(IDC_HEIGHT_EDIT, OnChangeHeightEdit)
+
+	ON_BN_CLICKED(IDC_TOGGLE_MIRROR, OnToggleMirror)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORX, OnToggleMirrorX)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORY, OnToggleMirrorY)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORXY, OnToggleMirrorXY)
 	ON_WM_HSCROLL()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()

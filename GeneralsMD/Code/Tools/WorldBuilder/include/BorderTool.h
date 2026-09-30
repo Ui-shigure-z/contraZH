@@ -29,7 +29,9 @@ class BorderTool : public Tool
 		Int m_modifyBorderNdx;
 		ModificationType m_modificationType;
 
-
+		ICoord2D m_lastBoundaryPos;
+		Bool m_lastBoundaryPosValid;
+	
 	public:
 		BorderTool();
 		virtual ~BorderTool() override;

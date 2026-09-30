@@ -229,6 +229,7 @@ static GameWindow *   checkPixelLights            = nullptr;
 static GameWindow *   checkSoftParticles          = nullptr;
 static GameWindow *   checkAmbientOcclusion       = nullptr;
 static GameWindow *   checkHeightBlend            = nullptr;
+static GameWindow *   checkHQSky                  = nullptr;
 static GameWindow *   checkVSync                  = nullptr;
 static GameWindow *   checkLowLatency             = nullptr;
 static GameWindow *   checkSmoothUnitMotion       = nullptr;
@@ -491,6 +492,7 @@ static const BoolOption BoolOptions[] =
 	{ &checkSoftParticles, "SoftParticles", &OptionPreferences::getSoftParticlesEnabled, &GlobalData::m_useSoftParticles, TRUE },
 	{ &checkAmbientOcclusion, "AmbientOcclusion", &OptionPreferences::getAmbientOcclusionEnabled, &GlobalData::m_useAmbientOcclusion, TRUE },
 	{ &checkHeightBlend, "HeightBlend", &OptionPreferences::getHeightBlendEnabled, &GlobalData::m_useHeightBlend, TRUE },
+	{ &checkHQSky, "HQSky", &OptionPreferences::getHQSkyEnabled, &GlobalData::m_useHQSky, TRUE },
 	{ &checkLowLatency, "LowLatency", &OptionPreferences::getLowLatencyEnabled, &GlobalData::m_lowLatency, FALSE },
 	{ &checkSmoothUnitMotion, "SmoothUnitMotion", &OptionPreferences::getSmoothUnitMotionEnabled, &GlobalData::m_smoothUnitMotion, TRUE },
 };
@@ -532,6 +534,7 @@ static void updateGameOptionsEnables()
 	enableWindow( checkBloomDebug, bloom );
 
 	enableWindow( checkPixelLights, getCheck( checkDynamicLights, TRUE ) );
+	enableWindow( checkHQSky, getCheck( checkCloudShadows, TRUE ) );
 
 	// the scene depth it reads is multisampled, and so unreadable, with anti-aliasing on
 	Int antiAliasing = 0;
@@ -1606,6 +1609,7 @@ static void initGameOptionsWindows()
 	checkSoftParticles = findOptionsWindow( "OptionsMenu.wnd:CheckSoftParticles" );
 	checkAmbientOcclusion = findOptionsWindow( "OptionsMenu.wnd:CheckAmbientOcclusion" );
 	checkHeightBlend = findOptionsWindow( "OptionsMenu.wnd:CheckHeightBlend" );
+	checkHQSky = findOptionsWindow( "OptionsMenu.wnd:CheckHQSky" );
 	checkVSync = findOptionsWindow( "OptionsMenu.wnd:CheckVSync" );
 	checkLowLatency = findOptionsWindow( "OptionsMenu.wnd:CheckLowLatency" );
 	checkSmoothUnitMotion = findOptionsWindow( "OptionsMenu.wnd:CheckSmoothUnitMotion" );
@@ -1665,6 +1669,7 @@ static void initGameOptionsWindows()
 	setCheckText( checkVSync, "GUI:VSync", L"Vertical sync", "TOOLTIP:VSync", L"Waits for the monitor's refresh before showing each frame, which stops tearing but can add a little input delay." );
 	setCheckText( checkAmbientOcclusion, "GUI:AmbientOcclusion", L"Ambient occlusion", "TOOLTIP:AmbientOcclusion", L"Creases, corners and the ground where units and buildings stand fall into soft shade. Off while anti-aliasing is on. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
 	setCheckText( checkHeightBlend, "GUI:HeightBlend", L"Height blending", "TOOLTIP:HeightBlend", L"Where two terrain textures meet, the taller one's stones and clumps push into the other instead of a soft fade. Needs a Direct3D 9 card." );
+	setCheckText( checkHQSky, "GUI:HQSky", L"HQ sky", "TOOLTIP:HQSky", L"Cloud shadows drift softly, change shape as they go and never repeat, instead of sliding as one tiled pattern. Needs Cloud shadows and a Direct3D 9 card." );
 	setCheckText( checkSoftParticles, "GUI:SoftParticles", L"Soft particles", "TOOLTIP:SoftParticles", L"Smoke, dust and fire fade where they meet the ground and buildings, instead of cutting a hard line. Needs a Direct3D 9 card." );
 	setCheckText( checkShadowMap, "GUI:ShadowMap", L"Shadow mapping", "TOOLTIP:ShadowMap", L"Soft shadows shaped like their objects, falling on ground, bridges, units and buildings. 3D and 2D Shadows still choose which objects cast. Needs a Direct3D 9 card." );
 
@@ -2490,7 +2495,7 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 				cancelGameOptions();
 			}
 			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID ||
-				controlID == checkDynamicLightsID )
+				controlID == checkDynamicLightsID || controlID == checkCloudShadowsID )
 			{
 				updateGameOptionsEnables();
 			}

@@ -89,6 +89,9 @@ typedef struct {
 // Atlas slots along each side of the seabed's slot lookup, which terrainshadow.hlsl divides by too.
 #define CLASS_MAP_SLOTS 32
 
+// Bytes a cell of painted stochastic terrain takes: strength, seed and blending rate.
+#define STOCHASTIC_BYTES 3
+
 
 class TextureClass;
 class ChunkInputStream;
@@ -137,6 +140,13 @@ public:
 		FREE_CAM_DRAW_HEIGHT = 1 + (NORMAL_DRAW_HEIGHT-1) * 4,
 	};
 
+	// We need to expose this for the blending of textures for copy mode
+	Short  *m_extraBlendTileNdxes;  ///< matches m_Data, indexes into m_extraBlendedTiles.  0 means no blend info.	
+	Short  *m_blendTileNdxes;  ///< matches m_Data, indexes into m_blendedTiles.  0 means no blend info.	
+	TBlendTileInfo	m_blendedTiles[NUM_BLEND_TILES];
+	TBlendTileInfo	m_extraBlendedTiles[NUM_BLEND_TILES];
+	Int m_numBlendedTiles;	// Number of blended tiles created from bitmap tiles.
+
 protected:
 	Int m_width;				///< Height map width.
 	Int m_height;				///< Height map height (y size of array).
@@ -156,23 +166,22 @@ protected:
 
 	/// Texture indices.
 	Short  *m_tileNdxes;  ///< matches m_Data, indexes into m_SourceTiles.
-	Short  *m_blendTileNdxes;  ///< matches m_Data, indexes into m_blendedTiles.  0 means no blend info.
 	Short  *m_cliffInfoNdxes;  ///< matches m_Data, indexes into m_cliffInfo.	 0 means no cliff info.
-	Short  *m_extraBlendTileNdxes;  ///< matches m_Data, indexes into m_extraBlendedTiles.  0 means no blend info.
-
+	
+	/// Painted stochastic terrain, STOCHASTIC_BYTES per cell matching m_data: strength, seed and blending rate. Null when none is painted.
+	UnsignedByte *m_stochasticData;
+	TextureClass *m_stochasticTex;	///< m_stochasticData as the seabed shaders read it, on the water height texture's layout
+	Bool m_stochasticTexDirty;	///< m_stochasticData changed since m_stochasticTex was filled
+	Real m_stochasticTexExponent;	///< the unpainted weight exponent m_stochasticTex was filled with
 
 	Int m_numBitmapTiles;	// Number of tiles initialized from bitmaps in m_SourceTiles.
 	Int m_numEdgeTiles;	// Number of tiles initialized from bitmaps in m_SourceTiles.
-	Int m_numBlendedTiles;	// Number of blended tiles created from bitmap tiles.
 
 	TileData			*m_sourceTiles[NUM_SOURCE_TILES];	///< Tiles for m_textureClasses
 	TileData			*m_edgeTiles[NUM_SOURCE_TILES];	///< Tiles for m_textureClasses
 	TileData			*m_sourceNormalTiles[NUM_SOURCE_TILES];	///< Normal map tiles matching m_sourceTiles, null where a class has none
 	Bool				m_hasNormalTiles;	///< Some texture class has a normal map
 	TileData			*m_sourceHeightTiles[NUM_SOURCE_TILES];	///< Height map tiles matching m_sourceTiles, null where a class has none
-
-	TBlendTileInfo	m_blendedTiles[NUM_BLEND_TILES];
-	TBlendTileInfo	m_extraBlendedTiles[NUM_BLEND_TILES];
 
 	TCliffInfo	m_cliffInfo[NUM_CLIFF_INFO];
 	Int m_numCliffInfo; ///< Number of cliffInfo's used in m_cliffInfo.
@@ -203,6 +212,12 @@ protected:
 	/** Per atlas slot, the texture block it belongs to, for the seabed's hex tiling. */
 	TextureClass *m_terrainClassMap;
 	TerrainTextureClass *m_terrainClassMapAtlas;	///< the atlas m_terrainClassMap was built for
+	/** Each texture's sun glint strength and gloss from Terrain.ini, laid out like m_terrainTex. */
+	TextureClass *m_terrainGlintMap;
+	TerrainTextureClass *m_terrainGlintMapAtlas;	///< the atlas m_terrainGlintMap was built for
+	Real m_terrainGlintMapGloss;	///< the default gloss m_terrainGlintMap was built with
+	Real m_terrainGlintStrengthScale;	///< the strength a full red channel stands for
+	Real m_terrainGlintGlossScale;	///< the gloss a full green channel stands for
 	/** The texture that contains the alpha edge tiles that get blended on
 			top of the base texture. getAlphaUVData does the mapping. */
 	AlphaTerrainTextureClass *m_alphaTerrainTex;
@@ -249,6 +264,7 @@ protected:	 // file reader callbacks.
 	static Bool ParseObjectDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData);
 	Bool ParseObjectData(DataChunkInput &file, DataChunkInfo *info, void *userData, Bool readDict);
 	static Bool ParseLightingDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData);
+	static Bool ParseStochasticDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData);
 
 protected:
 	WorldHeightMap();			///< Simple constructor for WorldHeightMapEdit class.
@@ -294,6 +310,9 @@ public:  // height map info.
 			return(0);
 	};
 
+	inline Int getStoredWidth() const {return m_width; }
+	inline Int getStoredHeight() const {return m_height; }
+
 	void getUVForBlend(Int edgeClass, Region2D *range);
 
 	DrawArea createDrawArea(Int xOrg, Int yOrg);
@@ -312,6 +331,14 @@ public:  // tile and texture info.
 	TextureClass *getTerrainNormalTexture();  //< generates if needed and returns the terrain normal maps, or null when there are none
 	TextureClass *getTerrainHeightTexture();  //< generates if needed and returns the heights the textures blend by, or null when the card lacks the format
 	TextureClass *getTerrainClassMap();  //< generates if needed and returns the atlas slot lookup the seabed shaders read, or null
+	/// Fills if needed and returns the painted stochastic terrain as the seabed shaders read it, with plainExponent
+	/// as the hex weight exponent where nothing is painted.
+	TextureClass *getStochasticTexture(Real plainExponent);
+	Bool hasStochastic() const { return m_stochasticData != nullptr; }
+	/// The painted strength, seed and blending rate of a cell, all zero where nothing is painted.
+	void getStochastic(Int xIndex, Int yIndex, UnsignedByte &strength, UnsignedByte &seed, UnsignedByte &rate) const;
+	/// Generates if needed and returns each texture's glint strength and gloss, defaultGloss without a GlintGloss, and what a full channel stands for, or null.
+	TextureClass *getTerrainGlintMap(Real defaultGloss, Real &strengthScale, Real &glossScale);
 	Int getTerrainTexHeight() const { return m_terrainTexHeight; }
 	Int getAtlasBorder() const { return m_atlasBorder; }
 	/// The atlas border GameData TerrainAtlasBorder asks for, rounded and bounded as the atlases lay it out.

@@ -22,19 +22,36 @@
 #include "StdAfx.h"
 #include "WorldBuilder.h"
 
+#include <shlwapi.h> // for PathFileExists
+#pragma comment(lib, "shlwapi.lib")
+
 #include <direct.h>
 #include <windows.h>
 #include <process.h>
 
 #include "Common/Debug.h"
 #include "Common/DataChunk.h"
+#include "Common/INIException.h"
 #include "Common/PlayerTemplate.h"
 #include "Common/MapReaderWriterInfo.h"
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
+// Stores whose map.ini overrides must be torn down when unloading a map.ini (mirrors
+// the WB INI type table in INI.cpp + the game's own between-match reset()).
+#include "Common/SpecialPower.h"
+#include "Common/Science.h"
+#include "Common/ModuleFactory.h"
+#include "Common/Module.h"
+#include "GameLogic/Weapon.h"
+#include "GameLogic/Armor.h"
+#include "GameLogic/ObjectCreationList.h"
+#include "GameClient/FXList.h"
+#include "GameClient/Water.h"
 #include "Common/WellKnownKeys.h"
 #include "Common/MapData.h"
 
+#include "WBHeightMap.h"
+#include "MapGen/WBMapGenDoc.h"
 #include "GameClient/Line2D.h"
 #include "GameClient/View.h"
 #include "GameClient/GameText.h"
@@ -47,7 +64,16 @@
 #include "CUndoable.h"
 #include "LayersList.h"
 #include "MainFrm.h"
+#include "MinimapDialog.h"
 #include "NewHeightMap.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#include "qt/panels/WBQtMapFileBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"
+#include "qt/panels/WBQtMapIniReport.h"
+#include "qt/panels/WBQtMapIniEditorBridge.h"
+#include "qt/panels/WBQtMapGenBridge.h"
+#endif
 #include "SaveMap.h"
 #include "ScriptDialog.h"
 #include "TerrainMaterial.h"
@@ -56,9 +82,16 @@
 #include "wbview.h"
 #include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
+#include "WBParticleRuntime.h"
 #include "WorldBuilderView.h"
 #include "MapPreview.h"
 
+#include "TileTool.h"
+
+#include <algorithm>
+#include <string>
+#include <set>
+#include <vector>
 
 // Can't currently have multiple open... jba.
 #define notONLY_ONE_AT_A_TIME
@@ -66,6 +99,8 @@
 #ifdef ONLY_ONE_AT_A_TIME
 static Bool gAlreadyOpen = false;
 #endif
+// TheSuperHackers @feature Suppress the interactive New Map dialog for automation clients.
+static Bool gAutomationNewDocument = false;
 
 enum DIRECTION
 {
@@ -75,6 +110,997 @@ enum DIRECTION
 	PREFER_RIGHT,
 	PREFER_BOTTOM,
 };
+
+static Bool g_mapiniloaded = false;
+static Bool g_warnedfordupedforthismap = false;
+
+// Templates the loaded map.ini INVENTED -- names the installed game data has no Object block for.
+//
+// These are registered in TheThingFactory like any other template (newTemplate -> addTemplate), so
+// every catalog walk built from firstTemplate() picks them up. That is wrong for the "fix missing"
+// passes: offering one as the replacement for a broken name points the map at an object that only
+// exists because THIS map.ini defines it, and which disappears the moment the map.ini is unloaded.
+// The auto-matcher would then "resolve" a missing unit to something equally non-existent.
+//
+// This is common on a modded install: a mod deletes a vanilla template and ships its own under a
+// different name, so a vanilla-authored map.ini re-creates the old name from scratch.
+//
+// Filled by the map.ini load (the pre-scan already works out which names are new), cleared when the
+// overrides are torn down. Read through WBMapIni_IsPhantomTemplate.
+static std::set<AsciiString> g_mapIniPhantomTemplates;
+
+Bool WBMapIni_IsPhantomTemplate(const AsciiString &name)
+{
+	if (g_mapIniPhantomTemplates.empty())
+	{
+		return FALSE;	// no map.ini loaded (or it invented nothing) -- the common case
+	}
+	return (g_mapIniPhantomTemplates.find(name) != g_mapIniPhantomTemplates.end()) ? TRUE : FALSE;
+}
+
+// ----------------------------------------------------------------------------
+// Gracefully unload map.ini overrides.
+//
+// map.ini is loaded with INI_LOAD_CREATE_OVERRIDES, which dangles "override"
+// instances off the base templates in each store (the same mechanism the game uses
+// for map-specific tweaks). Each store's reset() walks its templates and calls
+// Overridable::deleteOverrides(), which deletes ONLY the entries marked as overrides
+// and leaves the base game data intact -- exactly what the game does between matches.
+//
+// We only reset the stores that (a) the WB INI type table (INI.cpp theWbTypeTable)
+// can actually create overrides in AND (b) have a real override-only teardown. Object,
+// Weapon, Science, SpecialPower and Water/Weather qualify. FXList / OCL / Armor have
+// empty reset()s and ParticleSystemManager::reset() is a full wipe (not override-only),
+// so we deliberately skip those -- map.ini overrides to them are rare, and calling
+// their reset would either do nothing or destroy non-override state.
+static void unloadMapIniOverrides(void)
+{
+	if (!g_mapiniloaded)
+		return;
+
+	// The freeing half -- override chains deleted, phantom names dropped -- is exactly the
+	// shutdown teardown, so share it (see WBMapIni_UnloadForShutdown below). What this path adds
+	// is the re-link, because here the templates are about to be USED again.
+	WBMapIni_UnloadForShutdown();
+
+	// Re-link object templates after stripping overrides (resolves names, rebuilds the
+	// upgrade/module references) -- the same call the WB loader makes after parsing.
+	if (TheThingFactory)
+		TheThingFactory->postProcessLoad();
+}
+
+// Shutdown-only teardown, called from ExitInstance BEFORE Qt is destroyed.
+//
+// THE BUG: closing WB with map.ini overrides still installed crashed on the way out -- an
+// access violation inside ~QApplication, freeing through WB's overridden global operator
+// delete (which routes to the game's MemoryPool). Isolated with three cdb runs: no map =
+// clean exit; map.ini previewed but CANCELLED (dialog shown, nothing installed) = clean exit;
+// map.ini actually loaded = crash. The installed overrides are the trigger, not the loader UI.
+//
+// WHY NOT JUST CALL unloadMapIniOverrides(): every one of its call sites is a load-time
+// operation or an "about to load something else" (see OnOpenDocument, which tears the PREVIOUS
+// map's overrides down before loading the next). It ends with postProcessLoad(), which walks
+// every template re-resolving names for the data that is about to be used again. At exit
+// nothing is rebuilt, and the document and its render objects still hold pointers into the
+// templates -- calling it there corrupted the heap at LOAD time (verified: the next run
+// crashed opening the map, with a garbage stack through RtlpAllocateNTHeapInternal).
+//
+// So do the freeing half only. The stores' reset()s delete the override chains and drop
+// map-only templates from the hash map, which is what has to happen before Qt goes; the
+// re-link is pure waste when the process is ending, and it is the part that walks live data.
+void WBMapIni_UnloadForShutdown(void)
+{
+	if (!g_mapiniloaded)
+	{
+		return;
+	}
+
+	// The invented templates go away with the resets below, so stop excluding those names.
+	g_mapIniPhantomTemplates.clear();
+
+	if (TheThingFactory)
+	{
+		TheThingFactory->reset();		// Object
+	}
+	if (TheWeaponStore)
+	{
+		TheWeaponStore->reset();		// Weapon
+	}
+	if (TheScienceStore)
+	{
+		TheScienceStore->reset();		// Science
+	}
+	if (TheSpecialPowerStore)
+	{
+		TheSpecialPowerStore->reset();	// SpecialPower
+	}
+
+	// Water transparency / radar color override (GameLogic does this same dance on its
+	// own reset). TheWaterTransparency is an OVERRIDE<> smart pointer.
+	if (TheWaterTransparency.getNonOverloadedPointer())
+	{
+		WaterTransparencySetting *wt =
+			(WaterTransparencySetting*)TheWaterTransparency.getNonOverloadedPointer();
+		TheWaterTransparency = (WaterTransparencySetting*)wt->deleteOverrides();
+	}
+
+	// NO postProcessLoad() here -- see above.
+	g_mapiniloaded = false;
+}
+
+// ----------------------------------------------------------------------------
+// Map.ini pre-scan.
+//
+// The engine treats "RemoveModule <tag>" for a tag the template doesn't have as a
+// fatal error (ThingTemplate::parseRemoveModule throws -- "The game will crash
+// now!"). Maps are often authored against game data that doesn't match the local
+// install (patched INIZH.big, mods), so before handing map.ini to the parser we
+// blank out just the RemoveModule lines that would throw and load everything else.
+// Mirrors ThingTemplate::removeModuleInfo's search: the behavior, draw and
+// clientUpdate module lists.
+static Bool templateHasModuleTag(const ThingTemplate *tmpl, const char *tag)
+{
+	const ModuleInfo *lists[] = {
+		&tmpl->getBehaviorModuleInfo(),
+		&tmpl->getDrawModuleInfo(),
+		&tmpl->getClientUpdateModuleInfo(),
+	};
+	for (Int li = 0; li < 3; ++li)
+		for (Int i = 0; i < lists[li]->getCount(); ++i)
+			if (strcmp(lists[li]->getNthTag(i).str(), tag) == 0)
+				return true;
+	return false;
+}
+
+// Map a module block header keyword to the ModuleType the engine parser uses, so we
+// can ask TheModuleFactory whether the named module exists in this install. "Body" and
+// "ClientBehavior" resolve to BEHAVIOR (see ThingTemplate::parseModuleName). Returns
+// false for keywords that are not module headers.
+static Bool isModuleHeader(const char *keyword, ModuleType *typeOut)
+{
+	if (strcmp(keyword, "Behavior") == 0 || strcmp(keyword, "Body") == 0 ||
+		strcmp(keyword, "ClientBehavior") == 0)
+	{
+		*typeOut = MODULETYPE_BEHAVIOR;
+		return true;
+	}
+	if (strcmp(keyword, "Draw") == 0)
+	{
+		*typeOut = MODULETYPE_DRAW;
+		return true;
+	}
+	if (strcmp(keyword, "ClientUpdate") == 0)
+	{
+		*typeOut = MODULETYPE_CLIENT_UPDATE;
+		return true;
+	}
+	return false;
+}
+
+// Results of the map.ini pre-scan: the sanitized path to actually load, the list of
+// neutralized directives, the override/new/module counts for the post-load summary, and
+// whether the file touches stores whose overrides cannot be cleanly torn down at runtime
+// (FXList / OCL / Armor / ParticleSystem) -- Reload warns about those.
+// One object's block in the scan, with the per-module edits under it (for verbose output).
+struct MapIniObjectDetail
+{
+	AsciiString name;
+	Bool isNew;								// defined by the map.ini vs. overriding an existing template
+	Bool wasDropped;						// the parser couldn't finish this block, so it did NOT apply
+	std::vector<AsciiString> moduleLines;	// e.g. "Add Behavior FooUpdate (ModuleTag_Foo)"
+	MapIniObjectDetail() : isNew(false), wasDropped(false) {}
+};
+
+struct MapIniScanResult
+{
+	AsciiString loadPath;						// iniPath, or a sanitized temp copy
+	std::vector<AsciiString> skipped;			// one per neutralized directive
+	std::vector<AsciiString> overriddenNames;	// existing objects the map.ini overrides
+	std::vector<AsciiString> newNames;			// brand-new objects the map.ini defines
+	std::vector<MapIniObjectDetail> objects;	// per-object detail, in file order (verbose)
+	std::vector<std::pair<AsciiString, Int> > storeCounts;	// non-Object block type -> count
+	Int moduleEdits;							// Add/Remove/Replace module directives seen
+	Bool hasUntearableOverrides;				// FXList/OCL/Armor/ParticleSystem block present
+
+	MapIniScanResult() : moduleEdits(0), hasUntearableOverrides(false) {}
+
+	// Convenience: derive counts from the name lists (kept identical to the old fields).
+	Int objectsOverridden() const { return (Int)overriddenNames.size(); }
+	Int objectsNew() const { return (Int)newNames.size(); }
+
+	// Tally a top-level non-Object block ("FXList", "Weapon", ...) for the per-store breakdown.
+	void tallyStore(const char *type)
+	{
+		for (size_t i = 0; i < storeCounts.size(); ++i)
+		{
+			if (storeCounts[i].first == type)
+			{
+				storeCounts[i].second++;
+				return;
+			}
+		}
+		storeCounts.push_back(std::make_pair(AsciiString(type), 1));
+	}
+};
+
+// Map.ini pre-scan. Returns a temp copy with fatal-on-mismatch directives blanked (kept
+// as empty lines so parser error line numbers still match the real map.ini), plus the
+// summary/skip data. Neutralized directives (all throw INI_INVALID_DATA in the engine
+// parser on a data/install mismatch, which would abort the whole load):
+//   - RemoveModule <tag>  : tag not present on the template
+//   - ReplaceModule <tag> : tag not present on the template
+//   - a module block (Behavior/Draw/Body/ClientUpdate/ClientBehavior = <Name> <Tag>)
+//     naming a module <Name> this build's ModuleFactory doesn't know -- the whole block
+//     (header through its matching End) is blanked.
+static void sanitizeMapIni(const AsciiString &iniPath, MapIniScanResult &result)
+{
+	result.loadPath = iniPath;
+
+	FILE *fp = fopen(iniPath.str(), "rt");
+	if (fp == NULL)
+		return;	// let the real loader produce the error
+
+	std::string output;
+	Bool modified = false;
+
+	const ThingTemplate *curTemplate = NULL;
+	AsciiString curObjName;
+	Int curObjectIndex = -1;				// index into result.objects, or -1 (no object block)
+	std::vector<AsciiString> tagsAdded;		// tags introduced inside this block (AddModule headers)
+	std::vector<AsciiString> tagsRemoved;	// tags consumed by an earlier Remove/Replace in this block
+
+	// When >0 we are inside a module block being blanked; blank lines through its End.
+	Int blankingModuleDepth = 0;
+	ModuleType curModuleType = MODULETYPE_BEHAVIOR;	// filled by isModuleHeader per line
+
+	char line[4096];
+	Int lineNum = 0;
+	while (fgets(line, sizeof(line), fp))
+	{
+		++lineNum;
+
+		// tokenize a working copy, stripping comments the way INI::readLine does
+		char work[4096];
+		strcpy(work, line);
+		char *cmt = strchr(work, ';');
+		if (cmt) *cmt = 0;
+		cmt = strstr(work, "//");
+		if (cmt) *cmt = 0;
+		Bool hasEquals = (strchr(work, '=') != NULL);
+
+		static const char *seps = " \t\n\r=";
+		const char *tok1 = strtok(work, seps);
+		const char *tok2 = tok1 ? strtok(NULL, seps) : NULL;
+		const char *tok3 = tok2 ? strtok(NULL, seps) : NULL;
+
+		Bool keep = true;
+
+		// Blanking a doomed module block: swallow everything up to and including its End.
+		if (blankingModuleDepth > 0)
+		{
+			keep = false;
+			if (tok1 && strcmp(tok1, "End") == 0)
+				--blankingModuleDepth;
+		}
+		else if (tok1 && tok2 && !hasEquals && strcmp(tok1, "Object") == 0)
+		{
+			// block header ("Object <name>"; "Object = <name>" is a field elsewhere)
+			curObjName = tok2;
+			curTemplate = TheThingFactory ? TheThingFactory->findTemplate(curObjName, FALSE) : NULL;
+			MapIniObjectDetail detail;
+			detail.name = curObjName;
+			detail.isNew = (curTemplate == NULL);
+			if (curTemplate != NULL)
+			{
+				result.overriddenNames.push_back(curObjName);
+			}
+			else
+			{
+				result.newNames.push_back(curObjName);
+				if (TheThingFactory)
+				{
+					// object defined by the map.ini itself: ThingFactory::newTemplate seeds it
+					// as a copy of DefaultThingTemplate, so those are the module tags a
+					// Remove/Replace will actually see (ModuleTag_DefaultInactiveBody etc.)
+					curTemplate = TheThingFactory->findTemplate(AsciiString("DefaultThingTemplate"), FALSE);
+				}
+			}
+			result.objects.push_back(detail);
+			curObjectIndex = (Int)result.objects.size() - 1;
+			tagsAdded.clear();
+			tagsRemoved.clear();
+		}
+		else if (tok1 && tok2 &&
+				 (strcmp(tok1, "RemoveModule") == 0 || strcmp(tok1, "ReplaceModule") == 0))
+		{
+			++result.moduleEdits;
+			if (curObjectIndex >= 0) {
+				AsciiString ml;
+				ml.format("%s %s", tok1, tok2);
+				result.objects[curObjectIndex].moduleLines.push_back(ml);
+			}
+			AsciiString tag(tok2);
+			Bool present = false;
+			if (std::find(tagsRemoved.begin(), tagsRemoved.end(), tag) == tagsRemoved.end())
+			{
+				if (curTemplate && templateHasModuleTag(curTemplate, tok2))
+					present = true;
+				else if (std::find(tagsAdded.begin(), tagsAdded.end(), tag) != tagsAdded.end())
+					present = true;
+			}
+			// ReplaceModule keeps a body (its replacement block follows through an End); if we
+			// drop the header we must also drop that body, so treat a doomed ReplaceModule as a
+			// module block to blank. RemoveModule is a single line.
+			Bool isReplace = (strcmp(tok1, "ReplaceModule") == 0);
+			if (present)
+			{
+				tagsRemoved.push_back(tag);
+			}
+			else
+			{
+				keep = false;
+				if (isReplace)
+					blankingModuleDepth = 1;	// swallow the replacement body too
+				AsciiString warn;
+				warn.format("line %d: %s %s -- '%s' has no such module", lineNum, tok1, tok2,
+					curObjName.isEmpty() ? "(no object)" : curObjName.str());
+				result.skipped.push_back(warn);
+				// Mark the detail line we just recorded as skipped.
+				if (curObjectIndex >= 0 && !result.objects[curObjectIndex].moduleLines.empty()) {
+					AsciiString &last = result.objects[curObjectIndex].moduleLines.back();
+					last.concat(" [SKIPPED: no such module]");
+				}
+			}
+		}
+		else if (tok1 && tok3 && !hasEquals && isModuleHeader(tok1, &curModuleType))
+		{
+			// module header "Behavior <ModuleName> <Tag>" etc. (the "=" form is a field elsewhere).
+			++result.moduleEdits;
+			// Unknown module for this build -> the parser throws; blank the whole block.
+			if (TheModuleFactory && TheModuleFactory->findModuleInterfaceMask(AsciiString(tok2), curModuleType) == 0)
+			{
+				keep = false;
+				blankingModuleDepth = 1;
+				AsciiString warn;
+				warn.format("line %d: %s %s -- module type unknown to this build", lineNum, tok1, tok2);
+				result.skipped.push_back(warn);
+				if (curObjectIndex >= 0) {
+					AsciiString ml;
+					ml.format("Add %s %s (%s) [SKIPPED: unknown module]", tok1, tok2, tok3);
+					result.objects[curObjectIndex].moduleLines.push_back(ml);
+				}
+			}
+			else
+			{
+				tagsAdded.push_back(AsciiString(tok3));
+				if (curObjectIndex >= 0) {
+					AsciiString ml;
+					ml.format("Add %s %s (%s)", tok1, tok2, tok3);
+					result.objects[curObjectIndex].moduleLines.push_back(ml);
+				}
+			}
+		}
+		else if (tok1 && tok2 && !hasEquals && blankingModuleDepth == 0)
+		{
+			// Any other top-level "<Type> <Name>" block header -> tally it by store type for
+			// the summary breakdown (Weapon / Science / SpecialPower / FXList / Upgrade / ...).
+			// The module-header case above already consumed Behavior/Draw/etc., so what
+			// reaches here is a store block, not a nested module.
+			static const char *kStoreTypes[] = {
+				"Weapon", "Armor", "Science", "SpecialPower", "Upgrade", "FXList",
+				"ObjectCreationList", "ParticleSystem", "Locomotor", "DamageFX",
+				"CommandButton", "CommandSet", "WeatherData", "Water"
+			};
+			for (int s = 0; s < (int)(sizeof(kStoreTypes)/sizeof(kStoreTypes[0])); ++s)
+			{
+				if (strcmp(tok1, kStoreTypes[s]) == 0)
+				{
+					curObjectIndex = -1;	// left the Object block; module edits below aren't its
+					result.tallyStore(tok1);
+					// Overrides to these stores can't be cleanly torn down at runtime (see
+					// unloadMapIniOverrides); flag it so Reload can warn.
+					if (strcmp(tok1, "FXList") == 0 || strcmp(tok1, "ObjectCreationList") == 0 ||
+						strcmp(tok1, "Armor") == 0 || strcmp(tok1, "ParticleSystem") == 0)
+					{
+						result.hasUntearableOverrides = true;
+					}
+					break;
+				}
+			}
+		}
+
+		if (keep)
+		{
+			output += line;
+		}
+		else
+		{
+			output += "\n";	// keep line numbering intact
+			modified = true;
+		}
+	}
+	fclose(fp);
+
+	if (!modified)
+		return;
+
+	char tempDir[MAX_PATH];
+	::GetTempPathA(MAX_PATH, tempDir);
+	AsciiString tempPath;
+	tempPath.format("%swb_sanitized_map.ini", tempDir);
+
+	FILE *out = fopen(tempPath.str(), "wt");
+	if (out == NULL)
+		return;	// can't write the temp copy; let the loader fail loudly (loadPath stays iniPath)
+	fwrite(output.data(), 1, output.size(), out);
+	fclose(out);
+	result.loadPath = tempPath;
+}
+
+// ----------------------------------------------------------------------------
+// Modal info dialog with a scrollable read-only log. MessageBox grows with its
+// text and runs off-screen for long skip lists, so we build a fixed-size dialog
+// template in memory (no .rc resource needed) holding a multiline edit.
+
+static const WORD SCROLL_LOG_EDIT_ID = 1001;
+
+static INT_PTR CALLBACK scrollableInfoDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	static HFONT s_monoFont = NULL;
+	switch (msg)
+	{
+	case WM_INITDIALOG:
+		{
+			// Monospace so the INI-formatted report (aligned "Object <name> ; tag" columns)
+			// lines up. Kept static and freed on WM_DESTROY.
+			s_monoFont = ::CreateFontA(-12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+				FIXED_PITCH | FF_MODERN, "Consolas");
+			HWND edit = ::GetDlgItem(hDlg, SCROLL_LOG_EDIT_ID);
+			if (s_monoFont != NULL && edit != NULL)
+				::SendMessage(edit, WM_SETFONT, (WPARAM)s_monoFont, TRUE);
+			::SetDlgItemTextA(hDlg, SCROLL_LOG_EDIT_ID, (const char *)lParam);
+		}
+		return TRUE;
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			::EndDialog(hDlg, IDOK);
+			return TRUE;
+		}
+		break;
+	case WM_DESTROY:
+		if (s_monoFont != NULL)
+		{
+			::DeleteObject(s_monoFont);
+			s_monoFont = NULL;
+		}
+		break;
+	}
+	return FALSE;
+}
+
+static void dlgAppend(std::vector<BYTE> &buf, const void *data, size_t len)
+{
+	const BYTE *p = (const BYTE *)data;
+	buf.insert(buf.end(), p, p + len);
+}
+static void dlgAppendWord(std::vector<BYTE> &buf, WORD w)
+{
+	dlgAppend(buf, &w, sizeof(w));
+}
+static void dlgAppendWideString(std::vector<BYTE> &buf, const wchar_t *s)
+{
+	dlgAppend(buf, s, (wcslen(s) + 1) * sizeof(wchar_t));
+}
+static void dlgAlign4(std::vector<BYTE> &buf)
+{
+	while (buf.size() % 4)
+		buf.push_back(0);
+}
+
+// Show the map.ini report. applyMode: false = informational (Check) with just a Close;
+// true = OK/Cancel so the caller applies on OK. Returns 2 if the user accepted (OK / closed
+// an informational report), 1 if the user cancelled an apply-mode report.
+static int showScrollableInfoDialog(const char *title, const char *text, bool applyMode = false)
+{
+#ifdef RTS_HAS_QT
+	// Prefer the native Qt report viewer (resizable, filter, collapsible sections, Copy,
+	// and OK/Cancel in apply mode). Falls through to the MFC path only when Qt is not up.
+	int qrc = WBQtMapIniReport_Show(title, text, applyMode ? 1 : 0);
+	if (qrc != 0) {
+		return qrc;	// 2 = accepted, 1 = cancelled
+	}
+#endif
+
+	// MFC fallback: an apply-mode report can't host OK/Cancel in the read-only viewer, so
+	// ask with a Yes/No box after showing it (informational reports just show + return 2).
+	// fixed size in dialog units (~570x500 px at 8pt) -- fits any usable screen
+	const short DLG_W = 520, DLG_H = 360;
+
+	std::vector<BYTE> buf;
+	buf.reserve(512);
+
+	DLGTEMPLATE dt;
+	memset(&dt, 0, sizeof(dt));
+	dt.style = DS_MODALFRAME | DS_SETFONT | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU;
+	dt.cdit = 2;
+	dt.cx = DLG_W;
+	dt.cy = DLG_H;
+	dlgAppend(buf, &dt, sizeof(dt));
+	dlgAppendWord(buf, 0);	// no menu
+	dlgAppendWord(buf, 0);	// default dialog class
+	{
+		wchar_t wtitle[256];
+		::MultiByteToWideChar(CP_ACP, 0, title, -1, wtitle, 256);
+		wtitle[255] = 0;
+		dlgAppendWideString(buf, wtitle);
+	}
+	dlgAppendWord(buf, 8);	// font size
+	dlgAppendWideString(buf, L"MS Shell Dlg");
+
+	// read-only multiline edit with a vertical scrollbar (text set in WM_INITDIALOG)
+	dlgAlign4(buf);
+	DLGITEMTEMPLATE item;
+	memset(&item, 0, sizeof(item));
+	item.style = WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | WS_VSCROLL |
+				 ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL;
+	item.x = 7;
+	item.y = 7;
+	item.cx = DLG_W - 14;
+	item.cy = DLG_H - 32;
+	item.id = SCROLL_LOG_EDIT_ID;
+	dlgAppend(buf, &item, sizeof(item));
+	dlgAppendWord(buf, 0xFFFF);
+	dlgAppendWord(buf, 0x0081);	// EDIT
+	dlgAppendWord(buf, 0);		// empty title
+	dlgAppendWord(buf, 0);		// no creation data
+
+	// OK button
+	dlgAlign4(buf);
+	memset(&item, 0, sizeof(item));
+	item.style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON;
+	item.x = (DLG_W - 50) / 2;
+	item.y = DLG_H - 21;
+	item.cx = 50;
+	item.cy = 14;
+	item.id = IDOK;
+	dlgAppend(buf, &item, sizeof(item));
+	dlgAppendWord(buf, 0xFFFF);
+	dlgAppendWord(buf, 0x0080);	// BUTTON
+	dlgAppendWideString(buf, L"OK");
+	dlgAppendWord(buf, 0);		// no creation data
+
+	::DialogBoxIndirectParamA(::AfxGetInstanceHandle(), (LPCDLGTEMPLATE)&buf[0],
+		::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL,
+		scrollableInfoDlgProc, (LPARAM)text);
+
+	if (applyMode) {
+		// The MFC viewer has no OK/Cancel; confirm with a follow-up prompt. AfxMessageBox
+		// parents to the main window (and routes through the Qt bridge when Qt is up).
+		int res = AfxMessageBox("Load this map.ini's overrides?",
+			MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1);
+		return (res == IDYES) ? 2 : 1;
+	}
+	return 2;
+}
+
+// "Always load this map's map.ini" list, kept GLOBALLY in WorldBuilder.ini under
+// [MapLoaderIni] as numbered AlwaysLoad<N> = <full .map path> keys. A map on the list
+// auto-loads its map.ini silently on open; any other map still prompts. (No per-map
+// AdrianeMapSettings.ini file, and no "never" state -- unlisted simply means "ask".)
+#define MAPLOADER_SECTION "MapLoaderIni"
+
+// The list has no removal UI, so revoking an entry means hand-editing WorldBuilder.ini --
+// which easily leaves numbering gaps. Tolerate them: keep scanning past empty slots and
+// only stop after this many empties in a row.
+#define MAPLOADER_GAP_RUN 20
+
+// Is mapFilePath in the always-load list?
+static bool isMapIniAlwaysLoad(const char *mapFilePath)
+{
+	if (mapFilePath == NULL || *mapFilePath == 0) {
+		return false;
+	}
+	CString want(mapFilePath);
+	int emptyRun = 0;
+	for (int i = 1; emptyRun < MAPLOADER_GAP_RUN; ++i) {
+		CString key;
+		key.Format("AlwaysLoad%d", i);
+		CString val = ::AfxGetApp()->GetProfileString(MAPLOADER_SECTION, key, "");
+		if (val.IsEmpty()) {
+			++emptyRun;	// gap (hand-edited entry removed); keep scanning a while
+			continue;
+		}
+		emptyRun = 0;
+		if (val.CompareNoCase(want) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Append mapFilePath to the always-load list (no-op if already present). One walk does
+// both jobs: the duplicate check and finding the first free slot to write into.
+static void addMapIniAlwaysLoad(const char *mapFilePath)
+{
+	if (mapFilePath == NULL || *mapFilePath == 0) {
+		return;
+	}
+	CString want(mapFilePath);
+	int firstFree = 0;
+	int emptyRun = 0;
+	for (int i = 1; emptyRun < MAPLOADER_GAP_RUN; ++i) {
+		CString key;
+		key.Format("AlwaysLoad%d", i);
+		CString val = ::AfxGetApp()->GetProfileString(MAPLOADER_SECTION, key, "");
+		if (val.IsEmpty()) {
+			if (firstFree == 0) {
+				firstFree = i;	// remember the first free slot while we scan
+			}
+			++emptyRun;
+			continue;
+		}
+		emptyRun = 0;
+		if (val.CompareNoCase(want) == 0) {
+			return;	// already listed
+		}
+	}
+	CString key;
+	key.Format("AlwaysLoad%d", firstFree);	// the loop can only end on an empty run
+	::AfxGetApp()->WriteProfileString(MAPLOADER_SECTION, key, mapFilePath);
+}
+
+// Append a section of "Object <name>" lines under an INI-style ';' comment header,
+// mirroring map.ini's own syntax so the report reads like the file it came from. Each
+// line gets a trailing "; <tag>" note. Nothing is appended for an empty list.
+static void appendIniObjectSection(CString &msg, const char *header,
+	const std::vector<AsciiString> &names, const char *tag)
+{
+	if (names.empty())
+		return;
+	CString line;
+	line.Format("\r\n; %s (%d)\r\n", header, (Int)names.size());
+	msg += line;
+	for (size_t i = 0; i < names.size(); ++i) {
+		line.Format("Object %-40s ; %s\r\n", names[i].str(), tag);
+		msg += line;
+	}
+}
+
+// Refresh the placed objects in the viewport after overrides change (== the tail of an
+// install). Drops cached render objects built from old template data and re-resolves them.
+static void refreshMapIniViewport(void)
+{
+	ObjectOptions::reprocessObjectList();
+	WbView3d *p3d = CWorldBuilderDoc::GetActive3DView();
+	if (p3d != NULL) {
+		// A map.ini can change what a model NAME means (editing an object's Draw module), and
+		// render objects are cloned from prototypes cached by that name -- so the cache has to go
+		// too, or the object rebuilds from the old geometry and its old sub-objects stay visible.
+		p3d->freeCachedModelsOnNextReset();
+		// Same reason for the per-template emitter sets: an override can add, move or drop a
+		// ParticleSysBone, and those sets are cached per template.
+		WBParticleRuntime::clearTemplateCache();
+		p3d->resetRenderObjects();		// == Troubleshooting > Refresh Scene Objects
+		p3d->invalObjectInView(NULL);
+	}
+}
+
+// Pull the block name out of a dropped-block header line ("Object CarLimo3", possibly with
+// trailing whitespace or a comment). Returns an empty string for a non-Object block.
+static AsciiString droppedBlockObjectName(const AsciiString &headerLine)
+{
+	char work[1024];
+	strncpy(work, headerLine.str(), sizeof(work) - 1);
+	work[sizeof(work) - 1] = 0;
+	// Comments end the header; the engine's separators are the same set the scan uses.
+	char *semi = strchr(work, ';');
+	if (semi != NULL)
+	{
+		*semi = 0;
+	}
+	static const char *seps = " \t\n\r=";
+	const char *tok1 = strtok(work, seps);
+	if (tok1 == NULL || strcmp(tok1, "Object") != 0)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	const char *tok2 = strtok(NULL, seps);
+	return (tok2 != NULL) ? AsciiString(tok2) : AsciiString::TheEmptyString;
+}
+
+// Reconcile the pre-scan against what the parser actually managed to apply.
+//
+// The scan runs BEFORE loadWB and lists every block the file wants to change. loadWB may then
+// drop a block whose fields don't match the installed data. Without this the report contradicts
+// itself -- it lists "Object Foo ; overridden" in the body AND under "Blocks dropped", and counts
+// the drop as an applied change. Mark the dropped ones and take them out of the counts, so the
+// summary only ever claims what really landed.
+static void markDroppedBlocks(MapIniScanResult &scan)
+{
+	const std::vector<AsciiString> &badBlocks = INI::friend_getWBSkippedBlocks();
+	for (size_t b = 0; b < badBlocks.size(); ++b)
+	{
+		AsciiString name = droppedBlockObjectName(badBlocks[b]);
+		if (name.isEmpty())
+		{
+			continue;	// a dropped non-Object block; the counts below don't cover those
+		}
+
+		// Mark ONE not-yet-marked entry per dropped block. A map.ini may define the same object
+		// twice (a later block refining an earlier one), and the skip list carries only the header
+		// line -- so it can't say WHICH occurrence failed. Marking one per drop keeps the count of
+		// dropped entries right instead of condemning every block that shares the name.
+		for (size_t i = 0; i < scan.objects.size(); ++i)
+		{
+			if (scan.objects[i].name == name && !scan.objects[i].wasDropped)
+			{
+				scan.objects[i].wasDropped = true;
+				break;
+			}
+		}
+
+		// Drop ONE name from whichever count list holds it, per dropped block, so the totals
+		// track the number of blocks that actually applied.
+		std::vector<AsciiString> *list = NULL;
+		for (size_t i = 0; i < scan.overriddenNames.size() && list == NULL; ++i)
+		{
+			if (scan.overriddenNames[i] == name)
+			{
+				list = &scan.overriddenNames;
+			}
+		}
+		for (size_t i = 0; i < scan.newNames.size() && list == NULL; ++i)
+		{
+			if (scan.newNames[i] == name)
+			{
+				list = &scan.newNames;
+			}
+		}
+		if (list != NULL)
+		{
+			for (std::vector<AsciiString>::iterator it = list->begin(); it != list->end(); ++it)
+			{
+				if (*it == name)
+				{
+					list->erase(it);
+					break;
+				}
+			}
+		}
+	}
+}
+
+// How doLoadMapIni finishes after a successful parse (which always creates overrides):
+enum MapIniLoadMode {
+	MAPINI_INSTALL,		// keep overrides + refresh the viewport now (no confirm dialog)
+	MAPINI_DRYRUN,		// drop everything (Check): parse only, nothing sticks
+	MAPINI_CONFIRM		// keep overrides but DON'T refresh yet -- caller confirms, then
+						// calls refreshMapIniViewport() (OK) or unloadMapIniOverrides() (Cancel)
+};
+
+// Load a map.ini through the sanitize + engine-parser pipeline. Shared by map-open, Reload
+// and Check. reportOut is filled with the summary (counts + skipped, or the error) for the
+// caller's dialog. Returns true if the map.ini parsed (even if directives were skipped),
+// false on a hard parse error. In MAPINI_CONFIRM the overrides are left installed for the
+// caller to keep (refreshMapIniViewport) or discard (unloadMapIniOverrides).
+static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, CString &reportOut)
+{
+	const bool installOverrides = (mode != MAPINI_DRYRUN);
+	MapIniScanResult scan;
+	sanitizeMapIni(iniPath, scan);
+
+	bool ok = false;
+	reportOut.Empty();
+
+	try {
+		INI ini;
+		ini.loadWB(scan.loadPath, INI_LOAD_CREATE_OVERRIDES, NULL);
+		g_mapiniloaded = true;	// overrides now exist; teardown paths must run
+
+		// The scan listed what the file WANTS to change; loadWB decides what actually applied.
+		// Reconcile before anything reads the counts, so the report can't claim a dropped block.
+		markDroppedBlocks(scan);
+
+		// Remember the invented templates so the "fix missing" matchers won't offer them as
+		// replacements (see g_mapIniPhantomTemplates). markDroppedBlocks has already removed the
+		// blocks that failed to parse, so a dropped one never lands here.
+		if (installOverrides)
+		{
+			for (size_t i = 0; i < scan.newNames.size(); ++i)
+			{
+				g_mapIniPhantomTemplates.insert(scan.newNames[i]);
+			}
+		}
+
+		if (mode == MAPINI_INSTALL) {
+			// Apply now: rebuild the catalog + refresh the placed objects in the viewport.
+			refreshMapIniViewport();
+		} else if (mode == MAPINI_DRYRUN) {
+			// Check: drop everything we just created; nothing sticks.
+			unloadMapIniOverrides();
+		}
+		// MAPINI_CONFIRM: leave the overrides installed; the caller keeps or discards them
+		// based on the report dialog's OK/Cancel.
+		ok = true;
+
+		// The report is rendered in map.ini's own syntax: ';' comment headers with the
+		// touched objects/stores listed as they'd appear in the file. Convention shared
+		// with the Qt viewer: "; Text" = a section header, ";   text" = a detail line.
+		const char *banner =
+			(mode == MAPINI_DRYRUN)  ? "map.ini parses cleanly (no changes applied)" :
+			(mode == MAPINI_CONFIRM) ? "map.ini preview -- OK applies it, Cancel discards it" :
+									   "map.ini loaded";
+		CString msg;
+		msg.Format(
+			"; ==============================================================\r\n"
+			"; %s\r\n"
+			"; %d object(s) overridden, %d new object(s) defined, %d module edit(s)\r\n"
+			"; ==============================================================\r\n",
+			banner,
+			scan.objectsOverridden(), scan.objectsNew(), scan.moduleEdits);
+
+		// Per-store breakdown of the non-Object data blocks touched, as commented lines.
+		if (!scan.storeCounts.empty()) {
+			msg += "\r\n; Data stores touched\r\n";
+			for (size_t i = 0; i < scan.storeCounts.size(); ++i) {
+				CString line;
+				line.Format(";   %-20s %d block(s)\r\n",
+					scan.storeCounts[i].first.str(), scan.storeCounts[i].second);
+				msg += line;
+			}
+		}
+
+		// Verbose (File > Map.ini > Verbose report): show each object as an INI block with
+		// its per-module edits inside it, mirroring how the change reads in the file itself.
+		const bool verbose = (::AfxGetApp()->GetProfileInt("MapIni", "VerboseReport", 0) != 0);
+		if (verbose) {
+			for (size_t i = 0; i < scan.objects.size(); ++i) {
+				const MapIniObjectDetail &o = scan.objects[i];
+				CString hdr;
+				hdr.Format("\r\nObject %s   ; %s\r\n", o.name.str(),
+					o.wasDropped ? "DROPPED -- not applied"
+								 : (o.isNew ? "new" : "overridden"));
+				msg += hdr;
+				for (size_t m = 0; m < o.moduleLines.size(); ++m) {
+					msg += "    ";
+					msg += o.moduleLines[m].str();
+					msg += "\r\n";
+				}
+				msg += "End\r\n";
+			}
+		} else {
+			// The objects, as "Object <name>" lines like the file itself.
+			appendIniObjectSection(msg, "Objects overridden", scan.overriddenNames, "overridden");
+			appendIniObjectSection(msg, "New objects defined", scan.newNames, "new");
+		}
+
+		if (!scan.skipped.empty()) {
+			msg += "\r\n; ----- Skipped (don't match the installed game data) -----\r\n";
+			for (size_t i = 0; i < scan.skipped.size(); ++i) {
+				msg += ";   ";
+				msg += scan.skipped[i].str();
+				msg += "\r\n";
+			}
+			msg += ";   (The game itself would refuse to load this map.ini.)\r\n";
+		}
+
+		// Blocks the parser recognized but could not finish -- a field the installed data does
+		// not define, which is what a vanilla map.ini hits on a modded install. loadWB skips the
+		// block rather than abandoning the file, so say which ones were dropped.
+		const std::vector<AsciiString> &badBlocks = INI::friend_getWBSkippedBlocks();
+		if (!badBlocks.empty()) {
+			msg += "\r\n; ----- Blocks dropped (a field in them isn't in the installed data) -----\r\n";
+			for (size_t i = 0; i < badBlocks.size(); ++i) {
+				msg += ";   ";
+				msg += badBlocks[i].str();
+				msg += "\r\n";
+			}
+			msg += ";   These blocks did NOT apply -- the object keeps the definition the installed\r\n"
+				";   game data gives it. The rest of the map.ini was loaded. This is normal for a\r\n"
+				";   map.ini written against different game data than the one installed.\r\n";
+		}
+		if (installOverrides && scan.hasUntearableOverrides) {
+			msg += "\r\n; Note: FXList / ObjectCreationList / Armor / ParticleSystem overrides\r\n"
+				";   can't be cleanly reloaded -- reopen the map to fully reset them.\r\n";
+		}
+		reportOut = msg;
+	}
+	catch (const INIException &e) {
+		// A hard parse error must not take down the editor: strip any partial overrides.
+		g_mapiniloaded = true;	// so the teardown actually runs
+		unloadMapIniOverrides();
+		reportOut.Format("The map.ini could not be loaded and has been skipped:\r\n\r\n%s\r\n"
+			"The map will open without its map.ini overrides.",
+			e.mFailureMessage ? e.mFailureMessage : "Unknown INI error.");
+	}
+	catch (...) {
+		g_mapiniloaded = true;
+		unloadMapIniOverrides();
+		reportOut = "The map.ini could not be loaded and has been skipped (unknown INI error).\r\n"
+			"The map will open without its map.ini overrides.";
+	}
+
+	// Clean up the sanitized temp copy, if one was made.
+	if (strcmp(scan.loadPath.str(), iniPath.str()) != 0)
+		::DeleteFileA(scan.loadPath.str());
+
+	return ok;
+}
+
+// True while a map.ini prompt/preview flow is on the stack. Its modal dialogs pump
+// messages, which dispatches CMainFrame's timer -- pollMapIniWatch must not swap the
+// override state underneath a pending confirm (see the guard there).
+static bool s_mapIniPromptPending = false;
+
+// Sets s_mapIniPromptPending for the enclosing scope (safe across every return), and
+// restores the previous value on exit so nested scopes (OnOpenDocument wraps
+// confirmAndLoadMapIni) don't clear the flag early.
+struct MapIniPromptScope
+{
+	bool m_prev;
+	MapIniPromptScope() : m_prev(s_mapIniPromptPending) { s_mapIniPromptPending = true; }
+	~MapIniPromptScope() { s_mapIniPromptPending = m_prev; }
+};
+
+// Parse the map.ini, show its report with OK/Cancel, and apply the overrides only if the
+// user clicks OK. On Cancel (or a hard parse error) nothing is left installed. Used by
+// map-open and Reload. Returns true if the overrides were applied.
+static bool confirmAndLoadMapIni(const AsciiString &iniPath, const char *title)
+{
+	MapIniPromptScope promptScope;
+
+	// FXList / OCL / Armor / ParticleSystem overrides can't be torn down once parsed
+	// (see unloadMapIniOverrides), so a preview's Cancel could not fully undo them.
+	// For a file touching those stores, ask BEFORE parsing -- declining must leave the
+	// engine stores completely untouched.
+	{
+		MapIniScanResult probe;
+		sanitizeMapIni(iniPath, probe);
+		if (strcmp(probe.loadPath.str(), iniPath.str()) != 0) {
+			::DeleteFileA(probe.loadPath.str());	// probe only; doLoadMapIni re-sanitizes
+		}
+		if (probe.hasUntearableOverrides) {
+			int res = AfxMessageBox(
+				"This map.ini overrides FXList / ObjectCreationList / Armor /\n"
+				"ParticleSystem data, which can't be undone without reopening the map,\n"
+				"so it can't be previewed first.\n\nLoad this map.ini?",
+				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1);
+			if (res != IDYES) {
+				// Never parsed. Refresh anyway: Reload dropped the old overrides first.
+				refreshMapIniViewport();
+				return false;
+			}
+			CString report;
+			bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
+			showScrollableInfoDialog(title, report, /*applyMode=*/false);
+			if (!ok) {
+				refreshMapIniViewport();
+			}
+			return ok;
+		}
+	}
+
+	CString report;
+	bool parsed = doLoadMapIni(iniPath, MAPINI_CONFIRM, report);
+	if (!parsed) {
+		// Hard error: doLoadMapIni already unloaded the partial overrides. Show why, and
+		// re-sync the catalog/viewport with the reverted stores.
+		showScrollableInfoDialog(title, report, /*applyMode=*/false);
+		refreshMapIniViewport();
+		return false;
+	}
+	// Overrides are installed but the viewport hasn't refreshed yet. Let the user decide.
+	int choice = showScrollableInfoDialog(title, report, /*applyMode=*/true);
+	if (choice == 2) {
+		refreshMapIniViewport();	// commit: rebuild catalog + refresh placed objects
+		return true;
+	}
+	unloadMapIniOverrides();		// cancel: discard everything the parse created
+	refreshMapIniViewport();		// ...and re-sync the catalog/viewport with the reverted stores
+	return false;
+}
 
 static bool secondGreaterThan(const std::pair<AsciiString, Int>& __t1, const std::pair<AsciiString, Int>& __t2)
 {
@@ -99,7 +1125,38 @@ BEGIN_MESSAGE_MAP(CWorldBuilderDoc, CDocument)
 	ON_COMMAND(ID_TS_CANONICAL, OnTsCanonical)
 	ON_UPDATE_COMMAND_UI(ID_TS_CANONICAL, OnUpdateTsCanonical)
 	ON_COMMAND(ID_FILE_RESIZE, OnFileResize)
-	ON_COMMAND(ID_FILE_JUMPTOGAME, OnJumpToGame)
+	ON_COMMAND(ID_MAPGEN_GENERATE, OnMapGenGenerate)
+	ON_COMMAND(ID_MAPGEN_RANDOMIZE, OnMapGenRandomize)
+#ifdef RTS_HAS_QT
+	// Intercept ID_FILE_CLOSE at the document (before CDocument's default close, which
+	// destroys the Qt-hosted 3D view and fails to recreate it -- "Command failed.").
+	ON_COMMAND(ID_FILE_CLOSE, OnFileClose)
+#endif
+	
+	ON_COMMAND(ID_FILE_GENERATE_MAPSTRNINI, OnGenerateMapStrAndIni)
+	ON_COMMAND(ID_FILE_OPEN_MAPINI, OnOpenMapIni)
+	ON_COMMAND(ID_FILE_EDIT_MAPINI, OnEditMapIni)
+	ON_COMMAND(ID_FILE_RELOAD_MAPINI, OnReloadMapIni)
+	ON_COMMAND(ID_FILE_CHECK_MAPINI, OnCheckMapIni)
+	ON_COMMAND(ID_FILE_WATCH_MAPINI, OnToggleWatchMapIni)
+	ON_UPDATE_COMMAND_UI(ID_FILE_WATCH_MAPINI, OnUpdateWatchMapIni)
+	ON_COMMAND(ID_FILE_VERBOSE_MAPINI, OnToggleVerboseMapIni)
+	ON_UPDATE_COMMAND_UI(ID_FILE_VERBOSE_MAPINI, OnUpdateVerboseMapIni)
+	ON_COMMAND(ID_FILE_WBSETTINGS, OnOpenWorldbuilderSettings)
+	ON_COMMAND(ID_FILE_AUTOSAVEFOLDER, OnJumpToAutoSaveFolder)
+	ON_COMMAND(ID_FILE_JUMPTOFOLDER, OnJumpToMapFolder)
+	ON_COMMAND(ID_FILE_GAMEFOLDERDATA, OnOpenDataFolder)
+	ON_COMMAND(ID_FILE_GAMEFOLDER, OnOpenGameFolder)
+
+	ON_COMMAND(ID_FILE_JUMPTOFOLDERDATA, OnJumpToMapFolderWBData)
+	
+	ON_COMMAND(ID_DISABLEMAPPREVGENERATE, OnViewDisableMapPrevGen)
+	// ON_UPDATE_COMMAND_UI(ID_DISABLEMAPPREVGENERATE, OnUpdateDisableMapPrevGen)
+
+	ON_COMMAND(ID_FILE_JUMPTOGAME, OnJumpToGameWithDebug)
+	ON_COMMAND(ID_FILE_JUMPTOGAME_WD, OnJumpToGameWithoutDebug)
+	ON_COMMAND(ID_FILE_JUMPTOGAME_WM, OnJumpToGameWithWaveEdit)
+
 	ON_COMMAND(ID_TS_REMAP, OnTsRemap)
 	ON_COMMAND(ID_EDIT_LINK_CENTERS, OnEditLinkCenters)
 	ON_UPDATE_COMMAND_UI(ID_EDIT_LINK_CENTERS, OnUpdateEditLinkCenters)
@@ -127,16 +1184,45 @@ END_MESSAGE_MAP()
 // CWorldBuilderDoc construction/destruction
 
 CWorldBuilderDoc::CWorldBuilderDoc() :
-	m_heightMap(nullptr),
-	m_undoList(nullptr),
-	m_maxUndos(MAX_UNDOS),		/// @todo: get from pref?
+	m_heightMap(NULL),
+	m_undoList(NULL),
+	m_maxUndos(MAX_UNDOS),
 	m_curRedo(0),
+	m_changeSerial(0),
 	m_needAutosave(false),
 	m_curWaypointID(0),
 	m_numWaypointLinks(0),
 	m_waypointTableNeedsUpdate(true),
-	m_linkCenters(true)
+	m_linkCenters(true),
+	m_disableMapPrevGeneration(false),
+	m_watchMapIni(false)
 {
+	memset(&m_mapIniLastWrite, 0, sizeof(m_mapIniLastWrite));
+
+	// The old @todo "get from pref": undo depth is a setting now (Entity Finder >
+	// Visual Settings), persisted as [MainFrame] MaxUndos.
+	setMaxUndos(::AfxGetApp()->GetProfileInt("MainFrame", "MaxUndos", MAX_UNDOS));
+
+	// Auto-reload map.ini watch: app-global toggle in WorldBuilder.ini.
+	m_watchMapIni = (::AfxGetApp()->GetProfileInt("MapIni", "AutoWatch", 0) != 0);
+
+    // Attempt to read AdrianeMapSettings.ini here
+    if (!m_strPathName.IsEmpty()) {
+        char folderPath[_MAX_PATH];
+        strcpy(folderPath, m_strPathName);
+
+        char* lastSlash = strrchr(folderPath, '\\');
+        if (lastSlash)
+            *lastSlash = '\0';
+
+        CString individualMapSettings = CString(folderPath) + "\\AdrianeMapSettings.ini";
+
+        if (PathFileExists(individualMapSettings)) {
+            char buffer[8] = {0};
+            GetPrivateProfileString("MapSettings", "disableMapPreview", "0", buffer, sizeof(buffer), individualMapSettings);
+            m_disableMapPrevGeneration = (atoi(buffer) != 0);
+        }
+    }
 }
 
 CWorldBuilderDoc::~CWorldBuilderDoc()
@@ -276,6 +1362,78 @@ public:
 	}
 };
 
+// Static helper to get the validated game directory path
+static CString GetGameDirectory()
+{
+	CString gameDir = AfxGetApp()->GetProfileString("WorldbuilderApp", "GameDirectory", "");
+
+	if (gameDir.IsEmpty()) {
+		// Try fallback
+		gameDir = AfxGetApp()->GetProfileString("WorldbuilderApp", "OpenDirectory", "");
+	}
+
+	if (gameDir.IsEmpty()) {
+		AfxMessageBox(
+			"Unable to locate the game directory because it has not been set in your World Builder settings."
+			" To fix this, open your WorldBuilder settings file and add:\n\n"
+			"[WorldbuilderApp]\nGameDirectory=YourGameFolderPath\n\n"
+			"Example:\nGameDirectory=C:\\Program Files (x86)\\Command and Conquer Generals Zero Hour",
+			MB_ICONEXCLAMATION | MB_OK
+		);
+		return "";
+	}
+
+	return gameDir;
+}
+
+
+void CWorldBuilderDoc::OnViewDisableMapPrevGen() 
+{
+	m_disableMapPrevGeneration = !m_disableMapPrevGeneration;
+
+	if (m_strPathName.IsEmpty()) {
+		AfxMessageBox(
+			_T("Mate you still havent save the map, please do that first thank you."),
+		MB_OK | MB_ICONWARNING);
+		return;
+	}
+
+	if(m_disableMapPrevGeneration){
+		AfxMessageBox(
+			_T("Warning: Map preview generation has been disabled for this map.\n\n"
+			"You can re-enable it anytime by clicking the toggle button again.\n"
+			"This setting is saved with the map and will persist when reopening.\n\n"
+			"If you regret this decision, you can always delete the AdrianeMapSettings.ini "
+			"file from your map folder... assuming you can actually find it, you caveman."),
+		MB_OK | MB_ICONWARNING);
+	} else {
+		AfxMessageBox(
+			_T("Map preview generation has been re-enabled for this map."),
+		MB_OK | MB_ICONEXCLAMATION);
+	}
+
+	// Build INI path based on current document path
+    if (!m_strPathName.IsEmpty()) {
+		
+        char folderPath[_MAX_PATH];
+        strcpy(folderPath, m_strPathName);
+        char* lastSlash = strrchr(folderPath, '\\');
+        if (lastSlash) *lastSlash = '\0';
+
+        CString individualMapSettings = CString(folderPath) + "\\AdrianeMapSettings.ini";
+
+        if (m_disableMapPrevGeneration) {
+            WritePrivateProfileString("MapSettings", "disableMapPreview", "1", individualMapSettings);
+        } else {
+            WritePrivateProfileString("MapSettings", "disableMapPreview", NULL, individualMapSettings);
+        }
+    }
+}
+
+void CWorldBuilderDoc::OnUpdateDisableMapPrevGen(CCmdUI* pCmdUI) 
+{
+	pCmdUI->SetCheck(m_disableMapPrevGeneration?1:0);
+}
 
 void CWorldBuilderDoc::Serialize(CArchive& ar)
 {
@@ -286,7 +1444,46 @@ void CWorldBuilderDoc::Serialize(CArchive& ar)
 		try {
 			Int i;
 			MapPreview mPreview;
-			mPreview.save(ar.GetFile()->GetFilePath());
+
+			char folderPath[_MAX_PATH];
+			strcpy(folderPath, m_strPathName);
+
+			// Remove the filename to get the map folder
+			char* lastSlash = strrchr(folderPath, '\\');
+			if (lastSlash) {
+				*lastSlash = '\0';
+			}
+
+			DWORD attr = GetFileAttributes(folderPath);
+			if (attr == (DWORD)-1 || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+				CreateDirectory(folderPath, NULL); // create folder if missing
+			}
+
+			CString individualMapSettings = CString(folderPath) + "\\AdrianeMapSettings.ini";
+			bool perMapDisablePreview = false;
+
+			if (PathFileExists(individualMapSettings)) {
+				// File exists → read value
+				char buffer[8] = {0};
+				GetPrivateProfileString("MapSettings", "disableMapPreview", "0", buffer, sizeof(buffer), individualMapSettings);
+				perMapDisablePreview = (atoi(buffer) != 0);
+
+				// If user changed state and it's now enabled, clear the key
+				if (!perMapDisablePreview) {
+					WritePrivateProfileString("MapSettings", "disableMapPreview", NULL, individualMapSettings);
+				}
+			} 
+			else {
+				// File doesn't exist → create only if disabling preview
+				if (perMapDisablePreview) {
+					WritePrivateProfileString("MapSettings", "disableMapPreview", "1", individualMapSettings);
+				}
+			}
+
+			// Generate preview only if not disabled
+			if (!perMapDisablePreview) {
+				mPreview.save(ar.GetFile()->GetFilePath());
+			}
 
 			CompressedCachedMFCFileOutputStream theStream(ar.GetFile());
 			DataChunkOutput *chunkWriter = new DataChunkOutput(&theStream);
@@ -558,6 +1755,14 @@ void CWorldBuilderDoc::validate()
 		FIX_TEAM(TheKey_teamUnitType7)
 	}
 
+#ifdef RTS_HAS_QT
+	// "Replace All by name match" latches here: once the user picks it, the rest of the missing
+	// names are resolved by best name match without further prompting, and every decision (this
+	// one included) is recorded for the report shown at the end.
+	Bool qtReplaceAll = false;
+	WBQtReplaceReport_Begin(WBQT_REPLACE_SOURCE_MAPOBJECTS);
+#endif
+
 	MapObject *pMapObj;
 	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
 	{
@@ -597,19 +1802,83 @@ void CWorldBuilderDoc::validate()
 			}
 
 			if (!exists) {
+#ifdef RTS_HAS_QT
+				Bool qtIgnored = false;
+				int qtRc = -1;
+				{
+					int allowable[ES_NUM_SORTING_TYPES];
+					int allowCount = 0;
+					for (int i = ES_FIRST; i<ES_NUM_SORTING_TYPES; i++)	{
+						allowable[allowCount++] = i;
+					}
+					char qtPicked[256];
+					qtPicked[0] = 0;
+					if (!qtReplaceAll) {
+						qtRc = WBQtReplaceUnit_Run(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, name.str(), allowable, allowCount, false, qtPicked, sizeof(qtPicked));
+					} else {
+						qtRc = WBQT_REPLACE_ALL;	// already batching: skip straight to the match
+					}
+					if (qtRc == WBQT_REPLACE_ALL) {
+						// Latch batch mode and resolve this name by closest match, so the button
+						// covers the unit on screen as well as the rest. IGNORE here just means
+						// nothing cleared the bar -- it must not stop the validate.
+						qtReplaceAll = true;
+						qtRc = WBQtReplaceUnit_BestMatch(name.str(), allowable, allowCount, false,
+							qtPicked, sizeof(qtPicked)) ? WBQT_REPLACE_OK : WBQT_REPLACE_IGNORE;
+					}
+					if (qtRc == WBQT_REPLACE_OK) {
+						const ThingTemplate* qtThing = TheThingFactory->findTemplate(AsciiString(qtPicked));
+						if (qtThing) {
+							swapName = qtThing->getName();
+							swapDict.setAsciiString(NAMEKEY(name), swapName);
+						}
+					} else if (qtRc == WBQT_REPLACE_IGNORE) {
+						DEBUG_LOG(("Not replacing unit '%s'\n", name.str()));
+						// A real user "Continue without replacing" stops the validate; a batch name
+						// that simply found no match does not.
+						qtIgnored = !qtReplaceAll;
+						if (qtReplaceAll) {
+							// Remember the "no match" verdict too. Without this, every OTHER object
+							// carrying this same name re-enters here -- re-running the whole catalog
+							// scan and pushing a duplicate report row per object, not per name.
+							swapDict.setAsciiString(NAMEKEY(name), name);
+						}
+					}
+					if (qtReplaceAll) {
+						// One report row per distinct missing name, recorded whether or not it
+						// resolved; the object count is filled in below once they are re-pointed.
+						WBQtReplaceReport_Add(name.str(),
+							(qtRc == WBQT_REPLACE_OK) ? qtPicked : "", 0);
+					}
+				}
+				if (qtIgnored) {
+					break;  // Skip this object and move to the next one
+				}
+				if (qtRc < 0) {
+#endif
 				ReplaceUnitDialog dlg;
 				dlg.setMissing(name);
 				for (int i = ES_FIRST; i<ES_NUM_SORTING_TYPES; i++)	{
 					dlg.SetAllowableType((EditorSortingType)i);
 				}
 				dlg.SetFactionOnly(false);
-				if (dlg.DoModal() == IDOK) {
+				int result = dlg.DoModal();  // Run the dialog and capture the result
+				if (result == IDOK) {
+					// User clicked OK and selected a replacement
 					const ThingTemplate* thing = dlg.getPickedThing();
 					if (thing) {
 						swapName = thing->getName();
 						swapDict.setAsciiString(NAMEKEY(name), swapName);
 					}
+				} else if (result == IDIGNORE) {
+					// User clicked "Proceed without replace"
+					DEBUG_LOG(("User opted to proceed without replacing unit '%s'\n", name.str()));
+					// Optionally, you can continue to the next object or handle as necessary
+					break;  // Skip this object and move to the next one
 				}
+#ifdef RTS_HAS_QT
+				}
+#endif
 			}
 			swapName = swapDict.getAsciiString(NAMEKEY(name), &exists);
 			if (exists)
@@ -661,18 +1930,467 @@ void CWorldBuilderDoc::validate()
 			}
 		} else {
 			needToFixTeams = true;
-			DEBUG_LOG(("Object '%s' does not have a team at all!", name.str()));
+			DEBUG_LOG(("Object '%s' does not have a team at all!\n", name.str()));
 		}
 	}
 	if (needToFixTeams) {
 		AfxMessageBox(IDS_NEED_TO_FIX_TEAMS, MB_OK|MB_ICONERROR);
 	}
+
+#ifdef RTS_HAS_QT
+	// A Replace All pass guessed at every remaining missing unit; show what it decided so the
+	// wrong ones can be corrected while the map is fresh. No-ops when nothing was batched.
+	if (qtReplaceAll) {
+		WBQtReplaceReport_CountObjects();
+		WBQtReplaceReport_Run(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL);
+	}
+#endif
 }
 
-void CWorldBuilderDoc::OnJumpToGame()
+// Build "<map folder>\map.ini" from the current document path; empty if no map is open.
+static AsciiString currentMapIniPath(const CString &mapPathName)
+{
+	if (mapPathName.IsEmpty())
+		return AsciiString::TheEmptyString;
+	AsciiString iniPath = (LPCTSTR)mapPathName;
+	while (iniPath.getLength() && iniPath.getCharAt(iniPath.getLength()-1) != '\\')
+		iniPath.removeLastChar();
+	iniPath.concat("map.ini");
+	return iniPath;
+}
+
+// File > Map.ini > Open map.ini: open the map's map.ini in whatever program Windows has
+// registered for .ini files (pairs with Auto-reload for an edit-save-see loop). Offers to
+// create an empty map.ini first if the map doesn't have one yet.
+void CWorldBuilderDoc::OnOpenMapIni()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty()) {
+		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+		if (AfxMessageBox("This map has no map.ini yet. Create an empty one and open it?",
+				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
+			return;
+		}
+		FILE *fp = fopen(iniPath.str(), "wt");
+		if (fp == NULL) {
+			AfxMessageBox("Couldn't create the map.ini file (is the map folder writable?).",
+				MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+		fclose(fp);
+	}
+	::ShellExecute(NULL, "open", iniPath.str(), NULL, NULL, SW_SHOW);
+}
+
+// File > Map.ini > Open map.ini (internal): the same file as Open map.ini, but in WorldBuilder's
+// own editor -- which knows the template catalog and can therefore flag object names the data set
+// does not define and offer the closest matches. Falls back to the external editor if Qt is down.
+void CWorldBuilderDoc::OnEditMapIni()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty()) {
+		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+		if (AfxMessageBox("This map has no map.ini yet. Create an empty one and open it?",
+				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
+			return;
+		}
+		FILE *fp = fopen(iniPath.str(), "wt");
+		if (fp == NULL) {
+			AfxMessageBox("Couldn't create the map.ini file (is the map folder writable?).",
+				MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+		fclose(fp);
+	}
+#ifdef RTS_HAS_QT
+	if (WBQtMapIniEditor_Open(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL,
+			iniPath.str()) != 0) {
+		return;
+	}
+#endif
+	::ShellExecute(NULL, "open", iniPath.str(), NULL, NULL, SW_SHOW);
+}
+
+// File > Map.ini > Reload map.ini: unload the current overrides and re-run the loader,
+// without reopening the map. Object/Weapon/Science/SpecialPower/Water reload cleanly;
+// the report warns if the file also touches stores that can't be cleanly torn down.
+void CWorldBuilderDoc::OnReloadMapIni()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty()) {
+		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+		AfxMessageBox("This map has no map.ini file to reload.", MB_ICONINFORMATION | MB_OK);
+		return;
+	}
+	// Drop the current overrides, then preview the reload and apply only if the user OKs.
+	unloadMapIniOverrides();
+	confirmAndLoadMapIni(iniPath, "Reload map.ini");
+}
+
+// File > Map.ini > Check map.ini: parse the map.ini and report validity + a summary,
+// WITHOUT installing any overrides (dry run) -- lets a mapper vet a file before loading.
+void CWorldBuilderDoc::OnCheckMapIni()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty()) {
+		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+		AfxMessageBox("This map has no map.ini file to check.", MB_ICONINFORMATION | MB_OK);
+		return;
+	}
+	// Overrides may already be live from the open-time load; drop them so the dry run
+	// starts clean and leaves nothing changed afterward.
+	unloadMapIniOverrides();
+	CString report;
+	doLoadMapIni(iniPath, MAPINI_DRYRUN, report);
+	showScrollableInfoDialog("Check map.ini", report, /*applyMode=*/false);
+}
+
+// Read <map folder>\map.ini's last-write time into out; false if it can't be stat'd.
+static bool getMapIniWriteTime(const AsciiString &iniPath, FILETIME *out)
+{
+	WIN32_FILE_ATTRIBUTE_DATA fad;
+	if (!::GetFileAttributesExA(iniPath.str(), GetFileExInfoStandard, &fad))
+		return false;
+	*out = fad.ftLastWriteTime;
+	return true;
+}
+
+// File > Map.ini > Auto-reload map.ini on change: toggle the watch. When turned on we
+// snapshot the current mtime so only real edits (not the enabling click) trigger a reload.
+// Persisted in WorldBuilder.ini [MapIni] AutoWatch. CMainFrame's timer calls pollMapIniWatch.
+void CWorldBuilderDoc::OnToggleWatchMapIni()
+{
+	m_watchMapIni = !m_watchMapIni;
+	::AfxGetApp()->WriteProfileInt("MapIni", "AutoWatch", m_watchMapIni ? 1 : 0);
+	if (m_watchMapIni) {
+		AsciiString iniPath = currentMapIniPath(m_strPathName);
+		if (!iniPath.isEmpty())
+			getMapIniWriteTime(iniPath, &m_mapIniLastWrite);
+	}
+}
+
+void CWorldBuilderDoc::OnUpdateWatchMapIni(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_watchMapIni ? 1 : 0);
+}
+
+// File > Map.ini > Verbose report: when on, the load/check report lists each object as an
+// INI block with its per-module edits inside. App-global toggle in WorldBuilder.ini.
+void CWorldBuilderDoc::OnToggleVerboseMapIni()
+{
+	int now = ::AfxGetApp()->GetProfileInt("MapIni", "VerboseReport", 0) ? 0 : 1;
+	::AfxGetApp()->WriteProfileInt("MapIni", "VerboseReport", now);
+}
+
+void CWorldBuilderDoc::OnUpdateVerboseMapIni(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(::AfxGetApp()->GetProfileInt("MapIni", "VerboseReport", 0) ? 1 : 0);
+}
+
+// Called from CMainFrame's timer. When watching, reload the moment map.ini's mtime
+// advances (external editor saved it). Silent on success; only surfaces errors.
+void CWorldBuilderDoc::pollMapIniWatch()
+{
+	if (!m_watchMapIni) {
+		return;
+	}
+	if (s_mapIniPromptPending) {
+		// A map.ini prompt/preview is pumping messages right now (its modal loop
+		// dispatches this timer). Don't swap the override state underneath it -- the
+		// mtime stays un-baselined, so the edit is picked up on the next tick instead.
+		return;
+	}
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty() || !TheFileSystem->doesFileExist(iniPath.str())) {
+		return;
+	}
+	FILETIME now;
+	if (!getMapIniWriteTime(iniPath, &now)) {
+		return;
+	}
+	if (::CompareFileTime(&now, &m_mapIniLastWrite) == 0) {
+		return;	// unchanged
+	}
+	m_mapIniLastWrite = now;
+	// Auto-reload applies straight away (no confirm dialog -- the mapper's own save is the
+	// intent); only interrupt them on a hard parse error.
+	unloadMapIniOverrides();
+	CString report;
+	bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
+	if (!ok) {
+		showScrollableInfoDialog("Auto-reload map.ini", report, /*applyMode=*/false);
+	}
+}
+
+void CWorldBuilderDoc::OnJumpToMapFolder()
 {
 	try {
-		DoFileSave();
+		// DoFileSave();
+		DEBUG_LOG(("strTitle=%s strPathName=%s\n", m_strTitle, m_strPathName));
+
+		char folderPath[_MAX_PATH];
+		strcpy(folderPath, m_strPathName);
+
+		// Remove the filename to get the folder path
+		char* lastSlash = strrchr(folderPath, '\\');
+		if (lastSlash) {
+			*lastSlash = '\0';
+		}
+
+		DWORD attr = GetFileAttributes(folderPath);
+		if (attr != (DWORD)-1 && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			ShellExecute(NULL, "open", folderPath, NULL, NULL, SW_SHOW);
+		} else {
+			AfxMessageBox("The map folder does not exist yet. Save the map first.", MB_ICONEXCLAMATION | MB_OK);
+		}
+
+	} catch (...) {
+	}
+}
+
+void CWorldBuilderDoc::OnJumpToMapFolderWBData()
+{
+    try {
+        char documentsPath[MAX_PATH] = {0};
+
+        if (SHGetSpecialFolderPathA(NULL, documentsPath, CSIDL_PERSONAL, FALSE))
+        {
+            char targetPath[MAX_PATH];
+            sprintf(targetPath, "%s\\Command and Conquer Generals Zero Hour Data", documentsPath);
+
+            DWORD attr = GetFileAttributes(targetPath);
+            if (attr != (DWORD)-1 && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                ShellExecute(NULL, "open", targetPath, NULL, NULL, SW_SHOW);
+            } else {
+                AfxMessageBox("The Generals Zero Hour Data folder does not exist.", MB_ICONEXCLAMATION | MB_OK);
+            }
+        }
+        else {
+            AfxMessageBox("Unable to locate the Documents folder.", MB_ICONERROR | MB_OK);
+        }
+
+    } catch (...) {}
+}
+
+void CWorldBuilderDoc::OnJumpToAutoSaveFolder()
+{
+	try {
+		CString folderPath;
+		folderPath.Format("%s\\AutoSaves", TheGlobalData->getPath_UserData().str());
+
+		// Ensure the folder exists before trying to open it
+		DWORD attr = GetFileAttributes(folderPath);
+		if (attr != (DWORD)-1 && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			ShellExecute(NULL, "open", folderPath, NULL, NULL, SW_SHOWNORMAL);
+		} else {
+			AfxMessageBox("How the fuck the autosave folder does not exist on your data yet? call adriane.", MB_ICONEXCLAMATION | MB_OK);
+		}
+
+	} catch (...) {
+		// Optional: handle unexpected errors
+	}
+}
+
+void CWorldBuilderDoc::OnGenerateMapStrAndIni()
+{
+	try {
+		char folderPath[_MAX_PATH];
+		strcpy(folderPath, m_strPathName);
+
+		// Remove the filename to get the map folder
+		char* lastSlash = strrchr(folderPath, '\\');
+		if (lastSlash) {
+			*lastSlash = '\0';
+		}
+
+		// Check if the folder exists
+		DWORD attr = GetFileAttributes(folderPath);
+		if (attr == (DWORD)-1 || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			AfxMessageBox("Map folder does not exist. Please save the map first.", MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+
+		CString strPath = CString(folderPath) + "\\map.str";
+		CString iniPath = CString(folderPath) + "\\map.ini";
+
+		BOOL createdAnyFile = FALSE;
+
+		// Only generate map.str if it doesn't exist
+		if (GetFileAttributes(strPath) == (DWORD)-1) {
+			CStdioFile strFile;
+			if (strFile.Open(strPath, CFile::modeCreate | CFile::modeWrite | CFile::typeText)) {
+				strFile.WriteString("//==============================================================================\n");
+				strFile.WriteString("// MAP.STR - Custom String Table for Map\n");
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("// Notes:\n");
+				strFile.WriteString("// - Each entry starts with a label (e.g., Sample:01), followed by the text in quotes.\n");
+				strFile.WriteString("// - You can use up to 3 newline breaks (\\n) in a single string.\n");
+				strFile.WriteString("// - SCRIPT: prefixed entries are meant for use in scripting (e.g., timers or UI boxes).\n");
+				strFile.WriteString("//==============================================================================\n\n");
+
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("// Sample simple message (no line breaks)\n");
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("Sample:01\n");
+				strFile.WriteString("\"Bold Text\"\n");
+				strFile.WriteString("End\n\n");
+
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("// Sample multiline message (maximum of 3 line breaks)\n");
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("Sample:02\n");
+				strFile.WriteString("\"Bold Header:\n\\nSample Message (non-bold)\n\\nAnother message line\n\\nFinal message line\"\n");
+				strFile.WriteString("End\n\n");
+
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("// Script-related message used for UI popups or map timers\n");
+				strFile.WriteString("//------------------------------------------------------------------------------\n");
+				strFile.WriteString("SCRIPT:_PeaceTimeActivated\n");
+				strFile.WriteString("\"Hint:\n\\nGeneral Adriane alt-tabbed to check memes.\n\\nPerfect time for a base tour.\"\n");
+				strFile.WriteString("End\n\n");
+
+				strFile.WriteString("SCRIPT:TimerName\n");
+				strFile.WriteString("\"Commander Newgate will arrive in:\"\n");
+				strFile.WriteString("End\n");
+
+				strFile.Close();
+				createdAnyFile = TRUE;
+			}
+		}
+
+		// Only generate map.ini if it doesn't exist
+		if (GetFileAttributes(iniPath) == (DWORD)-1) {
+			CStdioFile iniFile;
+			if (iniFile.Open(iniPath, CFile::modeCreate | CFile::modeWrite | CFile::typeText)) {
+				iniFile.WriteString("; map.ini - custom INI file for map overrides\n");
+				iniFile.WriteString("; Add your unit, object, or behavior overrides here.\n");
+				iniFile.Close();
+				createdAnyFile = TRUE;
+			}
+		}
+
+		if (createdAnyFile) {
+			AfxMessageBox("Template map.str and/or map.ini file(s) have been created.", MB_OK | MB_ICONINFORMATION);
+		} else {
+			AfxMessageBox("Both map.str and map.ini already exist. No new files were created.", MB_OK | MB_ICONINFORMATION);
+		}
+
+		OnJumpToMapFolder();
+	} catch (...) {
+		AfxMessageBox("An error occurred while generating the template files.", MB_ICONERROR | MB_OK);
+	}
+}
+void CWorldBuilderDoc::OnOpenWorldbuilderSettings()
+{
+	try {
+		// Build the path to the INI file
+		CString iniPath;
+		iniPath.Format("%sWorldBuilder.ini", TheGlobalData->getPath_UserData().str());
+
+		// Open the file with the default editor (usually Notepad)
+		ShellExecute(NULL, "open", iniPath, NULL, NULL, SW_SHOW);
+
+	} catch (...) {
+	}
+}
+
+void CWorldBuilderDoc::OpenGameFolder(Bool data /*= false*/)
+{
+	try {
+		CString gameDir = GetGameDirectory();
+
+		if (gameDir.IsEmpty()) {
+			OnOpenWorldbuilderSettings();
+			return;
+		}
+
+		CString targetPath = gameDir;
+		if (data) {
+			targetPath += "\\Data";
+		}
+
+		if (!PathFileExists(targetPath)) {
+			CString msg;
+			msg.Format("The folder was not found:\n%s\n\nPlease make sure it exists in your game directory.", targetPath);
+			AfxMessageBox(msg, MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+
+		ShellExecute(NULL, "open", targetPath, NULL, NULL, SW_SHOWNORMAL);
+
+	} catch (...) {
+		AfxMessageBox("An unexpected error occurred while trying to open the game folder.", MB_ICONERROR | MB_OK);
+	}
+}
+
+void CWorldBuilderDoc::OnOpenGameFolder()
+{
+	OpenGameFolder(false); // opens main game directory
+}
+
+void CWorldBuilderDoc::OnOpenDataFolder()
+{
+	OpenGameFolder(true); // opens Data subfolder
+}
+
+void CWorldBuilderDoc::OnJumpToGameWithDebug(){
+	OnJumpToGame(true, false);
+}
+
+void CWorldBuilderDoc::OnJumpToGameWithoutDebug(){
+	OnJumpToGame(false, false);
+}
+
+void CWorldBuilderDoc::OnJumpToGameWithWaveEdit(){
+	OnJumpToGame(false, true);
+}
+
+void CWorldBuilderDoc::OnJumpToGame(Bool withDebug, Bool waveEdit)
+{
+	try {
+		CString gameDir = GetGameDirectory();
+
+		if (gameDir.IsEmpty()) {
+			OnOpenWorldbuilderSettings();
+			return;
+		}
+
+		if (m_strPathName.IsEmpty()) {
+			AfxMessageBox(
+				"Nice try, genius.\nMaybe save the map before pulling off stunts like this?",
+				MB_ICONEXCLAMATION | MB_OK
+			);
+
+			if (!DoSave(NULL)) {
+				AfxMessageBox(
+					"Why are you doing this to me!?, I will not be able to launch the game without you saving the damn map!",
+					MB_ICONEXCLAMATION | MB_OK
+				);
+				return;
+			}
+		}
+
+		int result = AfxMessageBox(
+			"Hold up!\nMonsieur, do you want us to save your map first?\nIf you only want to preview your current map file, then hit No.",
+			MB_ICONWARNING | MB_YESNO
+		);
+
+		if (result == IDYES) {
+			DoFileSave();
+		}
+
 		CString filename;
 		DEBUG_LOG(("strTitle=%s strPathName=%s", m_strTitle, m_strPathName));
 		if (strstr(m_strPathName, TheGlobalData->getPath_UserData().str()) != nullptr)
@@ -680,8 +2398,51 @@ void CWorldBuilderDoc::OnJumpToGame()
 		else
 			filename.Format("Maps\\%s", static_cast<const char*>(m_strTitle));
 
-		/*int retval =*/ _spawnl(_P_NOWAIT, "\\projects\\rts\\run\\rtsi.exe", "ignored", "-scriptDebug", "-win", "-file", static_cast<const char*>(filename), nullptr);
+		CString args = CString("-win -file \"") + filename + "\"";
+		if (withDebug) {
+			args = CString("-scriptDebug ") + args;
+		}
+
+		CString gameExePath;
+		if (waveEdit) {
+			args = CString("-useWaveEditor ") + args;
+			gameExePath.Format("%s\\generals_wave.exe", gameDir);
+
+			AfxMessageBox(
+				"You are about to run the game with wave edit mode ON. Please take note:\n\n"
+				"Hotkeys:\n"
+				" 1              : Enable/Disable Wave Edit Mode\n"
+				" Ctrl + S       : Save\n"
+				" Ctrl + R       : Reload/Clear\n"
+				" Ctrl + Z       : Undo (max of 15)\n"
+				" Left Click     : Start placing waves\n"
+				" 2nd Left Click : Add end of wave point\n"
+				" Space          : Cycle Wave Type",
+				MB_ICONEXCLAMATION | MB_OK
+			);
+		} else {
+			gameExePath.Format("%s\\generals.exe", gameDir);
+		}
+
+		// Check if the executable exists
+		if (!PathFileExists(gameExePath)) {
+			CString msg;
+			msg.Format("The game executable was not found:\n%s\n\nPlease verify your game directory setting.", gameExePath);
+			AfxMessageBox(msg, MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+
+		DEBUG_LOG(("Loading gameExePath=%s\n", gameExePath)); 
+
+		ShellExecute(NULL, "open", 
+			gameExePath, 
+			args, 
+			NULL, 
+			SW_SHOWNORMAL
+		);
+		
 	} catch (...) {
+		// Optional: log or handle exception
 	}
 }
 
@@ -721,6 +2482,29 @@ BOOL CWorldBuilderDoc::DoSave(LPCTSTR lpszPathName, BOOL bReplace)
 	// if 'bReplace' is TRUE will change file name if successful (SaveAs)
 	// if 'bReplace' is FALSE will not change path name (SaveCopyAs)
 {
+	// Check current map for duplicates before opening another one
+    WorldHeightMapEdit *pMap = GetHeightMap();
+    if (pMap != NULL && !g_warnedfordupedforthismap)
+    {
+        Bool check = pMap->selectDuplicates();
+        if (check)
+        {
+            MessageBeep(MB_ICONWARNING);
+			int res = MessageBox(
+				AfxGetMainWnd()->GetSafeHwnd(),
+				"Duplicate / Overlapping objects were detected in the current map.\n"
+				"Are you sure you want to continue saving or fix this monsieur?\n\n"
+				"Click OK to save anyway, or Cancel to return and fix the issue.",
+				"Duplicate / Overlapping Objects Detected",
+				MB_OKCANCEL | MB_ICONERROR | MB_TOPMOST
+			);
+
+			g_warnedfordupedforthismap = true;
+            if (res == IDCANCEL)
+                return FALSE; // user canceled open
+        }
+    }
+
 	CString newName = lpszPathName;
 	if (newName.IsEmpty())
 	{
@@ -746,12 +2530,30 @@ BOOL CWorldBuilderDoc::DoSave(LPCTSTR lpszPathName, BOOL bReplace)
 			}
 		}
 
+#ifdef RTS_HAS_QT
+		TSaveMapInfo info;
+		info.filename = newName;
+		{
+			char qtFilename[_MAX_PATH];
+			int qtBrowse = 0;
+			int qtSystemDir = 0;
+			if (WBQtSaveMap_Run(::AfxGetMainWnd()->GetSafeHwnd(), (LPCTSTR)info.filename,
+					qtFilename, sizeof(qtFilename), &qtBrowse, &qtSystemDir) == 0)
+			{
+				return FALSE;
+			}
+			info.filename = qtFilename;
+			info.browse = (qtBrowse != 0);
+			info.usingSystemDir = (qtSystemDir != 0);
+		}
+#else
 		TSaveMapInfo info;
 		info.filename = newName;
 		SaveMap saveDlg(&info);
 		if (saveDlg.DoModal() == IDCANCEL) {
 			return FALSE;
 		}
+#endif
 		if (info.browse) {
 			if (!AfxGetApp()->DoPromptFileName(newName,
 				bReplace ? AFX_IDS_SAVEFILE : AFX_IDS_SAVEFILECOPY,
@@ -787,6 +2589,26 @@ BOOL CWorldBuilderDoc::DoSave(LPCTSTR lpszPathName, BOOL bReplace)
 			newName += info.filename;
 			newName += ".map";
 		}
+	}
+
+	WbView3d * p3View = Get3DView();
+	if (p3View) {
+		DWORD editTimeSeconds = p3View->getEditTimeInSeconds();
+		
+		// Get the map folder path from newName (remove .map extension and get directory)
+		CString mapPath = newName;
+		int lastSlash = mapPath.ReverseFind('\\');
+		if (lastSlash != -1) {
+			mapPath = mapPath.Left(lastSlash); // Get folder path
+		}
+		
+		// Create AdrianeMapSettings.ini path
+		CString individualMapSettings = mapPath + "\\AdrianeMapSettings.ini";
+		
+		// Save edit time to the Data section
+		CString editTimeStr;
+		editTimeStr.Format("%u", editTimeSeconds);
+		WritePrivateProfileString("Data", "EditTimeSeconds", editTimeStr, individualMapSettings);
 	}
 
 	CWaitCursor wait;
@@ -839,6 +2661,13 @@ Bool CWorldBuilderDoc::ParseWaypointDataChunk(DataChunkInput &file, DataChunkInf
 Bool CWorldBuilderDoc::ParseWaypointData(DataChunkInput &file, DataChunkInfo *info, void *userData)
 {
 	m_numWaypointLinks = file.readInt();
+	// Bounds-check the file-supplied count before the read loop: a corrupt or desynced chunk
+	// must not overrun the fixed m_waypointLinks array. Abort the chunk cleanly instead.
+	if (m_numWaypointLinks < 0 || m_numWaypointLinks > MAX_WAYPOINTS) {
+		DEBUG_CRASH(("Bad waypoint link count %d in map file.", m_numWaypointLinks));
+		m_numWaypointLinks = 0;
+		return false;
+	}
 	Int i;
 	for (i=0; i<m_numWaypointLinks; i++) {
 		this->m_waypointLinks[i].waypoint1 = file.readInt();
@@ -849,55 +2678,75 @@ Bool CWorldBuilderDoc::ParseWaypointData(DataChunkInput &file, DataChunkInfo *in
 	return true;
 }
 
-void CWorldBuilderDoc::autoSave()
+static AsciiString IntToAsciiString(int value)
 {
-	// srj sez: put autosave into our user data folder, not the ap dir
-	AsciiString autosave1 = TheGlobalData->getPath_UserData();
-	AsciiString autosave2 = TheGlobalData->getPath_UserData();
-	AsciiString autosave3 = TheGlobalData->getPath_UserData();
-	autosave1.concat("WorldBuilderAutoSave1.map");
-	autosave2.concat("WorldBuilderAutoSave2.map");
-	autosave3.concat("WorldBuilderAutoSave3.map");
+	char buffer[16];
+	::wsprintf(buffer, "%d", value);
+	return AsciiString(buffer);
+}
+
+void CWorldBuilderDoc::autoSave(void)
+{
+	// DEBUG_LOG(("AUTOSAVING...\n"));
+
+	// Build autosave file paths
+	const int NUM_SLOTS = 10;
+	AsciiString autosavePaths[NUM_SLOTS + 1]; // 1-based indexing for simplicity
+
+	AsciiString autosaveDir = TheGlobalData->getPath_UserData();
+	autosaveDir.concat("AutoSaves\\");
+	::CreateDirectory(autosaveDir.str(), NULL);
+
+	for (int i = 1; i <= NUM_SLOTS; ++i) {
+		autosavePaths[i] = autosaveDir;
+		autosavePaths[i].concat("WorldBuilderAutoSave");
+		autosavePaths[i].concat(IntToAsciiString(i));
+		autosavePaths[i].concat(".map");
+	}
 
 	if (m_heightMap) try {
 		CFileStatus status;
+
+		// Remove oldest autosave (slot 10)
 		try {
-			if (CFile::GetStatus(autosave3.str(), status)) {
-				CFile::Remove(autosave3.str());
+			if (CFile::GetStatus(autosavePaths[NUM_SLOTS].str(), status)) {
+				CFile::Remove(autosavePaths[NUM_SLOTS].str());
 			}
 		} catch(...) {}
-		try {
-			if (CFile::GetStatus(autosave2.str(), status)) {
-				CFile::Rename(autosave2.str(), autosave3.str());
-			}
-		} catch(...){}
-		try {
-			if (CFile::GetStatus(autosave1.str(), status)) {
-				CFile::Rename(autosave1.str(), autosave2.str());
-			}
-		} catch(...){}
 
-		CFile theFile(autosave1.str(), CFile::modeCreate|CFile::modeWrite|CFile::shareDenyWrite|CFile::typeBinary);
+		// Shift autosaves: 9->10, 8->9, ..., 1->2
+		for (int i = NUM_SLOTS - 1; i >= 1; --i) {
+			try {
+				if (CFile::GetStatus(autosavePaths[i].str(), status)) {
+					CFile::Rename(autosavePaths[i].str(), autosavePaths[i + 1].str());
+				}
+			} catch(...) {}
+		}
+
+		// Create the new autosave1.map
+		CFile theFile(autosavePaths[1].str(), CFile::modeCreate | CFile::modeWrite | CFile::shareDenyWrite | CFile::typeBinary);
 		try {
-			Int i;
 			MFCFileOutputStream theStream(&theFile);
 			DataChunkOutput chunkWriter(&theStream);
 
 			m_heightMap->saveToFile(chunkWriter);
- 			/***************WAYPOINTS DATA ***************/
-			chunkWriter.openDataChunk("WaypointsList", 	K_WAYPOINTS_VERSION_1);
+
+			// Save waypoint data
+			chunkWriter.openDataChunk("WaypointsList", K_WAYPOINTS_VERSION_1);
 			chunkWriter.writeInt(this->m_numWaypointLinks);
-			for (i=0; i<m_numWaypointLinks; i++) {
+			for (int i = 0; i < m_numWaypointLinks; ++i) {
 				chunkWriter.writeInt(this->m_waypointLinks[i].waypoint1);
 				chunkWriter.writeInt(this->m_waypointLinks[i].waypoint2);
 			}
 			chunkWriter.closeDataChunk();
+		} catch(...) {}
 
-		} catch(...) {
-		}
 		theFile.Close();
 		m_needAutosave = false;
-	}	catch(...) {
+
+		// DEBUG_LOG(("AUTOSAVED...\n"));
+	} catch(...) {
+		// DEBUG_LOG(("AUTOSAVE FAILED...\n"));
 		::AfxMessageBox(IDS_NO_AUTOSAVE);
 	}
 }
@@ -934,6 +2783,8 @@ void CWorldBuilderDoc::SetHeightMap(WorldHeightMapEdit *pMap, Bool doUpdate)
 			pWView->updateHeightMapInView(m_heightMap, false, partialRange);
 			pWView->Invalidate(false);
 		}
+		if (TheMinimapDialog && TheMinimapDialog->IsWindowVisible())
+			TheMinimapDialog->rebuildTerrain();
 	}
 }
 
@@ -946,28 +2797,43 @@ void CWorldBuilderDoc::AddAndDoUndoable(Undoable *pUndo)
 		pCurUndo = pCurUndo->GetNext();
 	}
 	m_needAutosave = true;
+	// DEBUG_LOG(("NEED AUTOSAVE AddAndDoUndoable ...\n"));
 	m_waypointTableNeedsUpdate=true;
 	m_curRedo = 0;
 	pUndo->LinkNext(pCurUndo);
 	REF_PTR_SET(m_undoList, pUndo);
 	pUndo->Do();
+	// TheSuperHackers @feature Chain every automation-visible mutation through a monotonic revision.
+	++m_changeSerial;
 	SetModifiedFlag();
 	pCurUndo = m_undoList;
 	count = 0;
 	while (pCurUndo) {
 		count++;
-		if (count >= MAX_UNDOS) {
-			pCurUndo->LinkNext(nullptr);
+		if (count >= m_maxUndos) {
+			pCurUndo->LinkNext(NULL);
 			break;
 		}
 		pCurUndo = pCurUndo->GetNext();
 	}
 }
 
-void CWorldBuilderDoc::OnEditRedo()
+void CWorldBuilderDoc::setMaxUndos(Int count)
+{
+	if (count < 1) {
+		count = 1;
+	}
+	if (count > 999) {
+		count = 999;
+	}
+	m_maxUndos = count;
+}
+
+void CWorldBuilderDoc::OnEditRedo() 
 {
 	Undoable *pUndo = m_undoList;
 	m_needAutosave = true;
+	// DEBUG_LOG(("NEED AUTOSAVE OnEditRedo ...\n"));
 	m_waypointTableNeedsUpdate=true;
 	if (m_curRedo>0) {
 		Int count = m_curRedo-1;
@@ -978,6 +2844,7 @@ void CWorldBuilderDoc::OnEditRedo()
 		DEBUG_ASSERTCRASH((pUndo != nullptr),("oops"));
 		if (pUndo) {
 			pUndo->Redo();
+			++m_changeSerial;
 			SetModifiedFlag();
 			m_curRedo--;
 		}
@@ -991,8 +2858,19 @@ void CWorldBuilderDoc::OnUpdateEditRedo(CCmdUI* pCmdUI)
 
 void CWorldBuilderDoc::OnEditUndo()
 {
+	// If the Wave Editor has a pending wave edit, Ctrl+Z (and the Edit ▸ Undo menu)
+	// undo that wave action instead of the map undo.  We key off hasUndo() rather
+	// than the active tool: holding Ctrl can transiently flip the current tool to the
+	// pointer, which would otherwise make the check miss.
+	if (WaveEditorTool::hasUndo())
+	{
+		WaveEditorTool::undoLast();
+		return;
+	}
+
 	Undoable *pUndo = m_undoList;
 	m_needAutosave = true;
+	// DEBUG_LOG(("NEED AUTOSAVE OnEditUndo ...\n"));
 	m_waypointTableNeedsUpdate=true;
 	Int count = m_curRedo;
 	while(count>0 && pUndo != nullptr) {
@@ -1001,6 +2879,7 @@ void CWorldBuilderDoc::OnEditUndo()
 	}
 	if (pUndo != nullptr) {
 		pUndo->Undo();
+		++m_changeSerial;
 		SetModifiedFlag();
 		m_curRedo++;
 	}
@@ -1045,6 +2924,11 @@ void CWorldBuilderDoc::OnTsInfo()
 
 void CWorldBuilderDoc::OnTsCanonical()
 {
+	OptimizeTiles();	
+}
+
+void CWorldBuilderDoc::OptimizeTiles() 
+{
 	if (m_heightMap) {
 
 		WorldHeightMapEdit *htMapEditCopy = GetHeightMap()->duplicate();
@@ -1062,11 +2946,156 @@ void CWorldBuilderDoc::OnTsCanonical()
 	}
 }
 
-void CWorldBuilderDoc::OnUpdateTsCanonical(CCmdUI* pCmdUI)
+// Adriane[Deathscythe] Hacky cursed code just to refresh the terrain tiles without adding an undo step.
+void CWorldBuilderDoc::RefreshAndOptimizeHeightMap()
+{
+    if (m_heightMap)
+    {
+        WorldHeightMapEdit* htMapEditCopy = GetHeightMap()->duplicate();
+        if (htMapEditCopy == NULL)
+            return;
+
+        if (htMapEditCopy->optimizeTiles())  // does all the blend recalculation
+        {
+            IRegion2D partialRange = {0, 0, 0, 0};
+            updateHeightMap(htMapEditCopy, false, partialRange);
+        }
+        else
+        {
+            ::Beep(1000, 500);
+        }
+
+        REF_PTR_RELEASE(htMapEditCopy);
+    }
+}
+
+void CWorldBuilderDoc::OnUpdateTsCanonical(CCmdUI* pCmdUI) 
 {
 }
 
-void CWorldBuilderDoc::OnFileResize()
+#ifdef RTS_HAS_QT
+// File>Close under the Qt inversion. CDocument's default close destroys the 3D view and
+// its frame, but that view is hosted inside the Qt main window, so Create3DView ->
+// CreateNewFrame fails to rebuild it and the command reports "Command failed." This is a
+// single-document app (the window IS the map), so Close has no distinct meaning from New;
+// route it to the File>New path, which REUSES the hosted view (OnNewDocument resets its
+// contents in place). The save-modified prompt still fires along the New path. Handled at
+// the document because MFC routes ID_FILE_CLOSE to the doc before the app.
+void CWorldBuilderDoc::OnFileClose()
+{
+	// Route Close to the File>New command (CN_COMMAND == 0) through the app's routing: it
+	// reuses the hosted view instead of destroying/recreating the frame. This is safe on the
+	// legacy/non-inverted path too (New always works), and avoids re-dispatching ID_FILE_CLOSE
+	// back into this same override.
+	AfxGetApp()->OnCmdMsg(ID_FILE_NEW, 0, NULL, NULL);
+}
+#endif
+
+//=============================================================================
+// CWorldBuilderDoc::OnMapGenGenerate
+//=============================================================================
+/** Map Generator > Generate Map.
+
+	Replaces the current map's terrain with generated terrain and drops the
+	player start waypoints in. The whole thing is one undoable step, so a single
+	Undo puts the previous map back.
+*/
+//=============================================================================
+void CWorldBuilderDoc::OnMapGenGenerate()
+{
+	// Start from whatever was used last, so the dialog picks up where you left off.
+	WBMapGenSettings settings;
+	settings.load();
+
+#ifdef RTS_HAS_QT
+	{
+		int seed = settings.m_seed;
+		int numPlayers = settings.m_numPlayers;
+		int baseHeight = settings.m_baseHeight;
+		int doCliffs = settings.m_doCliffs ? 1 : 0;
+		int cliffDensity = settings.m_cliffDensity;
+		int doTextures = settings.m_doTextures ? 1 : 0;
+		int doTrees = settings.m_doTrees ? 1 : 0;
+		int treeDensity = settings.m_treeDensity;
+		int doRocks = settings.m_doRocks ? 1 : 0;
+		int doPlayers = settings.m_doPlayers ? 1 : 0;
+		int doSupplies = settings.m_doSupplies ? 1 : 0;
+		int roadMode = settings.m_roadMode;
+
+		if (!WBQtMapGen_Run(::AfxGetMainWnd()->GetSafeHwnd(), &seed, &numPlayers,
+				&baseHeight, &doCliffs, &cliffDensity, &doTextures, &doTrees,
+				&treeDensity, &doRocks, &doPlayers, &doSupplies,
+				&roadMode))
+		{
+			return;
+		}
+
+		settings.m_seed = seed;
+		settings.m_numPlayers = numPlayers;
+		settings.m_baseHeight = baseHeight;
+		settings.m_doCliffs = (doCliffs != 0);
+		settings.m_cliffDensity = cliffDensity;
+		settings.m_doTextures = (doTextures != 0);
+		settings.m_doTrees = (doTrees != 0);
+		settings.m_treeDensity = treeDensity;
+		settings.m_doRocks = (doRocks != 0);
+		settings.m_doPlayers = (doPlayers != 0);
+		settings.m_doSupplies = (doSupplies != 0);
+		settings.m_roadMode = roadMode;
+	}
+#else
+	// No settings dialog in the plain MFC build -- confirm and use the defaults.
+	if (::AfxMessageBox(_T("Generate new terrain over the current map?\n\n")
+											_T("This replaces the existing terrain. It can be undone."),
+											MB_YESNO | MB_ICONQUESTION) != IDYES)
+	{
+		return;
+	}
+#endif
+
+	// Remember what was used, so opening the dialog again picks up where you left
+	// off -- and so Randomize has something to reuse.
+	settings.save();
+
+	CWaitCursor wait;
+	if (!WBMapGen_RunOnDocument(this, settings))
+	{
+		::AfxMessageBox(_T("Could not generate a map -- there is no map open."),
+										MB_OK | MB_ICONWARNING);
+	}
+}
+
+//=============================================================================
+// CWorldBuilderDoc::OnMapGenRandomize
+//=============================================================================
+/** Map Generator > Randomize.
+
+	Generates again with the settings from the last run, changing only the seed --
+	so you can keep rolling maps of the same kind without walking through the
+	dialog every time. Falls back to the defaults if the generator has not been
+	used yet.
+*/
+//=============================================================================
+void CWorldBuilderDoc::OnMapGenRandomize()
+{
+	WBMapGenSettings settings;
+	settings.load();
+
+	// A fresh seed is the whole point of this command.
+	settings.m_seed = (Int)(::GetTickCount() % 1000000000);
+	settings.save();
+
+	CWaitCursor wait;
+	// Clear first: this command is for rolling one map after another, and without
+	// it each run would leave the previous run's trees, rocks and roads behind.
+	if (!WBMapGen_RunOnDocument(this, settings, true))
+	{
+		::AfxMessageBox(_T("Could not generate a map -- there is no map open."),
+										MB_OK | MB_ICONWARNING);
+	}
+}
+
+void CWorldBuilderDoc::OnFileResize() 
 {
 	TNewHeightInfo hi;
 	hi.initialHeight = 8;
@@ -1076,12 +3105,38 @@ void CWorldBuilderDoc::OnFileResize()
 	hi.forResize = true;
 	CString label;
 	label.LoadString(IDS_RESIZE);
+#ifdef RTS_HAS_QT
+	{
+		int qtHeight = hi.initialHeight;
+		int qtX = hi.xExtent;
+		int qtY = hi.yExtent;
+		int qtBorder = hi.borderWidth;
+		int qtTop = 0;
+		int qtBottom = 0;
+		int qtLeft = 0;
+		int qtRight = 0;
+		if (WBQtNewHeightMap_Run(::AfxGetMainWnd()->GetSafeHwnd(), (LPCTSTR)label, 1,
+				&qtHeight, &qtX, &qtY, &qtBorder, &qtTop, &qtBottom, &qtLeft, &qtRight) == 0)
+		{
+			return;
+		}
+		hi.initialHeight = qtHeight;
+		hi.xExtent = qtX;
+		hi.yExtent = qtY;
+		hi.borderWidth = qtBorder;
+		hi.anchorTop = (qtTop != 0);
+		hi.anchorBottom = (qtBottom != 0);
+		hi.anchorLeft = (qtLeft != 0);
+		hi.anchorRight = (qtRight != 0);
+	}
+#else
 	CNewHeightMap htDialog(&hi, label);
 	if (IDOK == htDialog.DoModal()) {
 		htDialog.GetHeightInfo(&hi);
 	} else {
 		return;
 	}
+#endif
 
 	WorldHeightMapEdit *htMapEditCopy = GetHeightMap()->duplicate();
 	if (htMapEditCopy == nullptr) return;
@@ -1235,6 +3290,8 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 	if (!CDocument::OnNewDocument())
 		return FALSE;
 	static Bool firstTime = true;
+	// TheSuperHackers @feature Skip the interactive size dialog when automation creates the map.
+	Bool regular_reset = !firstTime && !gAutomationNewDocument;
 
 	// clear out map-specific text
 	TheGameText->reset();
@@ -1246,12 +3303,29 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 	hi.yExtent = AfxGetApp()->GetProfileInt("GameOptions", "Default Map Y-size", 100);
 	hi.borderWidth = AfxGetApp()->GetProfileInt("GameOptions", "Default Map Border", 30);
 	hi.forResize = false;
-	if (!firstTime) {
+	if (regular_reset) {
 		CString label;
 		label.LoadString(IDS_NEW);
+#ifdef RTS_HAS_QT
+		int qtHeight = hi.initialHeight;
+		int qtX = hi.xExtent;
+		int qtY = hi.yExtent;
+		int qtBorder = hi.borderWidth;
+		int qtTop = 0;
+		int qtBottom = 0;
+		int qtLeft = 0;
+		int qtRight = 0;
+		if (WBQtNewHeightMap_Run(::AfxGetMainWnd()->GetSafeHwnd(), (LPCTSTR)label, 0,
+				&qtHeight, &qtX, &qtY, &qtBorder, &qtTop, &qtBottom, &qtLeft, &qtRight) != 0) {
+			hi.initialHeight = qtHeight;
+			hi.xExtent = qtX;
+			hi.yExtent = qtY;
+			hi.borderWidth = qtBorder;
+#else
 		CNewHeightMap htDialog(&hi, label);
 		if (IDOK == htDialog.DoModal()) {
 			htDialog.GetHeightInfo(&hi);
+#endif
 			AfxGetApp()->WriteProfileInt("GameOptions", "Default Map Height", hi.initialHeight);
 			AfxGetApp()->WriteProfileInt("GameOptions", "Default Map X-size", hi.xExtent);
 			AfxGetApp()->WriteProfileInt("GameOptions", "Default Map Y-size", hi.yExtent);
@@ -1283,6 +3357,7 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 	WbView3d * p3View = Get3DView();
 	if (p3View) {
 		p3View->resetRenderObjects();
+		p3View->resetEditTimer();
 	}
 	firstTime = false;
 	m_heightMap = NEW_REF(WorldHeightMapEdit,(hi.xExtent,hi.yExtent,hi.initialHeight, hi.borderWidth));
@@ -1292,16 +3367,27 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 	PolygonTrigger *pTrig = newInstance(PolygonTrigger)(4);
 	ICoord3D loc;
 	pTrig->setWaterArea(true);
-	pTrig->setTriggerName("Default Water");
-	loc.x = -hi.borderWidth*MAP_XY_FACTOR;
-	loc.y = -hi.borderWidth*MAP_XY_FACTOR;
+	pTrig->setTriggerName(AsciiString("Default Water"));
+
+	const float leftX   = -hi.borderWidth * MAP_XY_FACTOR;
+	const float bottomY = -hi.borderWidth * MAP_XY_FACTOR;
+	
+	// Bottom-left
+	loc.x = leftX;
+	loc.y = bottomY;
 	loc.z = TheGlobalData->m_waterPositionZ;
 	pTrig->addPoint(loc);
-	loc.x = (hi.xExtent+hi.borderWidth)*MAP_XY_FACTOR;
+
+	// Bottom-right
+	loc.x = (hi.xExtent + hi.borderWidth - 1) * MAP_XY_FACTOR;
 	pTrig->addPoint(loc);
-	loc.y = (hi.yExtent+hi.borderWidth)*MAP_XY_FACTOR;
+
+	// Top-right
+	loc.y = (hi.yExtent + hi.borderWidth - 1) * MAP_XY_FACTOR;
 	pTrig->addPoint(loc);
-	loc.x = -hi.borderWidth*MAP_XY_FACTOR;
+
+	// Top-left
+	loc.x = leftX;
 	pTrig->addPoint(loc);
 	PolygonTrigger::addPolygonTrigger(pTrig);
 	TheLayersList->addPolygonTriggerToLayersList(pTrig, pTrig->getLayerName());
@@ -1321,11 +3407,99 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 	if (p3View) {
 		p3View->setDefaultCamera();
 	}
+	if (regular_reset) {
+		// TheSuperHackers @bugfix Advance the automation revision when File New resets this document.
+		++m_changeSerial;
+	}
 	return TRUE;
+}
+
+void CWorldBuilderDoc::setAutomationNewDocument(Bool enabled)
+{
+	gAutomationNewDocument = enabled;
+}
+
+// TheSuperHackers @feature Create maps without displaying the interactive size dialog.
+Bool CWorldBuilderDoc::createMapForAutomation(
+	Int width, Int height, UnsignedByte initialHeight, Int borderSize)
+{
+	if (width < 2 || height < 2 || borderSize < 0
+		|| borderSize * 2 >= width || borderSize * 2 >= height) {
+		return false;
+	}
+
+	TheGameText->reset();
+	REF_PTR_RELEASE(m_heightMap);
+	REF_PTR_RELEASE(m_undoList);
+	m_curRedo = 0;
+	m_numWaypointLinks = 0;
+	m_waypointTableNeedsUpdate = true;
+	m_curWaypointID = 0;
+	WbApp()->selectPointerTool();
+
+	TheLayersList->enableUpdates();
+	TheLayersList->resetLayers();
+	TheLayersList->disableUpdates();
+	PolygonTrigger::deleteTriggers();
+	TheSidesList->clear();
+	TheSidesList->validateSides();
+
+	WbView3d *view = Get3DView();
+	if (view != NULL) {
+		view->resetRenderObjects();
+		view->resetEditTimer();
+	}
+	m_heightMap = NEW_REF(WorldHeightMapEdit, (width, height, initialHeight, borderSize));
+
+	PolygonTrigger *water = newInstance(PolygonTrigger)(4);
+	water->setWaterArea(true);
+	water->setTriggerName("Default Water");
+	ICoord3D point;
+	point.x = -borderSize * MAP_XY_FACTOR;
+	point.y = -borderSize * MAP_XY_FACTOR;
+	point.z = REAL_TO_INT(TheGlobalData->m_waterPositionZ);
+	water->addPoint(point);
+	point.x = (width + borderSize - 1) * MAP_XY_FACTOR;
+	water->addPoint(point);
+	point.y = (height + borderSize - 1) * MAP_XY_FACTOR;
+	water->addPoint(point);
+	point.x = -borderSize * MAP_XY_FACTOR;
+	water->addPoint(point);
+	PolygonTrigger::addPolygonTrigger(water);
+	TheLayersList->addPolygonTriggerToLayersList(water, water->getLayerName());
+
+	SetHeightMap(m_heightMap, true);
+	TerrainMaterial::updateTextures(m_heightMap);
+	Create3DView();
+	POSITION pos = GetFirstViewPosition();
+	while (pos != NULL) {
+		CView *current_view = GetNextView(pos);
+		WbView *world_builder_view = (WbView *)current_view;
+		ASSERT_VALID(world_builder_view);
+		world_builder_view->setCenterInView(
+			m_heightMap->getXExtent() / 2 - m_heightMap->getBorderSize(),
+			m_heightMap->getYExtent() / 2 - m_heightMap->getBorderSize());
+	}
+	view = Get3DView();
+	if (view != NULL) {
+		view->setDefaultCamera();
+	}
+	// TheSuperHackers @bugfix Clear the path without asking MFC to canonicalize an empty filename.
+	m_strPathName.Empty();
+	SetTitle(_T("Untitled"));
+	SetModifiedFlag(TRUE);
+	m_needAutosave = true;
+	++m_changeSerial;
+	return true;
 }
 
 void CWorldBuilderDoc::invalObject(MapObject *pMapObj)
 {
+	// The Debug menu's object obstacle overlay is rasterized from the placed objects, so it goes
+	// stale whenever one is added, moved or removed.  This only sets flags; the cells are
+	// rebuilt and the terrain repainted from the view timer, and only while an overlay is on.
+	WBHeightMap::invalidateObjectCells();
+
 	POSITION pos = GetFirstViewPosition();
 	while (pos != nullptr)
 	{
@@ -1334,10 +3508,17 @@ void CWorldBuilderDoc::invalObject(MapObject *pMapObj)
 		ASSERT_VALID(pWView);
 		pWView->invalObjectInView(pMapObj);
 	}
+	// Minimap refresh is handled in WbView3d::invalObjectInView (the common funnel for
+	// both this path and direct p3View->invalObjectInView callers).
 }
 
 void CWorldBuilderDoc::invalCell(int xIndex, int yIndex)
 {
+	// A cell changed under a Debug menu overlay (terrain sculpted, a water area edited), so the
+	// tint needs repainting.  Coalesced through the view timer -- a brush stroke calls this for
+	// every cell it touches.
+	WBHeightMap::requestOverlayRefresh();
+
 	POSITION pos = GetFirstViewPosition();
 	while (pos != nullptr)
 	{
@@ -1366,6 +3547,11 @@ void CWorldBuilderDoc::syncViewCenters(Real x, Real y)
 
 void CWorldBuilderDoc::updateAllViews()
 {
+	// Polygon trigger edits (which is how water areas are drawn) come through here rather than
+	// invalCell, so refresh any Debug menu overlay that depends on them.  Coalesced via the
+	// view timer, and a no-op when no overlay is on.
+	WBHeightMap::requestOverlayRefresh();
+
 	POSITION pos = GetFirstViewPosition();
 	while (pos != nullptr)
 	{
@@ -1387,10 +3573,55 @@ void CWorldBuilderDoc::updateHeightMap(WorldHeightMap *htMap, Bool partial, cons
 		pWView->updateHeightMapInView(htMap, partial, partialRange);
 		pWView->Invalidate();
 	}
+
+	// Keep the minimap in sync while the user paints/sculpts terrain. Use the
+	// throttled request so a continuous brush stroke doesn't resample every frame.
+	if (TheMinimapDialog && TheMinimapDialog->IsWindowVisible())
+		TheMinimapDialog->requestRebuild();
+}
+
+void CWorldBuilderDoc::LoadEditTime(const CString& mapPath)
+{
+	WbView3d * p3View = Get3DView();
+	if (!p3View) return;
+	
+	// Get the map folder path
+	CString folderPath = mapPath;
+	int lastSlash = folderPath.ReverseFind('\\');
+	if (lastSlash != -1) {
+		folderPath = folderPath.Left(lastSlash);
+	}
+	
+	CString individualMapSettings = folderPath + "\\AdrianeMapSettings.ini";
+	
+	if (PathFileExists(individualMapSettings)) {
+		// Read edit time from Data section
+		DWORD savedTime = GetPrivateProfileInt("Data", "EditTimeSeconds", 0, individualMapSettings);
+		
+		// Set the loaded time in the view
+		p3View->setEditTime(savedTime); // Subtract 3 seconds to account for load time
+	} else {
+		// No saved time, start from zero
+		p3View->resetEditTimer();
+	}
 }
 
 BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 {
+	// Suppress minimap rebuilds for the whole load. The load pops modal MessageBoxes
+	// (map.ini prompts) whose nested message pump would otherwise fire the minimap's
+	// pending rebuild timer against a half-swapped document and hang. The guard clears
+	// the flag on EVERY return path; clearing (in its dtor) kicks one clean rebuild.
+	struct MinimapLoadGuard {
+		MinimapLoadGuard()  { MinimapDialog::setLoading(true); }
+		~MinimapLoadGuard() { MinimapDialog::setLoading(false); }
+	} minimapLoadGuard;
+
+	// If a map.ini override was loaded for the previous map, gracefully tear it down
+	// before loading the next map (no more forced restart). This strips only the
+	// map.ini-created overrides and leaves the base game data intact.
+	if (g_mapiniloaded)
+		unloadMapIniOverrides();
 #ifdef ONLY_ONE_AT_A_TIME
 	if (gAlreadyOpen) {
 		::AfxMessageBox(IDS_ONLY_ONE_FILE);
@@ -1407,22 +3638,61 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 	TheGameText->reset();
 	TheWriteableMapData->reset();
 	AsciiString s = lpszPathName;
-	AsciiString s_mapini;
 	const char* lastSep = s.reverseFind('\\');
 	if (lastSep != nullptr)
 	{
 		s.truncateTo(lastSep - s.str() + 1);
 	}
-	s_mapini = s;
 	s.concat("map.str");
 	DEBUG_LOG(("Looking for map-specific text in [%s]", s.str()));
 	TheGameText->initMapStringFile(s);
 
-	s_mapini.concat("map.ini");
-	if (TheFileSystem->doesFileExist(s_mapini.str()))
-	{
-		INI ini;
-		ini.load(s_mapini, INI_LOAD_MAPDATA_ONLY, nullptr, true);
+	// TODO: this dude brick the texures when host textures are not in the map...
+	// TileTool::clearCopiedTiles();
+	// TerrainMaterial::OnImportFavoritesFromMapFolder();
+	
+	//The dude opened a new map so we set this to false;
+	g_warnedfordupedforthismap = false;
+
+	// Adriane [Deathscythe] : Map.ini loader support
+	AsciiString iniPath = lpszPathName;
+	while (iniPath.getLength() && iniPath.getCharAt(iniPath.getLength()-1) != '\\')
+		iniPath.removeLastChar();
+	iniPath.concat("map.ini");
+	
+	if (TheFileSystem->doesFileExist(iniPath.str())) {
+		DEBUG_LOG(("Map.ini file detected at [%s]\n", iniPath.str()));
+
+		// The whole block runs before MFC's SetPathName, so m_strPathName still holds the
+		// PREVIOUS map -- keep pollMapIniWatch out while our dialogs pump messages.
+		MapIniPromptScope promptScope;
+
+		// Global always-load list ([MapLoaderIni] in WorldBuilder.ini). A listed map loads
+		// silently; any other map is previewed in the report dialog first.
+		if (isMapIniAlwaysLoad(lpszPathName)) {
+			DEBUG_LOG(("Loading map.ini from [%s] (in the always-load list)\n", iniPath.str()));
+			CString report;
+			bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
+			if (!ok) {	// only surface a hard error
+				showScrollableInfoDialog("Map.ini Loader (Beta)", report, /*applyMode=*/false);
+			}
+		} else {
+			// Preview the map.ini in the report dialog; OK loads, Cancel skips.
+			DEBUG_LOG(("Previewing map.ini from [%s]\n", iniPath.str()));
+			MessageBeep(MB_ICONWARNING);
+			bool applied = confirmAndLoadMapIni(iniPath, "Map.ini Loader (Beta)");
+			if (applied) {
+				// Offer to always load this map's map.ini silently from now on.
+				if (AfxMessageBox("Always load this map's map.ini from now on (no prompt)?",
+						MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
+					addMapIniAlwaysLoad(lpszPathName);
+				}
+			}
+		}
+
+		// Baseline the watch mtime whether or not we loaded, so a later external edit is
+		// detected relative to the file as it is now.
+		getMapIniWriteTime(iniPath, &m_mapIniLastWrite);
 	}
 
 	WbApp()->setCurrentDirectory(AsciiString(buf));
@@ -1436,6 +3706,25 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 		return FALSE;
 
 	Create3DView();
+
+	LoadEditTime(lpszPathName);
+
+	if (CMainFrame::GetMainFrame() && CMainFrame::GetMainFrame()->getScriptDialog()) {
+		CMainFrame::GetMainFrame()->closeScriptDialog();
+	}
+
+	// WbApp()->OnRefreshAppAbout();
+	// DEBUG_LOG(("strTitle=%s strPathName=%s\n", lpszPathName, m_strPathName));
+	// CString fullPath = lpszPathName;
+	// int lastSlash = fullPath.ReverseFind('\\');
+	// if (lastSlash != -1)
+	// {
+	// 	fullPath = fullPath.Left(lastSlash);
+	// }
+	// TerrainMaterial::ReloadFavorites(fullPath);
+	
+	// TheSuperHackers @feature Advance the automation revision when a new map is loaded.
+	++m_changeSerial;
 
 	return TRUE;
 }
@@ -1968,8 +4257,13 @@ void CWorldBuilderDoc::OnViewHome()
 	MapObject *pMapObj = MapObject::getFirstMapObject();
 
 	// set pos to be the coordinates of the center of the map
-	pos.x = MAP_XY_FACTOR*m_heightMap->getXExtent()/2;
-	pos.y = MAP_XY_FACTOR*m_heightMap->getYExtent()/2;
+	// pos.x = MAP_XY_FACTOR*m_heightMap->getXExtent()/2; 
+	// pos.y = MAP_XY_FACTOR*m_heightMap->getYExtent()/2;
+
+	// Actual center of the map -- centers to the middle of the cell not the corner
+	pos.x = MAP_XY_FACTOR * (m_heightMap->getXExtent() * 0.5f - 0.5f);
+	pos.y = MAP_XY_FACTOR * (m_heightMap->getYExtent() * 0.5f - 0.5f);
+
 	pos.x -= MAP_XY_FACTOR*m_heightMap->getBorderSize();
 	pos.y -= MAP_XY_FACTOR*m_heightMap->getBorderSize();
 
@@ -2530,6 +4824,17 @@ writeRawDict( theLogFile, "Scripts",d );
 		}
 		fprintf(theLogFile,"End of Scripts\n");
 		fclose(theLogFile);
+
+
+		AfxMessageBox("Action completed. The file is located on your worldbuilder directory.", MB_OK | MB_ICONINFORMATION);
+		CString openDir = AfxGetApp()->GetProfileString("WorldbuilderApp", "OpenDirectory", "");
+		CString dumpPath;
+		dumpPath.Format("%s\\%s.txt", openDir, m_strTitle);
+
+		DEBUG_LOG(("dumpPath %s", dumpPath ));
+
+		// Open the file with the default editor (usually Notepad)
+		ShellExecute(NULL, "open", dumpPath, NULL, NULL, SW_SHOW);
 		open = false;
 	} catch (...) {
 		if (open) {
@@ -2658,10 +4963,21 @@ void CWorldBuilderDoc::changeBoundary(Int ndx, ICoord2D *border)
 	m_heightMap->changeBoundary(ndx, border);
 }
 
-void CWorldBuilderDoc::removeLastBoundary()
+// void CWorldBuilderDoc::removeBoundary(Int ndx, ICoord2D *border)
+// {
+// 	m_heightMap->removeBoundary(ndx, border);
+// }
+
+void CWorldBuilderDoc::removeLastBoundary(void)
 {
 	m_heightMap->removeLastBoundary();
 }
+
+void CWorldBuilderDoc::removeAllExtraBoundaries(void)
+{
+	m_heightMap->removeAllExtraBoundaries();
+}
+
 
 void CWorldBuilderDoc::findBoundaryNear(Coord3D *pt, float okDistance, Int *outNdx, Int *outHandle)
 {

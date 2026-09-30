@@ -39,13 +39,26 @@
 #include "GameLogic/SidesList.h"
 #include "GameClient/Color.h"
 
-#include <list>
+#include "wbview3d.h"
 
-ObjectOptions *ObjectOptions::m_staticThis = nullptr;
+// This is used to allow sounds to be played via PlaySound
+#include <mmsystem.h>
+#include <list>
+#ifdef RTS_HAS_QT
+#include "qt/WBQtPanelBridge.h"
+#include "qt/panels/WBQtPlayerListBridge.h"
+#endif
+
+#define OBJECT_OPTION_PANEL "ObjectOptionPanel"
+
+// bool ObjectOptions::m_isObjectOptsWindowOpen  = false;
+ObjectOptions *ObjectOptions::m_staticThis = NULL;
 Bool ObjectOptions::m_updating = false;
 char ObjectOptions::m_currentObjectName[NAME_MAX_LEN];
 Int ObjectOptions::m_currentObjectIndex=-1;
 AsciiString ObjectOptions::m_curOwnerName;
+Bool ObjectOptions::m_placeAllInCategory = false;
+Int ObjectOptions::m_placeAllYSpacing = 0;
 
 /////////////////////////////////////////////////////////////////////////////
 // ObjectOptions dialog
@@ -53,9 +66,12 @@ AsciiString ObjectOptions::m_curOwnerName;
 
 ObjectOptions::ObjectOptions(CWnd* pParent /*=nullptr*/)
 {
-	m_objectsList = nullptr;
+	m_objectsList = NULL;
+	m_objectsListModified = false;
 	strcpy(m_currentObjectName, "No Selection");
 	m_curOwnerName.clear();
+	m_bPreviewAmbient = false;
+	m_isObjectOptsWindowOpen  = false;
 	//{{AFX_DATA_INIT(ObjectOptions)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
@@ -83,8 +99,53 @@ BEGIN_MESSAGE_MAP(ObjectOptions, COptionsPanel)
 	ON_CBN_EDITCHANGE(IDC_OWNINGTEAM, OnEditchangeOwningteam)
 	ON_CBN_CLOSEUP(IDC_OWNINGTEAM, OnCloseupOwningteam)
 	ON_CBN_SELCHANGE(IDC_OWNINGTEAM, OnSelchangeOwningteam)
+	ON_BN_CLICKED(IDC_OBJECT_SEARCH_BUTTON, OnSearch)
+	ON_BN_CLICKED(IDC_OBJECT_SEARCH_RESET_BTN, OnReset)
+	ON_BN_CLICKED(IDC_TOGGLE_PREVIEW_SOUND, OnPreviewAmbientSound)
+	ON_BN_CLICKED(IDC_TOGGLE_PREV_FEEDBACK, OnPreviewBuildZone)
+	ON_BN_CLICKED(IDC_TOGGLE_WATER_HEIGHT, OnUseWaterHeight)
+	ON_WM_SHOWWINDOW()
+	ON_WM_CLOSE()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
+
+void ObjectOptions::OnUseWaterHeight()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_TOGGLE_WATER_HEIGHT);
+	m_bUseWaterHeight = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(OBJECT_OPTION_PANEL, "UseWaterHeight", m_bUseWaterHeight ? 1 : 0);
+}
+
+/*static*/ void ObjectOptions::setPlaceAllInCategory(Bool on)
+{
+	m_placeAllInCategory = on;
+	::AfxGetApp()->WriteProfileInt(OBJECT_OPTION_PANEL, "PlaceAllInCategory", on ? 1 : 0);
+}
+
+/*static*/ void ObjectOptions::setPlaceAllYSpacing(Int spacing)
+{
+	m_placeAllYSpacing = spacing;
+	::AfxGetApp()->WriteProfileInt(OBJECT_OPTION_PANEL, "PlaceAllYSpacing", spacing);
+}
+
+void ObjectOptions::OnPreviewBuildZone()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_TOGGLE_PREV_FEEDBACK);
+	m_bPreviewBuildZone = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(OBJECT_OPTION_PANEL, "PreviewBuildZone", m_bPreviewBuildZone ? 1 : 0);
+
+	// CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	// if (pDoc==NULL) return;
+	// WbView3d *p3View = pDoc->GetActive3DView();
+	// p3View->setShowBuildZoneFeedBack(m_bPreviewBuildZone);
+}
+
+void ObjectOptions::OnPreviewAmbientSound()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_TOGGLE_PREVIEW_SOUND);
+	m_bPreviewAmbient = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(OBJECT_OPTION_PANEL, "PreviewSound", m_bPreviewAmbient ? 1 : 0);
+}
 
 /////////////////////////////////////////////////////////////////////////////
 static Int findSideListEntryWithPlayerOfSide(AsciiString side)
@@ -110,6 +171,9 @@ static Int findSideListEntryWithPlayerOfSide(AsciiString side)
 {
 	if (m_staticThis)
 		m_staticThis->updateLabel();
+#ifdef RTS_HAS_QT
+	WBQtObject_PushFromSelection();
+#endif
 }
 
 
@@ -331,8 +395,37 @@ BOOL ObjectOptions::OnInitDialog()
 
 	ScreenToClient(&rect);
 	rect.DeflateRect(2,2,2,2);
-	m_objectTreeView.Create(TVS_HASLINES|TVS_LINESATROOT|TVS_HASBUTTONS|
-		TVS_SHOWSELALWAYS|TVS_DISABLEDRAGDROP, rect, this, IDC_TERRAIN_TREEVIEW);
+		
+	// Create the font for the treeview
+	m_treeFont.CreateFont(
+		14,
+		0,
+		0,
+		0,
+		FW_MEDIUM,
+		FALSE,
+		FALSE,
+		0,
+		ANSI_CHARSET,
+		OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY,
+		DEFAULT_PITCH | FF_SWISS,
+		_T("Segoe UI")
+	);
+
+	// Create the TreeView
+	m_objectTreeView.Create(
+		TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS |
+		TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP,
+		rect,
+		this,
+		IDC_TERRAIN_TREEVIEW
+	);
+
+	// Apply the font
+	m_objectTreeView.SetFont(&m_treeFont);
+
 	m_objectTreeView.ShowWindow(SW_SHOW);
 
 	pWnd = GetDlgItem(IDC_TERRAIN_SWATCHES);
@@ -350,6 +443,23 @@ BOOL ObjectOptions::OnInitDialog()
 		pMap = pMap->getNext();
 	}
 
+	CButton *pButton = (CButton*)GetDlgItem(IDC_TOGGLE_PREVIEW_SOUND);
+	m_bPreviewAmbient=::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "PreviewSound", 1);
+	pButton->SetCheck(m_bPreviewAmbient ? 1:0);
+	OnPreviewAmbientSound();
+
+	pButton = (CButton*)GetDlgItem(IDC_TOGGLE_PREV_FEEDBACK);
+	m_bPreviewBuildZone=::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "PreviewBuildZone", 1);
+	pButton->SetCheck(m_bPreviewBuildZone ? 1:0);
+	OnPreviewBuildZone();
+
+	pButton = (CButton*)GetDlgItem(IDC_TOGGLE_WATER_HEIGHT);
+	m_bUseWaterHeight=::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "UseWaterHeight", 1);
+	pButton->SetCheck(m_bUseWaterHeight ? 1:0);
+	OnUseWaterHeight();
+
+	m_placeAllInCategory = ::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "PlaceAllInCategory", 0) != 0;
+	m_placeAllYSpacing = ::AfxGetApp()->GetProfileInt(OBJECT_OPTION_PANEL, "PlaceAllYSpacing", 0);
 
 	m_staticThis = this;
 	m_updating = false;
@@ -556,7 +666,9 @@ Bool ObjectOptions::setObjectTreeViewSelection(HTREEITEM parent, Int selection)
 		item.cchTextMax = sizeof(buffer)-2;
 		m_objectTreeView.GetItem(&item);
 		if (item.lParam == selection) {
+			// m_isObjectOptsWindowOpen  = true;
 			m_objectTreeView.SelectItem(child);
+			// m_isObjectOptsWindowOpen  = false;
 			return(true);
 		}
 		if (setObjectTreeViewSelection(child, selection))
@@ -601,7 +713,36 @@ BOOL ObjectOptions::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult)
 			if (item.lParam >= 0) {
 				m_currentObjectIndex = item.lParam;
 				strcpy(m_currentObjectName, buffer);
-			}	else if (m_objectTreeView.ItemHasChildren(item.hItem)) {
+			
+				MapObject* obj = getCurMapObject();
+				if (obj && m_isObjectOptsWindowOpen  && m_bPreviewAmbient) {
+					const ThingTemplate* thingTemplate = obj->getThingTemplate();
+					if (thingTemplate) {
+						const AudioEventRTS* event = thingTemplate->getSoundAmbient();
+			
+						if (event) {
+							const AudioEventInfo* audioInfo = event->getAudioEventInfo();
+			
+							if (!audioInfo && TheAudio) {
+								audioInfo = TheAudio->findAudioEventInfo(event->getEventName());
+							}
+			
+							if (audioInfo) {
+								AudioEventRTS eventToPlay;
+								eventToPlay.setEventName(event->getEventName());
+								eventToPlay.setAudioEventInfo(audioInfo);
+								eventToPlay.generateFilename();
+
+								DEBUG_LOG(("String Event %s\n",eventToPlay.getFilename().str()));
+			
+								if (!eventToPlay.getFilename().isEmpty()) {
+									PlaySound(eventToPlay.getFilename().str(), NULL, SND_ASYNC | SND_FILENAME | SND_PURGE);
+								}
+							}
+						}
+					}
+				}
+			} else if (m_objectTreeView.ItemHasChildren(item.hItem)) {
 				strcpy(m_currentObjectName, "No Selection");
 				m_currentObjectIndex = -1;
 			}
@@ -669,6 +810,39 @@ MapObject *ObjectOptions::duplicateCurMapObjectForPlace(const Coord3D* loc, Real
 				found = (si >= 0);
 				if (!found)
 				{
+#ifdef RTS_HAS_QT
+					char qtAdded[256];
+					qtAdded[0] = 0;
+					int qtRc = WBQtAddPlayer_Run(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, defPlayerSide.str(), qtAdded, sizeof(qtAdded));
+					if (qtRc >= 0)
+					{
+						if (qtRc == 1 && qtAdded[0] == 0)
+						{
+							// OK, but no player template exists to add for this side; an
+							// explicitly picked (neutral) still places the object. A Cancel
+							// (qtRc == 0) leaves found false, so nothing gets placed.
+							if (m_curOwnerName == AsciiString("team")) {
+								found = true;
+							}
+						}
+						else if (qtRc == 1)
+						{
+							for (int qi = 0; qi < TheSidesList->getNumSides(); qi++)
+							{
+								AsciiString playerTmplName = TheSidesList->getSideInfo(qi)->getDict()->getAsciiString(TheKey_playerFaction);
+								if (playerTmplName == AsciiString(qtAdded))
+								{
+									m_curOwnerName.set("team");
+									m_curOwnerName.concat(TheSidesList->getSideInfo(qi)->getDict()->getAsciiString(TheKey_playerName));
+									found = true;
+									break;
+								}
+							}
+						}
+					}
+					else
+					{
+#endif
 					AddPlayerDialog addPlyr(pCur->getThingTemplate()->getDefaultOwningSide());
 					if (addPlyr.DoModal() == IDOK)
 					{
@@ -684,6 +858,9 @@ MapObject *ObjectOptions::duplicateCurMapObjectForPlace(const Coord3D* loc, Real
 							}
 						}
 					}
+#ifdef RTS_HAS_QT
+					}
+#endif
 				}
 			}
 			else
@@ -711,7 +888,77 @@ MapObject *ObjectOptions::duplicateCurMapObjectForPlace(const Coord3D* loc, Real
 	return(nullptr);
 }
 
-Real ObjectOptions::getCurObjectHeight()
+/** Place-all-in-category: build a chained list of new map objects covering every
+template in the same tree category (side + editor sorting) as the current object,
+laid out in a grid anchored at loc. The current object goes first (at loc, with the
+passed angle); the others use their own placement view angles. The caller owns the
+chain -- AddObjectUndoable takes chained lists, so one Undo removes the whole batch. */
+MapObject *ObjectOptions::duplicateCategoryMapObjectsForPlace(const Coord3D* loc, Real angle)
+{
+	MapObject *pSelected = getCurMapObject();
+	const ThingTemplate *selTemplate = pSelected ? pSelected->getThingTemplate() : NULL;
+
+	// The selected object goes through the normal path, so the owning-team lookup (and
+	// the add-player prompt if its side has no player yet) runs once for the whole batch.
+	MapObject *pFirst = duplicateCurMapObjectForPlace(loc, angle, true);
+	if (pFirst == NULL || selTemplate == NULL) {
+		return pFirst;	// legacy/test entries have no category; place just the one object
+	}
+
+	// Collect the rest of the category, tracking its largest footprint for the spacing.
+	std::list<MapObject*> members;
+	Real maxRadius = selTemplate->getTemplateGeometryInfo().getMajorRadius();
+	MapObject *pObj = m_staticThis ? m_staticThis->m_objectsList : NULL;
+	for (; pObj; pObj = pObj->getNext()) {
+		const ThingTemplate *tt = pObj->getThingTemplate();
+		if (tt == NULL || pObj == pSelected) {
+			continue;
+		}
+		if (!(tt->getDefaultOwningSide() == selTemplate->getDefaultOwningSide())) {
+			continue;
+		}
+		if (tt->getEditorSorting() != selTemplate->getEditorSorting()) {
+			continue;
+		}
+		members.push_back(pObj);
+		Real radius = tt->getTemplateGeometryInfo().getMajorRadius();
+		if (radius > maxRadius) {
+			maxRadius = radius;
+		}
+	}
+
+	// Grid: the selected object sits on the clicked spot, the others fill a roughly
+	// square grid growing east/north from it. Row (Y) spacing can be overridden by
+	// the panel's manual value; 0 keeps the automatic footprint-based spacing.
+	Real spacing = 2.0f * maxRadius;
+	if (spacing < 20.0f) {
+		spacing = 20.0f;
+	}
+	Real ySpacing = (m_placeAllYSpacing > 0) ? (Real)m_placeAllYSpacing : spacing;
+	Int columns = 1;
+	while (columns * columns < (Int)members.size() + 1) {
+		columns++;
+	}
+	Int cell = 1;	// cell 0 is the selected object
+	MapObject *pTail = pFirst;
+	for (std::list<MapObject*>::iterator it = members.begin(); it != members.end(); ++it, ++cell) {
+		MapObject *pSrc = *it;
+		Coord3D pt = *loc;
+		pt.x += (cell % columns) * spacing;
+		pt.y += (cell / columns) * ySpacing;
+		MapObject *pNew = newInstance(MapObject)( pt, pSrc->getName(),
+																			 pSrc->getThingTemplate()->getPlacementViewAngle(),
+																			 pSrc->getFlags(), pSrc->getProperties(),
+																			 pSrc->getThingTemplate() );
+		pNew->getProperties()->setAsciiString(TheKey_originalOwner, m_curOwnerName);
+		pNew->setColor(pSrc->getColor());
+		pTail->setNextMap(pNew);
+		pTail = pNew;
+	}
+	return pFirst;
+}
+
+Real ObjectOptions::getCurObjectHeight(void)
 {
 	if (m_staticThis) {
 		CWnd *pWnd = m_staticThis->GetDlgItem(IDC_OBJECT_HEIGHT_EDIT);
@@ -780,6 +1027,167 @@ Int ObjectOptions::getObjectNamedIndex(const AsciiString& name)
 	return(0);
 }
 
+// Adriane [Deathscythe] : This function is mainly used for loading new objects from map.ini
+void ObjectOptions::reprocessObjectList()
+{
+	if (!m_staticThis)
+		return;
+
+	// Clear current tree
+	m_staticThis->m_objectTreeView.DeleteAllItems(); 
+	m_staticThis->m_objectsList = NULL;
+	
+	const ThingTemplate *tTemplate;
+	for (tTemplate = TheThingFactory->firstTemplate();
+		tTemplate;
+		tTemplate = tTemplate->friend_getNextTemplate())
+	{
+		Coord3D loc = { 0, 0, 0 };
+		MapObject *pMap;
+
+		// DEBUG_LOG(("Adding Object to ObjectList: '%s'\n", tTemplate->getName().str()));
+
+		// create new map object
+		pMap = newInstance(MapObject)(loc, tTemplate->getName(), 0.0f, 0, NULL, tTemplate);
+		pMap->setNextMap(m_staticThis->m_objectsList);
+		m_staticThis->m_objectsList = pMap;
+
+		// get display color for the editor
+		Color cc = tTemplate->getDisplayColor();
+		pMap->setColor(cc);
+	}
+
+	// Repopulate list
+	MapObject* pMap = m_staticThis->m_objectsList;
+	Int index = 0;
+	while (pMap)
+	{
+		m_staticThis->addObject(pMap, pMap->getName().str(), index, TVI_ROOT);
+		index++;
+		pMap = pMap->getNext();
+	}
+}
+
+void ObjectOptions::OnOK()
+{
+    OnSearch(); 
+}
+
+// Add the function that handles the search button click
+void ObjectOptions::OnReset()
+{
+	m_objectTreeView.DeleteAllItems(); // Clear current tree
+
+	// Repopulate list
+	MapObject* pMap = m_objectsList;
+	Int index = 0;
+	while (pMap)
+	{
+		addObject(pMap, pMap->getName().str(), index, TVI_ROOT);
+		index++;
+		pMap = pMap->getNext();
+	}
+
+	m_objectsListModified = false;
+}
+
+// Add the function that handles the search button click
+void ObjectOptions::OnSearch()
+{
+    UpdateData(TRUE);
+
+    CString searchText;
+    GetDlgItemText(IDC_OBJECT_SEARCH_EDIT, searchText);
+    searchText.MakeLower();
+
+    m_objectTreeView.DeleteAllItems(); // Clear current tree
+
+    if (searchText.IsEmpty())
+    {
+		::MessageBeep(MB_ICONEXCLAMATION);
+        // Repopulate full list if search is empty
+        MapObject* pMap = m_objectsList;
+		Int index = 0;
+		while (pMap)
+		{
+			addObject(pMap, pMap->getName().str(), index, TVI_ROOT);
+			index++;
+			pMap = pMap->getNext();
+		}
+
+		m_objectsListModified = false;
+
+        return;
+    }
+
+    MapObject* pMap = m_objectsList;
+    int index = 0;
+    int matchCount = 0;
+
+    while (pMap)
+    {
+        CString name = pMap->getName().str();
+        CString lowerName = name;
+        lowerName.MakeLower();
+
+        if (lowerName.Find(searchText) != -1)
+        {
+            addObject(pMap, name, index, TVI_ROOT);
+            matchCount++;
+        }
+
+        pMap = pMap->getNext();
+        index++;
+    }
+
+    if (matchCount == 0)
+    {
+		::MessageBeep(MB_ICONEXCLAMATION);
+        // MessageBox("No matches found.", "Search", MB_OK | MB_ICONINFORMATION);
+    }
+    else
+    {
+        // Expand all items in the tree
+        HTREEITEM hRoot = m_objectTreeView.GetRootItem();
+        if (hRoot)
+        {
+            ExpandAllItems(m_objectTreeView, hRoot);
+        }
+
+		m_objectsListModified = true;
+    }
+}
+
+
+void ObjectOptions::ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem)
+{
+    while (hItem)
+    {
+        treeCtrl.Expand(hItem, TVE_EXPAND);
+        HTREEITEM hChild = treeCtrl.GetChildItem(hItem);
+        if (hChild)
+            ExpandAllItems(treeCtrl, hChild);
+
+        hItem = treeCtrl.GetNextSiblingItem(hItem);
+    }
+}
+
+// Old Logic -- Unused
+// HTREEITEM ObjectOptions::getNextItem(HTREEITEM hItem)
+// {
+//     if (m_objectTreeView.GetChildItem(hItem))
+//         return m_objectTreeView.GetChildItem(hItem);
+
+//     while (hItem)
+//     {
+//         if (m_objectTreeView.GetNextSiblingItem(hItem))
+//             return m_objectTreeView.GetNextSiblingItem(hItem);
+
+//         hItem = m_objectTreeView.GetParentItem(hItem);
+//     }
+
+//     return NULL;
+// }
 
 void ObjectOptions::OnEditchangeOwningteam()
 {
@@ -818,6 +1226,9 @@ void ObjectOptions::selectObject(const MapObject* pObj)
 		if (m_staticThis->m_objectTreeView.SelectItem(objToSel)) {
 			m_staticThis->m_currentObjectIndex = item.lParam;
 			strcpy(m_staticThis->m_currentObjectName, buffer);
+#ifdef RTS_HAS_QT
+			WBQtObject_PushSelectIndex(m_staticThis->m_currentObjectIndex);
+#endif
 		}
 	}
 }
@@ -832,3 +1243,18 @@ void ObjectOptions::OnSelchangeOwningteam()
 	OnEditchangeOwningteam();
 }
 
+void ObjectOptions::OnShowWindow(BOOL bShow, UINT nStatus)
+{
+	CDialog::OnShowWindow(bShow, nStatus);
+	/**
+	 * Adriane [Deathscythe]
+	 * Call reset when we modify the object list from a search and the dialog is about to commit seppuku.
+	 * For some shitty reason, the object list here is tied to the Fence Tool — make sure to reset it.
+	 */
+	m_isObjectOptsWindowOpen = bShow;
+
+	if (!bShow && m_objectsListModified)
+	{
+		OnReset();
+	}
+}

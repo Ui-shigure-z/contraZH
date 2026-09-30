@@ -87,6 +87,8 @@ public:
 	{
 		IndexBufferClass* index_buffer;
 		unsigned short* indices;
+		unsigned start;
+		unsigned range;
 	public:
 		AppendLockClass(IndexBufferClass* index_buffer,unsigned start_index, unsigned index_range);
 		~AppendLockClass();
@@ -177,8 +179,12 @@ public:
 
 	IDirect3DIndexBuffer8* Get_DX8_Index_Buffer()	{ return index_buffer; }
 
+	/// Copies a range of the system memory copy into the buffer.
+	void Upload_Shadow(unsigned first_index, unsigned count);
+
 private:
 	IDirect3DIndexBuffer8*	index_buffer;		// actual dx8 index buffer
+	unsigned short*			shadow;				// the copy a static buffer is written through on D3D9Ex, as in DX8VertexBufferClass
 };
 
 

@@ -33,6 +33,7 @@
 #include <stddef.h>	// for offsetof, which we don't use but everyone who includes us does
 #include "Common/STLTypedefs.h"
 #include "Common/AsciiString.h"
+#include <vector>
 #include "Common/GameCommon.h"
 
 //-------------------------------------------------------------------------------------------------
@@ -180,6 +181,12 @@ public:
 	// Load one specific INI file by name.
 	// Throws if the INI file is not found or is not read correctly.
 	UnsignedInt load( AsciiString filename, INILoadType loadType, Xfer *pXfer, Bool optional = FALSE);
+	void loadObjectsOnly(AsciiString filename, Xfer* pXfer);
+	void loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer);  ///< Adriane[Deathscythe] : for loading map.ini under wb directly
+	/// The block headers loadWB had to skip because they would not parse against the installed
+	/// data (WorldBuilder only; valid until the next loadWB). Lets the editor report what it
+	/// dropped instead of silently losing it.
+	static const std::vector<AsciiString>& friend_getWBSkippedBlocks(void);
 
 	static Bool isDeclarationOfType( AsciiString blockType, AsciiString blockName, char *bufferToCheck );
 	static Bool isEndOfBlock( char *bufferToCheck );

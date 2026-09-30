@@ -22,6 +22,9 @@
 
 #pragma once
 
+
+#define TILE_OPTION_PANEL "TileOptionPanel"
+
 #include "Tool.h"
 class WorldHeightMapEdit;
 /*************************************************************************
@@ -30,6 +33,28 @@ class WorldHeightMapEdit;
 class TileTool : public Tool
 {
 protected:
+
+	// struct TerrainPreviewBuffer {
+	// 	int startX, startY;
+	// 	int width, height;
+	// 	std::vector<std::vector<float>> heightData;
+	// 	std::vector<std::vector<int>> textureData;
+	// 	bool visible;
+	// 	bool hasTexture;
+	// };
+
+	// static TerrainPreviewBuffer s_previewBuffer;
+
+	struct TileTextureData {
+		int xOffset;
+		int yOffset;
+		int textureClass;
+		int blendTileNdx;
+		int extraBlendTileNdx;
+	};
+
+	static std::vector<TileTextureData> m_copiedTileTextures;
+
 	WorldHeightMapEdit *m_htMapEditCopy; //< ref counted.
 	Int									m_textureClassToDraw;
 	CPoint							m_prevViewPt;
@@ -39,12 +64,31 @@ public:
 	virtual ~TileTool() override;
 
 public:
-	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual WorldHeightMapEdit *getHeightMap() override {return m_htMapEditCopy;};
-	virtual void activate() override; ///< Become the current tool.
-	virtual Int getWidth() {return 1;};
+	// struct TBlendTileInfo;   // forward declare the blend tile info struct
+	struct TerrainCopyBuffer {
+		std::vector<std::vector<UnsignedByte> > heightData;   // Note the space before '>' for VC6
+		// std::vector<std::vector<Int> > textureData;           // Same here
+		Int width;
+		Int height;
+		// Bool hasTexture;
+	};
+	
+	static TerrainCopyBuffer s_copyBuffer;
+
+	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual WorldHeightMapEdit *getHeightMap(void) {return m_htMapEditCopy;};
+	virtual void activate(); ///< Become the current tool.
+	virtual void deactivate();
+	virtual void abandonStroke(void); ///< Drop an uncommitted stroke on a tool swap.
+	virtual Int getWidth(void) {return 1;};
+	static void clearCopiedTiles(); ///< Called under open new document
+	
+	static void copyTerrainArea(WorldHeightMapEdit* pMap, Int startX, Int startY, Int size);
+	static void applyTerrainArea(WorldHeightMapEdit* pMap, Int destX, Int destY);
+
+	// ::TBlendTileInfo rotateBlendInfo(const ::TBlendTileInfo &info, int rotation);
 };
 
 /*************************************************************************
@@ -55,6 +99,15 @@ class BigTileTool : public TileTool
 
 protected:
 	static Int m_currentWidth;
+	static Int m_currentHeight;
+	static Int m_copyModeWidth; 
+
+	static Bool m_enableMirror;
+	static Bool m_mirrorX;   // left/right
+    static Bool m_mirrorY;   // top/bottom
+    static Bool m_mirrorDiag; // diagonal only (XY corner)
+
+	static Bool m_enableNoMixing; // if true, don't allow blending of different texture classes when auto-blending.
 
 public:
 	virtual void activate() override; ///< Become the current tool.
@@ -63,6 +116,38 @@ public:
 	BigTileTool();
 
 	static void setWidth(Int width) ;
-	virtual Int getWidth() override {return m_currentWidth;};
+	virtual Int getWidth(void) {return m_currentWidth;};
+	static void setHeight(Int height) ;
+	virtual Int getHeight(void) {return m_currentHeight;};
 
+	static Bool getEnableMirror() { return m_enableMirror; }
+	static Bool getMirrorX() { return m_mirrorX; }
+	static Bool getMirrorY() { return m_mirrorY; }
+	static Bool getMirrorDiag() { return m_mirrorDiag; }
+
+	static Bool getEnableNoMixing() { return m_enableNoMixing; }
+
+	static void toggleMirror() { m_enableMirror = !m_enableMirror; }
+	static void toggleMirrorX() { m_mirrorX = !m_mirrorX; }
+	static void toggleMirrorY() { m_mirrorY = !m_mirrorY; }
+	static void toggleMirrorXY() { m_mirrorDiag = !m_mirrorDiag; }
+
+	static void toggleNoMixing() { m_enableNoMixing = !m_enableNoMixing; }
+
+	// Used by TerrainMaterial dialog to get/set current width.
+	static Int getCurrentWidth(void) {return m_currentWidth;};
+	static Int getCurrentHeight(void) {return m_currentHeight;};
+
+	static Int getCopyModeWidth(void) {
+		return ::AfxGetApp()->GetProfileInt(TILE_OPTION_PANEL, "CopyModeWidth", 20);
+	}
+	static Int getTileToolWidth(void) {
+		return ::AfxGetApp()->GetProfileInt(TILE_OPTION_PANEL, "TileToolWidth", 3);
+	}
+	static void setCopyModeWidth(Int width) {
+		::AfxGetApp()->WriteProfileInt(TILE_OPTION_PANEL, "CopyModeWidth", width);
+	}
+	static void setTileToolWidth(Int width) {
+		::AfxGetApp()->WriteProfileInt(TILE_OPTION_PANEL, "TileToolWidth", width);
+	}
 };

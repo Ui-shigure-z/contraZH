@@ -52,6 +52,8 @@
 #include "RampTool.h"
 #include "ScorchTool.h"
 #include "RulerTool.h"
+#include "WaveEditorTool.h"
+#include "StochasticTool.h"
 #include "Common/Debug.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -85,6 +87,7 @@ public:
 // Implementation
 	//{{AFX_MSG(CWorldBuilderApp)
 	afx_msg void OnAppAbout();
+	afx_msg void OnRefreshAppAbout();
 	afx_msg void OnResetWindows();
 	afx_msg void OnFileOpen();
 	afx_msg void OnTexturesizingMapclifftextures();
@@ -94,7 +97,7 @@ public:
 
 protected:
 
-	enum {NUM_VIEW_TOOLS=25};
+	enum {NUM_VIEW_TOOLS=27};
 
 	Tool							*m_tools[NUM_VIEW_TOOLS]; ///< array of tool pointers.
 	Tool							*m_curTool;   ///< Currently active tool.
@@ -124,10 +127,14 @@ protected:
 	ScorchTool				m_scorchTool;				///< Scorch tool.
 	BorderTool				m_borderTool;				///< Border tool.
 	RulerTool					m_rulerTool;				///< Ruler tool.
+	WaveEditorTool		m_waveEditorTool;		///< Wave editor tool.
+	StochasticTool		m_stochasticTool;		///< Stochastic terrain brush.
 
 	Int								m_lockCurTool;
 
 	AsciiString				m_currentDirectory; ///< Current directory for open file.
+	AsciiString				m_gameDirectory; ///< Required for the jump to the game button - Adriane [Deathscythe].
+	BOOL m_bLaunchOnStartUp;
 
 	CDocTemplate			*m_3dtemplate;
 
@@ -144,6 +151,25 @@ public:
 
 	CDocTemplate *Get3dTemplate() { return m_3dtemplate; }
 
+#ifdef RTS_HAS_QT
+	// Tier 4a: MRU access for the Qt File menu (m_pRecentFileList is protected in
+	// CWinApp). Defined in src/WBQtChromeBridge.cpp.
+	int qtGetMruCount(void);
+	void qtGetMruPath(int i, CString &out);
+	// Stage 1 diagnostics: log the unhandled MFC exceptions that surface as the
+	// "Internal application error." box before the base handler shows it.
+	virtual LRESULT ProcessWndProcException(CException *e, const MSG *pMsg);
+	// Stage 1 phase 2 (keyboard flip): feed every pumped message to the WBQtShortcuts
+	// table first. After the inversion the MFC accelerator table is dead for
+	// viewport-focused keys (the view lives under the Qt window, so MFC's PreTranslate
+	// tree-walk never reaches the frame); this override is the replacement.
+	virtual BOOL PreTranslateMessage(MSG *pMsg);
+	// Stage 1 phase 3 (modality): route AfxMessageBox traffic through a Qt message box
+	// parented to the Qt main window, so it centers over the app and is fenced by Qt
+	// modality (an un-parented native box is not).
+	virtual int DoMessageBox(LPCTSTR lpszPrompt, UINT nType, UINT nIDPrompt);
+#endif
+
 	/// Set the brush tool as the active tool.
 	void selectBrushTool() { setActiveTool(&m_brushTool); }
 
@@ -159,7 +185,12 @@ public:
 	/// Sets the current directory for file opens.
 	void setCurrentDirectory(AsciiString dir) {m_currentDirectory = dir;};
 
+	AsciiString getCurrentGameDirectory() { return m_gameDirectory; }
 	Tool *getCurTool() { return m_curTool; }
+	/// The tool chosen in the palette (ignores transient Space/Alt/Ctrl swaps that retarget m_curTool).
+	Tool *getSelTool() { return m_selTool; }
+	/// The persistent wave-editor tool instance, so the render path can tell if it's the selected tool.
+	WaveEditorTool *getWaveEditorTool() { return &m_waveEditorTool; }
 
 	/// Check to see if any keyboard overrides are changing the current tool.
 	void updateCurTool(Bool forceHand);

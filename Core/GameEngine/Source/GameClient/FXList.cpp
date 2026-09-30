@@ -666,7 +666,7 @@ class ShockwaveFXNugget : public FXNugget
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ShockwaveFXNugget, "ShockwaveFXNugget")
 public:
 
-	ShockwaveFXNugget() : m_radius(0), m_width(0), m_strength(0), m_durationFrames(0)
+	ShockwaveFXNugget() : m_radius(0), m_width(0), m_strength(0), m_strengthInPixels(FALSE), m_durationFrames(0)
 	{
 	}
 
@@ -674,7 +674,7 @@ public:
 	{
 		if (primary)
 		{
-			TheDisplay->createShockwave(primary->getPosition(), m_radius, m_width, m_strength, m_durationFrames);
+			TheDisplay->createShockwave(primary->getPosition(), m_radius, m_width, m_strength, m_strengthInPixels, m_durationFrames);
 		}
 		else
 		{
@@ -686,7 +686,7 @@ public:
 	{
 		if (primary)
 		{
-			TheDisplay->createShockwave(primary, m_radius, m_width, m_strength, m_durationFrames);
+			TheDisplay->createShockwave(primary, m_radius, m_width, m_strength, m_strengthInPixels, m_durationFrames);
 		}
 		else
 		{
@@ -701,6 +701,7 @@ public:
 			{ "Radius",						INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_radius ) },
 			{ "Width",						INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_width ) },
 			{ "Strength",					INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_strength ) },
+			{ "StrengthInPixels",			INI::parseBool,										nullptr, offsetof( ShockwaveFXNugget, m_strengthInPixels ) },
 			{ "Duration",					INI::parseDurationUnsignedInt,	nullptr, offsetof( ShockwaveFXNugget, m_durationFrames ) },
 			{ nullptr, nullptr, nullptr, 0 }
 		};
@@ -714,6 +715,7 @@ private:
 	Real					m_radius;
 	Real					m_width;
 	Real					m_strength;
+	Bool					m_strengthInPixels;
 	UnsignedInt		m_durationFrames;
 };
 EMPTY_DTOR(ShockwaveFXNugget)

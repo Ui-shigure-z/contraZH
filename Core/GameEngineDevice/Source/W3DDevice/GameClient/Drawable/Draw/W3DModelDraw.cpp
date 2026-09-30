@@ -2160,27 +2160,46 @@ void W3DModelDraw::releaseShadows()	///< frees all shadow resources used by this
 	m_shadow = nullptr;
 }
 
+// With ShadowsAlwaysOn, a model without a Shadow still casts into the shadow map.
+static ShadowType getCastShadowType(const ThingTemplate *tmplate, Bool *mapOnly)
+{
+	ShadowType type = tmplate->getShadowType();
+	*mapOnly = FALSE;
+#if RTS_ZEROHOUR
+	if (type == SHADOW_NONE && TheGlobalData->m_shadowsAlwaysOn)
+	{
+		type = SHADOW_VOLUME;
+		*mapOnly = TRUE;
+	}
+#endif
+	return type;
+}
+
 /** Create shadow resources if not already present. This is used to dynamically enable/disable shadows by the options screen*/
 void W3DModelDraw::allocateShadows()
 {
 	const ThingTemplate *tmplate=getDrawable()->getTemplate();
 
 	//Check if we don't already have a shadow but need one for this type of model.
-	ShadowType type = tmplate->getShadowType();
+	Bool mapOnly;
+	ShadowType type = getCastShadowType(tmplate, &mapOnly);
 	if (m_shadow == nullptr && m_renderObject && TheW3DShadowManager && type != SHADOW_NONE
 		&& (m_isFirstDrawModule || !(type == SHADOW_DECAL || type == SHADOW_ALPHA_DECAL || type == SHADOW_ADDITIVE_DECAL)))
 	{
 		Shadow::ShadowTypeInfo shadowInfo;
 		strlcpy(shadowInfo.m_ShadowName, tmplate->getShadowTextureName().str(), ARRAY_SIZE(shadowInfo.m_ShadowName));
-		DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
+		DEBUG_ASSERTCRASH(mapOnly || shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
 		shadowInfo.allowUpdates			= FALSE;		//shadow image will never update
 		shadowInfo.allowWorldAlign	= TRUE;	//shadow image will wrap around world objects
-		shadowInfo.m_type						= (ShadowType)tmplate->getShadowType();
+		shadowInfo.m_type						= type;
 		shadowInfo.m_sizeX					= tmplate->getShadowSizeX();
 		shadowInfo.m_sizeY					= tmplate->getShadowSizeY();
 		shadowInfo.m_offsetX				= tmplate->getShadowOffsetX();
 		shadowInfo.m_offsetY				= tmplate->getShadowOffsetY();
 		shadowInfo.m_hasDynamicLength = tmplate->hasDynamicShadowLength();
+#if RTS_ZEROHOUR
+		shadowInfo.m_shadowMapOnly = mapOnly;
+#endif
 		//DEBUG_LOG((">>> W3DModelDraw::allocateShadows, shadowInfo.m_hasDynamicLength = %d", shadowInfo.m_hasDynamicLength));
   		m_shadow = TheW3DShadowManager->addShadow(m_renderObject, &shadowInfo);
 		if (m_shadow)
@@ -3791,21 +3810,25 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		}
 
 		// set up shadows
-		ShadowType type = tmplate->getShadowType();
+		Bool mapOnly;
+		ShadowType type = getCastShadowType(tmplate, &mapOnly);
 		if (m_renderObject && TheW3DShadowManager && type != SHADOW_NONE &&
 			(m_isFirstDrawModule || !(type == SHADOW_DECAL || type == SHADOW_ALPHA_DECAL || type == SHADOW_ADDITIVE_DECAL)))
 		{
 			Shadow::ShadowTypeInfo shadowInfo;
 			strlcpy(shadowInfo.m_ShadowName, tmplate->getShadowTextureName().str(), ARRAY_SIZE(shadowInfo.m_ShadowName));
-			DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
+			DEBUG_ASSERTCRASH(mapOnly || shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
 			shadowInfo.allowUpdates			= FALSE;		//shadow image will never update
 			shadowInfo.allowWorldAlign	= TRUE;	//shadow image will wrap around world objects
-			shadowInfo.m_type						= (ShadowType)tmplate->getShadowType();
+			shadowInfo.m_type						= type;
 			shadowInfo.m_sizeX					= tmplate->getShadowSizeX();
 			shadowInfo.m_sizeY					= tmplate->getShadowSizeY();
 			shadowInfo.m_offsetX				= tmplate->getShadowOffsetX();
 			shadowInfo.m_offsetY				= tmplate->getShadowOffsetY();
 			shadowInfo.m_hasDynamicLength = tmplate->hasDynamicShadowLength();
+#if RTS_ZEROHOUR
+			shadowInfo.m_shadowMapOnly = mapOnly;
+#endif
 			//DEBUG_LOG((">>> W3DModelDraw::allocateShadows, shadowInfo.m_hasDynamicLength = %d", shadowInfo.m_hasDynamicLength));
 
 			DEBUG_ASSERTCRASH(m_shadow == nullptr, ("m_shadow is not null"));

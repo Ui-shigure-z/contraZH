@@ -72,12 +72,19 @@ void TeamGeneric::_fillComboBoxesWithScripts()
 	while (s_allControls[i][1]) {
 		CComboBox *pCombo = (CComboBox*) GetDlgItem(s_allControls[i][1]);
 		if (!pCombo) {
+			++i;
 			continue;
 		}
+
+		pCombo->SetRedraw(FALSE);
 
 		// Load all the scripts, then add the NONE string.
 		EditParameter::loadScripts(pCombo, true);
 		pCombo->InsertString(0, NONE_STRING);
+
+		pCombo->SetRedraw(TRUE);  
+		pCombo->Invalidate();    
+
 		++i;
 	}
 }
@@ -116,7 +123,11 @@ void TeamGeneric::_dictToScripts()
 		if (exists) {
 			Int selNdx = pCombo->FindStringExact(-1, scriptString.str());
 			if (selNdx == LB_ERR) {
-				pCombo->SetCurSel(0);
+				CString missingStr;
+				missingStr.Format("[???] %s", scriptString.str()); 
+				int insertAt = 1; 
+				pCombo->InsertString(insertAt, missingStr);
+				pCombo->SetCurSel(insertAt);
 			} else {
 				pCombo->SetCurSel(selNdx);
 			}
