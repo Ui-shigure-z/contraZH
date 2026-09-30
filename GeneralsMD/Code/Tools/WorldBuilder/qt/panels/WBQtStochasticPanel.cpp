@@ -23,14 +23,15 @@ WBQtStochasticPanel::WBQtStochasticPanel(QWidget *owner)
 	QVBoxLayout *root = new QVBoxLayout(this);
 
 	QPushButton *randomize = new QPushButton("Randomize");
-	randomize->setToolTip("Pick a new seed for the next strokes");
+	randomize->setToolTip("Pick a new seed for the next strokes. Seed 0 picks a new one for every stroke");
 	addRow(root, "Brush Width", "Size in cells:", 1, 30, 999, m_widthSlider, m_widthSpin, &m_widthLabel);
 	addRow(root, "Feather", "Width in cells:", 0, 30, 999, m_featherSlider, m_featherSpin, &m_featherLabel);
 	addRow(root, "Seed", "Pattern:", 0, 255, 255, m_seedSlider, m_seedSpin, NULL, randomize);
+	m_seedSpin->setSpecialValueText("Random");
 	addRow(root, "Blending Rate", "Softness:", 0, 100, 100, m_rateSlider, m_rateSpin, &m_rateLabel);
 
 	QLabel *help = new QLabel("Breaks up visible terrain tiling with shifted, turned hex cells. "
-		"Strokes stamp their seed and blending rate; hold Shift to erase.");
+		"Strokes stamp their seed and blending rate; seed 0 gives each stroke a random one. Hold Shift to erase.");
 	help->setWordWrap(true);
 	root->addWidget(help);
 	root->addStretch(1);

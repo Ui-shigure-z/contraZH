@@ -40,6 +40,7 @@ StochasticTool::StochasticTool() :
 	Tool(ID_STOCHASTIC_TOOL, IDC_BRUSH_CROSS)
 {
 	m_htMapEditCopy = nullptr;
+	m_strokeSeed = 0;
 }
 
 StochasticTool::~StochasticTool()
@@ -97,7 +98,8 @@ void StochasticTool::setRate(Int rate)
 
 void StochasticTool::randomizeSeed()
 {
-	setSeed(rand() % (MAX_SEED + 1));
+	// Never picks RANDOM_SEED, which would switch to a new seed per stroke.
+	setSeed(1 + rand() % MAX_SEED);
 }
 
 void StochasticTool::activate()
@@ -125,6 +127,8 @@ void StochasticTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CW
 	}
 	REF_PTR_RELEASE(m_htMapEditCopy);
 	m_htMapEditCopy = pDoc->GetHeightMap()->duplicate();
+	// Seed 0 is what unpainted cells read, so a random stroke picks from the others.
+	m_strokeSeed = (m_seed == RANDOM_SEED) ? 1 + rand() % MAX_SEED : m_seed;
 	m_prevXIndex = -1;
 	m_prevYIndex = -1;
 	mouseMoved(m, viewPt, pView, pDoc);
@@ -197,7 +201,7 @@ void StochasticTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, C
 			}
 			else if (amount > strength)
 			{
-				m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)amount, (UnsignedByte)m_seed, rate);
+				m_htMapEditCopy->setStochastic(i, j, (UnsignedByte)amount, (UnsignedByte)m_strokeSeed, rate);
 			}
 		}
 	}

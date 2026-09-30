@@ -28,11 +28,13 @@ class WorldHeightMapEdit;
 /**                             StochasticTool
 	 Paints stochastic terrain: strength with a feathered edge, and the
 	 stroke's seed and blending rate where the strength rises. Shift erases.
+	 Seed 0 gives each stroke its own random seed.
 ***************************************************************************/
 class StochasticTool : public Tool
 {
 protected:
 	WorldHeightMapEdit *m_htMapEditCopy; ///< ref counted.
+	Int m_strokeSeed; ///< the seed the current stroke stamps.
 
 	static Int m_width;
 	static Int m_feather;
@@ -40,7 +42,7 @@ protected:
 	static Int m_rate;
 
 public:
-	enum { MAX_SEED = 255, MAX_RATE = 100 };
+	enum { RANDOM_SEED = 0, MAX_SEED = 255, MAX_RATE = 100 };
 
 	StochasticTool();
 	virtual ~StochasticTool() override;

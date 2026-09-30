@@ -683,8 +683,9 @@ The brush's options:
 
 * Brush Width and Feather - (Where the effect applies, and how softly it fades out at the edge.)
 * Seed - (Picks the cells' shifts and turns. Randomize picks a new one. Each stroke stamps its seed
-on the cells it raises, so neighbouring areas can look different. Where two seeds meet the change
-follows the cell edges, so it shows no seam.)
+on the cells it raises, so neighbouring areas can look different. Seed 0 (shown as Random) gives
+every stroke its own random seed. Where two seeds meet the change follows the cell edges, so it
+shows no seam.)
 * Blending Rate - (How softly the cells blend. Low gives visible patches of turned texture, high a
 smooth mix. Also stamped per stroke.)
 
