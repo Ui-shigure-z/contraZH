@@ -728,6 +728,7 @@ WbView3d::WbView3d() :
 #if defined(BUILD_WITH_D3D9)
 	m_labelSprite = NULL;
 	m_labelSpriteOpen = false;
+	m_labelLayer = NULL;
 #endif
 #ifdef RTS_HAS_QT
 	m_deviceResetFailed = false;
@@ -738,6 +739,10 @@ WbView3d::WbView3d() :
 	
 	m_lod = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LODMode", 2);
 	m_textShadow = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextShadow", 1) != 0;
+	m_textOutline = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextOutline", 0) != 0;
+	if (m_textOutline) {
+		m_textShadow = false;
+	}
 	m_textAntialias = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "TextAntialias", 1) != 0;
 	m_labelAnchorMode = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelAnchorMode", 0);
 	m_labelRenderer = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LabelRenderer", 0);
@@ -4870,6 +4875,164 @@ void WbView3d::redraw(void)
 	m_time = ::GetTickCount();
 }
 
+#if defined(BUILD_WITH_D3D9)
+// Full-target quad sampling the label layer 1:1, shifted by (dx, dy) pixels.
+static void drawLabelLayerQuad(IDirect3DDevice8 *dev, Int w, Int h, Real dx, Real dy)
+{
+	struct TLVertex { Real x, y, z, rhw; Real u, v; };
+	const Real x0 = dx - 0.5f;
+	const Real y0 = dy - 0.5f;
+	const Real x1 = x0 + (Real)w;
+	const Real y1 = y0 + (Real)h;
+	TLVertex verts[4] = {
+		{ x0, y0, 0.0f, 1.0f, 0.0f, 0.0f },
+		{ x1, y0, 0.0f, 1.0f, 1.0f, 0.0f },
+		{ x0, y1, 0.0f, 1.0f, 0.0f, 1.0f },
+		{ x1, y1, 0.0f, 1.0f, 1.0f, 1.0f },
+	};
+	DX8_SET_FVF(dev, D3DFVF_XYZRHW | D3DFVF_TEX1);
+	dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, verts, sizeof(TLVertex));
+}
+
+/** Old-mode labels with shadow. Every string goes through D3DX once, into an offscreen
+    layer holding premultiplied color and coverage; the layer then composites twice,
+    shifted one pixel as a black shadow and in place as the text. This replaces the
+    second DrawText per string that the shadow used to cost. */
+Bool WbView3d::drawLabelsLayered()
+{
+	IDirect3DDevice8 *dev = DX8Wrapper::_Get_D3D_Device8();
+	if (dev == NULL || m_labelSprite == NULL || m3DFont == NULL) {
+		return false;
+	}
+
+	IDirect3DSurface8 *oldTarget = NULL;
+	if (FAILED(dev->GetRenderTarget(0, &oldTarget)) || oldTarget == NULL) {
+		return false;
+	}
+	D3DSURFACE_DESC targetDesc;
+	oldTarget->GetDesc(&targetDesc);
+	const Int w = (Int)targetDesc.Width;
+	const Int h = (Int)targetDesc.Height;
+
+	if (m_labelLayer != NULL) {
+		D3DSURFACE_DESC have;
+		m_labelLayer->GetLevelDesc(0, &have);
+		if ((Int)have.Width != w || (Int)have.Height != h) {
+			m_labelLayer->Release();
+			m_labelLayer = NULL;
+		}
+	}
+	if (m_labelLayer == NULL &&
+		FAILED(dev->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_labelLayer, NULL))) {
+		m_labelLayer = NULL;
+		oldTarget->Release();
+		return false;
+	}
+	IDirect3DSurface8 *layerSurface = NULL;
+	m_labelLayer->GetSurfaceLevel(0, &layerSurface);
+
+	IDirect3DStateBlock9 *saved = NULL;
+	dev->CreateStateBlock(D3DSBT_ALL, &saved);
+	IDirect3DSurface8 *oldDepth = NULL;
+	dev->GetDepthStencilSurface(&oldDepth);
+
+	// The layer is never multisampled, so the scene's depth buffer cannot stay bound.
+	dev->SetRenderTarget(0, layerSurface);
+	dev->SetDepthStencilSurface(NULL);
+	dev->Clear(0, NULL, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0);
+
+	dev->SetVertexShader(NULL);
+	dev->SetPixelShader(NULL);
+	dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+	dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+	dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+	dev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+	dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+	dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+	dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0x0F);
+	dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	dev->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+	dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+	// Coverage accumulates as "over" so overlapping labels keep a correct alpha.
+	dev->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+	dev->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE);
+	dev->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
+	dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+	dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+	dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+	dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+	dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+	dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+
+	Bool drawn = false;
+	if (SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_DONOTSAVESTATE | WB_D3DXSPRITE_DONOTMODIFY_RENDERSTATE))) {
+		const Bool shadow = m_textShadow;
+		m_textShadow = false;
+		m_labelSpriteOpen = true;
+		drawLabels(NULL);
+		m_labelSpriteOpen = false;
+		m_textShadow = shadow;
+		m_labelSprite->End();
+		drawn = true;
+	}
+
+	dev->SetRenderTarget(0, oldTarget);
+	dev->SetDepthStencilSurface(oldDepth);
+
+	if (drawn) {
+		// Premultiplied composite: the shadow or outline keeps only coverage, the text keeps both.
+		dev->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+		dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+		dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		dev->SetTexture(0, m_labelLayer);
+		dev->SetRenderState(D3DRS_TEXTUREFACTOR, 0x00000000);
+		dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+		dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		if (m_textOutline) {
+			// A soft rim: the four edge neighbors only, each at 60% black.
+			dev->SetRenderState(D3DRS_TEXTUREFACTOR, 0x99000000);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+			drawLabelLayerQuad(dev, w, h, -1.0f, 0.0f);
+			drawLabelLayerQuad(dev, w, h, 1.0f, 0.0f);
+			drawLabelLayerQuad(dev, w, h, 0.0f, -1.0f);
+			drawLabelLayerQuad(dev, w, h, 0.0f, 1.0f);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+		} else {
+			drawLabelLayerQuad(dev, w, h, 1.0f, 1.0f);
+		}
+		dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		drawLabelLayerQuad(dev, w, h, 0.0f, 0.0f);
+		dev->SetTexture(0, NULL);
+	}
+
+	if (saved != NULL) {
+		saved->Apply();
+		saved->Release();
+	}
+	if (oldDepth != NULL) {
+		oldDepth->Release();
+	}
+	oldTarget->Release();
+	layerSurface->Release();
+	DX8Wrapper::Invalidate_Cached_Render_States();
+	return drawn;
+}
+#endif
+
 // ----------------------------------------------------------------------------
 // Draws a one-pixel rectangle outline into the D3D frame as pre-transformed lines.
 // The box is part of the presented frame, so it shows on every backend and never
@@ -5235,16 +5398,28 @@ void WbView3d::render()
 #if defined(BUILD_WITH_D3D9)
 			// D3DX9 flushes every DrawText that has no sprite; a shared sprite batches
 			// the whole emit into one flush at End(), which is what the 11 ms was.
-			if (m_labelSprite != NULL && SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_ALPHABLEND))) {
-				m_labelSpriteOpen = true;
-				drawLabels(NULL);
-				m_labelSpriteOpen = false;
-				m_labelSprite->End();
+			const Bool savedShadow = m_textShadow;
+			if ((m_textShadow || m_textOutline) && drawLabelsLayered()) {
+				// drawn through the offscreen layer
 			} else {
-				drawLabels(NULL);
+				// Without the layer an outline falls back to the per-string shadow.
+				m_textShadow = savedShadow || m_textOutline;
+				if (m_labelSprite != NULL && SUCCEEDED(m_labelSprite->Begin(WB_D3DXSPRITE_ALPHABLEND))) {
+					m_labelSpriteOpen = true;
+					drawLabels(NULL);
+					m_labelSpriteOpen = false;
+					m_labelSprite->End();
+				} else {
+					drawLabels(NULL);
+				}
+				m_textShadow = savedShadow;
 			}
 #else
+			// D3D8 has no label layer, so an outline shows as the per-string shadow.
+			const Bool savedShadow = m_textShadow;
+			m_textShadow = savedShadow || m_textOutline;
 			drawLabels(NULL);
+			m_textShadow = savedShadow;
 #endif
 		}
 		if (WBPerf::isEnabled()) {
@@ -5475,6 +5650,8 @@ BEGIN_MESSAGE_MAP(WbView3d, WbView)
 	ON_UPDATE_COMMAND_UI(ID_FX_SPECULAR, OnUpdateFxSpecular)
 	ON_COMMAND(ID_TEXT_SHADOW, OnTextShadow)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_SHADOW, OnUpdateTextShadow)
+	ON_COMMAND(ID_TEXT_OUTLINE, OnTextOutline)
+	ON_UPDATE_COMMAND_UI(ID_TEXT_OUTLINE, OnUpdateTextOutline)
 	ON_COMMAND(ID_TEXT_ANTIALIAS, OnTextAntialias)
 	ON_UPDATE_COMMAND_UI(ID_TEXT_ANTIALIAS, OnUpdateTextAntialias)
 	ON_COMMAND(ID_TEXT_ANCHOR_DEFAULT, OnTextAnchorDefault)
@@ -5770,7 +5947,11 @@ void WbView3d::OnPaint()
 	// flip model never shows GDI on the window, so that build has no GDI mode.
 #if !defined(BUILD_WITH_D3D9)
 	if (m_labelRenderer == 1) {
+		// GDI has no outline pass, so an outline shows as the shadow.
+		const Bool savedShadow = m_textShadow;
+		m_textShadow = savedShadow || m_textOutline;
 		drawLabels(hdc);
+		m_textShadow = savedShadow;
 	}
 #endif
 	::EndPaint(m_hWnd, &ps);
@@ -6442,7 +6623,13 @@ void WbView3d::drawLabels(HDC hdc)
 			}
 
 			if (rec.showStatus) {
-				int statusOffset = 1; // Start after the main 4 label lines
+				// Status lines go below the last name line in use; waypoint path labels take lines 1-3.
+				int statusOffset = 1;
+				for (int n = 0; n < rec.nameCount; ++n) {
+					if (rec.nameSlot[n] + 1 > statusOffset) {
+						statusOffset = rec.nameSlot[n] + 1;
+					}
+				}
 				for (int s = 0; s < rec.statusCount; ++s)
 					drawStatusLabels(rec.pt, statusOffset++, rec.statusText[s], m3DFont, hdc);
 			}
@@ -8758,12 +8945,34 @@ void WbView3d::OnTextShadow()
 {
 	m_textShadow = !m_textShadow;
 	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextShadow", m_textShadow ? 1 : 0);
+	if (m_textShadow && m_textOutline) {
+		m_textOutline = false;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextOutline", 0);
+		createLabelFont();		// the atlas bakes the outline into its glyphs
+	}
 	Invalidate();
 }
 
 void WbView3d::OnUpdateTextShadow(CCmdUI* pCmdUI)
 {
 	pCmdUI->SetCheck(m_textShadow);
+}
+
+void WbView3d::OnTextOutline()
+{
+	m_textOutline = !m_textOutline;
+	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextOutline", m_textOutline ? 1 : 0);
+	if (m_textOutline && m_textShadow) {
+		m_textShadow = false;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "TextShadow", 0);
+	}
+	createLabelFont();		// the atlas bakes the outline into its glyphs
+	Invalidate();
+}
+
+void WbView3d::OnUpdateTextOutline(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_textOutline);
 }
 
 // ----------------------------------------------------------------------------
@@ -8817,7 +9026,7 @@ void WbView3d::createLabelFont()
 	// Also (re)build the glyph atlas for the Atlas renderer mode, matching the
 	// D3DX font above (Arial 20, regular) so the modes look comparable. Honors
 	// the same antialias toggle.
-	m_fontAtlas.build("Arial", 20, false, m_textAntialias ? true : false);
+	m_fontAtlas.build("Arial", 20, false, m_textAntialias ? true : false, m_textOutline ? true : false);
 #if defined(BUILD_WITH_D3D9)
 	// Without the d3dx9 DLL the HUD text draws from its own atlas, whose per-frame
 	// mini batches never disturb the label batch that reissue() replays.
@@ -8833,6 +9042,10 @@ void WbView3d::releaseD3DXFont()
 		m_labelSprite = NULL;
 	}
 	m_labelSpriteOpen = false;
+	if (m_labelLayer != NULL) {
+		m_labelLayer->Release();
+		m_labelLayer = NULL;
+	}
 #endif
 	if (m3DFont) {
 		((ID3DXFont*)m3DFont)->Release();

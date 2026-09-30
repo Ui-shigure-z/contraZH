@@ -70,7 +70,7 @@ void WBFontAtlas::releaseTexture()
 // to derive ABC widths (robust under ClearType / bitmap fonts / substitution),
 // then copy the ink into the shared atlas bitmap.
 // ----------------------------------------------------------------------------
-Bool WBFontAtlas::build(const char *faceName, Int heightPx, Bool bold, Bool antialias)
+Bool WBFontAtlas::build(const char *faceName, Int heightPx, Bool bold, Bool antialias, Bool outline)
 {
 	freeAll();
 
@@ -205,6 +205,50 @@ Bool WBFontAtlas::build(const char *faceName, Int heightPx, Bool bold, Bool anti
 			const UnsignedInt *src = px + (minY + y) * scratchW + minX;
 			::memcpy(tmp[ci].ink + y * inkW, src, inkW * 4);
 		}
+
+		// Outline: grow the ink box by a pixel on every side. The rim is the coverage
+		// dilated to the four edge neighbors at 60% black, the glyph composites over
+		// it, and the color holds the glyph's share so the vertex color tints only it.
+		if (outline) {
+			const Int ow = inkW + 2;
+			const Int oh = inkH + 2;
+			UnsignedInt *padded = new UnsignedInt[ow * oh];
+			for (Int y = 0; y < oh; ++y) {
+				for (Int x = 0; x < ow; ++x) {
+					UnsignedInt fill = 0;
+					UnsignedInt rim = 0;
+					for (Int dy = -1; dy <= 1; ++dy) {
+						for (Int dx = -1; dx <= 1; ++dx) {
+							if (dx != 0 && dy != 0) continue;
+							const Int sx = x - 1 + dx;
+							const Int sy = y - 1 + dy;
+							if (sx < 0 || sy < 0 || sx >= inkW || sy >= inkH) continue;
+							const UnsignedInt c = tmp[ci].ink[sy * inkW + sx];
+							UnsignedInt a = c & 0xFF;
+							if (((c >> 8) & 0xFF) > a) a = (c >> 8) & 0xFF;
+							if (((c >> 16) & 0xFF) > a) a = (c >> 16) & 0xFF;
+							if (a > rim) rim = a;
+							if (dx == 0 && dy == 0) fill = a;
+						}
+					}
+					rim = (rim * 153) / 255;
+					const UnsignedInt alpha = fill + (rim * (255 - fill)) / 255;
+					const UnsignedInt shade = alpha > 0 ? (fill * 255) / alpha : 0;
+					padded[y * ow + x] = (alpha << 24) | (shade << 16) | (shade << 8) | shade;
+				}
+			}
+			delete [] tmp[ci].ink;
+			tmp[ci].ink = padded;
+			tmp[ci].inkW = ow;
+			tmp[ci].inkH = oh;
+			g.a -= 1;
+			g.b += 2;
+			g.c -= 1;
+			g.inkW = ow;
+			g.inkH = oh;
+			g.inkTop -= 1;
+			inkH = oh;
+		}
 		if (inkH > maxInkH) maxInkH = inkH;
 	}
 
@@ -251,6 +295,10 @@ Bool WBFontAtlas::build(const char *faceName, Int heightPx, Bool bold, Bool anti
 			const UnsignedInt *src = tmp[ci].ink + y * w;
 			for (Int x = 0; x < w; ++x) {
 				UnsignedInt c = src[x];
+				if (outline) {
+					dst[x] = c;		// already alpha + glyph share
+					continue;
+				}
 				UnsignedInt b = c & 0xFF;
 				UnsignedInt gr = (c >> 8) & 0xFF;
 				UnsignedInt r = (c >> 16) & 0xFF;

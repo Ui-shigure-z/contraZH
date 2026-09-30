@@ -288,6 +288,8 @@ protected:
 	afx_msg void OnUpdateFxSpecular(CCmdUI* pCmdUI);
 	afx_msg void OnTextShadow();
 	afx_msg void OnUpdateTextShadow(CCmdUI* pCmdUI);
+	afx_msg void OnTextOutline();
+	afx_msg void OnUpdateTextOutline(CCmdUI* pCmdUI);
 	afx_msg void OnTextAntialias();
 	afx_msg void OnUpdateTextAntialias(CCmdUI* pCmdUI);
 	afx_msg void OnTextAnchorDefault();
@@ -509,6 +511,7 @@ protected:
 	Bool m_showBuildZoneFeedback;
 	Int m_lod;
 	Bool m_textShadow;
+	Bool m_textOutline;						///< 1px black outline around labels; excludes m_textShadow
 	Bool m_textAntialias;					///< grayscale antialiasing for viewport labels
 	Int  m_labelAnchorMode;					///< 0 = Default (ground), 1 = New (object center-height)
 	Int  m_labelRenderer;					///< 0 = Old (D3DX m3DFont, in-frame), 1 = New (raw GDI TextOut on the window after present, strobes; D3D8 only, the D3D9 flip model never shows it), 2 = Atlas (batched glyph quads, in-frame)
@@ -530,6 +533,8 @@ protected:
 	WBFontAtlas							m_hudAtlas;		// D3D9 has no ID3DXFont: HUD/ruler text draws from this atlas instead
 	ID3DXSprite*						m_labelSprite;	// Old (D3DX) labels: one batch for every DrawText between Begin/End
 	Bool								m_labelSpriteOpen;	// between m_labelSprite Begin/End; fontDrawText joins the batch
+	IDirect3DTexture8*					m_labelLayer;		// Old (D3DX) labels with shadow: drawn once here, composited as shadow + text
+	Bool drawLabelsLayered();				///< Old-mode labels through m_labelLayer; FALSE when the layer is unavailable
 #endif
 	Bool hasFrameFont() const;				///< true when fontDrawText() can draw in-frame text
 	void fontDrawText(const char *str, Int len, const RECT *rct, DWORD flags, DWORD color);	///< ID3DXFont on D3D8, the HUD atlas on D3D9

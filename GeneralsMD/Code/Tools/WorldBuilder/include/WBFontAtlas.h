@@ -61,7 +61,7 @@ public:
 	/// D3DX label font's Grayscale toggle: true = grayscale AA, false = system
 	/// default quality (usually ClearType). Releases any previous atlas. Safe to
 	/// call at runtime to apply a font/AA toggle.
-	Bool build(const char *faceName, Int heightPx, Bool bold, Bool antialias);
+	Bool build(const char *faceName, Int heightPx, Bool bold, Bool antialias, Bool outline = false);	///< outline bakes a 1px black rim into every glyph
 
 	/// Release the GPU texture (e.g. on device loss). The CPU atlas + metrics
 	/// are kept, so reupload() can restore it without re-measuring glyphs.

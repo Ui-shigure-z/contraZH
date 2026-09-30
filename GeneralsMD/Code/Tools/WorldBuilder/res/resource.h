@@ -998,6 +998,7 @@
 #define ID_FPSCAP_60                    33440
 #define ID_FPSCAP_120                   33441
 #define ID_FPSCAP_UNCAPPED              33442
+#define ID_TEXT_OUTLINE                 33443
 
 // Next default values for new objects
 //
@@ -1005,7 +1006,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         33443
+#define _APS_NEXT_COMMAND_VALUE         33444
 #define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
