@@ -402,6 +402,9 @@ WorldHeightMap::~WorldHeightMap()
 	delete[](m_cellCliffState);
 	m_cellCliffState = nullptr;
 
+	delete[](m_stochasticData);
+	m_stochasticData = nullptr;
+
 	int i;
 	for (i=0; i<NUM_SOURCE_TILES; i++) {
 		REF_PTR_RELEASE(m_sourceTiles[i]);
@@ -417,6 +420,7 @@ WorldHeightMap::~WorldHeightMap()
 	REF_PTR_RELEASE(m_terrainHeightTex);
 	REF_PTR_RELEASE(m_terrainClassMap);
 	REF_PTR_RELEASE(m_terrainGlintMap);
+	REF_PTR_RELEASE(m_stochasticTex);
 	REF_PTR_RELEASE(m_alphaTerrainTex);
 	REF_PTR_RELEASE(m_alphaEdgeTex);
 }
@@ -443,6 +447,7 @@ WorldHeightMap::WorldHeightMap():
 	m_numTextureClasses(0),
 	m_drawWidthX(NORMAL_DRAW_WIDTH), m_drawHeightY(NORMAL_DRAW_HEIGHT),
 	m_tileNdxes(nullptr), m_blendTileNdxes(nullptr), m_extraBlendTileNdxes(nullptr), m_cliffInfoNdxes(nullptr),
+	m_stochasticData(nullptr), m_stochasticTex(nullptr), m_stochasticTexDirty(true), m_stochasticTexExponent(0.0f),
 	m_terrainTexHeight(1), m_atlasBorder(MIN_ATLAS_BORDER), m_alphaTexHeight(1),	m_cellCliffState(nullptr),
 #ifdef EVAL_TILING_MODES
 	m_tileMode(TILE_4x4),
@@ -486,6 +491,7 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 	m_numTextureClasses(0),
 	m_drawWidthX(NORMAL_DRAW_WIDTH), m_drawHeightY(NORMAL_DRAW_HEIGHT),
 	m_tileNdxes(nullptr), m_blendTileNdxes(nullptr), m_extraBlendTileNdxes(nullptr), m_cliffInfoNdxes(nullptr),
+	m_stochasticData(nullptr), m_stochasticTex(nullptr), m_stochasticTexDirty(true), m_stochasticTexExponent(0.0f),
 	m_terrainTexHeight(1), m_atlasBorder(MIN_ATLAS_BORDER), m_alphaTexHeight(1),
 #ifdef EVAL_TILING_MODES
 	m_tileMode(TILE_4x4),
@@ -522,6 +528,7 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 		file.registerParser( "FUNKY_TILING", AsciiString::TheEmptyString, ParseFunkyTilingDataChunk );
 #endif
 		file.registerParser( "GlobalLighting", AsciiString::TheEmptyString, ParseLightingDataChunk );
+		file.registerParser( "StochasticTerrain", AsciiString::TheEmptyString, ParseStochasticDataChunk );
 	}
 	if (!file.parse(this)) {
 
@@ -826,6 +833,27 @@ Bool WorldHeightMap::ParseLightingDataChunk(DataChunkInput &file, DataChunkInfo 
 			}
 		}
 	DEBUG_ASSERTCRASH(file.atEndOfChunk(), ("Unexpected data left over."));
+	return true;
+}
+
+/**
+* WorldHeightMap::ParseStochasticDataChunk - read the painted stochastic terrain.
+* The map's size comes first, so a chunk from before a resize is dropped rather than misread.
+* See WHeightMapEdit.cpp for the writer.
+*/
+Bool WorldHeightMap::ParseStochasticDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData)
+{
+	WorldHeightMap *pThis = (WorldHeightMap *)userData;
+	const Int width = file.readInt();
+	const Int height = file.readInt();
+	if (width != pThis->m_width || height != pThis->m_height || pThis->m_dataSize <= 0)
+	{
+		return true;
+	}
+	delete[](pThis->m_stochasticData);
+	pThis->m_stochasticData = MSGNEW("WorldHeightMap_ParseStochasticDataChunk") UnsignedByte[pThis->m_dataSize * STOCHASTIC_BYTES];
+	file.readArrayOfBytes((char *)pThis->m_stochasticData, pThis->m_dataSize * STOCHASTIC_BYTES);
+	pThis->m_stochasticTexDirty = true;
 	return true;
 }
 
@@ -2364,6 +2392,70 @@ TextureClass *WorldHeightMap::getTerrainClassMap()
 	}
 	REF_PTR_RELEASE(surface);
 	return m_terrainClassMap;
+}
+
+void WorldHeightMap::getStochastic(Int xIndex, Int yIndex, UnsignedByte &strength, UnsignedByte &seed, UnsignedByte &rate) const
+{
+	strength = seed = rate = 0;
+	if (m_stochasticData == nullptr || xIndex < 0 || yIndex < 0 || xIndex >= m_width || yIndex >= m_height)
+	{
+		return;
+	}
+	const UnsignedByte *cell = m_stochasticData + (yIndex * m_width + xIndex) * STOCHASTIC_BYTES;
+	strength = cell[0];
+	seed = cell[1];
+	rate = cell[2];
+}
+
+// The hex weight exponent a painted blending rate of 0 gives, falling to 1 at full rate. terrainshadow.hlsl reads blue over it.
+#define STOCHASTIC_MAX_EXPONENT 12.0f
+
+// Red holds each cell's strength, green its seed and blue its hex weight exponent over STOCHASTIC_MAX_EXPONENT, on the
+// water height texture's layout, so the seabed's mask transform reads it too. Alpha stays zero, so it stands in for the
+// water mask on dry maps.
+TextureClass *WorldHeightMap::getStochasticTexture(Real plainExponent)
+{
+	if (m_stochasticTex != nullptr && !m_stochasticTexDirty && m_stochasticTexExponent == plainExponent)
+	{
+		return m_stochasticTex;
+	}
+	if (m_stochasticTex == nullptr)
+	{
+		m_stochasticTex = MSGNEW("WorldHeightMap_getStochasticTexture") TextureClass(m_width, m_height, WW3D_FORMAT_A8R8G8B8, MIP_LEVELS_1, TextureClass::POOL_MANAGED, false, false);
+		if (m_stochasticTex->Peek_D3D_Texture() == nullptr)
+		{
+			REF_PTR_RELEASE(m_stochasticTex);
+			return nullptr;
+		}
+	}
+
+	// A texture padded out to a power of two repeats the map's last row and column, as the height texture does.
+	SurfaceClass *surface = m_stochasticTex->Get_Surface_Level(0);
+	SurfaceClass::SurfaceDescription desc;
+	surface->Get_Description(desc);
+	int pitch;
+	UnsignedByte *bits = (UnsignedByte *)surface->Lock(&pitch);
+	if (bits != nullptr)
+	{
+		for (Int j=0; j<(Int)desc.Height; j++)
+		{
+			UnsignedInt *row = (UnsignedInt *)(bits + j * pitch);
+			const Int y = min(j, m_height - 1);
+			for (Int i=0; i<(Int)desc.Width; i++)
+			{
+				UnsignedByte strength, seed, rate;
+				getStochastic(min(i, m_width - 1), y, strength, seed, rate);
+				const Real exponent = (strength != 0) ? STOCHASTIC_MAX_EXPONENT - (STOCHASTIC_MAX_EXPONENT - 1.0f) * rate / 255.0f : plainExponent;
+				const UnsignedInt blue = (UnsignedInt)clamp(0.0f, exponent / STOCHASTIC_MAX_EXPONENT * 255.0f + 0.5f, 255.0f);
+				row[i] = ((UnsignedInt)strength << 16) | ((UnsignedInt)seed << 8) | blue;
+			}
+		}
+		surface->Unlock();
+	}
+	REF_PTR_RELEASE(surface);
+	m_stochasticTexDirty = false;
+	m_stochasticTexExponent = plainExponent;
+	return m_stochasticTex;
 }
 
 // The glint map is this many times smaller than the atlas. Tiles and doubled borders are multiples of it, so slots stay whole texels.

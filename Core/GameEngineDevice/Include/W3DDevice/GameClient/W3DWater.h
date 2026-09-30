@@ -136,6 +136,8 @@ public:
 	TextureClass *getSeabedMask(Vector4 &mapping, Vector4 &hex);
 	/// Whether a height map point lies in flat standing water, as of the last getSeabedMask.
 	Bool isSeabedPoint(Int x, Int y) const;
+	/// The hex cells as getSeabedMask gives them, for painted stochastic terrain, which keeps its cells with the water's tiling off.
+	static Vector4 getStochasticHex();
 	void renderPlanarReflection(CameraClass *cam);	///< mirrors the scene in the water under the view, before the views draw
 
 protected:

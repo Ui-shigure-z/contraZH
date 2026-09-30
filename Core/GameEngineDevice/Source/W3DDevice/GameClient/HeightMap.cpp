@@ -455,9 +455,10 @@ void HeightMapRenderObjClass::setTilePixelLights(Int tile)
 //=============================================================================
 // HeightMapRenderObjClass::prepareSeabed
 //=============================================================================
-/** Hands the terrain shader the atlas slot lookup, the standing water mask and the
-constants its seabed variants read, and marks the VB tiles holding standing water.
-Only those draw through the seabed variants, which pay for the hex cells on every pixel. */
+/** Hands the terrain shader the atlas slot lookup, the standing water mask, the painted
+stochastic terrain and the constants its seabed variants read, and marks the VB tiles
+holding standing water or paint. Only those draw through the seabed variants, which pay
+for the hex cells on every pixel. */
 //=============================================================================
 void HeightMapRenderObjClass::prepareSeabed()
 {
@@ -465,14 +466,31 @@ void HeightMapRenderObjClass::prepareSeabed()
 
 	Vector4 constants[W3DShaderManager::SEABED_CONSTANTS];
 	TextureClass *mask = nullptr;
-	if (TheWaterRenderObj != nullptr && W3DShaderManager::supportsTerrainSeabed() && m_numVertexBufferTiles > 0)
+	TextureClass *painted = nullptr;
+	if (W3DShaderManager::supportsTerrainSeabed() && m_numVertexBufferTiles > 0)
 	{
-		mask = TheWaterRenderObj->getSeabedMask(constants[3], constants[2]);
+		if (TheWaterRenderObj != nullptr)
+		{
+			mask = TheWaterRenderObj->getSeabedMask(constants[3], constants[2]);
+		}
+		painted = m_map->getStochasticTexture(WaterRenderObjClass::getStochasticHex().Y);
 	}
-	TextureClass *classMap = (mask != nullptr) ? m_map->getTerrainClassMap() : nullptr;
+
+	// Without standing water the paint stands in for the mask, whose layout it shares and whose alpha it leaves empty.
+	const Bool water = (mask != nullptr);
+	if (!water && painted != nullptr && m_map->hasStochastic())
+	{
+		SurfaceClass::SurfaceDescription desc;
+		painted->Get_Level_Description(desc);
+		const Real border = (Real)m_map->getBorderSizeInline() + 0.5f;
+		constants[3].Set(1.0f / (MAP_XY_FACTOR * desc.Width), 1.0f / (MAP_XY_FACTOR * desc.Height), border / desc.Width, border / desc.Height);
+		constants[2] = WaterRenderObjClass::getStochasticHex();
+		mask = painted;
+	}
+	TextureClass *classMap = (mask != nullptr && painted != nullptr) ? m_map->getTerrainClassMap() : nullptr;
 	if (classMap == nullptr)
 	{
-		W3DShaderManager::setTerrainSeabed(nullptr, nullptr, nullptr);
+		W3DShaderManager::setTerrainSeabed(nullptr, nullptr, nullptr, nullptr);
 		return;
 	}
 
@@ -486,15 +504,29 @@ void HeightMapRenderObjClass::prepareSeabed()
 	constants[1].Set(texelsPerCell / MAP_XY_FACTOR, texelsPerCell * m_map->getBorderSizeInline(),
 		(fadeDepth > 0.0f) ? 1.0f / fadeDepth : 10000.0f, 0.0f);
 	constants[4].Set(1.0f / (atlasSlot * CLASS_MAP_SLOTS), -atlasBorder / (atlasSlot * CLASS_MAP_SLOTS), 255.0f * atlasSlot, atlasBorder);
-	W3DShaderManager::setTerrainSeabed(classMap, mask, constants);
+
+	// The shader reads the mask from hex lattice units, which it works out for the cells anyway.
+	constants[3].X /= constants[2].X;
+	constants[3].Y /= constants[2].X;
+	W3DShaderManager::setTerrainSeabed(classMap, mask, painted, constants);
 
 	const Int xOrigin = m_map->getDrawOrgX();
 	const Int yOrigin = m_map->getDrawOrgY();
+	const Bool paint = m_map->hasStochastic();
 	for (Int y = 0; y < m_y-1; y++)
 	{
 		for (Int x = 0; x < m_x-1; x++)
 		{
-			if (TheWaterRenderObj->isSeabedPoint(xOrigin + x, yOrigin + y))
+			Bool seabed = water && TheWaterRenderObj->isSeabedPoint(xOrigin + x, yOrigin + y);
+
+			// Paint sits on the cell's corners and fades across it, so any painted corner draws the cell.
+			for (Int corner = 0; corner < 4 && !seabed && paint; corner++)
+			{
+				UnsignedByte strength, seed, rate;
+				m_map->getStochastic(xOrigin + x + (corner & 1), yOrigin + y + (corner >> 1), strength, seed, rate);
+				seabed = (strength != 0);
+			}
+			if (seabed)
 			{
 				m_tileSeabed[getTileRow(y)*m_numVBTilesX + getTileColumn(x)] = TRUE;
 			}

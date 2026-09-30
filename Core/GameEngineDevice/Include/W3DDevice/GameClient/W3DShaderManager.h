@@ -129,7 +129,7 @@ public:
 		Bool terrainOnly;	///< lights the ground and nothing standing on it
 	};
 	/// Each ground draw takes up to eight lights, four under standing water, and each mesh up to eight, as their registers allow.
-	enum { MAX_PIXEL_LIGHTS = 8, SEABED_PIXEL_LIGHTS = 4, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
+	enum { MAX_PIXEL_LIGHTS = 8, SEABED_PIXEL_LIGHTS = 3, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
 	/// Sets the lights that may be drawn per pixel this frame, most important first. Draws name theirs by index.
 	static void setPixelLights(const PixelLight *lights, Int count);
 	static Int getPixelLightCount();
@@ -139,9 +139,9 @@ public:
 	static void setDrawPixelLights(const Int *indices, Int count);
 	/// The registers the terrain's seabed hex tiling reads, as terrainshadow.hlsl lays them out.
 	enum { SEABED_CONSTANTS = 5 };
-	/// Sets, once a frame, the atlas slot lookup, standing water mask and SEABED_CONSTANTS registers the
-	/// terrain's seabed hex tiling reads, or turns it off with nulls.
-	static void setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, const Vector4 *constants);
+	/// Sets, once a frame, the atlas slot lookup, standing water mask, painted stochastic terrain and
+	/// SEABED_CONSTANTS registers the terrain's seabed hex tiling reads, or turns it off with nulls.
+	static void setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, TextureClass *painted, const Vector4 *constants);
 	/// Whether the terrain can hex-tile its textures under standing water.
 	static Bool supportsTerrainSeabed();
 	/// Lights a terrain draw as setDrawPixelLights does, through the seabed shaders when it has standing water.

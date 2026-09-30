@@ -1538,6 +1538,7 @@ static DWORD DrawLitShader = 0;
 // The terrain's seabed hex tiling, set once a frame by the terrain.
 static TextureClass *SeabedClassMap = nullptr;
 static TextureClass *SeabedWaterMask = nullptr;
+static TextureClass *SeabedPainted = nullptr;
 static Vector4 SeabedConstants[W3DShaderManager::SEABED_CONSTANTS];
 static Bool TerrainSeabedLoaded = FALSE;
 
@@ -1546,10 +1547,12 @@ static DWORD DrawGroundShader = 0;
 static DWORD DrawSeabedUnlitShader = 0;
 static DWORD DrawSeabedLitShader = 0;
 
-// Where terrainshadow.hlsl reads the seabed, past the four point lights its seabed variants keep.
+// Where terrainshadow.hlsl reads the seabed, past the three point lights its seabed variants keep.
 #define SEABED_REGISTER 14
 #define SEABED_CLASS_MAP_SAMPLER 8
 #define SEABED_WATER_MASK_SAMPLER 9
+#define SEABED_PAINTED_SAMPLER 13
+#define SEABED_PAINTED_SEED_SAMPLER 14
 
 // Where heightblend.hlsli reads the height atlas, and its constants in the terrain and road shaders.
 #define HEIGHT_ATLAS_SAMPLER 10
@@ -2821,10 +2824,11 @@ void W3DShaderManager::setDrawPixelLights(const Int *indices, Int count)
 	DX8Wrapper::Set_Pixel_Shader(DrawLitShader);
 }
 
-void W3DShaderManager::setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, const Vector4 *constants)
+void W3DShaderManager::setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, TextureClass *painted, const Vector4 *constants)
 {
 	SeabedClassMap = (constants != nullptr) ? classMap : nullptr;
 	SeabedWaterMask = (constants != nullptr) ? waterMask : nullptr;
+	SeabedPainted = (constants != nullptr) ? painted : nullptr;
 	for (Int i = 0; i < SEABED_CONSTANTS && constants != nullptr; i++)
 	{
 		SeabedConstants[i] = constants[i];
@@ -3950,8 +3954,9 @@ void TerrainShaderPixelShader::initSeabed()
 void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bumped, Bool positioned, DWORD unlit)
 {
 #if defined(BUILD_WITH_D3D9)
-	if (!TerrainSeabedLoaded || SeabedClassMap == nullptr || SeabedWaterMask == nullptr ||
-		SeabedClassMap->Peek_D3D_Texture() == nullptr || SeabedWaterMask->Peek_D3D_Texture() == nullptr)
+	if (!TerrainSeabedLoaded || SeabedClassMap == nullptr || SeabedWaterMask == nullptr || SeabedPainted == nullptr ||
+		SeabedClassMap->Peek_D3D_Texture() == nullptr || SeabedWaterMask->Peek_D3D_Texture() == nullptr ||
+		SeabedPainted->Peek_D3D_Texture() == nullptr)
 	{
 		return;
 	}
@@ -3987,6 +3992,20 @@ void TerrainShaderPixelShader::setSeabed(Int noiseCount, Bool shadowed, Bool bum
 	device->SetSamplerState(SEABED_WATER_MASK_SAMPLER, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
 	device->SetSamplerState(SEABED_WATER_MASK_SAMPLER, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
 	device->SetSamplerState(SEABED_WATER_MASK_SAMPLER, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+
+	// The paint fades between cells, but each hex cell takes one seed whole, so the seed reads unfiltered.
+	for (Int i = 0; i < 2; i++)
+	{
+		const DWORD sampler = i ? SEABED_PAINTED_SEED_SAMPLER : SEABED_PAINTED_SAMPLER;
+		const DWORD filter = i ? D3DTEXF_POINT : D3DTEXF_LINEAR;
+		device->SetTexture(sampler, SeabedPainted->Peek_D3D_Texture());
+		device->SetSamplerState(sampler, D3DSAMP_ADDRESSU, D3DTADDRESS_BORDER);
+		device->SetSamplerState(sampler, D3DSAMP_ADDRESSV, D3DTADDRESS_BORDER);
+		device->SetSamplerState(sampler, D3DSAMP_BORDERCOLOR, 0);
+		device->SetSamplerState(sampler, D3DSAMP_MINFILTER, filter);
+		device->SetSamplerState(sampler, D3DSAMP_MAGFILTER, filter);
+		device->SetSamplerState(sampler, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+	}
 
 	DrawGroundShader = unlit;
 	DrawSeabedUnlitShader = seabedUnlit;
@@ -4256,6 +4275,8 @@ void TerrainShaderPixelShader::reset()
 	{
 		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_CLASS_MAP_SAMPLER, nullptr);
 		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_WATER_MASK_SAMPLER, nullptr);
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_PAINTED_SAMPLER, nullptr);
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SEABED_PAINTED_SEED_SAMPLER, nullptr);
 	}
 
 	if (m_glintStage >= 0)

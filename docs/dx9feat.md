@@ -671,6 +671,35 @@ Notes:
 * The lower terrain detail settings keep the soft fade.
 * Roads draw as before.
 
+## Stochastic terrain
+
+Painted areas of terrain break up the visible repeat of their textures. The ground is split into
+hex cells, each cell shifts and turns the texture by its own random amount, and every point blends
+the three nearest cells. It is the tiling the water uses under standing water, painted onto dry
+ground with the WorldBuilder **Stochastic Terrain** brush (Tools menu and toolbar). Needs the
+Direct3D 9 build and a pixel shader 2.0a card.
+
+The brush's options:
+
+* Brush Width and Feather - (Where the effect applies, and how softly it fades out at the edge.)
+* Seed - (Picks the cells' shifts and turns. Randomize picks a new one. Each stroke stamps its seed
+on the cells it raises, so neighbouring areas can look different. Where two seeds meet the change
+follows the cell edges, so it shows no seam.)
+* Blending Rate - (How softly the cells blend. Low gives visible patches of turned texture, high a
+smooth mix. Also stamped per stroke.)
+
+Painting only raises the effect, and holding Shift while dragging erases it. The paint saves in the
+map's own `StochasticTerrain` chunk. Older builds and the retail game skip the chunk and draw the
+terrain as before, and saving the map in an older WorldBuilder drops the paint.
+
+The cell spacing is `ShaderWaterStochasticSize` in `Water.ini`, 100 when that is 0.
+
+Notes:
+* Cliffs keep their own texturing, as under water.
+* Terrain chunks with paint draw through the seabed shaders, which take three point lights instead
+of eight.
+* Flat terrain mode and the third texture of three-texture blend tiles draw without it.
+
 ## HQ sky
 
 Cloud shadows drift softly over the ground, change shape as they go and never repeat, in place of

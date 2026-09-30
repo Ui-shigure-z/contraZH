@@ -1055,6 +1055,20 @@ static Vector4 Get_Hex_Params()
 	return Vector4((size > 0.0f) ? 1.0f / size : 0.0f, WATER_HEX_SHARPNESS, (size > 0.0f) ? 1.0f : 0.0f, 2.0f * tanf(DEG_TO_RADF(WATER_HEX_TURN)));
 }
 
+// Spacing the painted cells take when the water's tiling is off.
+#define STOCHASTIC_DEFAULT_SIZE 100.0f
+
+Vector4 WaterRenderObjClass::getStochasticHex()
+{
+	Vector4 hex = Get_Hex_Params();
+	if (hex.X <= 0.0f)
+	{
+		hex.X = 1.0f / STOCHASTIC_DEFAULT_SIZE;
+		hex.Z = 1.0f;
+	}
+	return hex;
+}
+
 TextureClass *WaterRenderObjClass::getSeabedMask(Vector4 &mapping, Vector4 &hex)
 {
 #if defined(BUILD_WITH_D3D9)
