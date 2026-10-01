@@ -1775,8 +1775,7 @@ void MeshModelClass::post_process_fog()
 	}
 }
 
-// Retail night models add the lit skin over opaque unlit lights. The passes trade places here,
-// so the lights are the additive pass and the skin is the base pass that lighting and bloom expect.
+// Retail night models draw unlit lights first and add the lit skin, so bloom and lighting take the wrong pass for the base.
 void MeshModelClass::post_process_night_lights()
 {
 	MeshMatDescClass * desc = DefMatDesc;
@@ -1785,12 +1784,21 @@ void MeshModelClass::post_process_night_lights()
 		return;
 	}
 
+	// a mapped pass is a shine or environment layer
+	for (int pass = 0; pass < 2; pass++)
+	{
+		VertexMaterialClass * material = desc->Material[pass];
+		if (material == nullptr || material->Peek_Mapper(0) != nullptr || material->Peek_Mapper(1) != nullptr)
+		{
+			return;
+		}
+	}
+
 	ShaderClass & shader0 = desc->Shader[0];
 	ShaderClass & shader1 = desc->Shader[1];
 
 	const bool unlit_base = shader0.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_ONE &&
 									shader0.Get_Dst_Blend_Func() == ShaderClass::DSTBLEND_ZERO &&
-									shader0.Get_Alpha_Test() == ShaderClass::ALPHATEST_DISABLE &&
 									shader0.Get_Texturing() == ShaderClass::TEXTURING_ENABLE &&
 									!shader0.Uses_Primary_Gradient();
 
@@ -1805,25 +1813,38 @@ void MeshModelClass::post_process_night_lights()
 		return;
 	}
 
-	// each slot keeps its blend and depth write
-	const ShaderClass::DepthMaskType base_depth_mask = shader0.Get_Depth_Mask();
-	const ShaderClass::DepthMaskType additive_depth_mask = shader1.Get_Depth_Mask();
-	std::swap(shader0, shader1);
-	shader0.Set_Dst_Blend_Func(ShaderClass::DSTBLEND_ZERO);
-	shader0.Set_Depth_Mask(base_depth_mask);
-	shader1.Set_Dst_Blend_Func(ShaderClass::DSTBLEND_ONE);
-	shader1.Set_Depth_Mask(additive_depth_mask);
+	// each slot keeps its blend, depth write and alpha test
+	const ShaderClass base = shader0;
+	const ShaderClass additive = shader1;
+	desc->Swap_Passes(0, 1);
+	shader0.Set_Dst_Blend_Func(base.Get_Dst_Blend_Func());
+	shader0.Set_Depth_Mask(base.Get_Depth_Mask());
+	shader0.Set_Alpha_Test(base.Get_Alpha_Test());
+	shader1.Set_Dst_Blend_Func(additive.Get_Dst_Blend_Func());
+	shader1.Set_Depth_Mask(additive.Get_Depth_Mask());
+	shader1.Set_Alpha_Test(additive.Get_Alpha_Test());
 
-	std::swap(desc->Material[0], desc->Material[1]);
-	std::swap(desc->MaterialArray[0], desc->MaterialArray[1]);
-	std::swap(desc->DCGSource[0], desc->DCGSource[1]);
-	std::swap(desc->DIGSource[0], desc->DIGSource[1]);
-
-	for (int stage = 0; stage < MeshMatDescClass::MAX_TEX_STAGES; stage++)
+	// shader lighting needs the base pass on uv set 0
+	const int skin_uv = desc->UVSource[0][0];
+	if (skin_uv > 0)
 	{
-		std::swap(desc->Texture[0][stage], desc->Texture[1][stage]);
-		std::swap(desc->TextureArray[0][stage], desc->TextureArray[1][stage]);
-		std::swap(desc->UVSource[0][stage], desc->UVSource[1][stage]);
+		std::swap(desc->UV[0], desc->UV[skin_uv]);
+		for (int pass = 0; pass < 2; pass++)
+		{
+			for (int stage = 0; stage < MeshMatDescClass::MAX_TEX_STAGES; stage++)
+			{
+				int & source = desc->UVSource[pass][stage];
+				if (source == 0)
+				{
+					source = skin_uv;
+				}
+				else if (source == skin_uv)
+				{
+					source = 0;
+				}
+				desc->Material[pass]->Set_UV_Source(stage, (source == -1) ? 0 : source);
+			}
+		}
 	}
 }
 

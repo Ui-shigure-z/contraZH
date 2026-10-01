@@ -2847,7 +2847,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 
 			if (mesh->Get_Alpha_Override() != 1.0)
 			{
-				if (mesh->Is_Additive())
+				if (mesh->Is_Additive() || (Is_Additive() && !theShader.Uses_Primary_Gradient()))
 				{	//additvie blended mesh can't switch to alpha or we will get a black outline.
 					//so adjust diffuse color instead.
 					//DEBUG_LOG((">>>DX8Renderer: ADDITIVE + ALPHA OVERRIDE - alpha = %f", mesh->Get_Alpha_Override()));

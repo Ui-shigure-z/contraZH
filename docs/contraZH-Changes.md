@@ -352,6 +352,8 @@ Notes:
 on too, and blurs through a pixel shader where the card has one.
 * Particles hidden behind terrain or buildings do not glow.
 * Additive meshes on skinned models (infantry and other bone-deformed meshes) do not glow.
+* Retail night models keep their lights in the opaque pass and add the lit skin on top. The game
+swaps the two passes at load, so the lights glow and the walls do not.
 
 ### Vertical sync
 
