@@ -3369,7 +3369,7 @@ void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color, Bool
 	decalInfo.m_offsetX = 0.0f;
 	decalInfo.m_offsetY = 0.0f;
 
-	// The shader fits a hexagon to the collision shape, or draws a ring of the radius when not asked to.
+	// Without a footprint the shader draws a ring of the radius.
 	const Object *obj = footprint ? getDrawable()->getObject() : nullptr;
 	decalInfo.m_footprint = TRUE;
 	if (obj != nullptr)

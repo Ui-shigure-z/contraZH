@@ -335,7 +335,7 @@ void WBQtWaterTuningPanel::buildRows()
 
 			addStepper(row, r, 0, gridRow, tip);
 			// Wider than lo to hi, so a typed or loaded value is never clamped.
-			row.spin[0]->setRange(qMin(desc.lo, 0.0f), desc.hi * 10.0 + 10.0);
+			row.spin[0]->setRange((desc.lo < 0.0f) ? desc.lo * 10.0 - 10.0 : 0.0, desc.hi * 10.0 + 10.0);
 			row.spin[0]->setSingleStep(desc.step);
 			row.spin[0]->setDecimals(decimalsOf(desc.step));
 			++gridRow;
@@ -463,6 +463,10 @@ void WBQtWaterTuningPanel::resetRow(int r)
 void WBQtWaterTuningPanel::openOn(const QString &iniPath)
 {
 	flush();
+	if (iniPath != m_path)
+	{
+		m_pending.clear();
+	}
 	m_path = iniPath;
 	reseed();
 	setStatus(QDir::toNativeSeparators(m_path));
@@ -483,16 +487,19 @@ void WBQtWaterTuningPanel::reseed()
 		}
 	}
 
-	m_pending.clear();
-	m_saveTimer->stop();
+	// Edits a failed save left pending win over the file, and stay queued.
 	for (int r = 0; r < m_rows.size(); ++r)
 	{
 		Row &row = m_rows[r];
 		WBQtWaterTuning_GetBase(row.index, row.value);
-		const QString raw = readValue(body, row.key);
+		const QString raw = m_pending.contains(row.key) ? m_pending.value(row.key) : readValue(body, row.key);
 		row.inFile = !raw.isNull() && parseValue(row.kind, raw, row.value);
 		showRow(r);
 		WBQtWaterTuning_SetLive(row.index, row.value);
+	}
+	if (!m_pending.isEmpty())
+	{
+		m_saveTimer->start(kSaveRetryMs);
 	}
 }
 
@@ -514,8 +521,13 @@ bool WBQtWaterTuningPanel::flush()
 
 	QString text;
 	QFile file(m_path);
-	if (file.open(QIODevice::ReadOnly))
+	if (file.exists())
 	{
+		if (!file.open(QIODevice::ReadOnly))
+		{
+			setStatus(tr("Not saved: could not read %1.").arg(QDir::toNativeSeparators(m_path)));
+			return false;
+		}
 		text = QString::fromLatin1(file.readAll());
 		file.close();
 	}
