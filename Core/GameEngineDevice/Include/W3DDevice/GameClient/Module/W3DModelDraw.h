@@ -391,7 +391,7 @@ public:
 	virtual void setTerrainDecal(TerrainDecalType type) override;
 	// TheSuperHackers @feature Selection ring, kept in its own slot so it does not evict the
 	// horde or chem suit decal while a unit is selected.
-	virtual void setSelectionDecal(Bool enable, Real radius, Color color) override;
+	virtual void setSelectionDecal(Bool enable, Real radius, Color color, Bool footprint = FALSE) override;
 
 	virtual Bool isVisible() const override;
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override;
@@ -558,6 +558,7 @@ private:
 	Bool													m_selectionDecalWanted;
 	Real													m_selectionDecalRadius;
 	Color													m_selectionDecalColor;
+	Bool													m_selectionDecalFootprint;
 	// TheSuperHackers @feature Display decal from the template, in its own slot so it coexists
 	// with the object's shadow.
 	Shadow*												m_objectDecal;

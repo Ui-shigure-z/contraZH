@@ -16,6 +16,11 @@ extern "C" {
 // is not up (the caller falls back to shelling the file out to the system editor).
 int WBQtMapIniEditor_Open(void *frameHwnd, const char *iniPath);
 
+// For other WorldBuilder code that writes `iniPath` itself. HasUnsavedChanges is 1 while the
+// editor holds unsaved edits to that file. ReloadIfOpen re-reads it into an unmodified editor.
+int  WBQtMapIniEditor_HasUnsavedChanges(const char *iniPath);
+void WBQtMapIniEditor_ReloadIfOpen(const char *iniPath);
+
 // ====== Qt -> MFC (implemented in src/WBQtMapIniEditorBridge.cpp) ======
 
 // The current map's map.ini path (empty when no map is open). Mirrors what File > Map.ini >

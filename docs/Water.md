@@ -24,7 +24,7 @@ only the skybox in the water. The mirror draws the scene a second time at half r
 The water colour and texture still come from `StandingWaterColor`, `StandingWaterTexture` and the
 time of day `DiffuseColor`. On shader model 3 cards the texture gives only its average colour, and
 `ShaderWaterDeepColor` can replace that. Tuned in the `WaterTransparency` block of `Water.ini`, and
-per map in `map.ini`.
+per map in `map.ini`. WorldBuilder Qt edits a map's keys live under File > Map.ini > Water tuning.
 
 Cheat builds reload `Data\INI\Water.ini` about half a second after it is saved, so the water can be
 tuned with a map running. The saved values win over the map's `map.ini` until the map loads again.

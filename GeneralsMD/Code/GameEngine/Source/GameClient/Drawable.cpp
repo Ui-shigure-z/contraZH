@@ -1246,7 +1246,7 @@ void Drawable::updateSelectionDecal( void )
 
 	for( DrawModule **dm = getDrawModules(); *dm; ++dm )
 	{
-		(*dm)->setSelectionDecal( wanted, radius, GameMakeColor( 0, 255, 0, 255 ) );
+		(*dm)->setSelectionDecal( wanted, radius, GameMakeColor( 0, 255, 0, 255 ), TRUE );
 		break;	// first draw module only, so rings do not stack
 	}
 }
@@ -3531,8 +3531,7 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 		}
 	}
 
-	// Each model gets a callout rather than a line in the stack: a leader runs from the model's
-	// centre out to one side, and the name sits at the end of it.
+	// Each model gets a callout with a leader to one side instead of a line in the stack.
 	if( wantModelNames && TheTacticalView != nullptr )
 	{
 		const UnsignedInt renderFrame = WW3D::Get_Frame_Count();

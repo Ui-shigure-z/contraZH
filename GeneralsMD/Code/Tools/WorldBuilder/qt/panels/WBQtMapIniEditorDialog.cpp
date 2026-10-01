@@ -2193,3 +2193,43 @@ extern "C" int WBQtMapIniEditor_Open(void *frameHwnd, const char *iniPath)
 	dlg->activateWindow();
 	return 1;
 }
+
+bool WBQtMapIniEditorDialog::hasUnsavedChangesTo(const QString &path) const
+{
+	return m_editor->document()->isModified() && QFileInfo(m_path) == QFileInfo(path);
+}
+
+void WBQtMapIniEditorDialog::reloadIfShowing(const QString &path)
+{
+	if (m_editor->document()->isModified() || QFileInfo(m_path) != QFileInfo(path))
+	{
+		return;
+	}
+	const int caret = m_editor->textCursor().position();
+	const int scroll = m_editor->verticalScrollBar()->value();
+	loadFile(m_path);
+	QTextCursor cursor = m_editor->textCursor();
+	cursor.setPosition(qMin(caret, m_editor->document()->characterCount() - 1));
+	m_editor->setTextCursor(cursor);
+	m_editor->verticalScrollBar()->setValue(scroll);
+}
+
+extern "C" int WBQtMapIniEditor_HasUnsavedChanges(const char *iniPath)
+{
+	WBQtMapIniEditorDialog *dlg = WBQtMapIniEditorDialog::instance();
+	if (dlg == NULL || iniPath == NULL)
+	{
+		return 0;
+	}
+	return dlg->hasUnsavedChangesTo(QString::fromLocal8Bit(iniPath)) ? 1 : 0;
+}
+
+extern "C" void WBQtMapIniEditor_ReloadIfOpen(const char *iniPath)
+{
+	WBQtMapIniEditorDialog *dlg = WBQtMapIniEditorDialog::instance();
+	if (dlg == NULL || iniPath == NULL)
+	{
+		return;
+	}
+	dlg->reloadIfShowing(QString::fromLocal8Bit(iniPath));
+}

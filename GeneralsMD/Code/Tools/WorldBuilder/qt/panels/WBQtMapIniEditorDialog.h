@@ -195,6 +195,10 @@ public:
 	// Load `path` into the editor. The entry point, every File-menu open and Reload route here.
 	void loadFile(const QString &path);
 
+	// For code outside the editor that writes the same file.
+	bool hasUnsavedChangesTo(const QString &path) const;
+	void reloadIfShowing(const QString &path);
+
 protected:
 	virtual void closeEvent(QCloseEvent *event);
 	virtual bool eventFilter(QObject *watched, QEvent *event);

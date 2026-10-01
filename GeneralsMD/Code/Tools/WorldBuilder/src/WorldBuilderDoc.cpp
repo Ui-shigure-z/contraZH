@@ -73,6 +73,7 @@
 #include "qt/panels/WBQtMapIniReport.h"
 #include "qt/panels/WBQtMapIniEditorBridge.h"
 #include "qt/panels/WBQtMapGenBridge.h"
+#include "qt/panels/WBQtWaterTuningBridge.h"
 #endif
 #include "SaveMap.h"
 #include "ScriptDialog.h"
@@ -226,6 +227,29 @@ void WBMapIni_UnloadForShutdown(void)
 
 	// NO postProcessLoad() here -- see above.
 	g_mapiniloaded = false;
+}
+
+// The map's WaterTransparency override, made from the Water.ini values when map.ini loaded none.
+// Water tuning writes here, so the base stays clean for the next map.
+WaterTransparencySetting *WBMapIni_EnsureWaterOverride(void)
+{
+	WaterTransparencySetting *base =
+		(WaterTransparencySetting*)TheWaterTransparency.getNonOverloadedPointer();
+	if (base == NULL)
+	{
+		return NULL;
+	}
+	WaterTransparencySetting *last = (WaterTransparencySetting*)base->friend_getFinalOverride();
+	if (last != base)
+	{
+		return last;
+	}
+	WaterTransparencySetting *wt = newInstance(WaterTransparencySetting);
+	*wt = *base;
+	wt->markAsOverride();
+	base->setNextOverride(wt);
+	g_mapiniloaded = true;	// so the next map load strips it
+	return wt;
 }
 
 // ----------------------------------------------------------------------------
@@ -785,6 +809,9 @@ static void refreshMapIniViewport(void)
 		p3d->resetRenderObjects();		// == Troubleshooting > Refresh Scene Objects
 		p3d->invalObjectInView(NULL);
 	}
+#ifdef RTS_HAS_QT
+	WBQtWaterTuning_PushRefresh();
+#endif
 }
 
 // Pull the block name out of a dropped-block header line ("Object CarLimo3", possibly with
@@ -1136,6 +1163,7 @@ BEGIN_MESSAGE_MAP(CWorldBuilderDoc, CDocument)
 	ON_COMMAND(ID_FILE_GENERATE_MAPSTRNINI, OnGenerateMapStrAndIni)
 	ON_COMMAND(ID_FILE_OPEN_MAPINI, OnOpenMapIni)
 	ON_COMMAND(ID_FILE_EDIT_MAPINI, OnEditMapIni)
+	ON_COMMAND(ID_FILE_WATERTUNING_MAPINI, OnWaterTuningMapIni)
 	ON_COMMAND(ID_FILE_RELOAD_MAPINI, OnReloadMapIni)
 	ON_COMMAND(ID_FILE_CHECK_MAPINI, OnCheckMapIni)
 	ON_COMMAND(ID_FILE_WATCH_MAPINI, OnToggleWatchMapIni)
@@ -2017,6 +2045,36 @@ void CWorldBuilderDoc::OnEditMapIni()
 	::ShellExecute(NULL, "open", iniPath.str(), NULL, NULL, SW_SHOW);
 }
 
+// File > Map.ini > Water tuning: edit the map.ini WaterTransparency keys against the live 3D view.
+void CWorldBuilderDoc::OnWaterTuningMapIni()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (iniPath.isEmpty()) {
+		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+#ifdef RTS_HAS_QT
+	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+		if (AfxMessageBox("This map has no map.ini yet. Create one for water tuning?",
+				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
+			return;
+		}
+		FILE *fp = fopen(iniPath.str(), "wt");
+		if (fp == NULL) {
+			AfxMessageBox("Couldn't create the map.ini file (is the map folder writable?).",
+				MB_ICONEXCLAMATION | MB_OK);
+			return;
+		}
+		fputs("WaterTransparency\nEnd\n", fp);
+		fclose(fp);
+		noteMapIniSaved();
+	}
+	WBQtWaterTuning_Open(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, iniPath.str());
+#else
+	AfxMessageBox("Water tuning needs the Qt build of WorldBuilder.", MB_ICONINFORMATION | MB_OK);
+#endif
+}
+
 // File > Map.ini > Reload map.ini: unload the current overrides and re-run the loader,
 // without reopening the map. Object/Weapon/Science/SpecialPower/Water reload cleanly;
 // the report warns if the file also touches stores that can't be cleanly torn down.
@@ -2055,6 +2113,9 @@ void CWorldBuilderDoc::OnCheckMapIni()
 	CString report;
 	doLoadMapIni(iniPath, MAPINI_DRYRUN, report);
 	showScrollableInfoDialog("Check map.ini", report, /*applyMode=*/false);
+#ifdef RTS_HAS_QT
+	WBQtWaterTuning_PushRefresh();
+#endif
 }
 
 // Read <map folder>\map.ini's last-write time into out; false if it can't be stat'd.
@@ -2131,6 +2192,15 @@ void CWorldBuilderDoc::pollMapIniWatch()
 	bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
 	if (!ok) {
 		showScrollableInfoDialog("Auto-reload map.ini", report, /*applyMode=*/false);
+	}
+}
+
+// WorldBuilder wrote map.ini itself, so the watch takes the new mtime as its baseline.
+void CWorldBuilderDoc::noteMapIniSaved()
+{
+	AsciiString iniPath = currentMapIniPath(m_strPathName);
+	if (!iniPath.isEmpty()) {
+		getMapIniWriteTime(iniPath, &m_mapIniLastWrite);
 	}
 }
 
@@ -3334,6 +3404,16 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 			return(false);
 		}
 	}
+
+	// The previous map's map.ini overrides, tuned water included, must not carry into the new map.
+#ifdef RTS_HAS_QT
+	WBQtWaterTuning_MapChanged();
+#endif
+	if (g_mapiniloaded)
+	{
+		unloadMapIniOverrides();
+	}
+
 	REF_PTR_RELEASE(m_heightMap);
 	REF_PTR_RELEASE(m_undoList);
 	m_curRedo = 0;
@@ -3616,6 +3696,10 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 		MinimapLoadGuard()  { MinimapDialog::setLoading(true); }
 		~MinimapLoadGuard() { MinimapDialog::setLoading(false); }
 	} minimapLoadGuard;
+
+#ifdef RTS_HAS_QT
+	WBQtWaterTuning_MapChanged();
+#endif
 
 	// If a map.ini override was loaded for the previous map, gracefully tear it down
 	// before loading the next map (no more forced restart). This strips only the
