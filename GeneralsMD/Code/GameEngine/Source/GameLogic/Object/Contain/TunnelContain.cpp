@@ -634,6 +634,8 @@ void TunnelContain::xfer( Xfer *xfer )
 	// Currently registered with owning player
 	xfer->xferBool( &m_isCurrentlyRegistered );
 
+	xfer->xferBool( &m_isAutoPopModelConditionSet );
+
 }
 
 // ------------------------------------------------------------------------------------------------
