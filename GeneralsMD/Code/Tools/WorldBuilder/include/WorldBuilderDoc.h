@@ -29,11 +29,12 @@
 class CWorldBuilderView;
 class WbView3d;
 class WorldHeightMapEdit;
+class WaterTransparencySetting;
 class Undoable;
 class DataChunkInput;
 struct DataChunkInfo;
 
-#define MAX_UNDOS 15
+#define MAX_UNDOS 64
 
 #define MIN_CELL_SIZE 1
 #define MAX_CELL_SIZE 64
@@ -52,9 +53,14 @@ protected:
 	Undoable						*m_undoList;  ///< Head of undo/redo list.
 	int									m_maxUndos;
 	int									m_curRedo;		///< 0 means no redos available.
+	// TheSuperHackers @feature Expose a monotonic document revision to automation clients.
+	UnsignedInt					m_changeSerial;
 	Bool								m_linkCenters;				///< Flag whether the centers of the 2d and 3d views track together.
  	Bool								m_needAutosave;			///< True if changes have been made since last autosave.
 	Int									m_curWaypointID;
+	Bool							    m_disableMapPrevGeneration;
+	Bool								m_watchMapIni;			///< auto-reload map.ini when the file changes
+	FILETIME							m_mapIniLastWrite;		///< last-seen map.ini mtime for the watch
 
 protected:
 	std::vector<ICoord2D> m_boundaries;
@@ -87,7 +93,11 @@ public:
 	void getBoundary(Int ndx, ICoord2D* border) const;
 	void addBoundary(ICoord2D* boundaryToAdd);
 	void changeBoundary(Int ndx, ICoord2D *border);
-	void removeLastBoundary();
+	void removeLastBoundary(void);
+	void removeAllExtraBoundaries();
+
+	// const std::vector<ICoord2D>& getBoundaries() const { return m_boundaries; }
+	// void clearBoundaries() { m_boundaries.clear(); }
 
 	// outNdx must not be null, but outHandle can be.
 	// outHandle: 0 means BL, 1 means TL, 2 means TR, 3 means BR
@@ -97,11 +107,21 @@ public:
 	Bool ParseWaypointData(DataChunkInput &file, DataChunkInfo *info, void *userData);
 
 public: // overridden
-	virtual BOOL DoSave(LPCTSTR lpszPathName, BOOL bReplace = TRUE) override;
-	virtual BOOL DoFileSave() override;
+	virtual BOOL DoSave(LPCTSTR lpszPathName, BOOL bReplace = TRUE);
+	virtual BOOL DoFileSave();
+#ifdef RTS_HAS_QT
+	// Stage 1: MFC retitles frames by walking each VISIBLE view's GetParentFrame()
+	// (CDocument::UpdateFrameCounts), but inverted, the 3D view lives under the Qt
+	// window (no CFrameWnd in its parent chain) and the MFC frame is hidden -- so a
+	// save/new/open never reached the OnUpdateFrameTitle mirror and the Qt title went
+	// stale. Push the title at the frame directly. Defined in src/WBQtChromeBridge.cpp.
+	virtual void SetTitle(LPCTSTR lpszTitle);
+#endif
 
 // Attributes
 public:
+	void OptimizeTiles();
+	void RefreshAndOptimizeHeightMap();
 
 	WorldHeightMapEdit *GetHeightMap() {return m_heightMap;}
 	void SetHeightMap(WorldHeightMapEdit *pMap, Bool doUpdate);
@@ -115,6 +135,9 @@ public:
 	static CWorldBuilderDoc *GetActiveDoc();
 	static CWorldBuilderView *GetActive2DView();
 	static WbView3d *GetActive3DView();
+
+	CString getMapPath() const { return m_strPathName; }
+	void LoadEditTime(const CString& mapPath);
 
 	void invalObject(MapObject *pMapObj);
 	void invalCell(int xIndex, int yIndex);
@@ -141,14 +164,18 @@ public:
 
 	void syncViewCenters(Real x, Real y);
 
-	Bool needAutoSave() {return m_needAutosave;};
+	Bool needAutoSave(void) {return m_needAutosave;};
+	UnsignedInt getChangeSerial(void) const { return m_changeSerial; }
 
 	Int getNextWaypointID() { return ++m_curWaypointID;};
 
 	void setNextWaypointID(Int newMax) { if (newMax>m_curWaypointID) m_curWaypointID = newMax;};
 
-	void autoSave();
-	void validate();
+	void autoSave(void);
+	void validate(void);
+	/// Create a map without displaying the interactive New Map dialog.
+	Bool createMapForAutomation(Int width, Int height, UnsignedByte initialHeight, Int borderSize);
+	static void setAutomationNewDocument(Bool enabled);
 // Operations
 public:
 
@@ -170,6 +197,9 @@ public:
 	virtual void Dump(CDumpContext& dc) const override;
 #endif
 	void AddAndDoUndoable(Undoable *pUndo);
+	// Undo history depth: persisted setting ([MainFrame] MaxUndos, Entity Finder UI);
+	// clamped 1..999 -- terrain undos hold heightmap snapshots, so keep it sane.
+	void setMaxUndos(Int count);
 // Generated message map functions
 protected:
 	//{{AFX_MSG(CWorldBuilderDoc)
@@ -181,7 +211,47 @@ protected:
 	afx_msg void OnTsCanonical();
 	afx_msg void OnUpdateTsCanonical(CCmdUI* pCmdUI);
 	afx_msg void OnFileResize();
-	afx_msg void OnJumpToGame();
+	afx_msg void OnMapGenGenerate();
+	afx_msg void OnMapGenRandomize();
+#ifdef RTS_HAS_QT
+	afx_msg void OnFileClose();
+#endif
+	afx_msg void OnGenerateMapStrAndIni();
+
+	// Map.ini loader commands (File > Map.ini submenu).
+	afx_msg void OnOpenMapIni();
+	afx_msg void OnEditMapIni();	///< the built-in Qt editor (falls back to OnOpenMapIni's shell)
+	afx_msg void OnWaterTuningMapIni();
+	afx_msg void OnReloadMapIni();
+	afx_msg void OnCheckMapIni();
+	afx_msg void OnToggleWatchMapIni();
+	afx_msg void OnUpdateWatchMapIni(CCmdUI* pCmdUI);
+	afx_msg void OnToggleVerboseMapIni();
+	afx_msg void OnUpdateVerboseMapIni(CCmdUI* pCmdUI);
+public:
+	// Called from CMainFrame's timer while auto-reload is on: reload if map.ini changed.
+	void pollMapIniWatch();
+	// WorldBuilder wrote map.ini itself: keep the watch from reloading over it.
+	void noteMapIniSaved();
+protected:
+
+	afx_msg void OnJumpToMapFolderWBData();
+	afx_msg void OnJumpToMapFolder();
+	afx_msg void OnJumpToAutoSaveFolder();
+	afx_msg void OnOpenWorldbuilderSettings();
+
+	void OpenGameFolder(Bool data);
+	afx_msg void OnOpenGameFolder();
+	afx_msg void OnOpenDataFolder();
+
+	void OnJumpToGame(Bool withDebug, Bool waveEdit);
+	afx_msg void OnJumpToGameWithoutDebug();
+	afx_msg void OnJumpToGameWithDebug();
+	afx_msg void OnJumpToGameWithWaveEdit();
+
+	afx_msg void OnViewDisableMapPrevGen();
+	afx_msg void OnUpdateDisableMapPrevGen(CCmdUI* pCmdUI);
+
 	afx_msg void OnTsRemap();
 	afx_msg void OnEditLinkCenters();
 	afx_msg void OnUpdateEditLinkCenters(CCmdUI* pCmdUI);
@@ -205,6 +275,27 @@ protected:
 };
 
 /////////////////////////////////////////////////////////////////////////////
+
+// True when `name` is a template the loaded map.ini INVENTED -- i.e. the installed game data has
+// no Object block for it, so it exists only while this map.ini's overrides are installed.
+//
+// Such a template is registered in TheThingFactory like any other, so catalog walks built from
+// firstTemplate() include it. The "fix missing units/buildings" matchers must NOT offer one as a
+// replacement: it would point the map at an object that vanishes with the map.ini, resolving a
+// broken name to something equally non-existent. Common on a modded install, where a mod drops a
+// vanilla template and a vanilla-authored map.ini re-creates the old name from scratch.
+//
+// Always false when no map.ini is loaded.
+Bool WBMapIni_IsPhantomTemplate(const AsciiString &name);
+
+// Free any installed map.ini overrides at shutdown. Called from ExitInstance BEFORE Qt is torn
+// down -- leaving them live across ~QApplication crashes on the way out. Deliberately NOT the
+// same as the loader's unload (it skips the template re-link, which is both pointless at exit
+// and unsafe while the document still references those templates). See the definition.
+void WBMapIni_UnloadForShutdown(void);
+
+// The map's WaterTransparency override, created from the Water.ini values when the map has none.
+WaterTransparencySetting *WBMapIni_EnsureWaterOverride(void);
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

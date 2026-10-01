@@ -823,7 +823,7 @@ void AIStateMachine::loadPostProcess()
  */
 void AIStateMachine::setGoalPath( std::vector<Coord3D>* path )
 {
-	stl::move_or_swap(m_goalPath, *path);
+	MOVE_TO(m_goalPath) = std::move(*path);
 }
 
 #ifdef STATE_MACHINE_DEBUG
@@ -1170,7 +1170,8 @@ Bool outOfWeaponRangeObject( State *thisState, void* userData )
 			//	victim->getID(), victim->getTemplate()->getName().str()));
 			return true;
 		}
-		if (!weapon->hasLeechRange() && !weapon->isWithinAttackRange(obj, victim))
+		// We are already engaging, so allow the target some drift before we go back to chasing it.
+		if (!weapon->hasLeechRange() && !weapon->isWithinContinueAttackRange(obj, victim))
 		{
 			//CRCDEBUG_LOG(("outOfWeaponRangeObject() - object %d (%s) is out of range for attacking %d (%s)",
 			//	obj->getID(), obj->getTemplate()->getName().str(),
@@ -1732,7 +1733,8 @@ StateReturnType AIInternalMoveToState::onEnter()
 	ai->setPathExtraDistance(0);
 	ai->setDesiredSpeed( FAST_AS_POSSIBLE );
 
-	startMoveSound();
+	m_moveSoundState = MOVESOUND_WAITING;
+
 	return STATE_CONTINUE;
 }
 
@@ -1742,6 +1744,11 @@ StateReturnType AIInternalMoveToState::onEnter()
 void AIInternalMoveToState::startMoveSound()
 {
 	Object *obj = getMachineOwner();
+	m_moveSoundState = MOVESOUND_STARTED;
+
+	const AIUpdateInterface *ai = obj->getAI();
+	Bool reversing = ai && ai->getCurLocomotor() && ai->getCurLocomotor()->isMovingBackwards();
+
 	const BodyModuleInterface *objBody = obj->getBodyModule();
 	if (objBody && IS_CONDITION_WORSE(objBody->getDamageState(), BODY_DAMAGED))
 	{
@@ -1753,7 +1760,17 @@ void AIInternalMoveToState::startMoveSound()
 		}
 		else
 		{
-			soundEventMoveDamaged = *obj->getTemplate()->getSoundMoveLoopDamaged();
+			if (reversing)
+			{
+				soundEventMoveDamaged = *obj->getTemplate()->getSoundReverseMoveLoopDamaged();
+			}
+
+			// a template without the reverse loop keeps the forward one
+			if (soundEventMoveDamaged.getEventName().isEmpty())
+			{
+				soundEventMoveDamaged = *obj->getTemplate()->getSoundMoveLoopDamaged();
+			}
+
 			if (!soundEventMoveDamaged.getEventName().isEmpty())
 			{
 				soundEventMoveDamaged.setObjectID(obj->getID());
@@ -1772,7 +1789,16 @@ void AIInternalMoveToState::startMoveSound()
 		}
 		else
 		{
-			soundEventMove = *obj->getTemplate()->getSoundMoveLoop();
+			if (reversing)
+			{
+				soundEventMove = *obj->getTemplate()->getSoundReverseMoveLoop();
+			}
+
+			if (soundEventMove.getEventName().isEmpty())
+			{
+				soundEventMove = *obj->getTemplate()->getSoundMoveLoop();
+			}
+
 			soundEventMove.setObjectID(obj->getID());
 			if (!soundEventMove.getEventName().isEmpty())
 			{
@@ -1821,6 +1847,15 @@ StateReturnType AIInternalMoveToState::update()
 
 	Object *obj = getMachineOwner();
 	AIUpdateInterface *ai = obj->getAI();
+
+	if (m_moveSoundState == MOVESOUND_WAITING)
+	{
+		m_moveSoundState = MOVESOUND_LOCOMOTOR_RAN;
+	}
+	else if (m_moveSoundState == MOVESOUND_LOCOMOTOR_RAN)
+	{
+		startMoveSound();
+	}
 
 	//Kris: 7/01/03 (Temporary debug hook for units not being able to leave maps)
 	Bool blah = FALSE;
@@ -2771,7 +2806,14 @@ StateReturnType AIAttackApproachTargetState::updateInternal()
 		{
 			return STATE_SUCCESS;
 		}
-		if (m_stopIfInRange && weapon && weapon->isWithinAttackRange(source, victim))
+		// A firing position computed for a moving victim is stale by the time we reach it, so take
+		// the shot as soon as one opens rather than walking out the rest of the path.
+		Bool stopNow = m_stopIfInRange;
+		if (!stopNow && victim->getPhysics() && victim->getPhysics()->getForwardSpeed2D() > 0.0f)
+		{
+			stopNow = true;
+		}
+		if (stopNow && weapon && weapon->isWithinAttackRange(source, victim))
 		{
 			Bool viewBlocked = false;
 			if (victim && ai->isDoingGroundMovement() && !victim->isSignificantlyAboveTerrain())

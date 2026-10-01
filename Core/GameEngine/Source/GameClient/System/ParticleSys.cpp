@@ -31,6 +31,7 @@
 
 #define DEFINE_PARTICLE_SYSTEM_NAMES
 
+#include "Common/FramePacer.h"
 #include "Common/GameState.h"
 #include "Common/INI.h"
 #include "Common/PerfTimer.h"
@@ -47,8 +48,11 @@
 #include "GameClient/Smudge.h"
 
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/Module/BehaviorModule.h"
+#include "GameLogic/Module/UpdateModule.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/TerrainLogic.h"
+#include "GameLogic/Weapon.h"
 
 
 //------------------------------------------------------------------------------ Performance Timers
@@ -193,11 +197,40 @@ void ParticleInfo::xfer( Xfer *xfer )
 }
 
 // ------------------------------------------------------------------------------------------------
+/** Validate alpha key frames */
+// ------------------------------------------------------------------------------------------------
+template <typename KeyframeType>
+static void validateAlphaKeyframes(KeyframeType *keys, Int keysSize)
+{
+	for (Int i = 1; i < keysSize; ++i)
+	{
+		UnsignedInt &prevFrame = keys[i - 1].frame;
+		UnsignedInt &currFrame = keys[i].frame;
+
+		// The key frames behind the first one end the sequence with frame zero.
+		if (currFrame == 0)
+			break;
+
+		if (currFrame <= prevFrame)
+		{
+			DEBUG_LOG(("validateAlphaKeyframes - Alpha%d is on frame %u and does not follow frame %u. It is moved to frame %u",
+				i + 1, currFrame, prevFrame, prevFrame + 1));
+
+			currFrame = prevFrame + 1;
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
 /** Load post process */
 // ------------------------------------------------------------------------------------------------
 void ParticleInfo::loadPostProcess()
 {
-
+	// TheSuperHackers @bugfix A key frame that does not come after its predecessor has no interval to
+	// ramp over. Its infinite rate would remain in the alpha, because the alpha reaches its key frame
+	// values without being set to them. Such a key frame is therefore moved to the frame after its
+	// predecessor. The color key frames are not validated, to keep their original look.
+	validateAlphaKeyframes(m_alphaKey, ARRAY_SIZE(m_alphaKey));
 }
 
 /** Load post process */
@@ -231,9 +264,8 @@ void Particle::computeAlphaRate()
 		return;
 	}
 
-	Real delta = m_alphaKey[ m_alphaTargetKey ].value - m_alphaKey[ m_alphaTargetKey-1 ].value;
 	UnsignedInt time = m_alphaKey[ m_alphaTargetKey ].frame - m_alphaKey[ m_alphaTargetKey-1 ].frame;
-
+	Real delta = m_alphaKey[ m_alphaTargetKey ].value - m_alphaKey[ m_alphaTargetKey-1 ].value;
 	m_alphaRate = delta/time;
 }
 
@@ -282,8 +314,6 @@ Particle::Particle( ParticleSystem *system, const ParticleInfo *info )
 #endif
 	m_angleZ = info->m_angleZ;
 
-	m_lastPos.zero();
-
 	m_windRandomness = info->m_windRandomness;
 	m_particleUpTowardsEmitter = info->m_particleUpTowardsEmitter;
 	m_emitterPos = info->m_emitterPos;
@@ -299,7 +329,11 @@ Particle::Particle( ParticleSystem *system, const ParticleInfo *info )
 
 	m_lifetime = info->m_lifetime;
 	m_lifetimeLeft = info->m_lifetime;
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_createTimestamp = TheGameClient->getFrameLegacy();
+#else
 	m_createTimestamp = TheGameClient->getFrame();
+#endif
 	m_personality = 0;
 
 	m_size = info->m_size;
@@ -312,16 +346,38 @@ Particle::Particle( ParticleSystem *system, const ParticleInfo *info )
 		m_alphaKey[i] = info->m_alphaKey[i];
 
 	m_alpha = m_alphaKey[0].value;
+#if PRESERVE_RETAIL_PARTICLES
+	// The original implementation ramps towards the second key frame from the creation frame, which reaches its value one
+	// frame early, or runs past it until its frame is reached if the first key frame starts later.
 	m_alphaTargetKey = 1;
 	computeAlphaRate();
+#else
+	// TheSuperHackers @tweak The first key frame holds its value until its frame has passed, and is therefore the first
+	// key frame to advance to.
+	m_alphaTargetKey = 0;
+	m_alphaRate = 0.0f;
+#endif
 
 	// set up colors
 	for( i=0; i<MAX_KEYFRAMES; i++ )
 		m_colorKey[i] = info->m_colorKey[i];
 
 	m_color = m_colorKey[0].color;
+#if PRESERVE_RETAIL_PARTICLES
+	// The original implementation ramps towards the second key frame from the creation frame and therefore runs past its
+	// color. Unlike the alpha, the color is not overwritten with the key frame value, so this offset remains for the rest
+	// of the life of the particle. This can cause visual glitches, such as greenish flames from Dragon Tanks
+	// and Inferno Cannons.
 	m_colorTargetKey = 1;
 	computeColorRate();
+#else
+	// TheSuperHackers @tweak The first key frame holds its color until its frame has passed, like the alpha does, so that
+	// every key frame interval ends exactly on its key frame.
+	m_colorTargetKey = 0;
+	m_colorRate.red = 0.0f;
+	m_colorRate.green = 0.0f;
+	m_colorRate.blue = 0.0f;
+#endif
 
 	m_colorScale = info->m_colorScale;
 
@@ -374,6 +430,16 @@ void Particle::applyForce( const Coord3D *force )
 // ------------------------------------------------------------------------------------------------
 Bool Particle::update()
 {
+	// monitor lifetime
+	if (m_lifetimeLeft && --m_lifetimeLeft == 0)
+		return false;
+
+	DEBUG_ASSERTCRASH( m_lifetimeLeft, ( "A particle has an infinite lifetime..." ));
+
+	// TheSuperHackers @info The logic update changes the velocity and the rates, and the render update only
+	// integrates them, because a rate that stays constant over a logic frame splits into any number of render
+	// steps without changing the result.
+
 	// integrate acceleration into velocity
 	m_vel.x += m_accel.x;
 	m_vel.y += m_accel.y;
@@ -383,84 +449,70 @@ Bool Particle::update()
 	m_vel.y *= m_velDamping;
 	m_vel.z *= m_velDamping;
 
-	// integrate velocity into position
-	const Coord3D *driftVel = m_system->getDriftVelocity();
-	m_pos.x += m_vel.x + driftVel->x;
-	m_pos.y += m_vel.y + driftVel->y;
-	m_pos.z += m_vel.z + driftVel->z;
+	// reset the acceleration for accumulation next frame
+	m_accel.x = 0.0f;
+	m_accel.y = 0.0f;
+	m_accel.z = 0.0f;
 
-	// integrate the wind (if specified) into position
-	ParticleSystemInfo::WindMotion windMotion = m_system->getWindMotion();
+	const UnsignedInt frameCount = getElapsedFrames();
 
-	// see if we should even do anything
-	if( windMotion != ParticleSystemInfo::WIND_MOTION_NOT_USED )
-		doWindMotion();
+	// TheSuperHackers @info Skip the rest of the logic update on the creation frame. No render update has
+	// integrated this particle yet, so its rates must stay at their initial values for this frame, and testing
+	// it for invisibility would delete a particle that the later render update is about to fade in.
+	if (frameCount == 0)
+	{
+		return true;
+	}
 
-	// update orientation
-#if PARTICLE_USE_XY_ROTATION
-	m_angleX += m_angularRateX;
-	m_angleY += m_angularRateY;
-#endif
-	m_angleZ += m_angularRateZ;
 #if PARTICLE_USE_XY_ROTATION
 	m_angularRateX *= m_angularDamping;
 	m_angularRateY *= m_angularDamping;
 #endif
 	m_angularRateZ *= m_angularDamping;
 
-	if (m_particleUpTowardsEmitter) {
-		// adjust the up position back towards the particle
-		static const Coord2D upVec = { 0.0f, 1.0f };
-		Coord2D emitterDir;
-		emitterDir.x = m_pos.x - m_emitterPos.x;
-		emitterDir.y = m_pos.y - m_emitterPos.y;
-		m_angleZ = (angleBetween(&upVec, &emitterDir) + PI);
-	}
-
-	// update size
-	m_size += m_sizeRate;
 	m_sizeRate *= m_sizeRateDamping;
+
+	// TheSuperHackers @info A key frame is passed in the logic frame after its frame, because the render update after
+	// this logic update applies the next rate. This ends every key frame interval exactly on its key frame, so the alpha
+	// reaches its key frame values without being set to them. Only the key frames behind the first one end the sequence
+	// with frame zero.
 
 	//
 	// Update alpha (if used)
 	//
-
 	if (m_system->getShaderType() != ParticleSystemInfo::ADDITIVE)
 	{
-		m_alpha += m_alphaRate;
-
-		if (m_alphaTargetKey < MAX_KEYFRAMES && m_alphaKey[ m_alphaTargetKey ].frame)
+#if PRESERVE_RETAIL_PARTICLES
+		// The first key frame interval starts on the creation frame and therefore arrives at its key frame early.
+		// On the key frame, the alpha is set to the key frame value and held for that frame.
+		if (m_alphaTargetKey == 1 && frameCount == m_alphaKey[ 1 ].frame)
 		{
-			if (TheGameClient->getFrame() - m_createTimestamp >= m_alphaKey[ m_alphaTargetKey ].frame)
+			m_alpha = m_alphaKey[ 1 ].value;
+			m_alphaRate = 0.0f;
+		}
+#endif
+
+		if ((m_alphaTargetKey < MAX_KEYFRAMES && m_alphaKey[ m_alphaTargetKey ].frame != 0) || m_alphaTargetKey == 0)
+		{
+			if (frameCount > m_alphaKey[ m_alphaTargetKey ].frame)
 			{
-				m_alpha = m_alphaKey[ m_alphaTargetKey ].value;
 				m_alphaTargetKey++;
 				computeAlphaRate();
 			}
 		}
 		else
+		{
 			m_alphaRate = 0.0f;
-
-		if (m_alpha < 0.0f)
-			m_alpha = 0.0f;
-		else if (m_alpha > 1.0f)
-			m_alpha = 1.0f;
+		}
 	}
-
 
 	//
 	// Update color
 	//
-	m_color.red += m_colorRate.red;
-	m_color.green += m_colorRate.green;
-	m_color.blue += m_colorRate.blue;
-
-	if (m_colorTargetKey < MAX_KEYFRAMES && m_colorKey[ m_colorTargetKey ].frame)
+	if ((m_colorTargetKey < MAX_KEYFRAMES && m_colorKey[ m_colorTargetKey ].frame != 0) || m_colorTargetKey == 0)
 	{
-		if (TheGameClient->getFrame() - m_createTimestamp >= m_colorKey[ m_colorTargetKey ].frame)
+		if (frameCount > m_colorKey[ m_colorTargetKey ].frame)
 		{
-			// can't set, because of colorscale
-			// m_color = m_colorKey[ m_colorTargetKey ].color;
 			m_colorTargetKey++;
 			computeColorRate();
 		}
@@ -472,48 +524,75 @@ Bool Particle::update()
 		m_colorRate.blue = 0.0f;
 	}
 
-	/// @todo Rethink this - at least its name
-	m_color.red += m_colorScale;
-	m_color.green += m_colorScale;
-	m_color.blue += m_colorScale;
-
-	if (m_color.red < 0.0f)
-		m_color.red = 0.0f;
-	else if (m_color.red > 1.0f)
-		m_color.red = 1.0f;
-
-	if (m_color.red < 0.0f)
-		m_color.green = 0.0f;
-	else if (m_color.green > 1.0f)
-		m_color.green = 1.0f;
-
-	if (m_color.blue < 0.0f)
-		m_color.blue = 0.0f;
-	else if (m_color.blue > 1.0f)
-		m_color.blue = 1.0f;
-
-
-	// reset the acceleration for accumulation next frame
-	m_accel.x = 0.0f;
-	m_accel.y = 0.0f;
-	m_accel.z = 0.0f;
-
-	// monitor lifetime
-	if (m_lifetimeLeft && --m_lifetimeLeft == 0)
-		return false;
-
-	DEBUG_ASSERTCRASH( m_lifetimeLeft, ( "A particle has an infinite lifetime..." ));
-
 	// if we've gone totally invisible, destroy ourselves
 	if (isInvisible())
 		return false;
+
 	return true;
+}
+
+// ------------------------------------------------------------------------------------------------
+void Particle::draw(Real timeScale)
+{
+	// integrate velocity into position
+	const Coord3D *driftVel = m_system->getDriftVelocity();
+	m_pos.x += (m_vel.x + driftVel->x) * timeScale;
+	m_pos.y += (m_vel.y + driftVel->y) * timeScale;
+	m_pos.z += (m_vel.z + driftVel->z) * timeScale;
+
+	// integrate the wind (if specified) into position
+	ParticleSystemInfo::WindMotion windMotion = m_system->getWindMotion();
+
+	// see if we should even do anything
+	if( windMotion != ParticleSystemInfo::WIND_MOTION_NOT_USED )
+		doWindMotion(timeScale);
+
+	// update orientation
+#if PARTICLE_USE_XY_ROTATION
+	m_angleX += m_angularRateX * timeScale;
+	m_angleY += m_angularRateY * timeScale;
+#endif
+	m_angleZ += m_angularRateZ * timeScale;
+
+	if (m_particleUpTowardsEmitter)
+	{
+		// adjust the up position back towards the particle
+		static const Coord2D upVec = { 0.0f, 1.0f };
+		Coord2D emitterDir;
+		emitterDir.x = m_pos.x - m_emitterPos.x;
+		emitterDir.y = m_pos.y - m_emitterPos.y;
+		m_angleZ = (angleBetween(&upVec, &emitterDir) + PI);
+	}
+
+	// update size
+	m_size += m_sizeRate * timeScale;
+
+	//
+	// Update alpha (if used)
+	//
+	if (m_system->getShaderType() != ParticleSystemInfo::ADDITIVE)
+	{
+		m_alpha += m_alphaRate * timeScale;
+		m_alpha = clamp(0.0f, m_alpha, 1.0f);
+	}
+
+	//
+	// Update color
+	//
+	m_color += m_colorRate * timeScale;
+
+	/// @todo Rethink this - at least its name
+	m_color += m_colorScale * timeScale;
+
+	m_color.red = clamp(0.0f, m_color.red, 1.0f);
+	m_color.green = clamp(0.0f, m_color.green, 1.0f);
+	m_color.blue = clamp(0.0f, m_color.blue, 1.0f);
 }
 
 // ------------------------------------------------------------------------------------------------
 /** Do wind motion as specified by the particle system template, if present */
 // ------------------------------------------------------------------------------------------------
-void Particle::doWindMotion()
+void Particle::doWindMotion(Real timeScale)
 {
 
 	// get the angle of the wind
@@ -577,7 +656,7 @@ void Particle::doWindMotion()
 	Real distFromWind = v.length();
 	if( distFromWind < noForceDistance )
 	{
-		Real windForceStrength = 2.0f * m_windRandomness;
+		Real windForceStrength = 2.0f * m_windRandomness * timeScale;
 
 		// only apply force if still within the circle of influence
 		if( distFromWind > fullForceDistance )
@@ -601,6 +680,16 @@ ParticlePriorityType Particle::getPriority()
 }
 
 // ------------------------------------------------------------------------------------------------
+UnsignedInt Particle::getElapsedFrames() const
+{
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	return TheGameClient->getFrameLegacy() - m_createTimestamp;
+#else
+	return TheGameClient->getFrame() - m_createTimestamp;
+#endif
+}
+
+// ------------------------------------------------------------------------------------------------
 /** Return true if this particle is invisible */
 // ------------------------------------------------------------------------------------------------
 Bool Particle::isInvisible()
@@ -608,20 +697,23 @@ Bool Particle::isInvisible()
 	switch (m_system->getShaderType())
 	{
 		case ParticleSystemInfo::ADDITIVE:
-			// if color is black, this particle is invisible
-
 			// check that we're not in the process of going to another color
-			if (m_colorKey[ m_colorTargetKey ].frame == 0)
+			if (m_colorTargetKey >= MAX_KEYFRAMES || m_colorKey[ m_colorTargetKey ].frame == 0)
 			{
+				// if color is black, this particle is invisible
 				if (m_color.red < 0.01f && m_color.green < 0.01f && m_color.blue < 0.01f)
 					return true;
 			}
 			return false;
 
 		case ParticleSystemInfo::ALPHA:
-			// if alpha is zero, this particle is invisible
-			if (m_alpha < 0.01f)
-				return true;
+			// TheSuperHackers @fix Check that we're not in the process of going to another alpha.
+			if (m_alphaTargetKey >= MAX_KEYFRAMES || m_alphaKey[ m_alphaTargetKey ].frame == 0)
+			{
+				// if alpha is zero, this particle is invisible
+				if (m_alpha < 0.01f)
+					return true;
+			}
 			return false;
 
 		case ParticleSystemInfo::ALPHA_TEST:
@@ -629,11 +721,10 @@ Bool Particle::isInvisible()
 			return false;
 
 		case ParticleSystemInfo::MULTIPLY:
-			// if color is white, this particle is invisible
-
 			// check that we're not in the process of going to another color
-			if (m_colorKey[ m_colorTargetKey ].frame == 0)
+			if (m_colorTargetKey >= MAX_KEYFRAMES || m_colorKey[ m_colorTargetKey ].frame == 0)
 			{
+				// if color is white, this particle is invisible
 				if (m_color.red > 0.99f && m_color.green > 0.99f && m_color.blue > 0.99f)
 					return true;
 			}
@@ -655,13 +746,19 @@ void Particle::crc( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
 	* Version Info:
-	* 1: Initial version */
+	* 1: Initial version
+	* 2: TheSuperHackers @tweak Removed unused m_lastPos
+	*/
 // ------------------------------------------------------------------------------------------------
 void Particle::xfer( Xfer *xfer )
 {
 
 	// version
+#if RETAIL_COMPATIBLE_XFER_SAVE
 	XferVersion currentVersion = 1;
+#else
+	XferVersion currentVersion = 2;
+#endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -675,7 +772,11 @@ void Particle::xfer( Xfer *xfer )
 	xfer->xferCoord3D( &m_accel );
 
 	// last position
-	xfer->xferCoord3D( &m_lastPos );
+	if (version <= 1)
+	{
+		Coord3D m_lastPos = {0};
+		xfer->xferCoord3D( &m_lastPos );
+	}
 
 	// lifetime left
 	xfer->xferUnsignedInt( &m_lifetimeLeft );
@@ -758,6 +859,10 @@ ParticleSystemInfo::ParticleSystemInfo()
 	m_conformToTerrain = false;
 	m_isEmitAboveGroundOnly = false;
 	m_isParticleUpTowardsEmitter = false;
+	m_flameShader = FLAME_SHADER_AUTO;
+	m_electricShader = ELECTRIC_SHADER_AUTO;
+	m_laserShader = LASER_SHADER_AUTO;
+	m_cryoShader = CRYO_SHADER_AUTO;
 
 	m_driftVelocity.zero();
 	m_gravity = 0.0f;
@@ -834,7 +939,11 @@ void ParticleSystemInfo::xfer( Xfer *xfer )
 
 	// version
 	// TheSuperHackers @feature version 2 adds m_conformToTerrain
-	XferVersion currentVersion = 2;
+	// version 3 adds m_flameShader
+	// version 4 adds m_electricShader
+	// version 5 adds m_laserShader
+	// version 6 adds m_cryoShader
+	XferVersion currentVersion = 6;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1069,6 +1178,26 @@ void ParticleSystemInfo::xfer( Xfer *xfer )
 	// wind motion moving to end angle
 	xfer->xferByte( &m_windMotionMovingToEndAngle );
 
+	if( version >= 3 )
+	{
+		xfer->xferUser( &m_flameShader, sizeof( FlameShaderMode ) );
+	}
+
+	if( version >= 4 )
+	{
+		xfer->xferUser( &m_electricShader, sizeof( ElectricShaderMode ) );
+	}
+
+	if( version >= 5 )
+	{
+		xfer->xferUser( &m_laserShader, sizeof( LaserShaderMode ) );
+	}
+
+	if( version >= 6 )
+	{
+		xfer->xferUser( &m_cryoShader, sizeof( CryoShaderMode ) );
+	}
+
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1076,7 +1205,34 @@ void ParticleSystemInfo::xfer( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 void ParticleSystemInfo::loadPostProcess()
 {
+	validate();
+}
 
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemInfo::validate()
+{
+	// TheSuperHackers @info Initialize all volume particles that lack ini configuration to the optimum depth of 6
+	// In retail, volume particle depth was not configurable through ini and was hard coded to a particle depth of 6
+	if (m_particleType == ParticleSystemInfo::VOLUME_PARTICLE)
+	{
+		if (m_volumeParticleDepth == INVALID_VOLUME_PARTICLE_DEPTH)
+			m_volumeParticleDepth = OPTIMUM_VOLUME_PARTICLE_DEPTH;
+	}
+	else
+	{
+		m_volumeParticleDepth = DEFAULT_VOLUME_PARTICLE_DEPTH;
+	}
+
+#if PRESERVE_RETAIL_PARTICLES
+	// TheSuperHackers @info Hack to allow isUsingSmudge() functionality with retail smudge particles
+	// The retail data template for smudge particles is not correctly configured with the smudge particle type
+	if (m_particleType != ParticleSystemInfo::SMUDGE && m_particleTypeName.startsWithNoCase("SMUDGE."))
+	{
+		m_particleType = ParticleSystemInfo::SMUDGE;
+	}
+#endif
+
+	validateAlphaKeyframes(m_alphaKey, ARRAY_SIZE(m_alphaKey));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1159,14 +1315,18 @@ ParticleSystem::ParticleSystem( const ParticleSystemTemplate *sysTemplate,
 
 	m_delayLeft = (UnsignedInt)sysTemplate->m_initialDelay.getValue();
 
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_startTimestamp = TheGameClient->getFrameLegacy();
+#else
 	m_startTimestamp = TheGameClient->getFrame();
+#endif
 	m_systemLifetimeLeft = sysTemplate->m_systemLifetime;
 	if (sysTemplate->m_systemLifetime)
 		m_isForever = false;
 	else
 		m_isForever = true;
 
-	m_accumulatedSizeBonus = 0;
+	m_accumulatedSizeBonus = 0.0f;
 
 	m_velDamping = sysTemplate->m_velDamping;
 
@@ -1195,6 +1355,18 @@ ParticleSystem::ParticleSystem( const ParticleSystemTemplate *sysTemplate,
 	m_conformToTerrain = sysTemplate->m_conformToTerrain;
 	m_isEmitAboveGroundOnly = sysTemplate->m_isEmitAboveGroundOnly;
 	m_isParticleUpTowardsEmitter = sysTemplate->m_isParticleUpTowardsEmitter;
+	m_flameShader = sysTemplate->m_flameShader;
+	m_flameKnown = FALSE;
+	m_flameAuto = FALSE;
+	m_electricShader = sysTemplate->m_electricShader;
+	m_electricKnown = FALSE;
+	m_electricAuto = FALSE;
+	m_laserShader = sysTemplate->m_laserShader;
+	m_laserKnown = FALSE;
+	m_laserAuto = FALSE;
+	m_cryoShader = sysTemplate->m_cryoShader;
+	m_cryoKnown = FALSE;
+	m_cryoAuto = FALSE;
 
 	m_windMotion = sysTemplate->m_windMotion;
 	m_windAngleChange = sysTemplate->m_windAngleChange;
@@ -1420,7 +1592,9 @@ void ParticleSystem::attachToDrawable( const Drawable *draw )
 {
 	if (draw)
 	{
+		DEBUG_ASSERTCRASH( m_attachedToObjectID == INVALID_ID, ( "ParticleSystem is already attached to an Object" ) );
 		m_attachedToDrawableID = draw->getID();
+		m_attachedToObjectID = INVALID_ID;
 
 #if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
 		// Info: One-frame attached systems can otherwise lose their only burst when the drawable is created and destroyed
@@ -1430,7 +1604,9 @@ void ParticleSystem::attachToDrawable( const Drawable *draw )
 #endif
 	}
 	else
+	{
 		m_attachedToDrawableID = INVALID_DRAWABLE_ID;
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1439,9 +1615,140 @@ void ParticleSystem::attachToDrawable( const Drawable *draw )
 void ParticleSystem::attachToObject( const Object *obj )
 {
 	if (obj)
+	{
+		DEBUG_ASSERTCRASH( m_attachedToDrawableID == INVALID_ID, ( "ParticleSystem is already attached to a Drawable" ) );
 		m_attachedToObjectID = obj->getID();
+		m_attachedToDrawableID = INVALID_DRAWABLE_ID;
+	}
 	else
+	{
 		m_attachedToObjectID = INVALID_ID;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Auto follows the master or controlling particle's system, else the projectile the system rides */
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystem::isFlame()
+{
+	if (m_flameShader != FLAME_SHADER_AUTO)
+	{
+		return m_flameShader == FLAME_SHADER_YES;
+	}
+
+	if (m_flameKnown)
+	{
+		return m_flameAuto;
+	}
+
+	Bool flame = FALSE;
+	if (m_masterSystem != nullptr)
+	{
+		flame = m_masterSystem->isFlame();
+	}
+	else if (m_controlParticle != nullptr && m_controlParticle->getSystem() != nullptr)
+	{
+		flame = m_controlParticle->getSystem()->isFlame();
+	}
+	else
+	{
+		const Object *obj = nullptr;
+		if (m_attachedToObjectID != INVALID_ID)
+		{
+			obj = TheGameLogic->findObjectByID( m_attachedToObjectID );
+		}
+		else if (m_attachedToDrawableID != INVALID_DRAWABLE_ID)
+		{
+			const Drawable *draw = TheGameClient->findDrawableByID( m_attachedToDrawableID );
+			obj = (draw != nullptr) ? draw->getObject() : nullptr;
+		}
+
+		if (obj != nullptr)
+		{
+			for (BehaviorModule **module = obj->getBehaviorModules(); *module != nullptr; ++module)
+			{
+				ProjectileUpdateInterface *projectile = (*module)->getProjectileUpdateInterface();
+				if (projectile != nullptr)
+				{
+					const WeaponTemplate *weapon = projectile->projectileGetDetonationWeapon();
+					flame = weapon != nullptr && weapon->getDamageType() == DAMAGE_FLAME;
+					break;
+				}
+			}
+		}
+	}
+
+	m_flameKnown = TRUE;
+	m_flameAuto = flame;
+	return flame;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+static Bool Is_Texture_Listed(const AsciiString &texture, const std::vector<AsciiString> &textures)
+{
+	for (std::vector<AsciiString>::const_iterator it = textures.begin(); it != textures.end(); ++it)
+	{
+		if (texture.compareNoCase( *it ) == 0)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Auto looks the particle texture up in GameData.ini's ElectricParticleTextures, once per system */
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystem::isElectric()
+{
+	if (m_electricShader != ELECTRIC_SHADER_AUTO)
+	{
+		return m_electricShader == ELECTRIC_SHADER_YES;
+	}
+
+	if (!m_electricKnown)
+	{
+		m_electricKnown = TRUE;
+		m_electricAuto = Is_Texture_Listed(m_particleTypeName, TheGlobalData->m_electricParticleTextures);
+	}
+	return m_electricAuto;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Auto looks the particle texture up in GameData.ini's LaserParticleTextures, once per system */
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystem::isLaser()
+{
+	if (m_laserShader != LASER_SHADER_AUTO)
+	{
+		return m_laserShader == LASER_SHADER_YES;
+	}
+
+	if (!m_laserKnown)
+	{
+		m_laserKnown = TRUE;
+		m_laserAuto = Is_Texture_Listed(m_particleTypeName, TheGlobalData->m_laserParticleTextures);
+	}
+	return m_laserAuto;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Auto looks the particle texture up in GameData.ini's CryoParticleTextures, once per system */
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystem::isCryo()
+{
+	if (m_cryoShader != CRYO_SHADER_AUTO)
+	{
+		return m_cryoShader == CRYO_SHADER_YES;
+	}
+
+	if (!m_cryoKnown)
+	{
+		m_cryoKnown = TRUE;
+		m_cryoAuto = Is_Texture_Listed(m_particleTypeName, TheGlobalData->m_cryoParticleTextures);
+	}
+	return m_cryoAuto;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1774,7 +2081,7 @@ Particle *ParticleSystem::createParticle( const ParticleInfo *info,
 
 		//
 		// Check if particle is below priorities we allow for this FPS or if it being skipped because
-		// all particesl are being skipped (excluding special fps independent particles at
+		// all particles are being skipped (excluding special fps independent particles at
 		// getMinDynamicParticleSkipPriority())
 		//
 		if( priority < TheGameLODManager->getMinDynamicParticlePriority() ||
@@ -1831,7 +2138,6 @@ const ParticleInfo *ParticleSystem::generateParticleInfo( Int particleNum, Int p
 		// transform particle position to world coordinates
 		Vector3 p, pr;
 
-		Coord3D emissionAdjustment;	// this is the adjustment for inter-frame emission
 		// @todo : This should work, if m_lastPos = m_pos is removed from here but it doesn't.
 		// @todo : Investigate why. jkmcd
 		if (m_isFirstPos) {
@@ -1839,9 +2145,13 @@ const ParticleInfo *ParticleSystem::generateParticleInfo( Int particleNum, Int p
 			m_isFirstPos = false;
 		}
 
-		emissionAdjustment.x = (1 - (INT_TO_REAL(particleNum) / particleCount)) * (m_pos.x - m_lastPos.x);
-		emissionAdjustment.y = (1 - (INT_TO_REAL(particleNum) / particleCount)) * (m_pos.y - m_lastPos.y);
-		emissionAdjustment.z = (1 - (INT_TO_REAL(particleNum) / particleCount)) * (m_pos.z - m_lastPos.z);
+		const Coord3D frameDeltaPos = m_pos - m_lastPos;
+		const Real frameStep = 1 - (INT_TO_REAL(particleNum) / particleCount);
+
+		Coord3D emissionAdjustment;	// this is the adjustment for inter-frame emission
+		emissionAdjustment.x = frameStep * frameDeltaPos.x;
+		emissionAdjustment.y = frameStep * frameDeltaPos.y;
+		emissionAdjustment.z = frameStep * frameDeltaPos.z;
 
 		p.X = info.m_pos.x;
 		p.Y = info.m_pos.y;
@@ -1943,7 +2253,11 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 		// system actually "starts" once initial delay is over
 		/// @todo reset start time when system is stopped/started
 		if (m_delayLeft == 0)
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+			m_startTimestamp = TheGameClient->getFrameLegacy();
+#else
 			m_startTimestamp = TheGameClient->getFrame();
+#endif
 
 		return true;
 	}
@@ -1952,114 +2266,15 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 	if (m_windMotion != ParticleSystemInfo::WIND_MOTION_NOT_USED )
 		updateWindMotion();
 
-	// if this system is attached to a Drawable/Object, update the current transform
-	// matrix so generated particles' are relative to the parent Drawable's
-	// position and orientation
-	Bool transformSet = false;
-	const Matrix3D *parentXfrm = nullptr;
-	Bool isShrouded = false;
+	//
+	// Update shrouding and drawable/object lifetime for the particle system
+	//
+	VisibilityState visibilityState = updateVisibility(localPlayerIndex);
 
-	if (m_attachedToDrawableID)
-	{
-		Drawable *attachedTo = TheGameClient->findDrawableByID( m_attachedToDrawableID );
-
-		if (attachedTo)
-		{
-			if (attachedTo->getFullyObscuredByShroud())
-				isShrouded = true;
-
-			parentXfrm = attachedTo->getTransformMatrix();
-			m_lastPos = m_pos;
-			m_pos = *attachedTo->getPosition();
-		}
-		else
-		{
-			// Drawable has been destroyed - lose our attachment to it
-			m_attachedToDrawableID = INVALID_DRAWABLE_ID;
-
-			// destroy ourselves
-			destroy();
-		}
-	}
-	else if (m_attachedToObjectID)
-	{
-		Object *objectAttachedTo = TheGameLogic->findObjectByID( m_attachedToObjectID );
-
-		if (objectAttachedTo)
-		{
-			if (!isShrouded)
-				isShrouded = (objectAttachedTo->getShroudedStatus(localPlayerIndex) >= OBJECTSHROUD_FOGGED);
-
-			const Drawable * draw = objectAttachedTo->getDrawable();
-			if ( draw )
-				parentXfrm = draw->getTransformMatrix();
-			else
-				parentXfrm = objectAttachedTo->getTransformMatrix();
-
-			m_lastPos = m_pos;
-			m_pos = *objectAttachedTo->getPosition();
-		}
-		else
-		{
-			// Drawable has been destroyed - lose our attachment to it
-			m_attachedToObjectID = INVALID_ID;
-
-			// destroy ourselves
-			destroy();
-		}
-	}
-
-	if (parentXfrm)
-	{
-		if (m_skipParentXfrm)
-		{
-			//this particle system is already in world space so no need to apply parent xform.
-			m_transform = m_localTransform;
-		}
-		else
-		{
-			// if system has its own local transform, concatenate them
-			if (m_isLocalIdentity == false)
-	#ifdef ALLOW_TEMPORARIES
-				m_transform = (*parentXfrm) * m_localTransform;
-	#else
-				m_transform.mul(*parentXfrm, m_localTransform);
-	#endif
-			else
-				m_transform = *parentXfrm;
-		}
-
-		m_isIdentity = false;
-		transformSet = true;
-	}
-
-
-	if (transformSet == false)
-	{
-		if (m_isLocalIdentity == false)
-		{
-			m_transform = m_localTransform;
-			m_isIdentity = false;
-		}
-		else
-		{
-			m_isIdentity = true;
-		}
-	}
-
-	// if we are controlled by a particle, its position is local origin
-	if (m_controlParticle)
-	{
-		const Coord3D *controlPos = m_controlParticle->getPosition();
-		/// @todo Concatenate this, instead of overriding (MSB)
-		m_transform.Set_X_Translation( controlPos->x );
-		m_transform.Set_Y_Translation( controlPos->y );
-		m_transform.Set_Z_Translation( controlPos->z );
-		m_isIdentity = false;
-		m_lastPos = m_pos;
-		m_pos = *controlPos;
-	}
-
+	//
+	// Update position and rotation of the particle system
+	//
+	updateTransform();
 
 	//
 	// Generate new particles if the system hasn't been 'stopped' or 'destroyed'
@@ -2067,9 +2282,9 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 	//
 	if (m_isDestroyed == false)
 	{
-		if (m_isForever || (m_isForever == false && m_systemLifetimeLeft > 0))
+		if (m_isForever || m_systemLifetimeLeft > 0)
 		{
-			if (!isShrouded && m_isStopped == false && m_masterSystem == nullptr)
+			if (!visibilityState.isShrouded && m_isStopped == false && m_masterSystem == nullptr)
 			{
 				if (m_burstDelayLeft == 0)
 				{
@@ -2179,6 +2394,176 @@ Bool ParticleSystem::update( Int localPlayerIndex  )
 	}
 
 	return true;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Emit where the parent model is drawn, which trails its logic transform by up to one logic frame.
+static const Matrix3D *getParentDrawnTransform( const Drawable *draw, Coord3D *pos )
+{
+#if RTS_ZEROHOUR
+	const Matrix3D *mtx = draw->getDrawnTransformMatrix();
+#else
+	const Matrix3D *mtx = draw->getTransformMatrix();
+#endif
+	const Vector3 translation = mtx->Get_Translation();
+	pos->set( translation.X, translation.Y, translation.Z );
+	return mtx;
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystem::updateTransform()
+{
+	// if this system is attached to a Drawable/Object, update the current transform
+	// matrix so generated particles' are relative to the parent Drawable's
+	// position and orientation, otherwise use the local transform.
+	if (m_attachedToDrawableID)
+	{
+		if (Drawable *attachedTo = TheGameClient->findDrawableByID( m_attachedToDrawableID ))
+		{
+			m_lastPos = m_pos;
+			applyParentTransform( *getParentDrawnTransform( attachedTo, &m_pos ) );
+		}
+		else
+		{
+			applyLocalTransform();
+		}
+	}
+	else if (m_attachedToObjectID)
+	{
+		if (Object *objectAttachedTo = TheGameLogic->findObjectByID( m_attachedToObjectID ))
+		{
+			m_lastPos = m_pos;
+
+			if (const Drawable * draw = objectAttachedTo->getDrawable())
+			{
+				applyParentTransform( *getParentDrawnTransform( draw, &m_pos ) );
+			}
+			else
+			{
+				applyParentTransform( *objectAttachedTo->getTransformMatrix() );
+				m_pos = *objectAttachedTo->getPosition();
+			}
+		}
+		else
+		{
+			applyLocalTransform();
+		}
+	}
+	else
+	{
+		applyLocalTransform();
+	}
+
+	// if we are controlled by a particle, its position is local origin
+	if (m_controlParticle)
+	{
+		const Coord3D *controlPos = m_controlParticle->getPosition();
+		/// @todo Concatenate this, instead of overriding (MSB)
+		m_transform.Set_X_Translation( controlPos->x );
+		m_transform.Set_Y_Translation( controlPos->y );
+		m_transform.Set_Z_Translation( controlPos->z );
+		m_isIdentity = false;
+		m_lastPos = m_pos;
+		m_pos = *controlPos;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystem::applyParentTransform(const Matrix3D &parentXfrm)
+{
+	if (m_skipParentXfrm)
+	{
+		//this particle system is already in world space so no need to apply parent xform.
+		applyLocalTransform();
+	}
+	else
+	{
+		// if system has its own local transform, concatenate them
+		if (!m_isLocalIdentity)
+		{
+#ifdef ALLOW_TEMPORARIES
+			m_transform = parentXfrm * m_localTransform;
+#else
+			m_transform.mul(parentXfrm, m_localTransform);
+#endif
+		}
+		else
+		{
+			m_transform = parentXfrm;
+		}
+
+		m_isIdentity = false;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystem::applyLocalTransform()
+{
+	if (!m_isLocalIdentity)
+	{
+		m_transform = m_localTransform;
+		m_isIdentity = false;
+	}
+	else
+	{
+		m_isIdentity = true;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+ParticleSystem::VisibilityState ParticleSystem::updateVisibility( Int localPlayerIndex )
+{
+	VisibilityState visibilityState;
+
+	if (m_attachedToDrawableID)
+	{
+		if (Drawable *attachedTo = TheGameClient->findDrawableByID( m_attachedToDrawableID ))
+		{
+			visibilityState.isShrouded = attachedTo->getFullyObscuredByShroud();
+		}
+		else
+		{
+			// Drawable has been destroyed - lose our attachment to it
+			m_attachedToDrawableID = INVALID_DRAWABLE_ID;
+
+			// destroy ourselves
+			destroy();
+		}
+	}
+	else if (m_attachedToObjectID)
+	{
+		if (Object *objectAttachedTo = TheGameLogic->findObjectByID( m_attachedToObjectID ))
+		{
+			visibilityState.isShrouded = objectAttachedTo->getShroudedStatus(localPlayerIndex) >= OBJECTSHROUD_FOGGED;
+		}
+		else
+		{
+			// Drawable has been destroyed - lose our attachment to it
+			m_attachedToObjectID = INVALID_ID;
+
+			// destroy ourselves
+			destroy();
+		}
+	}
+
+	return visibilityState;
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystem::draw(Real timeScale)
+{
+	if (TheGlobalData->m_useFX == FALSE)
+		return;
+
+	if (m_delayLeft != 0)
+		return;
+
+	Particle *p = m_systemParticlesHead;
+	while (p)
+	{
+		p->draw(timeScale);
+		p = p->m_systemNext;
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2680,6 +3065,12 @@ void ParticleSystem::loadPostProcess()
 
 	}
 
+	if( m_attachedToDrawableID != INVALID_DRAWABLE_ID && m_attachedToObjectID != INVALID_ID )
+	{
+		DEBUG_CRASH(( "ParticleSystem::loadPostProcess - m_attachedToDrawableID and m_attachedToObjectID are both erroneously set" ));
+		throw SC_INVALID_DATA;
+	}
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2784,6 +3175,24 @@ const FieldParse ParticleSystemTemplate::m_fieldParseTable[] =
 	{ "IsParticleUpTowardsEmitter",	INI::parseBool,																nullptr,		offsetof( ParticleSystemTemplate, m_isParticleUpTowardsEmitter) },
 
 	{ "WindMotion",					INI::parseIndexList, WindMotionNames, offsetof( ParticleSystemTemplate, m_windMotion ) },
+	{ "FlameShader",				INI::parseIndexList, FlameShaderModeNames, offsetof( ParticleSystemTemplate, m_flameShader ) },
+	{ "ElectricShader",			INI::parseIndexList, ElectricShaderModeNames, offsetof( ParticleSystemTemplate, m_electricShader ) },
+	{ "LaserShader",				INI::parseIndexList, LaserShaderModeNames, offsetof( ParticleSystemTemplate, m_laserShader ) },
+	{ "CryoShader",					INI::parseIndexList, CryoShaderModeNames, offsetof( ParticleSystemTemplate, m_cryoShader ) },
+	{ "FlameWarp",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.warp ) },
+	{ "FlameHeat",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.heat ) },
+	{ "FlameFlicker",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.flicker ) },
+	{ "FlameBreakup",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.breakup ) },
+	{ "FlameNoiseSize",			INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.noiseSize ) },
+	{ "FlameRise",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.rise ) },
+	{ "HazeBend",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeBend ) },
+	{ "HazeSize",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeSize ) },
+	{ "HazeLift",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeLift ) },
+	{ "HazeNoiseSize",			INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeNoiseSize ) },
+	{ "HazeRise",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeRise ) },
+	{ "HazeMask",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeMask ) },
+	{ "CryoParticleScale",		INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_cryoParticleScale ) },
+	{ "ElectricParticleScale",	INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_electricParticleScale ) },
 
 	{ "WindAngleChangeMin", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMin ) },
 	{ "WindAngleChangeMax", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMax ) },
@@ -2885,6 +3294,76 @@ ParticleSystemTemplate::ParticleSystemTemplate( const AsciiString &name ) :
 	m_name(name)
 {
 	m_slaveTemplate = nullptr;
+	m_cryoParticleScale = -1.0f;
+	m_electricParticleScale = -1.0f;
+
+	Real *setting = &m_flameTuning.warp;
+	for (UnsignedInt i = 0; i < sizeof( m_flameTuning ) / sizeof( Real ); ++i)
+	{
+		setting[i] = -1.0f;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Bool ParticleSystemTemplate::hasFlameTuning() const
+{
+	const Real *setting = &m_flameTuning.warp;
+	for (UnsignedInt i = 0; i < sizeof( m_flameTuning ) / sizeof( Real ); ++i)
+	{
+		if (setting[i] >= 0.0f)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemTemplate::resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning )
+{
+	tuning.warp = TheGlobalData->m_flameWarp;
+	tuning.heat = TheGlobalData->m_flameHeat;
+	tuning.flicker = TheGlobalData->m_flameFlicker;
+	tuning.breakup = TheGlobalData->m_flameBreakup;
+	tuning.noiseSize = TheGlobalData->m_flameNoiseSize;
+	tuning.rise = TheGlobalData->m_flameRise;
+	tuning.hazeBend = TheGlobalData->m_hazeBend;
+	tuning.hazeSize = TheGlobalData->m_hazeSize;
+	tuning.hazeLift = TheGlobalData->m_hazeLift;
+	tuning.hazeNoiseSize = TheGlobalData->m_hazeNoiseSize;
+	tuning.hazeRise = TheGlobalData->m_hazeRise;
+	tuning.hazeMask = TheGlobalData->m_hazeMask;
+
+	if (tmpl == nullptr)
+	{
+		return;
+	}
+
+	const Real *own = &tmpl->m_flameTuning.warp;
+	Real *resolved = &tuning.warp;
+	for (UnsignedInt i = 0; i < sizeof( tuning ) / sizeof( Real ); ++i)
+	{
+		if (own[i] >= 0.0f)
+		{
+			resolved[i] = own[i];
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Real ParticleSystemTemplate::getCryoParticleScale() const
+{
+	return (m_cryoParticleScale >= 0.0f) ? m_cryoParticleScale : TheGlobalData->m_cryoParticleScale;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+Real ParticleSystemTemplate::getElectricParticleScale() const
+{
+	return (m_electricParticleScale >= 0.0f) ? m_electricParticleScale : TheGlobalData->m_electricParticleScale;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2897,26 +3376,7 @@ ParticleSystemTemplate::~ParticleSystemTemplate()
 // ------------------------------------------------------------------------------------------------
 void ParticleSystemTemplate::validate()
 {
-	// TheSuperHackers @info Initialise all volume particles that lack ini configuration to the optimum depth of 6
-	// In retail, volume particle depth was not configurable through ini and was hard coded to a particle depth of 6
-	if (m_particleType == ParticleSystemInfo::VOLUME_PARTICLE)
-	{
-		if (m_volumeParticleDepth == INVALID_VOLUME_PARTICLE_DEPTH)
-			m_volumeParticleDepth = OPTIMUM_VOLUME_PARTICLE_DEPTH;
-	}
-	else
-	{
-		m_volumeParticleDepth = DEFAULT_VOLUME_PARTICLE_DEPTH;
-	}
-
-#if PRESERVE_RETAIL_PARTICLES
-	// TheSuperHackers @info Hack to allow isUsingSmudge() functionality with retail smudge particles
-	// The retail data template for smudge particles is not correctly configured with the smudge particle type
-	if (m_particleType != ParticleSystemInfo::SMUDGE && m_particleTypeName.startsWithNoCase("SMUDGE."))
-	{
-		m_particleType = ParticleSystemInfo::SMUDGE;
-	}
-#endif
+	ParticleSystemInfo::validate();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2947,8 +3407,8 @@ ParticleSystemManager::ParticleSystemManager()
 
 	m_onScreenParticleCount = 0;
 	m_localPlayerIndex = 0;
+	m_drawnLogicFramePhase = 1.0f;
 
-	m_lastLogicFrameUpdate = 0;
 	m_particleCount = 0;
 	m_fieldParticleCount = 0;
 	m_particleSystemCount = 0;
@@ -3034,7 +3494,8 @@ void ParticleSystemManager::reset()
 
 	m_uniqueSystemID = INVALID_PARTICLE_SYSTEM_ID;
 
-	m_lastLogicFrameUpdate = -1;
+	m_drawnLogicFramePhase = 1.0f;
+
 	// leave templates as-is
 }
 
@@ -3044,18 +3505,24 @@ void ParticleSystemManager::reset()
 //DECLARE_PERF_TIMER(ParticleSystemManager)
 void ParticleSystemManager::update()
 {
-	if (m_lastLogicFrameUpdate == TheGameLogic->getFrame()) {
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// Particle lifetimes and key frames are authored in retail frames, so the simulation
+	// steps on the legacy frame rather than the faster logic frame.
+	if (!TheGameClient->HasLegacyFrameAdvanced())
+	{
 		return;
 	}
-
-	// update the last logic frame.
-	m_lastLogicFrameUpdate = TheGameLogic->getFrame();
+#endif
 
 	//USE_PERF_TIMER(ParticleSystemManager)
+
+	// TheSuperHackers @tweak Complete the render update of the previous logic frame before the logic update
+	// changes the rates, so that every logic frame integrates exactly one logic time step.
+	completeLogicFrameDrawUpdate();
+
 	ParticleSystemListIt it = m_allParticleSystemList.begin();
 	while( it != m_allParticleSystemList.end() )
 	{
-		// TheSuperHackers @info Must increment the list iterator before potential element erasure from the list.
 		ParticleSystem* sys = *it++;
 		DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::update: ParticleSystem is null"));
 
@@ -3100,6 +3567,46 @@ void ParticleSystemManager::update()
 				}
 			}
 		}
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemManager::draw()
+{
+	// TheSuperHackers @tweak Integrate the part of the logic frame that the render time
+	// has advanced into since the last render update.
+	const Real logicFramePhase = TheFramePacer->getLogicFramePhase();
+	if (logicFramePhase > m_drawnLogicFramePhase)
+	{
+		const Real timeScale = logicFramePhase - m_drawnLogicFramePhase;
+		drawSystems(timeScale);
+		m_drawnLogicFramePhase = logicFramePhase;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemManager::completeLogicFrameDrawUpdate()
+{
+	const Real timeScale = 1.0f - m_drawnLogicFramePhase;
+	if (timeScale > 0.0f)
+	{
+		drawSystems(timeScale);
+	}
+	m_drawnLogicFramePhase = 0.0f;
+}
+
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemManager::drawSystems(Real timeScale)
+{
+	DEBUG_ASSERTCRASH(timeScale > 0.0f, ("ParticleSystemManager::drawSystems: timeScale %f is not greater than zero", timeScale));
+
+	ParticleSystemListIt it = m_allParticleSystemList.begin();
+	while( it != m_allParticleSystemList.end() )
+	{
+		ParticleSystem* sys = *it++;
+		DEBUG_ASSERTCRASH(sys != nullptr, ("ParticleSystemManager::drawSystems: ParticleSystem is null"));
+
+		sys->draw(timeScale);
 	}
 }
 

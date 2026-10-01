@@ -49,10 +49,14 @@
 #include "WWMath/vector3.h"
 #include "texturefilter.h"
 
+#if defined(BUILD_WITH_D3D9)
+#include "WW3D2/dx8compat.h"
+#else
 struct IDirect3DBaseTexture8;
 struct IDirect3DTexture8;
 struct IDirect3DCubeTexture8;
 struct IDirect3DVolumeTexture8;
+#endif
 
 class DX8Wrapper;
 class TextureLoader;
@@ -163,6 +167,16 @@ public:
 
 	bool Is_Missing_Texture();
 
+	// The normal map the lighting pass bumps this texture with, looked up once by the game.
+	bool Is_Normal_Map_Checked() const { return NormalMapChecked; }
+	TextureClass *Peek_Normal_Map() const { return NormalMap; }
+	void Set_Normal_Map(TextureClass *normal_map);
+
+	// The _emi glow mask the lighting pass adds over this texture, looked up once by the game.
+	bool Is_Emissive_Map_Checked() const { return EmissiveMapChecked; }
+	TextureClass *Peek_Emissive_Map() const { return EmissiveMap; }
+	void Set_Emissive_Map(TextureClass *emissive_map);
+
 	// Support for self managed textures
 	bool Is_Dirty() { WWASSERT(Pool==POOL_DEFAULT); return Dirty; };
 	void Set_Dirty() { WWASSERT(Pool==POOL_DEFAULT); Dirty=true; }
@@ -249,6 +263,11 @@ private:
 	friend class VolumeTextureLoadTaskClass;
 	TextureLoadTaskClass* TextureLoadTask;
 	TextureLoadTaskClass* ThumbnailLoadTask;
+
+	TextureClass *NormalMap;
+	bool NormalMapChecked;
+	TextureClass *EmissiveMap;
+	bool EmissiveMapChecked;
 
 };
 

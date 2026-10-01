@@ -41,44 +41,86 @@
 #include "Common/ThingFactory.h"
 #include "WaypointOptions.h"
 #include "Common/UnicodeString.h"
+#include "MainFrm.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtScriptEditBridge.h"
+#include "qt/panels/WBQtParamBridge.h"
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"	// Replace Missing Entries: name matcher + the report
+#endif
 
+#include "Common/GlobalData.h"
+
+// This is used to allow sounds to be played via PlaySound
+#include <mmsystem.h>
+#include <map>
+#include <vector>
+#include <utility>
+#include <algorithm>
+
+
+// static Bool g_didScriptWarningsUpdate = false;
 
 static const Int K_LOCAL_TEAMS_VERSION_1 = 1;
 
-#define SCRIPT_DIALOG_SECTION "ScriptDialog"
 
 static const char* NEUTRAL_NAME_STR = "(neutral)";
 ScriptDialog *ScriptDialog::m_staticThis = nullptr;
 
-static AsciiString formatScriptLabel(Script *pScr) {
+static AsciiString formatScriptLabel(Script *pScr, Bool cleanNames) {
+	int burstSeconds = pScr->getDelayEvalSeconds();
 	AsciiString fmt;
 	if (pScr->isSubroutine()) {
 		fmt.concat("[S ");
 	} else {
-		fmt.concat("[ns ");
+		fmt.concat("[   "); 
 	}
 	if (pScr->isActive()) {
 		fmt.concat("A ");
 	} else {
-		fmt.concat("na ");
+		fmt.concat("   "); 
 	}
 	if (pScr->isOneShot()) {
-		fmt.concat("D] [");
+		fmt.concat("D] "); 
 	} else {
-		fmt.concat("nd] [");
+		fmt.concat("   ] "); 
 	}
-	if (pScr->isEasy()) {
-		fmt.concat("E ");
-	}
-	if (pScr->isNormal()) {
-		fmt.concat("N ");
-	}
-	if (pScr->isHard()) {
-		fmt.concat("H]");
-	} else {
-		fmt.concat("]");
-	}
+
+	// Difficulty markers
+	bool easy   = pScr->isEasy();
+	bool normal = pScr->isNormal();
+	bool hard   = pScr->isHard();
+
+	// only show difficulty if not all 3 present OR if cleanNames == false
+	if (!cleanNames || !(easy && normal && hard)) {
+		// Build difficulty string dynamically without trailing spaces
+		AsciiString diff;
+		diff.concat("[");
+		bool first = true;
+		if (easy) {
+			diff.concat("E");
+			first = false;
+		}
+		if (normal) {
+			if (!first) diff.concat(" ");
+			diff.concat("N");
+			first = false;
+		}
+		if (hard) {
+			if (!first) diff.concat(" ");
+			diff.concat("H");
+		}
+		diff.concat("] ");
+		fmt.concat(diff);
+}
 	fmt.concat(pScr->getName().str());
+
+	if (burstSeconds > 0) {
+        AsciiString burstFmt;
+        burstFmt.format(" <%ds>", burstSeconds);
+        fmt.concat(burstFmt);
+    }
+
 	return fmt;
 }
 
@@ -90,7 +132,7 @@ static AsciiString formatScriptLabel(ScriptGroup *pScrGrp) {
 	}
 	else
 	{
-		fmt.concat("[ns ");
+		fmt.concat("[   "); 
 	}
 	if (pScrGrp->isActive())
 	{
@@ -98,7 +140,7 @@ static AsciiString formatScriptLabel(ScriptGroup *pScrGrp) {
 	}
 	else
 	{
-		fmt.concat("na]");
+		fmt.concat("   ]"); 
 	}
 	fmt.concat(pScrGrp->getName().str());
 	return fmt;
@@ -155,6 +197,12 @@ ScriptDialog::ScriptDialog(CWnd* pParent /*=nullptr*/)
 {
 	m_draggingTreeView = false;
 	m_autoUpdateWarnings = true;
+	m_pOldFont = NULL; 
+	m_bCompressed = false;
+	m_updating = true;
+	m_bNewIcons = false;
+	m_bSmartCopyEnabled = false;
+	m_bAutoMergeScripts = false;
 	//{{AFX_DATA_INIT(ScriptDialog)
 		// NOTE: the ClassWizard will add member initialization here
 	//}}AFX_DATA_INIT
@@ -183,10 +231,23 @@ BEGIN_MESSAGE_MAP(ScriptDialog, CDialog)
 	ON_BN_CLICKED(IDC_NEW_SCRIPT, OnNewScript)
 	ON_BN_CLICKED(IDC_EDIT_SCRIPT, OnEditScript)
 	ON_BN_CLICKED(IDC_COPY_SCRIPT, OnCopyScript)
+	ON_BN_CLICKED(IDC_ADD_DEBUG, OnAddDebug)
+	ON_BN_CLICKED(IDC_REMOVE_DEBUG, OnRemoveDebug)
+	ON_BN_CLICKED(IDC_SCRIPT_MERGE, OnAutoMergeScripts)
 	ON_BN_CLICKED(IDC_DELETE, OnDelete)
 	ON_BN_CLICKED(IDC_VERIFY, OnVerify)
+	ON_BN_CLICKED(IDC_VERIFYALL, OnVerifyAll)
 	ON_BN_CLICKED(IDC_PATCH_GC, OnPatchGC)
 	ON_BN_CLICKED(IDC_AUTO_VERIFY, OnAutoVerify)
+	ON_BN_CLICKED(IDC_COMPRESS, OnCompress)
+	ON_BN_CLICKED(IDC_NEWICONS, OnNewIcons)
+	ON_BN_CLICKED(IDC_DEEPSCAN, OnDisableDeepScan)
+	ON_BN_CLICKED(IDC_REFRENCEMODE1, OnCheckByParameterForReference)
+	ON_BN_CLICKED(IDC_DISABLEREFERENCE, OnDisableReferencesEntirely)
+	ON_BN_CLICKED(IDC_CLEANSCRIPTNAME, OnCleanScriptName)
+	ON_BN_CLICKED(IDC_FIND_NEXT, OnFindNext)
+	ON_BN_CLICKED(IDC_SMART_COPY, OnSmartCopy)
+	ON_BN_CLICKED(IDC_SAVE_ACTUAL, OnSaveActual)
 	ON_BN_CLICKED(IDC_SAVE, OnSave)
 	ON_BN_CLICKED(IDC_LOAD, OnLoad)
 	ON_NOTIFY(NM_DBLCLK, IDC_SCRIPT_TREE, OnDblclkScriptTree)
@@ -195,11 +256,502 @@ BEGIN_MESSAGE_MAP(ScriptDialog, CDialog)
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONUP()
 	ON_WM_MOVE()
+	ON_WM_KEYDOWN()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
 // ScriptDialog message handlers
+
+inline bool asciiStringContains(const AsciiString& haystack, const char* needle)
+{
+	if (!needle || !haystack.str()) return false;
+	return strstr(haystack.str(), needle) != NULL;
+}
+
+AsciiString parseLineBreaks(const AsciiString& input)
+{
+	AsciiString output = input;
+	const char* p = output.str();
+	AsciiString result;
+
+	while (*p) {
+		if (*p == '\n') {
+			result.concat("\r\n");
+		} else {
+			char temp[2] = {*p, '\0'};
+			result.concat(temp);
+		}
+		++p;
+	}
+	return result;
+}
+
+bool alreadyListed(const AsciiString& usedByTag, const AsciiString& scriptName)
+{
+	const char* tagStr = usedByTag.str();
+
+	// simple substring search with comma or bracket after
+	AsciiString pattern(", ");
+	pattern.concat(scriptName);
+
+	if (strstr(tagStr, pattern.str()) != NULL)
+		return true;
+
+	// also check start-of-line case
+	pattern = "[Referenced in:";
+	pattern.concat(scriptName);
+	if (strstr(tagStr, pattern.str()) != NULL)
+		return true;
+
+	return false;
+}
+
+/** The cross-script "[Referenced in] : ..." tag for pScript -- empty when nothing
+references it or when 'Disable references' is on. Shared by OnSelchangedScriptTree and the
+Qt script window's qtGetDetail so both detail panes show the same references. */
+AsciiString ScriptDialog::buildReferencedInTag(Script *pScript)
+{
+	AsciiString usedByTag;
+	AsciiString targetScriptName = pScript->getName();
+	Bool foundUse = false;
+
+	// 🔀 Toggle: choose between parameter-based or text-based reference detection
+	bool checkByParameter = m_bCheckByParameter; 
+	bool disableReference = m_bDisableReferences; 
+
+	if(!disableReference){
+		for (int i = 0; i < m_sides.getNumSides(); ++i) {
+			ScriptList* pSL = m_sides.getSideInfo(i)->getScriptList();
+			if (!pSL) continue;
+
+			if (checkByParameter) {
+				// --- Parameter-based search ---
+				// Non-grouped scripts
+				for (Script* s = pSL->getScript(); s; s = s->getNext()) {
+					if (s == pScript) continue;
+					bool referenced = false;
+
+					// Conditions
+					for (OrCondition* pOr = s->getOrCondition(); pOr && !referenced; pOr = pOr->getNextOrCondition()) {
+						for (Condition* c = pOr->getFirstAndCondition(); c && !referenced; c = c->getNext()) {
+							for (int p = 0; p < c->getNumParameters(); ++p) {
+								Parameter* param = c->getParameter(p);
+								if (param && (param->getParameterType() == Parameter::SCRIPT || param->getParameterType() == Parameter::SCRIPT_SUBROUTINE)  &&
+									param->getString() == targetScriptName) {
+									referenced = true;
+									break;
+								}
+							}
+						}
+					}
+
+					// Actions
+					for (ScriptAction* a = s->getAction(); a && !referenced; a = a->getNext()) {
+						for (int p = 0; p < a->getNumParameters(); ++p) {
+							Parameter* param = a->getParameter(p);
+							if (param && (param->getParameterType() == Parameter::SCRIPT || param->getParameterType() == Parameter::SCRIPT_SUBROUTINE)  &&
+								param->getString() == targetScriptName) {
+								referenced = true;
+								break;
+							}
+						}
+					}
+
+					if (referenced && !alreadyListed(usedByTag, s->getName())) {
+						if (foundUse) usedByTag.concat(", ");
+						else foundUse = true;
+						usedByTag.concat(s->getName());
+					}
+				}
+
+				// Grouped scripts
+				for (ScriptGroup* g = pSL->getScriptGroup(); g; g = g->getNext()) {
+					for (Script* s = g->getScript(); s; s = s->getNext()) {
+						if (s == pScript) continue;
+						bool referenced = false;
+
+						// Conditions
+						for (OrCondition* pOr = s->getOrCondition(); pOr && !referenced; pOr = pOr->getNextOrCondition()) {
+							for (Condition* c = pOr->getFirstAndCondition(); c && !referenced; c = c->getNext()) {
+								for (int p = 0; p < c->getNumParameters(); ++p) {
+									Parameter* param = c->getParameter(p);
+									if (param && (param->getParameterType() == Parameter::SCRIPT || param->getParameterType() == Parameter::SCRIPT_SUBROUTINE)  &&
+										param->getString() == targetScriptName) {
+										referenced = true;
+										break;
+									}
+								}
+							}
+						}
+
+						// Actions
+						for (ScriptAction* a = s->getAction(); a && !referenced; a = a->getNext()) {
+							for (int p = 0; p < a->getNumParameters(); ++p) {
+								Parameter* param = a->getParameter(p);
+								if (param && (param->getParameterType() == Parameter::SCRIPT || param->getParameterType() == Parameter::SCRIPT_SUBROUTINE) &&
+									param->getString() == targetScriptName) {
+									referenced = true;
+									break;
+								}
+							}
+						}
+
+						if (referenced && !alreadyListed(usedByTag, s->getName())) {
+							if (foundUse) usedByTag.concat(", ");
+							else foundUse = true;
+							usedByTag.concat(s->getName());
+						}
+					}
+				}
+			} 
+			else {
+				// --- Text-based search (existing behavior) ---
+				for (Script* s = pSL->getScript(); s; s = s->getNext()) {
+					if (s == pScript) continue;
+					AsciiString allText;
+					allText.concat(s->getUiText());
+					allText.concat(s->getComment());
+					allText.concat(s->getActionComment());
+					allText.concat(s->getConditionComment());
+
+					CString content = allText.str();
+					CString search = targetScriptName.str();
+
+					if (content.Find(search) != -1 && !alreadyListed(usedByTag, s->getName())) {
+						if (foundUse) usedByTag.concat(", ");
+						else foundUse = true;
+						usedByTag.concat(s->getName());
+					}
+				}
+
+				for (ScriptGroup* g = pSL->getScriptGroup(); g; g = g->getNext()) {
+					for (Script* s = g->getScript(); s; s = s->getNext()) {
+						if (s == pScript) continue;
+						AsciiString allText;
+						allText.concat(s->getUiText());
+						allText.concat(s->getComment());
+						allText.concat(s->getActionComment());
+						allText.concat(s->getConditionComment());
+
+						CString content = allText.str();
+						CString search = targetScriptName.str();
+
+						if (content.Find(search) != -1 && !alreadyListed(usedByTag, s->getName())) {
+							if (foundUse) usedByTag.concat(", ");
+							else foundUse = true;
+							usedByTag.concat(s->getName());
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (foundUse) {
+		AsciiString temp;
+		temp.concat("[Referenced in] : ");
+		temp.concat(usedByTag);
+		usedByTag = temp;
+	}
+
+	return usedByTag;
+}
+
+// Collect the SCRIPT / SCRIPT_SUBROUTINE parameter names off one parameter-bearing node (a
+// Condition or a ScriptAction -- both expose getNumParameters/getParameter, so a template serves
+// both) into usesList, comma-separated, skipping empties, self-calls and dupes. Templated rather
+// than sharing a base because Condition and ScriptAction have none.
+template <class T>
+static void collectScriptRefTargets(T *node, const AsciiString &selfName,
+	AsciiString &usesList, Bool &found)
+{
+	for (int p = 0; p < node->getNumParameters(); ++p)
+	{
+		Parameter *param = node->getParameter(p);
+		if (param == NULL)
+		{
+			continue;
+		}
+		if (param->getParameterType() != Parameter::SCRIPT &&
+			param->getParameterType() != Parameter::SCRIPT_SUBROUTINE)
+		{
+			continue;
+		}
+		AsciiString target = param->getString();
+		if (target.isEmpty() || target == selfName || alreadyListed(usesList, target))
+		{
+			continue;
+		}
+		if (found) { usesList.concat(", "); }
+		else { found = true; }
+		usesList.concat(target);
+	}
+}
+
+/** The reverse of buildReferencedInTag: the "[Uses] : ..." tag listing the OTHER scripts that
+pScript itself calls -- i.e. the script names in its own condition/action SCRIPT / SCRIPT_SUBROUTINE
+parameters. Empty when it calls no scripts (or when 'Disable references' is on). Skips self-calls
+and de-dupes. The names are rendered as clickable links by the Qt detail pane, same as
+[Referenced in]. */
+AsciiString ScriptDialog::buildUsesTag(Script *pScript)
+{
+	AsciiString usesList;
+	Bool found = false;
+	if (m_bDisableReferences || pScript == NULL)
+	{
+		return usesList;
+	}
+	AsciiString selfName = pScript->getName();
+
+	// Conditions.
+	for (OrCondition *pOr = pScript->getOrCondition(); pOr != NULL; pOr = pOr->getNextOrCondition())
+	{
+		for (Condition *c = pOr->getFirstAndCondition(); c != NULL; c = c->getNext())
+		{
+			collectScriptRefTargets(c, selfName, usesList, found);
+		}
+	}
+
+	// Actions (both the true and false lists chain through getAction/getFalseAction).
+	for (int pass = 0; pass < 2; ++pass)
+	{
+		ScriptAction *a = (pass == 0) ? pScript->getAction() : pScript->getFalseAction();
+		for (; a != NULL; a = a->getNext())
+		{
+			collectScriptRefTargets(a, selfName, usesList, found);
+		}
+	}
+
+	if (found)
+	{
+		AsciiString temp;
+		temp.concat("[Uses] : ");
+		temp.concat(usesList);
+		usesList = temp;
+	}
+	return usesList;
+}
+
+namespace {
+	// The one per-script parameter walk: visit every parameter of a script's conditions and both
+	// action lists (true + false), in order. Visitor is any struct with
+	// `void visit(Parameter *param, const AsciiString &value)`. All the tag/find/replace/count
+	// operations funnel through this so they scan identical scope.
+	//
+	template <class Visitor>
+	void forEachStringParamInScript(Script *pScr, Visitor &v)
+	{
+		for (OrCondition *pOr = pScr->getOrCondition(); pOr != NULL; pOr = pOr->getNextOrCondition())
+		{
+			for (Condition *c = pOr->getFirstAndCondition(); c != NULL; c = c->getNext())
+			{
+				for (int p = 0; p < c->getNumParameters(); ++p)
+				{
+					Parameter *param = c->getParameter(p);
+					if (param != NULL)
+					{
+						v.visit(param, param->getString());
+					}
+				}
+			}
+		}
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			ScriptAction *a = (pass == 0) ? pScr->getAction() : pScr->getFalseAction();
+			for (; a != NULL; a = a->getNext())
+			{
+				for (int p = 0; p < a->getNumParameters(); ++p)
+				{
+					Parameter *param = a->getParameter(p);
+					if (param != NULL)
+					{
+						v.visit(param, param->getString());
+					}
+				}
+			}
+		}
+	}
+
+	// Same walk, but the visitor is told whether each parameter came from an action. Kept separate
+	// from forEachStringParamInScript so the existing visitors (which take two args) are untouched.
+	template <class Visitor>
+	void forEachParamWithKind(Script *pScr, Visitor &v)
+	{
+		for (OrCondition *pOr = pScr->getOrCondition(); pOr != NULL; pOr = pOr->getNextOrCondition())
+		{
+			for (Condition *c = pOr->getFirstAndCondition(); c != NULL; c = c->getNext())
+			{
+				for (int p = 0; p < c->getNumParameters(); ++p)
+				{
+					Parameter *param = c->getParameter(p);
+					if (param != NULL)
+					{
+						v.visit(param, param->getString(), FALSE);
+					}
+				}
+			}
+		}
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			ScriptAction *a = (pass == 0) ? pScr->getAction() : pScr->getFalseAction();
+			for (; a != NULL; a = a->getNext())
+			{
+				for (int p = 0; p < a->getNumParameters(); ++p)
+				{
+					Parameter *param = a->getParameter(p);
+					if (param != NULL)
+					{
+						v.visit(param, param->getString(), TRUE);
+					}
+				}
+			}
+		}
+	}
+
+	// Visitor: collect the distinct values of one parameter type into a comma-separated list.
+	struct ParamTypeCollector
+	{
+		Parameter::ParameterType type;
+		AsciiString list;
+		Bool found;
+		ParamTypeCollector() : found(false) {}
+		void visit(Parameter *param, const AsciiString &value)
+		{
+			if (param->getParameterType() != type || value.isEmpty() || alreadyListed(list, value))
+			{
+				return;
+			}
+			if (found) { list.concat(", "); }
+			else { found = true; }
+			list.concat(value);
+		}
+	};
+
+	// Visitor: collect the distinct parameter values that don't resolve in the current data set (a
+	// map from another mod references templates, command buttons, waypoints... this game data
+	// doesn't have; the script text shows them as their raw name, or "???" when the value is
+	// empty). The verdict is getWarningText's -- the same check that drives the warning icons and
+	// the red parameter tint -- so this tag lists exactly what turned a script red, rather than
+	// leaving a red script with nothing to explain it. (Its isAction flag only affects
+	// COUNTER/FLAG params, so FALSE is the conservative choice for both conditions and actions:
+	// those two are never reported here.)
+	struct MissingObjectCollector
+	{
+		AsciiString list;			///< the names, for the clickable "[Missing]" links
+		AsciiString warnings;		///< the reasons, one per line, for "[Warnings]"
+		Bool found;
+		Bool foundWarning;
+		MissingObjectCollector() : found(false), foundWarning(false) {}
+
+		// isAction must match what updateScriptWarning passes, or this disagrees with the red
+		// script/condition/action flags it is meant to explain: getWarningText only reports an
+		// unknown COUNTER or FLAG for a CONDITION, on the reasoning that an action is what
+		// creates them.
+		void visit(Parameter *param, const AsciiString &value, Bool isAction)
+		{
+			AsciiString shown = value;
+			if (shown.isEmpty())
+			{
+				// Only OBJECT_TYPE reports an empty value as missing; elsewhere an empty
+				// parameter is "not filled in yet", which is not what this tag is about.
+				if (param->getParameterType() != Parameter::OBJECT_TYPE)
+				{
+					return;
+				}
+				shown = "???";	// == Parameter::getUiText's empty-value placeholder
+			}
+			else if (param->getParameterType() == Parameter::OBJECT_TYPE
+				&& TheThingFactory->findTemplate(shown) != NULL)
+			{
+				return;	// template exists -- the O(1) common case (this runs per selection click)
+			}
+
+			const AsciiString warning = EditParameter::getWarningText(param, isAction);
+			if (warning.isEmpty())
+			{
+				return;	// resolves (or is a script object list) -- getWarningText's verdict
+			}
+
+			// The reason, verbatim from the same check that turned the script red. Listed even
+			// when the name is a repeat, since two parameters can fail for different reasons.
+			// A plain substring test, not alreadyListed(): that one looks for ", <name>" / a
+			// "[Referenced in:" prefix, neither of which applies to newline-joined sentences.
+			if (strstr(warnings.str(), warning.str()) == NULL)
+			{
+				if (foundWarning) { warnings.concat("\n"); }
+				else { foundWarning = true; }
+				warnings.concat(warning);
+			}
+
+			if (alreadyListed(list, shown))
+			{
+				return;
+			}
+			if (found) { list.concat(", "); }
+			else { found = true; }
+			list.concat(shown);
+		}
+	};
+}
+
+/** "[label] : ..." tag listing the distinct values of one parameter type this script references --
+used for the clickable map-entity links (UNIT -> placed units, WAYPOINT -> waypoints). Empty when
+none, or when 'Disable references' is on. */
+AsciiString ScriptDialog::buildParamTypeTag(Script *pScript, int paramType, const char *label)
+{
+	if (m_bDisableReferences || pScript == NULL)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	ParamTypeCollector v;
+	v.type = (Parameter::ParameterType)paramType;
+	forEachStringParamInScript(pScript, v);
+	if (!v.found)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	AsciiString out;
+	out.concat(label);
+	out.concat(v.list);
+	return out;
+}
+
+/** "[Missing] : ..." tag listing the object types this script references that don't exist in the
+current data set (a map authored against different game data). Empty when none, or when 'Disable
+references' is on. */
+AsciiString ScriptDialog::buildMissingTag(Script *pScript)
+{
+	if (m_bDisableReferences || pScript == NULL)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	MissingObjectCollector v;
+	forEachParamWithKind(pScript, v);
+	if (!v.found && !v.foundWarning)
+	{
+		return AsciiString::TheEmptyString;
+	}
+	// "[Missing]" lists the names (clickable in the Qt detail pane); "[Warnings]" spells out why,
+	// verbatim from the check that turned the script red -- Re-Verify All used to leave a red
+	// script with nothing on screen explaining it.
+	AsciiString out;
+	if (v.found)
+	{
+		out.concat("[Missing] : ");
+		out.concat(v.list);
+	}
+	if (v.foundWarning)
+	{
+		if (!out.isEmpty())
+		{
+			out.concat("\n");
+		}
+		out.concat("[Warnings] : ");
+		out.concat(v.warnings);
+	}
+	return out;
+}
 
 void ScriptDialog::OnSelchangedScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
 {
@@ -223,16 +775,52 @@ void ScriptDialog::OnSelchangedScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
 	pWnd->EnableWindow(pScript!=nullptr || pGroup!=nullptr);
 
 	pWnd = GetDlgItem(IDC_COPY_SCRIPT);
-	pWnd->EnableWindow(pScript!=nullptr);
+	pWnd->EnableWindow(pScript!=NULL || pGroup!=NULL);
+
+	pWnd = GetDlgItem(IDC_ADD_DEBUG);
+	pWnd->EnableWindow(pScript!=NULL);
+
+	pWnd = GetDlgItem(IDC_REMOVE_DEBUG);
+	pWnd->EnableWindow(pScript!=NULL);
 
 	pWnd = GetDlgItem(IDC_DELETE);
 	pWnd->EnableWindow(m_curSelection.m_objType != ListType::PLAYER_TYPE);
 
+	AsciiString scriptBurst;
 	AsciiString scriptComment;
+	AsciiString actionComment;
+	AsciiString conditionComment;
 	AsciiString scriptText;
+
 	if (pScript) {
+		actionComment = pScript->getActionComment();
+		conditionComment = pScript->getConditionComment();
 		scriptComment = pScript->getComment();
 		scriptText = pScript->getUiText();
+
+		Int burstSeconds = pScript->getDelayEvalSeconds();
+		scriptBurst.format("%d", burstSeconds);  
+
+		AsciiString usedByTag = buildReferencedInTag(pScript);
+
+		if (!scriptComment.isEmpty()) {
+			scriptComment.concat("\n\n");
+		}
+
+		if (!conditionComment.isEmpty()) {
+			scriptComment.concat("[Condition Comment] : ");
+			scriptComment.concat(conditionComment);
+			scriptComment.concat("\n\n");
+		}
+
+		if (!actionComment.isEmpty()) {
+			scriptComment.concat("[Action Comment] : ");
+			scriptComment.concat(actionComment);
+			scriptComment.concat("\n\n");
+		}
+
+		scriptComment.concat(usedByTag);
+		scriptComment = parseLineBreaks(scriptComment);
 	}
 
 	pWnd = GetDlgItem(IDC_SCRIPT_COMMENT);
@@ -243,6 +831,7 @@ void ScriptDialog::OnSelchangedScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
 
 	*pResult = 0;
 }
+
 
 /* The purpose of these two functions is to allow
 the inner class CSDTreeCtrl the ability to check
@@ -344,8 +933,20 @@ void ScriptDialog::updateScriptWarning(Script *pScript)
 
 void ScriptDialog::OnPatchGC()
 {
-	checkParametersForGC();
-	updateIcons(TVI_ROOT);
+	int result = AfxMessageBox(
+		"This will remove the 'GC_' prefix from object names "
+		"(for example, GC_Chem_GLAInfantryRebel to Chem_GLAInfantryRebel).\n\n"
+		"Use this if your scripts reference old GC_ objects and you want them "
+		"to automatically point to their normal counterparts.\n\n"
+		"Do you want to continue?",
+		MB_YESNO | MB_ICONQUESTION
+	);
+
+	if (result == IDYES)
+	{
+		checkParametersForGC();
+		updateIcons(TVI_ROOT);
+	}
 /*  //Put up a dialog asking for search/replace parameters instead of hard-coded GC_ prefix.
 	ReplaceParameter editDlg();
 	if (IDOK==editDlg.DoModal())
@@ -353,13 +954,183 @@ void ScriptDialog::OnPatchGC()
 
 	}*/
 }
+void ScriptDialog::OnFindNext()
+{
+    UpdateData(TRUE);
+
+    CEdit* pEdit = (CEdit*)GetDlgItem(IDC_SCRIPT_SEARCH);
+    CString searchText;
+    pEdit->GetWindowText(searchText);
+    searchText.MakeLower();
+
+    CTreeCtrl* pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+    HTREEITEM hItem = m_lastFoundItem ? 
+        pTree->GetNextItem(m_lastFoundItem, TVGN_NEXT) : 
+        pTree->GetRootItem();
+
+    while (hItem)
+    {
+        CString text = pTree->GetItemText(hItem);
+        CString lowerText = text; lowerText.MakeLower();
+
+        bool match = (lowerText.Find(searchText) != -1);
+
+        if (!match)
+        {
+            // --- Deep search inside the script ---
+            ListType lt;
+            lt.IntToList(pTree->GetItemData(hItem));
+
+            if (lt.m_objType == ListType::SCRIPT_IN_PLAYER_TYPE ||
+                lt.m_objType == ListType::SCRIPT_IN_GROUP_TYPE)
+            {
+                m_curSelection = lt; // temporarily set selection to use getCurScript
+                Script* pScr = getCurScript();
+                if (pScr)
+                {
+                    AsciiString content = pScr->getComment();
+                    content.concat(pScr->getUiText());
+                    CString lowerContent = content.str();
+                    lowerContent.MakeLower();
+
+                    if (lowerContent.Find(searchText) != -1)
+                        match = true;
+
+                    // Optionally scan conditions & actions too:
+                    for (OrCondition* pOr = pScr->getOrCondition(); pOr && !match; pOr = pOr->getNextOrCondition())
+                    {
+                        for (Condition* c = pOr->getFirstAndCondition(); c && !match; c = c->getNext())
+                        {
+                            for (int p = 0; p < c->getNumParameters(); ++p)
+                            {
+                                Parameter* param = c->getParameter(p);
+                                CString paramStr = param->getString().str();
+                                paramStr.MakeLower();
+                                if (paramStr.Find(searchText) != -1) {
+                                    match = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    for (ScriptAction* a = pScr->getAction(); a && !match; a = a->getNext())
+                    {
+                        for (int p = 0; p < a->getNumParameters(); ++p)
+                        {
+                            Parameter* param = a->getParameter(p);
+                            CString paramStr = param->getString().str();
+                            paramStr.MakeLower();
+                            if (paramStr.Find(searchText) != -1) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (match)
+        {
+            m_lastFoundItem = hItem;
+            pTree->SelectItem(hItem);
+            pTree->EnsureVisible(hItem);
+            return;
+        }
+
+        // Traverse to next item
+        HTREEITEM hChild = pTree->GetChildItem(hItem);
+        if (hChild)
+            hItem = hChild;
+        else {
+            while (hItem && !pTree->GetNextSiblingItem(hItem))
+                hItem = pTree->GetParentItem(hItem);
+            if (hItem)
+                hItem = pTree->GetNextSiblingItem(hItem);
+        }
+    }
+
+    // MessageBox("No more matches found.", "Search", MB_OK | MB_ICONINFORMATION);
+    MessageBeep(MB_ICONWARNING);
+    m_lastFoundItem = NULL;
+}
 
 /**Force a pass over all the scripts to make sure no warnings.  I moved this
 to user control because this function is VERY slow. 7-15-03 -MW*/
 void ScriptDialog::OnVerify()
 {
-	updateWarnings(true);	//force an update of warnings
+	// Flag to indicate if cache was successfully loaded
+	Bool loadedFromCache = false;
+
+	if(m_autoUpdateWarnings){
+		// Try loading cached warning state first
+		if (LoadScriptWarningsState()) {
+			DEBUG_LOG(("ScriptDialog: Loaded script warning state from cache.\n"));
+			loadedFromCache = true;
+		} else {
+			DEBUG_LOG(("ScriptDialog: No valid cache found. Will update warnings normally.\n"));
+		}
+
+		// If cache didn't load, fall back to the expensive update
+		// if (!g_didScriptWarningsUpdate) {
+			if (!loadedFromCache) {
+				updateWarnings(true);
+				DEBUG_LOG(("ScriptDialog: Ran updateWarnings(true) due to missing cache.\n"));
+			}
+			// g_didScriptWarningsUpdate = true;
+		// }
+	}
+
 	updateIcons(TVI_ROOT);
+}
+
+void ScriptDialog::OnVerifyAll()
+{
+	updateWarnings(true);
+	updateIcons(TVI_ROOT);
+
+	// for (int i = 0; i < m_sides.getNumSides(); ++i) {
+    //     ScriptList* pSL = m_sides.getSideInfo(i)->getScriptList();
+    //     if (pSL)
+    //         reloadPlayer(i, pSL); // rebuild branch, re-applies labels
+    // }
+}
+
+void ScriptDialog::OnSmartCopy()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_SMART_COPY);
+	m_bSmartCopyEnabled = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "SmartCopy", m_bSmartCopyEnabled ? 1 : 0);
+
+
+	if (m_bSmartCopyEnabled)
+	{
+		AfxMessageBox(
+			"This feature will auto increment values on your copied script's parameters\n\n"
+			"Example:   Add  1  to counter 'Counter01' -> click copy ->   Add  1  to counter 'Counter02'\n\n"
+			"Note: This does not support all parameters. Contact Adriane if you want other parameters to be supported adios.",
+			MB_OK | MB_ICONINFORMATION
+		);
+	}
+
+}
+
+void ScriptDialog::OnAutoMergeScripts()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_SCRIPT_MERGE);
+	m_bAutoMergeScripts = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "AutoMergeScripts", m_bAutoMergeScripts ? 1 : 0);
+
+	if (m_bAutoMergeScripts)
+	{
+		AfxMessageBox(
+			"Auto-Merge allows you to combine items using drag and drop.\n\n"
+			"> To merge scripts: hold CTRL, then drag one script onto another.\n"
+			"> To merge script folders: hold CTRL, then drag one folder onto another.\n\n"
+			"Without holding CTRL, drag and drop will work normally (move/reorder only).",
+			MB_OK | MB_ICONINFORMATION
+		);
+	}
 }
 
 void ScriptDialog::OnAutoVerify()
@@ -372,11 +1143,341 @@ void ScriptDialog::OnAutoVerify()
 	pWnd->EnableWindow(!m_autoUpdateWarnings);
 }
 
+void ScriptDialog::OnNewIcons()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_NEWICONS);
+	m_bNewIcons = (pButton->GetCheck() == 1);
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "NewIcons", m_bNewIcons ? 1 : 0);
+
+	CTreeCtrl* pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+	if (pTree)
+	{
+		// Delete old image list if it exists
+		if (m_imageList.GetSafeHandle())
+		{
+			m_imageList.DeleteImageList();
+		}
+
+		if (m_bNewIcons)
+			m_imageList.Create(IDB_FOLDERSCRIPTB, 16, 2, ILC_COLOR4); // new icons
+		else
+			m_imageList.Create(IDB_FOLDERSCRIPT, 16, 2, ILC_COLOR4); // default icons
+
+		pTree->SetImageList(&m_imageList, TVSIL_STATE);
+	}
+}
+
+void ScriptDialog::OnCleanScriptName()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_CLEANSCRIPTNAME);
+	m_bCleanScriptName = (pButton->GetCheck() == 1);
+    ::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "CleanStringName", m_bCleanScriptName ? 1 : 0);
+
+	if (m_bCleanScriptName && !m_updating)
+	{
+		AfxMessageBox(
+			"This feature will simplify script names to reduce clutter.\n\n"
+			"If a script exists in all three difficulties (Easy, Normal, and Hard), "
+			"the difficulty tags will be hidden since it's the same across all.\n\n"
+			"However, if a script only exists in one or two difficulties, "
+			"the difficulty tags will still be shown to make that clear.",
+			MB_OK | MB_ICONINFORMATION
+		);
+	}
+
+	// Rebuilds the tree
+	CTreeCtrl* pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+    if (!pTree) return;
+
+    pTree->SetRedraw(FALSE); // avoid flicker
+
+    for (int i = 0; i < m_sides.getNumSides(); ++i)
+    {
+        ScriptList* pSL = m_sides.getSideInfo(i)->getScriptList();
+        if (pSL)
+            reloadPlayer(i, pSL);
+    }
+
+    pTree->SetRedraw(TRUE);
+    pTree->Invalidate();
+    pTree->UpdateWindow();
+}
+
+void ScriptDialog::OnDisableDeepScan()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_DEEPSCAN);
+	m_bDisableDeepScan = (pButton->GetCheck() == 1);
+    ::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "DisableDeepScan", m_bDisableDeepScan ? 1 : 0);
+}
+
+void ScriptDialog::OnCheckByParameterForReference()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_REFRENCEMODE1);
+	m_bCheckByParameter = (pButton->GetCheck() == 1);
+    ::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "ReferenceCheckByParameter", m_bCheckByParameter ? 1 : 0);
+}
+
+void ScriptDialog::OnDisableReferencesEntirely()
+{
+	CButton *pButton = (CButton*)GetDlgItem(IDC_DISABLEREFERENCE);
+	m_bDisableReferences = (pButton->GetCheck() == 1);
+    ::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "DisableReferences", m_bDisableReferences ? 1 : 0);
+}
+
+void ScriptDialog::OnCompress()
+{
+    CButton *pButton = (CButton*)GetDlgItem(IDC_COMPRESS);
+    m_bCompressed = (pButton->GetCheck() == 1);
+    ::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", m_bCompressed ? 1 : 0);
+
+    CTreeCtrl* pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+    CEdit* pComment = (CEdit*)GetDlgItem(IDC_SCRIPT_COMMENT);
+    CEdit* pDescription = (CEdit*)GetDlgItem(IDC_SCRIPT_DESCRIPTION);
+
+    if (!pTree || !pComment || !pDescription)
+        return;
+
+    // Always create the small font (used permanently on comments & description)
+    if (m_treeFont.GetSafeHandle())
+        m_treeFont.DeleteObject();
+
+    m_treeFont.CreateFont(
+        14, 0, 0, 0,
+        FW_MEDIUM,
+        FALSE, FALSE, 0,
+        ANSI_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_SWISS,
+        _T("Segoe UI")
+    );
+
+    // Comment + Description always use new font
+    pComment->SetFont(&m_treeFont);
+    pDescription->SetFont(&m_treeFont);
+
+    // Tree uses font only when compressed
+    if (m_bCompressed)
+    {
+        pTree->SetFont(&m_treeFont);
+    }
+    else if (m_pOldFont) // only tree reverts if desired, safe keep
+    {
+        pTree->SetFont(m_pOldFont);
+    }
+
+    pTree->Invalidate();   pTree->UpdateWindow();
+    pComment->Invalidate(); pComment->UpdateWindow();
+    pDescription->Invalidate(); pDescription->UpdateWindow();
+}
+
+// Load em cached status baby Adriane [Deathscythe]
+Bool ScriptDialog::LoadScriptWarningsState()
+{
+	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!pDoc) {
+		DEBUG_LOG(("LoadScriptWarningsState: No active doc!\n"));
+		return false;
+	}
+
+	DEBUG_LOG(("LoadScriptWarningsState: Map Path = %s\n", pDoc->getMapPath()));
+
+	CString path = pDoc->getMapPath();
+	if (path.IsEmpty()) {
+		DEBUG_LOG(("LoadScriptWarningsState: Empty map path.\n"));
+		return false;
+	}
+
+	int lastSlash = path.ReverseFind('\\');
+	if (lastSlash != -1)
+		path = path.Left(lastSlash + 1);
+	else {
+		DEBUG_LOG(("LoadScriptWarningsState: Malformed path - no backslash found.\n"));
+		return false;
+	}
+
+	CString cacheFile = path + "AdrianeScriptWarningsCache.txt";
+	DEBUG_LOG(("LoadScriptWarningsState: Final cache file = %s\n", cacheFile));
+
+	CStdioFile file;
+	if (!file.Open(cacheFile, CFile::modeRead | CFile::typeText)) {
+		DEBUG_LOG(("LoadScriptWarningsState: Failed to open file for reading.\n"));
+		return false;
+	}
+
+	CString line;
+	std::map<std::string, Bool> warningMap;
+
+	while (file.ReadString(line))
+	{
+		int delim = line.Find(',');
+		if (delim > 0)
+		{
+			CString key = line.Left(delim);
+			CString value = line.Mid(delim + 1);
+			value.TrimLeft(); value.TrimRight();
+
+			warningMap[(const char*)key] = (value == "1");
+		}
+		else {
+			DEBUG_LOG(("LoadScriptWarningsState: Malformed line: %s\n", line));
+		}
+	}
+	file.Close();
+
+	SidesList* sidesListP = TheSidesList;
+	if (m_staticThis) sidesListP = &m_staticThis->m_sides;
+
+	for (int i = 0; i < sidesListP->getNumSides(); ++i)
+	{
+		ScriptList* pSL = sidesListP->getSideInfo(i)->getScriptList();
+		if (!pSL) continue;
+
+		char sideIndexStr[16];
+		sprintf(sideIndexStr, "%d", i);
+
+		Script* pScr;
+		for (pScr = pSL->getScript(); pScr; pScr = pScr->getNext())
+		{
+			std::string key = std::string(sideIndexStr) + "|" + pScr->getName().str();
+			if (warningMap.find(key) != warningMap.end())
+			{
+				pScr->setWarnings(warningMap[key]);
+				pScr->setDirty(false);
+
+				if(m_staticThis && m_staticThis->m_bDisableDeepScan != 1){
+					appendWarningHintLazy(pScr);
+				}
+
+				// Expensive 
+				// if (pScr->hasWarnings()) {
+				// // 	updateScriptWarning(pScr);  // Force regen of warning messages like [???]
+				// }
+			}
+		}
+
+		ScriptGroup* pGroup;
+		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup = pGroup->getNext())
+		{
+			for (pScr = pGroup->getScript(); pScr; pScr = pScr->getNext())
+			{
+				std::string key = std::string(sideIndexStr) + "|" + pScr->getName().str();
+				if (warningMap.find(key) != warningMap.end())
+				{
+					pScr->setWarnings(warningMap[key]);
+					pScr->setDirty(false);
+
+					if(m_staticThis && m_staticThis->m_bDisableDeepScan != 1){
+						appendWarningHintLazy(pScr);
+					}
+
+					// Expensive
+					// if (pScr->hasWarnings()) {
+					// 	// updateScriptWarning(pScr);  // Force regen of warning messages like [???]
+					// }
+				}
+			}
+		}
+	}
+
+	DEBUG_LOG(("LoadScriptWarningsState: Finished loading.\n"));
+	return true;
+}
+
+
+void ScriptDialog::appendWarningHintLazy(Script* pScript)
+{
+	if (!pScript || !pScript->hasWarnings()) return;
+
+	for (OrCondition* pOr = pScript->getOrCondition(); pOr; pOr = pOr->getNextOrCondition()) {
+		for (Condition* pCond = pOr->getFirstAndCondition(); pCond; pCond = pCond->getNext()) {
+			for (int i = 0; i < pCond->getNumParameters(); ++i) {
+				Parameter* param = pCond->getParameter(i);
+				AsciiString warn = EditParameter::getWarningText(param, FALSE);
+				if (!warn.isEmpty()) {
+					pCond->setWarnings(true);
+					break; // one warning is enough
+				}
+			}
+		}
+	}
+
+	for (ScriptAction* pAct = pScript->getAction(); pAct; pAct = pAct->getNext()) {
+		for (int i = 0; i < pAct->getNumParameters(); ++i) {
+			Parameter* param = pAct->getParameter(i);
+			AsciiString warn = EditParameter::getWarningText(param, TRUE);
+			if (!warn.isEmpty()) {
+				pAct->setWarnings(true);
+				break;
+			}
+		}
+	}
+}
+
+void ScriptDialog::SaveScriptWarningsState()
+{
+	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (!pDoc) return;
+
+	DEBUG_LOG(("Map Path %s\n", pDoc->getMapPath()));
+
+	CString path = pDoc->getMapPath();
+	if (path.IsEmpty()) return;
+
+	int lastSlash = path.ReverseFind('\\');
+	if (lastSlash != -1)
+		path = path.Left(lastSlash + 1);
+	else
+		return;
+
+	CString cacheFile = path + "AdrianeScriptWarningsCache.txt";
+
+	CStdioFile file;
+	if (!file.Open(cacheFile, CFile::modeCreate | CFile::modeWrite | CFile::typeText))
+		return;
+
+	SidesList* sidesListP = TheSidesList;
+	if (m_staticThis) sidesListP = &m_staticThis->m_sides;
+
+	for (int i = 0; i < sidesListP->getNumSides(); ++i)
+	{
+		ScriptList* pSL = sidesListP->getSideInfo(i)->getScriptList();
+		if (!pSL) continue;
+
+		char sideIndexStr[16];
+		sprintf(sideIndexStr, "%d", i);
+
+		Script* pScr;
+		for (pScr = pSL->getScript(); pScr; pScr = pScr->getNext())
+		{
+			CString line;
+			line.Format("%s|%s,%d\n", sideIndexStr, pScr->getName().str(), pScr->hasWarnings() ? 1 : 0);
+			file.WriteString(line);
+		}
+
+		ScriptGroup* pGroup;
+		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup = pGroup->getNext())
+		{
+			for (pScr = pGroup->getScript(); pScr; pScr = pScr->getNext())
+			{
+				CString line;
+				line.Format("%s|%s,%d\n", sideIndexStr, pScr->getName().str(), pScr->hasWarnings() ? 1 : 0);
+				file.WriteString(line);
+			}
+		}
+	}
+
+	file.Close();
+}
+
+
 /** Updates the warning flags in the scripts, script groups & script conditions & actions. */
 void ScriptDialog::updateWarnings(Bool forceUpdate)
 {
-	if (m_staticThis && m_staticThis->m_autoUpdateWarnings == false && forceUpdate == false)
-		return;	//user has disabled warnings to speed up the script editor
+    // Only skip if auto-update is disabled AND we're NOT forcing the update
+    if (m_staticThis && !m_staticThis->m_autoUpdateWarnings && !forceUpdate)
+        return;
 
 	SidesList *sidesListP = TheSidesList;
 	Int i;
@@ -385,19 +1486,27 @@ void ScriptDialog::updateWarnings(Bool forceUpdate)
 		ScriptList *pSL = sidesListP->getSideInfo(i)->getScriptList();
 		Script *pScr;
 		for (pScr = pSL->getScript(); pScr; pScr=pScr->getNext()) {
-			updateScriptWarning(pScr);
+			if (pScr->isDirty() || forceUpdate) {
+				updateScriptWarning(pScr);
+				pScr->setDirty(false);
+			}
 		}
 		ScriptGroup *pGroup;
 		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup=pGroup->getNext()) {
 			pGroup->setWarnings(false);
 			for (pScr = pGroup->getScript(); pScr; pScr=pScr->getNext()) {
-				updateScriptWarning(pScr);
+				if (pScr->isDirty() || forceUpdate) {
+					updateScriptWarning(pScr);
+					pScr->setDirty(false);
+				}
 				if (pScr->hasWarnings()) {
 					pGroup->setWarnings(true);
 				}
 			}
 		}
-	}
+	}	
+
+    PlaySound("data\\editor\\audio\\finished.wav", NULL, SND_FILENAME | SND_ASYNC);
 }
 
 extern AsciiString ConvertToNonGCName(AsciiString name, Bool checkTemplate=true);
@@ -509,9 +1618,19 @@ BOOL ScriptDialog::OnInitDialog()
 {
 	CDialog::OnInitDialog();
 
+	m_bSmartCopyEnabled=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "SmartCopy", 0);
+
+	CButton *pButton = (CButton*)GetDlgItem(IDC_SMART_COPY);
+	pButton->SetCheck(m_bSmartCopyEnabled ? 1:0);
+
+	m_bAutoMergeScripts=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "AutoMergeScripts", 0);
+
+	pButton = (CButton*)GetDlgItem(IDC_SCRIPT_MERGE);
+	pButton->SetCheck(m_bAutoMergeScripts ? 1:0);
+
 	m_autoUpdateWarnings=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "AutoVerifyScripts", 1);
 
-	CButton *pButton = (CButton*)GetDlgItem(IDC_AUTO_VERIFY);
+	pButton = (CButton*)GetDlgItem(IDC_AUTO_VERIFY);
 	pButton->SetCheck(m_autoUpdateWarnings ? 1:0);
 
 	//if user wants to check warnings manually, enable the verify button
@@ -519,6 +1638,29 @@ BOOL ScriptDialog::OnInitDialog()
 	pWnd->EnableWindow(!m_autoUpdateWarnings);
 
 	m_staticThis = this;
+
+	m_bDisableReferences=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "DisableReferences", 0);
+	pButton = (CButton*)GetDlgItem(IDC_DISABLEREFERENCE);
+	pButton->SetCheck(m_bDisableReferences ? 1:0);
+	OnDisableReferencesEntirely();
+
+	m_bCheckByParameter=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "ReferenceCheckByParameter", 1);
+	pButton = (CButton*)GetDlgItem(IDC_REFRENCEMODE1);
+	pButton->SetCheck(m_bCheckByParameter ? 1:0);
+	OnCheckByParameterForReference();
+
+	m_bDisableDeepScan=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "DisableDeepScan", 0);
+	pButton = (CButton*)GetDlgItem(IDC_DEEPSCAN);
+	pButton->SetCheck(m_bDisableDeepScan ? 1:0);
+	OnDisableDeepScan();
+
+	m_bCleanScriptName=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "CleanStringName", 1);
+	pButton = (CButton*)GetDlgItem(IDC_CLEANSCRIPTNAME);
+	pButton->SetCheck(m_bCleanScriptName ? 1:0);
+	OnCleanScriptName();
+
+	m_updating = false;
+
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 
 	// replace current Tree Dialog with CSDTreeCtrl
@@ -540,7 +1682,111 @@ BOOL ScriptDialog::OnInitDialog()
 	m_sides = *TheSidesList;
 	EditParameter::setCurSidesList(&m_sides);
 	Int i;
-	updateWarnings(true);
+
+	// Flag to indicate if cache was successfully loaded
+	Bool loadedFromCache = false;
+
+	if(m_autoUpdateWarnings){
+		// Try loading cached warning state first
+		if (LoadScriptWarningsState()) {
+			DEBUG_LOG(("ScriptDialog: Loaded script warning state from cache.\n"));
+			loadedFromCache = true;
+			updateWarnings(true);
+			updateIcons(TVI_ROOT);
+		} else {
+			DEBUG_LOG(("ScriptDialog: No valid cache found. Will update warnings normally.\n"));
+		}
+
+		// If cache didn't load, fall back to the expensive update
+		// if (!g_didScriptWarningsUpdate) {
+			if (!loadedFromCache) {
+				updateWarnings(true);
+				DEBUG_LOG(("ScriptDialog: Ran updateWarnings(true) due to missing cache.\n"));
+			}
+			// g_didScriptWarningsUpdate = true;
+		// }
+	}
+
+	// ============================================================================
+	// FORCE RENAME UNNAMED SCRIPTS AND GROUPS
+	// ============================================================================
+
+	Int totalRenamedScripts = 0;
+	Int totalRenamedGroups = 0;
+	Int unnamedScriptCounter = 1;
+	Int unnamedGroupCounter = 1;
+
+	for (i = 0; i < m_sides.getNumSides(); i++) {
+		ScriptList *pSL = m_sides.getSideInfo(i)->getScriptList();
+		if (!pSL) continue;
+		
+		Dict *d = m_sides.getSideInfo(i)->getDict();
+		AsciiString playerName = d->getAsciiString(TheKey_playerName);
+		if (playerName.isEmpty()) playerName = NEUTRAL_NAME_STR;
+		
+		// Fix ungrouped scripts
+		Script *pScr;
+		for (pScr = pSL->getScript(); pScr; pScr = pScr->getNext()) {
+			if (pScr->getName().isEmpty()) {
+				AsciiString newName;
+				newName.format("[UNNAMED_SCRIPT_%d]", unnamedScriptCounter);
+				pScr->setName(newName);
+				totalRenamedScripts++;
+				unnamedScriptCounter++;
+				
+				DEBUG_LOG(("Renamed unnamed script in %s to: %s\n", playerName.str(), newName.str()));
+			}
+		}
+		
+		// Fix grouped scripts
+		ScriptGroup *pGroup;
+		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup = pGroup->getNext()) {
+			
+			// Fix unnamed group
+			if (pGroup->getName().isEmpty()) {
+				AsciiString newName;
+				newName.format("[UNNAMED_GROUP_%d]", unnamedGroupCounter);
+				pGroup->setName(newName);
+				totalRenamedGroups++;
+				unnamedGroupCounter++;
+				
+				DEBUG_LOG(("Renamed unnamed group in %s to: %s\n", playerName.str(), newName.str()));
+			}
+			
+			// Fix scripts within the group
+			for (pScr = pGroup->getScript(); pScr; pScr = pScr->getNext()) {
+				if (pScr->getName().isEmpty()) {
+					AsciiString newName;
+					newName.format("[UNNAMED_SCRIPT_%d]", unnamedScriptCounter);
+					pScr->setName(newName);
+					totalRenamedScripts++;
+					unnamedScriptCounter++;
+					
+					AsciiString groupName = pGroup->getName();
+					DEBUG_LOG(("Renamed unnamed script in group '%s' (%s) to: %s\n", 
+							groupName.str(), playerName.str(), newName.str()));
+				}
+			}
+		}
+	}
+
+	// Show notification if any were renamed
+	if (totalRenamedScripts > 0 || totalRenamedGroups > 0) {
+		CString msg;
+		msg.Format("Auto-renamed %d unnamed script(s) and %d unnamed group(s).\n\n"
+				"These items are now visible in the tree view with [UNNAMED_*] prefix.\n\n"
+				"You can now delete them or rename them properly.\n\n"
+				"Check the debug output for details.",
+				totalRenamedScripts, totalRenamedGroups);
+		AfxMessageBox(msg, MB_OK | MB_ICONINFORMATION);
+		
+		DEBUG_LOG(("\n=== AUTO-RENAME SUMMARY ===\n"));
+		DEBUG_LOG(("Total Scripts Renamed: %d\n", totalRenamedScripts));
+		DEBUG_LOG(("Total Groups Renamed: %d\n", totalRenamedGroups));
+		DEBUG_LOG(("===========================\n\n"));
+	}
+
+
 	if (pTree) {
 		m_imageList.Create(IDB_FOLDERSCRIPT, 16, 2, ILC_COLOR4);
 		pTree->SetImageList(&m_imageList, TVSIL_STATE);
@@ -558,14 +1804,240 @@ BOOL ScriptDialog::OnInitDialog()
 	GetWindowRect(&top);
 	top.top = ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Top", top.top);
 	top.left =::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Left", top.left);
-	SetWindowPos(nullptr, top.left, top.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	SetWindowPos(NULL, top.left, top.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	
 
+	m_bCompressed=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", 1);
+	pButton = (CButton*)GetDlgItem(IDC_COMPRESS);
+	pButton->SetCheck(m_bCompressed ? 1:0);
+	OnCompress();
+
+	m_bNewIcons=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "NewIcons", 1);
+	pButton = (CButton*)GetDlgItem(IDC_NEWICONS);
+	pButton->SetCheck(m_bNewIcons ? 1:0);
+	OnNewIcons();
+
+
+#if 0 // Debug: Report unnamed scripts
+	AsciiString unnamedReport;
+	Int totalUnnamedScripts = 0;
+	Int totalUnnamedGroups = 0;
+
+	for (i = 0; i < m_sides.getNumSides(); i++) {
+		ScriptList *pSL = m_sides.getSideInfo(i)->getScriptList();
+		if (!pSL) continue;
+		
+		Dict *d = m_sides.getSideInfo(i)->getDict();
+		AsciiString playerName = d->getAsciiString(TheKey_playerName);
+		if (playerName.isEmpty()) playerName = NEUTRAL_NAME_STR;
+		
+		Bool playerHasUnnamed = false;
+		AsciiString playerReport;
+		
+		// Check ungrouped scripts
+		Script *pScr;
+		for (pScr = pSL->getScript(); pScr; pScr = pScr->getNext()) {
+			if (pScr->getName().isEmpty()) {
+				if (!playerHasUnnamed) {
+					playerReport.format("\n[%s]\n", playerName.str());
+					playerHasUnnamed = true;
+				}
+				
+				totalUnnamedScripts++;
+				
+				// Build script details
+				AsciiString scriptInfo;
+				scriptInfo.format("  - Unnamed Script (ungrouped)\n");
+				
+				// Count conditions
+				Int conditionCount = 0;
+				for (OrCondition *pOr = pScr->getOrCondition(); pOr; pOr = pOr->getNextOrCondition()) {
+					for (Condition *c = pOr->getFirstAndCondition(); c; c = c->getNext()) {
+						conditionCount++;
+					}
+				}
+				
+				// Count true actions
+				Int trueActionCount = 0;
+				ScriptAction *pTrueAction = pScr->getAction();
+				while (pTrueAction) {
+					trueActionCount++;
+					pTrueAction = pTrueAction->getNext();
+				}
+				
+				// Count false actions
+				Int falseActionCount = 0;
+				ScriptAction *pFalseAction = pScr->getFalseAction();
+				while (pFalseAction) {
+					falseActionCount++;
+					pFalseAction = pFalseAction->getNext();
+				}
+				
+				AsciiString details;
+				details.format("    Conditions: %d, True Actions: %d, False Actions: %d\n", 
+							conditionCount, trueActionCount, falseActionCount);
+				scriptInfo.concat(details);
+				
+				// Add comment if available
+				if (!pScr->getComment().isEmpty()) {
+					AsciiString comment = "    Comment: ";
+					AsciiString fullComment = pScr->getComment();
+					
+					// Truncate if too long (manually)
+					if (fullComment.getLength() > 80) {
+						const char* commentStr = fullComment.str();
+						char truncated[81];
+						strncpy(truncated, commentStr, 77);
+						truncated[77] = '\0';
+						comment.concat(truncated);
+						comment.concat("...");
+					} else {
+						comment.concat(fullComment);
+					}
+					comment.concat("\n");
+					scriptInfo.concat(comment);
+				}
+
+				playerReport.concat(scriptInfo);
+			}
+		}
+		
+		// Check grouped scripts
+		ScriptGroup *pGroup;
+		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup = pGroup->getNext()) {
+			
+			// Check if group itself is unnamed
+			if (pGroup->getName().isEmpty()) {
+				if (!playerHasUnnamed) {
+					playerReport.format("\n[%s]\n", playerName.str());
+					playerHasUnnamed = true;
+				}
+				totalUnnamedGroups++;
+				playerReport.concat("  - Unnamed Script Group\n");
+			}
+			
+			// Check scripts within the group
+			for (pScr = pGroup->getScript(); pScr; pScr = pScr->getNext()) {
+				if (pScr->getName().isEmpty()) {
+					if (!playerHasUnnamed) {
+						playerReport.format("\n[%s]\n", playerName.str());
+						playerHasUnnamed = true;
+					}
+					
+					totalUnnamedScripts++;
+					
+					// Build script details
+					AsciiString scriptInfo;
+					AsciiString groupName = pGroup->getName().isEmpty() ? "Unnamed Group" : pGroup->getName();
+					scriptInfo.format("  - Unnamed Script (in group: %s)\n", groupName.str());
+					
+					// Count conditions
+					Int conditionCount = 0;
+					for (OrCondition *pOr = pScr->getOrCondition(); pOr; pOr = pOr->getNextOrCondition()) {
+						for (Condition *c = pOr->getFirstAndCondition(); c; c = c->getNext()) {
+							conditionCount++;
+						}
+					}
+					
+					// Count true actions
+					Int trueActionCount = 0;
+					ScriptAction *pTrueAction = pScr->getAction();
+					while (pTrueAction) {
+						trueActionCount++;
+						pTrueAction = pTrueAction->getNext();
+					}
+					
+					// Count false actions
+					Int falseActionCount = 0;
+					ScriptAction *pFalseAction = pScr->getFalseAction();
+					while (pFalseAction) {
+						falseActionCount++;
+						pFalseAction = pFalseAction->getNext();
+					}
+					
+					AsciiString details;
+					details.format("    Conditions: %d, True Actions: %d, False Actions: %d\n", 
+								conditionCount, trueActionCount, falseActionCount);
+					scriptInfo.concat(details);
+					
+					// Add comment if available
+					if (!pScr->getComment().isEmpty()) {
+						AsciiString comment = "    Comment: ";
+						AsciiString fullComment = pScr->getComment();
+						
+						// Truncate if too long (manually)
+						if (fullComment.getLength() > 80) {
+							const char* commentStr = fullComment.str();
+							char truncated[81];
+							strncpy(truncated, commentStr, 77);
+							truncated[77] = '\0';
+							comment.concat(truncated);
+							comment.concat("...");
+						} else {
+							comment.concat(fullComment);
+						}
+						comment.concat("\n");
+						scriptInfo.concat(comment);
+					}
+					
+					playerReport.concat(scriptInfo);
+				}
+			}
+		}
+		
+		if (playerHasUnnamed) {
+			unnamedReport.concat(playerReport);
+		}
+	}
+
+	// Display report if any unnamed scripts/groups found
+	if (totalUnnamedScripts > 0 || totalUnnamedGroups > 0) {
+		AsciiString header;
+		header.format("=== UNNAMED SCRIPTS REPORT ===\n");
+		header.concat("Found unnamed scripts/groups that may cause issues:\n");
+		header.concat("---------------------------------------------\n");
+		
+		AsciiString summary;
+		summary.format("\nTotal Unnamed Scripts: %d\n", totalUnnamedScripts);
+		summary.concat("Total Unnamed Groups: ");
+		char buf[32];
+		sprintf(buf, "%d", totalUnnamedGroups);
+		summary.concat(buf);
+		summary.concat("\n\n");
+		summary.concat("These scripts will not appear in the tree view and cannot be referenced.\n");
+		summary.concat("Please assign names to them or delete them if they are not needed.");
+		
+		AsciiString fullReport = header;
+		fullReport.concat(unnamedReport);
+		fullReport.concat(summary);
+		
+		// Log to debug output
+		DEBUG_LOG(("%s\n", fullReport.str()));
+		
+		// Show message box with option to see full report
+		CString msg;
+		msg.Format("Found %d unnamed script(s) and %d unnamed group(s).\n\n"
+				"These items will not appear in the tree view.\n\n"
+				"Check the WorldBuilder debug output window for details.",
+				totalUnnamedScripts, totalUnnamedGroups);
+		AfxMessageBox(msg, MB_OK | MB_ICONWARNING);
+	}
+#endif
+	
 	return FALSE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 
 HTREEITEM ScriptDialog::addPlayer(Int playerIndx)
 {
+	// Qt (de-bridged) build: this dialog window is never Create()d, so there is no tree to
+	// insert into. The player was already added to the model by the caller (e.g. the import
+	// parser's ParsePlayersDataChunk); the Qt window rebuilds its own tree afterwards. Do the
+	// UI work only when the MFC window actually exists.
+	if (GetSafeHwnd() == NULL)
+	{
+		return NULL;
+	}
 
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 	TVINSERTSTRUCT ins;
@@ -601,29 +2073,43 @@ HTREEITEM ScriptDialog::addPlayer(Int playerIndx)
 void ScriptDialog::setIconGroup(HTREEITEM item)
 {
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+	int iconIndex = 0;
 
-	if (getCurGroup()->isActive())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(1), TVIS_STATEIMAGEMASK);
+	if (getCurGroup()->hasWarnings() && getCurGroup()->isActive() == FALSE )
+		iconIndex = 7;
+	else if (getCurGroup()->hasWarnings())
+		iconIndex = 3;
+	else if (getCurGroup()->isActive())
+		iconIndex = 1;
+	else
+		iconIndex = 5;
 
-	if (!getCurGroup()->isActive())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(5), TVIS_STATEIMAGEMASK);
-
-	if (getCurGroup()->hasWarnings())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
+	pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(iconIndex), TVIS_STATEIMAGEMASK);
 }
 
 void ScriptDialog::setIconScript(HTREEITEM item)
 {
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+	int iconIndex = 0;
 
-	if (getCurScript()->isActive())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(2), TVIS_STATEIMAGEMASK);
+	if (getCurScript()->hasWarnings() && getCurScript()->isActive() == FALSE)
+		iconIndex = 8;
+	else if (getCurScript()->hasWarnings())
+		iconIndex = 4;
+	else if (getCurScript()->isActive())
+		iconIndex = 2;
+	else
+		iconIndex = 6;
 
-	if (!getCurScript()->isActive())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(6), TVIS_STATEIMAGEMASK);
+	pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(iconIndex), TVIS_STATEIMAGEMASK);
+}
 
-	if (getCurScript()->hasWarnings())
-		pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(4), TVIS_STATEIMAGEMASK);
+void ScriptDialog::SetItemIconIfDifferent(CTreeCtrl* pTree, HTREEITEM hItem, int desiredIndex)
+{
+	int currentState = (pTree->GetItemState(hItem, TVIS_STATEIMAGEMASK) & TVIS_STATEIMAGEMASK) >> 12;
+	if (currentState != desiredIndex) {
+		pTree->SetItemState(hItem, INDEXTOSTATEIMAGEMASK(desiredIndex), TVIS_STATEIMAGEMASK);
+	}
 }
 
 Bool ScriptDialog::updateIcons(HTREEITEM hItem)
@@ -631,6 +2117,14 @@ Bool ScriptDialog::updateIcons(HTREEITEM hItem)
 	const ListType saveList = m_curSelection;
 	Bool warnings = false;
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+	// In the Qt-inverted build the MFC dialog is hidden and its tree control is never populated, so
+	// GetChildItem would AV. The Qt window owns the visible tree and rebuilds it from the model
+	// after any edit, so the MFC icon walk is unnecessary there -- bail if the control isn't a live
+	// window. (Warning flags are computed by updateWarnings, not here.)
+	if (pTree == NULL || !::IsWindow(pTree->GetSafeHwnd()))
+	{
+		return false;
+	}
 	HTREEITEM child = pTree->GetChildItem(hItem);
 
 	while (child != nullptr) {
@@ -641,9 +2135,11 @@ Bool ScriptDialog::updateIcons(HTREEITEM hItem)
 		if (lt.m_objType == ListType::PLAYER_TYPE)
 		{
 			if (updateIcons(child)) {
-				pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
+				// pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
+				SetItemIconIfDifferent(pTree, child, 3);
 			} else {
-					pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(1), TVIS_STATEIMAGEMASK);
+				// pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(1), TVIS_STATEIMAGEMASK);
+				SetItemIconIfDifferent(pTree, child, 1);
 			}
 		}
 
@@ -652,11 +2148,11 @@ Bool ScriptDialog::updateIcons(HTREEITEM hItem)
 		{
 			m_curSelection = lt;
 			if (updateIcons(child)) {
-				pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
+				// pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
+				// SetItemIconIfDifferent(pTree, child, 3);
 				warnings = true;
-			} else {
-					setIconGroup(child);
 			}
+			setIconGroup(child);
 		}
 
 		/// script
@@ -667,11 +2163,11 @@ Bool ScriptDialog::updateIcons(HTREEITEM hItem)
 			DEBUG_ASSERTCRASH(pScr, ("Unexpected."));
 			if (pScr) {
 				if (pScr->hasWarnings()) {
-					pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(4), TVIS_STATEIMAGEMASK);
+					// pTree->SetItemState(child, INDEXTOSTATEIMAGEMASK(4), TVIS_STATEIMAGEMASK);
+					// SetItemIconIfDifferent(pTree, child, 4);
 					warnings = true;
-				} else {
-						setIconScript(child);
 				}
+				setIconScript(child);
 			}
 		}
 
@@ -719,7 +2215,7 @@ void ScriptDialog::addScriptList(HTREEITEM hPlayer, Int playerIndex, ScriptList 
 				AsciiString fmt;
 				if (pScr->getName().isEmpty())
 					continue;
-				fmt = formatScriptLabel(pScr);
+				fmt = formatScriptLabel(pScr, m_bCleanScriptName);
 				::memset(&ins, 0, sizeof(ins));
 				ListType lt;
 				lt.m_objType=ListType::SCRIPT_IN_GROUP_TYPE;
@@ -749,7 +2245,7 @@ void ScriptDialog::addScriptList(HTREEITEM hPlayer, Int playerIndex, ScriptList 
 			AsciiString fmt;
 			if (pScr->getName().isEmpty())
 				continue;
-			fmt = formatScriptLabel(pScr);
+			fmt = formatScriptLabel(pScr, m_bCleanScriptName);
 			::memset(&ins, 0, sizeof(ins));
 			ListType lt;
 			lt.m_objType=ListType::SCRIPT_IN_PLAYER_TYPE;
@@ -780,10 +2276,13 @@ void ScriptDialog::addScriptList(HTREEITEM hPlayer, Int playerIndex, ScriptList 
 
 void ScriptDialog::reloadPlayer(Int playerIndex, ScriptList *pSL)
 {
-//	Dict *d = m_sides.getSideInfo(playerIndex)->getDict();
 	updateWarnings();
 
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+
+	// Disable redraw to prevent flickering
+	pTree->SetRedraw(FALSE);
+
 	HTREEITEM player = pTree->GetChildItem(TVI_ROOT);
 	while (player != nullptr) {
 		TVITEM item;
@@ -799,22 +2298,31 @@ void ScriptDialog::reloadPlayer(Int playerIndex, ScriptList *pSL)
 		player = pTree->GetNextSiblingItem(player);
 	}
 	DEBUG_ASSERTCRASH(player, ("Couldn't find player."));
-	if (!player) return;
-	HTREEITEM child;
-	ListType currentSel = m_curSelection;
-
-	if (currentSel.m_objType == ListType::SCRIPT_IN_GROUP_TYPE) {
-		if (currentSel.m_scriptIndex > 0) {
-			--currentSel.m_scriptIndex;
-		}
+	if (!player) {
+		pTree->SetRedraw(TRUE);
+		return;
 	}
 
+	ListType currentSel = m_curSelection;
+	if (currentSel.m_objType == ListType::SCRIPT_IN_GROUP_TYPE && currentSel.m_scriptIndex > 0) {
+		--currentSel.m_scriptIndex;
+	}
+
+	// Delete all children under the player item
+	HTREEITEM child;
 	do {
 		child = pTree->GetChildItem(player);
 		if (child) pTree->DeleteItem(child);
 	} while (child);
+
+	// Restore selection and add scripts
 	m_curSelection = currentSel;
 	addScriptList(player, playerIndex, pSL);
+
+	// Re-enable redraw
+	pTree->SetRedraw(TRUE);
+	pTree->Invalidate();
+	pTree->UpdateWindow();
 }
 
 void ScriptDialog::updateSelection(ListType sel)
@@ -914,6 +2422,21 @@ void ScriptDialog::OnNewFolder()
 		ScriptGroup *pNewGroup = newInstance( ScriptGroup);
 		EditGroup editDlg(pNewGroup);
 		if (IDOK==editDlg.DoModal()) {
+
+			AsciiString name = pNewGroup->getName();
+			name.trim();
+
+			if (name.isEmpty()) {
+				AfxMessageBox(
+					"Error: Script folder name cannot be empty.\n\n"
+					"Please enter a valid name.",
+					MB_OK | MB_ICONERROR
+				);
+
+				deleteInstance(pNewGroup);
+				return;
+			}
+
 			pSL->addGroup(pNewGroup, ndx);
 			reloadPlayer(savSel.m_playerIndex, pSL);
 			savSel.m_groupIndex = ndx;
@@ -943,6 +2466,38 @@ void ScriptDialog::OnNewScript()
 	ScriptAction *action = newInstance( ScriptAction)(ScriptAction::NO_OP);
 	pNewScript->setAction(action);
 
+#ifdef RTS_HAS_QT
+	// Qt mode: run the native Qt tabbed editor (WBQtScriptEditDialog) instead of the MFC
+	// property sheet; same accept/reject handling as the sheet path below.
+	{
+		if (WBQtScriptEdit_Run(pNewScript, ::AfxGetMainWnd()->GetSafeHwnd()) != 0)
+		{
+			AsciiString name = pNewScript->getName();
+			name.trim();
+
+			if (name.isEmpty())
+			{
+				AfxMessageBox(
+					"Error: Script name cannot be empty.\n\n"
+					"Please enter a valid name.",
+					MB_OK | MB_ICONERROR
+				);
+
+				deleteInstance(pNewScript);
+				return;
+			}
+
+			insertScript(pNewScript);
+		}
+		else
+		{
+			deleteInstance(pNewScript);
+		}
+		updateIcons(TVI_ROOT);
+		return;
+	}
+#endif
+
 	CPropertySheet editDialog;
 	editDialog.Construct(name.str());
 	ScriptProperties sp;
@@ -959,6 +2514,21 @@ void ScriptDialog::OnNewScript()
 	editDialog.AddPage(&sf);
 
 	if (IDOK == editDialog.DoModal()) {
+
+		AsciiString name = pNewScript->getName();
+		name.trim();
+
+		if (name.isEmpty()) {
+			AfxMessageBox(
+				"Error: Script name cannot be empty.\n\n"
+				"Please enter a valid name.",
+				MB_OK | MB_ICONERROR
+			);
+
+			deleteInstance(pNewScript);
+			return;
+		}
+
 		insertScript(pNewScript);
 	}	else {
 		deleteInstance(pNewScript);
@@ -1016,6 +2586,23 @@ void ScriptDialog::OnEditScript()
 		CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 		HTREEITEM item = findItem(m_curSelection);
 		if (pGroup) {
+#ifdef RTS_HAS_QT
+			// Qt mode: edit the folder in the native Qt group dialog; same tree-label /
+			// warning refresh as the MFC path below.
+			if (WBQtEditGroup_Run(pGroup, ::AfxGetMainWnd()->GetSafeHwnd()) != 0)
+			{
+				if (item)
+				{
+					pTree->SetItemText(item, pGroup->getName().str());
+					pTree->SelectItem(NULL);
+					updateWarnings();
+					pTree->SelectItem(item);
+				}
+			}
+			updateIcons(TVI_ROOT);
+			pTree->SetItemText(item, formatScriptLabel(pGroup).str());
+			return;
+#endif
 			EditGroup editDlg(pGroup);
 			if (IDOK==editDlg.DoModal()) {
 				if (item) {
@@ -1032,6 +2619,30 @@ void ScriptDialog::OnEditScript()
 	}
 
 	Script *pDup = pScript->duplicate();
+
+#ifdef RTS_HAS_QT
+	// Qt mode: edit the duplicate in the native Qt tabbed editor; on OK commit exactly
+	// like the MFC sheet path below (updateFrom + tree label + warning refresh).
+	{
+		if (WBQtScriptEdit_Run(pDup, ::AfxGetMainWnd()->GetSafeHwnd()) != 0)
+		{
+			pScript->updateFrom(pDup);
+			CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+			HTREEITEM item = findItem(m_curSelection);
+			if (item)
+			{
+				pTree->SetItemText(item, formatScriptLabel(pScript, m_bCleanScriptName).str());
+				pTree->SelectItem(NULL);
+				pScript->setDirty(true);
+				updateWarnings();
+				pTree->SelectItem(item); // Updates the comment field & text field.
+			}
+		}
+		updateIcons(TVI_ROOT);
+		deleteInstance(pDup);
+		return;
+	}
+#endif
 
 	CPropertySheet editDialog;
 	editDialog.Construct(pScript->getName().str());
@@ -1053,8 +2664,9 @@ void ScriptDialog::OnEditScript()
 		CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 		HTREEITEM item = findItem(m_curSelection);
 		if (item) {
-			pTree->SetItemText(item, formatScriptLabel(pScript).str());
-			pTree->SelectItem(nullptr);
+			pTree->SetItemText(item, formatScriptLabel(pScript, m_bCleanScriptName).str());
+			pTree->SelectItem(NULL);
+			pScript->setDirty(true);
 			updateWarnings();
 			pTree->SelectItem(item); // Updates the comment field & text field.
 		}
@@ -1063,17 +2675,165 @@ void ScriptDialog::OnEditScript()
 	deleteInstance(pDup);
 }
 
-void ScriptDialog::OnCopyScript()
+void ScriptDialog::applySmartCopyIncrement(Script* pScr)
 {
-	Script *pScript = getCurScript();
-	DEBUG_ASSERTCRASH(pScript, ("Null script."));
-	if (pScript == nullptr) return;
-	Script *pDup = pScript->duplicate();
-	AsciiString newName = pDup->getName();
-	newName.concat(" C");
-	pDup->setName(newName);
-	insertScript(pDup);
-	updateIcons(TVI_ROOT);
+    if (!pScr) return;
+
+    // Increment script name if it ends with a number
+    pScr->setName(incrementStringNumber(pScr->getName()));
+
+    // Increment parameters inside conditions
+    for (OrCondition* pOr = pScr->getOrCondition(); pOr; pOr = pOr->getNextOrCondition()) {
+        for (Condition* c = pOr->getFirstAndCondition(); c; c = c->getNext()) {
+            for (int i = 0; i < c->getNumParameters(); ++i) {
+                Parameter* param = c->getParameter(i);
+                if (!param) continue;
+                if (
+                    param->getParameterType() == Parameter::TEXT_STRING ||
+                    param->getParameterType() == Parameter::TEAM ||
+                    param->getParameterType() == Parameter::WAYPOINT ||
+                    param->getParameterType() == Parameter::SCRIPT ||
+                    param->getParameterType() == Parameter::UNIT ||
+                    param->getParameterType() == Parameter::REVEALNAME ||
+					param->getParameterType() == Parameter::COUNTER ||
+					param->getParameterType() == Parameter::FLAG ||
+					param->getParameterType() == Parameter::SIDE
+                )
+                {
+                    AsciiString newVal = incrementStringNumber(param->getString());
+                    param->friend_setString(newVal);
+                }
+            }
+        }
+    }
+
+    // --- Increment parameters inside TRUE actions ---
+    for (ScriptAction* a = pScr->getAction(); a; a = a->getNext()) {
+        for (int i = 0; i < a->getNumParameters(); ++i) {
+            Parameter* param = a->getParameter(i);
+            if (!param) continue;
+            if (
+                param->getParameterType() == Parameter::TEXT_STRING ||
+                param->getParameterType() == Parameter::TEAM ||
+                param->getParameterType() == Parameter::WAYPOINT ||
+                param->getParameterType() == Parameter::SCRIPT ||
+				param->getParameterType() == Parameter::SCRIPT_SUBROUTINE ||
+                param->getParameterType() == Parameter::UNIT ||
+                param->getParameterType() == Parameter::REVEALNAME ||
+				param->getParameterType() == Parameter::COUNTER ||
+				param->getParameterType() == Parameter::FLAG ||
+				param->getParameterType() == Parameter::SIDE
+            )
+            {
+                AsciiString newVal = incrementStringNumber(param->getString());
+                param->friend_setString(newVal);
+            }
+        }
+    }
+
+    // --- Increment parameters inside FALSE actions ---
+    for (ScriptAction* b = pScr->getFalseAction(); b; b = b->getNext()) {
+        for (int z = 0; z < b->getNumParameters(); ++z) {
+            Parameter* param = b->getParameter(z);
+            if (!param) continue;
+            if (
+                param->getParameterType() == Parameter::TEXT_STRING ||
+                param->getParameterType() == Parameter::TEAM ||
+                param->getParameterType() == Parameter::WAYPOINT ||
+                param->getParameterType() == Parameter::SCRIPT ||
+				param->getParameterType() == Parameter::SCRIPT_SUBROUTINE ||
+                param->getParameterType() == Parameter::UNIT ||
+                param->getParameterType() == Parameter::REVEALNAME ||
+				param->getParameterType() == Parameter::COUNTER ||
+				param->getParameterType() == Parameter::FLAG ||
+				param->getParameterType() == Parameter::SIDE
+            )
+            {
+                AsciiString newVal = incrementStringNumber(param->getString());
+                param->friend_setString(newVal);
+            }
+        }
+    }
+}
+
+AsciiString ScriptDialog::incrementStringNumber(const AsciiString& input)
+{
+    const char* str = input.str();
+    int len = strlen(str);
+
+    // Find trailing number
+    int pos = len - 1;
+    while (pos >= 0 && isdigit(str[pos])) pos--;
+
+    if (pos == len - 1) {
+        // No number at end, return unchanged
+        return input;
+    }
+
+    CString prefix(str, pos + 1); // text before number
+    CString numberStr(str + pos + 1);
+    int number = atoi(numberStr);
+    number++;
+
+    CString result;
+    result.Format("%s%0*d", prefix, numberStr.GetLength(), number);
+    return AsciiString(result);
+}
+
+void ScriptDialog::OnCopyScript() 
+{
+    Script *pScript = getCurScript();
+    ScriptGroup *pGroup = getCurGroup();
+
+    if (pScript) {
+        Script *pDup = pScript->duplicate();
+
+        // Smart copy logic
+        if (m_bSmartCopyEnabled)
+            applySmartCopyIncrement(pDup);
+
+        AsciiString newName = pDup->getName();
+		if(!m_bSmartCopyEnabled){
+			// If smart copy is disabled, just append " C" to the name
+			newName.concat(" C");
+		}
+        pDup->setName(newName);
+
+        insertScript(pDup);
+        updateIcons(TVI_ROOT);
+        return;
+    }
+
+    if (pGroup && m_curSelection.m_objType == ListType::GROUP_TYPE) {
+        ScriptGroup* pNewGroup = newInstance(ScriptGroup);
+        AsciiString newGroupName = pGroup->getName();
+        newGroupName.concat(" Copy");
+        pNewGroup->setName(newGroupName);
+        pNewGroup->setActive(pGroup->isActive());
+        pNewGroup->setSubroutine(pGroup->isSubroutine());
+
+        Int scriptIndex = 0;
+        for (Script* pScr = pGroup->getScript(); pScr; pScr = pScr->getNext(), ++scriptIndex) {
+            Script* pDup = pScr->duplicate();
+
+            if (m_bSmartCopyEnabled)
+                applySmartCopyIncrement(pDup);
+
+            AsciiString scriptName = pDup->getName();
+            // scriptName.concat(" C");
+            pDup->setName(scriptName);
+
+            pNewGroup->addScript(pDup, scriptIndex);
+        }
+
+        ScriptList *pSL = m_sides.getSideInfo(m_curSelection.m_playerIndex)->getScriptList();
+        if (pSL) {
+            Int insertIndex = m_curSelection.m_groupIndex + 1;
+            pSL->addGroup(pNewGroup, insertIndex);
+            reloadPlayer(m_curSelection.m_playerIndex, pSL);
+        }
+        updateIcons(TVI_ROOT);
+    }
 }
 
 void ScriptDialog::OnDelete()
@@ -1110,6 +2870,140 @@ void ScriptDialog::OnDelete()
 	}
 	updateIcons(TVI_ROOT);
 }
+
+void ScriptDialog::OnAddDebug() 
+{
+    Script *pScript = getCurScript();
+    if (!pScript) {
+        AfxMessageBox("No script selected. Please select a script first.", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // Create the debug action (SHOW_MILITARY_CAPTION)
+    ScriptAction *debugAction = newInstance(ScriptAction)(ScriptAction::SHOW_MILITARY_CAPTION);
+    
+    // Set first parameter: script name + " called"
+    AsciiString debugText = "[Debug] "; 
+	debugText.concat(pScript->getName());
+    debugText.concat(" called");
+    debugAction->getParameter(0)->friend_setString(debugText);
+    
+    // ---- Duration based on text length ----
+    const int msPerChar = 400;
+    int textLength = debugText.getLength();
+
+    int durationMs = textLength * msPerChar;
+
+    // Clamp to sane limits
+    if (durationMs < 2000)  durationMs = 2000;   // minimum 2s
+    if (durationMs > 15000) durationMs = 15000;  // maximum 15s
+
+    debugAction->getParameter(1)->friend_setInt(durationMs);
+    // --------------------------------------
+    
+    // Add the action at the END of the existing TRUE actions
+    ScriptAction *lastAction = pScript->getAction();
+    if (lastAction) {
+        // Find the last action in the chain
+        while (lastAction->getNext()) {
+            lastAction = lastAction->getNext();
+        }
+        lastAction->setNextAction(debugAction);
+    } else {
+        // No actions exist yet, set as first action
+        pScript->setAction(debugAction);
+    }
+    
+    // Mark script as dirty to trigger warning updates
+    pScript->setDirty(true);
+    
+    // Update the tree view
+    CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+    HTREEITEM item = findItem(m_curSelection);
+    if (item) {
+        pTree->SetItemText(item, formatScriptLabel(pScript, m_bCleanScriptName).str());
+        pTree->SelectItem(NULL);
+        updateWarnings();
+        pTree->SelectItem(item);
+    }
+    updateIcons(TVI_ROOT);
+    
+    MessageBeep(MB_ICONWARNING);
+}
+
+void ScriptDialog::OnRemoveDebug()
+{
+    Script *pScript = getCurScript();
+    if (!pScript) {
+        AfxMessageBox("No script selected. Please select a script first.", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    ScriptAction *currentAction = pScript->getAction();
+    ScriptAction *prevAction = NULL;
+    int removedCount = 0;
+
+    while (currentAction) {
+        bool shouldRemove = false;
+
+        // Check if this is a SHOW_MILITARY_CAPTION action with "[Debug]" prefix
+        if (currentAction->getActionType() == ScriptAction::SHOW_MILITARY_CAPTION) {
+            Parameter *param = currentAction->getParameter(0);
+            if (param && param->getParameterType() == Parameter::TEXT_STRING) {
+                AsciiString text = param->getString();
+                if (text.startsWith("[Debug] ")) {
+                    shouldRemove = true;
+                }
+            }
+        }
+
+        if (shouldRemove) {
+            ScriptAction *toDelete = currentAction;
+            currentAction = currentAction->getNext();
+
+            // Unlink from chain
+            if (prevAction) {
+                prevAction->setNextAction(currentAction);
+            } else {
+                // Removing first action
+                pScript->setAction(currentAction);
+            }
+
+            // Delete the action
+            toDelete->setNextAction(NULL);
+            deleteInstance(toDelete);
+            
+            removedCount++;
+        } else {
+            // Move to next action
+            prevAction = currentAction;
+            currentAction = currentAction->getNext();
+        }
+    }
+
+    if (removedCount > 0) {
+        // Mark script as dirty
+        pScript->setDirty(true);
+
+        // Update the tree view
+        CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+        HTREEITEM item = findItem(m_curSelection);
+        if (item) {
+            pTree->SetItemText(item, formatScriptLabel(pScript, m_bCleanScriptName).str());
+            pTree->SelectItem(NULL);
+            updateWarnings();
+            pTree->SelectItem(item);
+        }
+        updateIcons(TVI_ROOT);
+
+        CString msg;
+        msg.Format("Removed %d debug action(s).", removedCount);
+        AfxMessageBox(msg, MB_OK | MB_ICONINFORMATION);
+    } else {
+        AfxMessageBox("No debug actions found in this script.", MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 
 class LocalMFCFileOutputStream : public OutputStream
 {
@@ -1153,7 +3047,7 @@ void ScriptDialog::markWaypoint(MapObject *pObj)
 }
 
 /** Looks for referenced waypoints & teams. */
-void ScriptDialog::scanParmForWaypointsAndTeams(Parameter *pParm, Bool doUnits, Bool doWaypoints, Bool doTriggers)
+void ScriptDialog::scanParmForWaypointsAndTeams(Parameter *pParm, Bool doUnits, Bool doWaypoints, Bool doTriggers, Bool doTeams)
 {
 	if (pParm->getParameterType() == Parameter::WAYPOINT && doWaypoints) {
 		AsciiString waypointName  = pParm->getString();
@@ -1185,7 +3079,7 @@ void ScriptDialog::scanParmForWaypointsAndTeams(Parameter *pParm, Bool doUnits, 
 	if (pParm->getParameterType() == Parameter::TEAM) {
 		AsciiString teamName  = pParm->getString();
 		TeamsInfo * pInfo = m_sides.findTeamInfo(teamName);
-		if (pInfo) {
+		if (pInfo && doTeams) {
 			pInfo->getDict()->setBool(TheKey_exportWithScript, true);
 		}
 		if (doUnits) {
@@ -1228,7 +3122,7 @@ void ScriptDialog::scanParmForWaypointsAndTeams(Parameter *pParm, Bool doUnits, 
 }
 
 /** Looks for referenced waypoints & teams. */
-void ScriptDialog::scanForWaypointsAndTeams(Script *pScript, Bool doUnits, Bool doWaypoints, Bool doTriggers)
+void ScriptDialog::scanForWaypointsAndTeams(Script *pScript, Bool doUnits, Bool doWaypoints, Bool doTriggers, Bool doTeams)
 {
 	pScript->setWarnings(false);
 	OrCondition *pOr;
@@ -1237,7 +3131,7 @@ void ScriptDialog::scanForWaypointsAndTeams(Script *pScript, Bool doUnits, Bool 
 		for (pCondition = pOr->getFirstAndCondition(); pCondition; pCondition = pCondition->getNext()) {
 			Int i;
 			for (i=0; i<pCondition->getNumParameters(); i++) {
-				scanParmForWaypointsAndTeams(pCondition->getParameter(i), doUnits, doWaypoints, doTriggers);
+				scanParmForWaypointsAndTeams(pCondition->getParameter(i), doUnits, doWaypoints, doTriggers, doTeams);
 			}
 		}
 	}
@@ -1246,7 +3140,7 @@ void ScriptDialog::scanForWaypointsAndTeams(Script *pScript, Bool doUnits, Bool 
 		pAction->setWarnings(false);
 		Int i;
 		for (i=0; i<pAction->getNumParameters(); i++) {
-			scanParmForWaypointsAndTeams(pAction->getParameter(i), doUnits, doWaypoints, doTriggers);
+			scanParmForWaypointsAndTeams(pAction->getParameter(i), doUnits, doWaypoints, doTriggers, doTeams);
 		}
 	}
 }
@@ -1262,14 +3156,24 @@ void ScriptDialog::OnSave()
 	Bool doUnits = true;
 	Bool doAllScripts = true;
 	Bool doSides = true;
+	Bool doTeams = true;
 	Int	 i;
 
+#ifdef RTS_HAS_QT
+	if (WBQtExportScriptsOptions_Run(::AfxGetMainWnd()->GetSafeHwnd()) == 0)
+	{
+		return;
+	}
+	ExportScriptsOptions optionsDlg;
+#else
 	ExportScriptsOptions optionsDlg;
 	if (IDCANCEL == optionsDlg.DoModal()) {
 		return;
 	}
+#endif
 	doWaypoints = optionsDlg.getDoWaypoints();
 	doUnits = optionsDlg.getDoUnits();
+	doTeams = optionsDlg.getDoTeams(); // you'll implement this getter
 	doTriggerAreas = optionsDlg.getDoTriggers();
 	doAllScripts = optionsDlg.getDoAllScripts();
 	doSides = optionsDlg.getDoSides();
@@ -1315,6 +3219,9 @@ void ScriptDialog::OnSave()
 		}
 	}
 
+	// DEBUG_LOG(("doTeams %s", doTeams ? "true" : "false"));
+	// DEBUG_LOG(("doAllScripts %s", doAllScripts ? "true" : "false"));
+
 	for (i = 0; i < m_sides.getNumTeams(); i++) {
 		m_sides.getTeamInfo(i)->getDict()->setBool(TheKey_exportWithScript, doAllScripts);
 	}
@@ -1347,11 +3254,11 @@ void ScriptDialog::OnSave()
 		ScriptList *pSL = scripts[i];
 		Script *pScr;
 		for (pScr = pSL->getScript(); pScr; pScr=pScr->getNext()) {
-			scanForWaypointsAndTeams(pScr, doUnits, doWaypoints, doTriggerAreas);
+			scanForWaypointsAndTeams(pScr, doUnits, doWaypoints, doTriggerAreas, doTeams);
 		}
 		for (pGroup = pSL->getScriptGroup(); pGroup; pGroup=pGroup->getNext()) {
 			for (pScr = pGroup->getScript(); pScr; pScr=pScr->getNext()) {
-				scanForWaypointsAndTeams(pScr, doUnits, doWaypoints, doTriggerAreas);
+				scanForWaypointsAndTeams(pScr, doUnits, doWaypoints, doTriggerAreas, doTeams);
 			}
 		}
 	}
@@ -1777,15 +3684,24 @@ Bool ScriptDialog::ParseTeamsDataChunk(DataChunkInput &file, DataChunkInfo *info
 			::AfxMessageBox(warning.str(), MB_OK);
 			TeamsInfo ti;
 			ti.init(&teamDict);
-			CFixTeamOwnerDialog fix(&ti, &pThis->m_sides);
 			bool nameSet = false;
+#ifdef RTS_HAS_QT
+			char qtOwner[256];
+			if (WBQtFixTeamOwner_Run(&ti, &pThis->m_sides, ::AfxGetMainWnd()->GetSafeHwnd(), qtOwner, sizeof(qtOwner)) != 0)
+			{
+				teamDict.setAsciiString(TheKey_teamOwner, AsciiString(qtOwner));
+				nameSet = true;
+			}
+#else
+			CFixTeamOwnerDialog fix(&ti, &pThis->m_sides);
 			if (fix.DoModal() == IDOK) {
 				if (fix.pickedValidTeam()) {
 					teamDict.setAsciiString(TheKey_teamOwner, fix.getSelectedOwner());
 					nameSet = true;
 				}
 			}
-
+#endif
+						
 			if (nameSet == false) {
 				AsciiString neutralPlayerName; // neutral player name is empty string
 				// player doesn't exist, so add it to the neutral player.
@@ -1930,22 +3846,1195 @@ void ScriptDialog::OnDblclkScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
 	*pResult = 0;
 }
 
-void ScriptDialog::OnOK()
+void ScriptDialog::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+    if (nChar == 'S' && (GetKeyState(VK_CONTROL) & 0x8000))
+    {
+        OnSaveActual();
+        return;
+    }
+    CDialog::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+BOOL ScriptDialog::PreTranslateMessage(MSG* pMsg)
+{
+    if (pMsg->message == WM_KEYDOWN)
+    {
+        if (pMsg->wParam == 'S' && (GetKeyState(VK_CONTROL) & 0x8000))
+        {
+            OnSaveActual();
+            return TRUE; // consumed, don't pass further
+        }
+    }
+    return CDialog::PreTranslateMessage(pMsg);
+}
+
+// This will fire the save without closing the script dialog screen
+void ScriptDialog::OnSaveActual() 
 {
 	CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
 	SidesListUndoable *pUndo = new SidesListUndoable(m_sides, pDoc);
 	pDoc->AddAndDoUndoable(pUndo);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
-	CDialog::OnOK();
+
+	SaveScriptWarningsState();
+
+	PlaySound("data\\editor\\audio\\finished.wav", NULL, SND_FILENAME | SND_ASYNC);
+
+    // Berate the user if they haven't saved the map yet
+    if (pDoc->GetPathName().IsEmpty()) {
+        int result = AfxMessageBox(
+            "You haven't even saved this map yet, monsieur.\n\n"
+            "Save the map file first before trying to use Save Now you doodoo.\n\n"
+            "Want to save the map now?",
+            MB_YESNO | MB_ICONWARNING
+        );
+
+        if (result == IDYES) {
+            if (!pDoc->DoFileSave())
+                return; // user cancelled or save failed
+        } else {
+            return; // user said no, bail out
+        }
+    } else {
+		// Save the map now
+		if (!pDoc->DoFileSave())
+			return; // user cancelled or save failed
+	}
 }
 
-void ScriptDialog::OnCancel()
+void ScriptDialog::OnOK() 
 {
+    // Check if the IDC_OBJECT_SEARCH_EDIT control is focused
+    if (GetFocus() == GetDlgItem(IDC_SCRIPT_SEARCH))
+    {
+        OnFindNext();  // Trigger search on "Enter" key press
+    }
+    else
+    {
+		OnSaveActual();
 
+		// Clear focus in scripting mode in main frame
+		if (CMainFrame::GetMainFrame()) {
+			CMainFrame::GetMainFrame()->setFocusInScripting(false);
+		}
+
+        CDialog::OnOK();  // Call the default OK behavior if the search box isn't focused
+	}
+}
+
+void ScriptDialog::OnCancel() 
+{
+	// Clear focus in scripting mode in main frame
+	if (CMainFrame::GetMainFrame()) {
+		CMainFrame::GetMainFrame()->setFocusInScripting(false);
+	}
 	CDialog::OnCancel();
 }
 
-void ScriptDialog::OnBegindragScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
+#ifdef RTS_HAS_QT
+//----------------------------------------------------------------------------------------
+// Qt Script-editor front-end support. The Qt window (WBQtScriptWindow) drives this hidden
+// MFC dialog: it reads the flat tree model (qtGetNodeCount/qtGetNode, mirroring the order
+// addPlayer/addScriptList build), pushes selection into m_curSelection (qtSetSelection),
+// and invokes the same command handlers (qtDo*). m_sides / the sub-editors / commit stay
+// here. formatScriptLabel is file-static in this TU, so the label building lives here.
+//----------------------------------------------------------------------------------------
+
+// Walk the working model in the same pre-order the tree uses, invoking a callback per node.
+// depth: 0 player, 1 group or ungrouped-script, 2 script-in-group.
+namespace {
+	// flags per node: bit0 active, bit1 hasWarnings, bit2 subroutine (0 for player nodes).
+	struct QtNodeVisitor { virtual void visit(int depth, int listTypeInt, int flags, const AsciiString &label) = 0; };
+}
+
+namespace {
+	enum { QT_NODE_ACTIVE = 1, QT_NODE_WARNINGS = 2, QT_NODE_SUBROUTINE = 4,
+	       QT_NODE_EASY = 8, QT_NODE_NORMAL = 16, QT_NODE_HARD = 32 };
+	int qtScriptFlags(Script *pScr)
+	{
+		int f = 0;
+		if (pScr->isActive()) { f |= QT_NODE_ACTIVE; }
+		if (pScr->hasWarnings()) { f |= QT_NODE_WARNINGS; }
+		if (pScr->isSubroutine()) { f |= QT_NODE_SUBROUTINE; }
+		if (pScr->isEasy()) { f |= QT_NODE_EASY; }
+		if (pScr->isNormal()) { f |= QT_NODE_NORMAL; }
+		if (pScr->isHard()) { f |= QT_NODE_HARD; }
+		return f;
+	}
+	int qtGroupFlags(ScriptGroup *pGroup)
+	{
+		int f = 0;
+		if (pGroup->isActive()) { f |= QT_NODE_ACTIVE; }
+		if (pGroup->hasWarnings()) { f |= QT_NODE_WARNINGS; }
+		if (pGroup->isSubroutine()) { f |= QT_NODE_SUBROUTINE; }
+		return f;
+	}
+}
+
+static void qtWalkModel(SidesList &sides, Bool cleanNames, QtNodeVisitor &v)
+{
+	for (Int p = 0; p < sides.getNumSides(); p++)
+	{
+		Dict *dd = sides.getSideInfo(p)->getDict();
+		AsciiString pname = dd->getAsciiString(TheKey_playerName);
+		AsciiString plabel;
+		if (pname.isEmpty())
+		{
+			plabel = NEUTRAL_NAME_STR;
+		}
+		else
+		{
+			plabel = pname;
+		}
+		ListType lt;
+		lt.m_objType = ListType::PLAYER_TYPE;
+		lt.m_playerIndex = p;
+		v.visit(0, lt.ListToInt(), 0, plabel);
+
+		ScriptList *pSL = sides.getSideInfo(p)->getScriptList();
+		if (pSL == NULL)
+		{
+			continue;
+		}
+
+		// Pass A: groups (folders) and their scripts.
+		Int groupNdx = 0;
+		for (ScriptGroup *pGroup = pSL->getScriptGroup(); pGroup; pGroup = pGroup->getNext(), groupNdx++)
+		{
+			if (pGroup->getName().isEmpty())
+			{
+				continue;
+			}
+			ListType glt;
+			glt.m_objType = ListType::GROUP_TYPE;
+			glt.m_playerIndex = p;
+			glt.m_groupIndex = groupNdx;
+			v.visit(1, glt.ListToInt(), qtGroupFlags(pGroup), formatScriptLabel(pGroup));
+
+			Int scriptNdx = 0;
+			for (Script *pScr = pGroup->getScript(); pScr; pScr = pScr->getNext(), scriptNdx++)
+			{
+				if (pScr->getName().isEmpty())
+				{
+					continue;
+				}
+				ListType slt;
+				slt.m_objType = ListType::SCRIPT_IN_GROUP_TYPE;
+				slt.m_playerIndex = p;
+				slt.m_groupIndex = groupNdx;
+				slt.m_scriptIndex = scriptNdx;
+				v.visit(2, slt.ListToInt(), qtScriptFlags(pScr), formatScriptLabel(pScr, cleanNames));
+			}
+		}
+
+		// Pass B: ungrouped scripts (direct children of the player).
+		Int scriptNdx = 0;
+		for (Script *pScr = pSL->getScript(); pScr; pScr = pScr->getNext(), scriptNdx++)
+		{
+			if (pScr->getName().isEmpty())
+			{
+				continue;
+			}
+			ListType slt;
+			slt.m_objType = ListType::SCRIPT_IN_PLAYER_TYPE;
+			slt.m_playerIndex = p;
+			slt.m_groupIndex = 0;
+			slt.m_scriptIndex = scriptNdx;
+			v.visit(1, slt.ListToInt(), qtScriptFlags(pScr), formatScriptLabel(pScr, cleanNames));
+		}
+	}
+}
+
+namespace {
+	// Counts nodes.
+	struct QtCountVisitor : public QtNodeVisitor {
+		int count;
+		QtCountVisitor() : count(0) {}
+		virtual void visit(int, int, int, const AsciiString &) { count++; }
+	};
+	// Captures node #target into out-params.
+	struct QtPickVisitor : public QtNodeVisitor {
+		int target; int cur; int depth; int listType; int flags; AsciiString label; Bool found;
+		QtPickVisitor(int t) : target(t), cur(0), depth(0), listType(0), flags(0), found(false) {}
+		virtual void visit(int d, int lt, int fl, const AsciiString &l)
+		{
+			if (cur == target)
+			{
+				depth = d; listType = lt; flags = fl; label = l; found = true;
+			}
+			cur++;
+		}
+	};
+}
+
+int ScriptDialog::qtGetNodeCount(void)
+{
+	QtCountVisitor cv;
+	qtWalkModel(m_sides, m_bCleanScriptName, cv);
+	return cv.count;
+}
+
+int ScriptDialog::qtGetNode(int i, int *depthOut, int *listTypeOut, int *flagsOut, char *labelOut, int cap)
+{
+	QtPickVisitor pv(i);
+	qtWalkModel(m_sides, m_bCleanScriptName, pv);
+	if (!pv.found)
+	{
+		return 0;
+	}
+	if (depthOut != NULL)
+	{
+		*depthOut = pv.depth;
+	}
+	if (listTypeOut != NULL)
+	{
+		*listTypeOut = pv.listType;
+	}
+	if (flagsOut != NULL)
+	{
+		*flagsOut = pv.flags;
+	}
+	if (labelOut != NULL && cap > 0)
+	{
+		strncpy(labelOut, pv.label.str(), cap - 1);
+		labelOut[cap - 1] = 0;
+	}
+	return 1;
+}
+
+void ScriptDialog::qtSetSelection(int listTypeInt)
+{
+	// Guard against a stale ListType (e.g. a find cursor from a previous, now-deleted dialog
+	// session) whose player index is out of range for THIS session's m_sides -- getCurScript /
+	// getCurGroup call getSideInfo(m_playerIndex) unconditionally and would deref garbage.
+	ListType lt;
+	lt.IntToList(listTypeInt);
+	if (lt.m_playerIndex >= m_sides.getNumSides())
+	{
+		return;	// ignore an out-of-range selection rather than crash downstream
+	}
+	m_curSelection = lt;
+}
+
+int ScriptDialog::qtGetSelection(void)
+{
+	return m_curSelection.ListToInt();
+}
+
+int ScriptDialog::qtHasScript(void)
+{
+	return (getCurScript() != NULL) ? 1 : 0;
+}
+
+Script *ScriptDialog::qtCurScript(void)
+{
+	return getCurScript();
+}
+
+int ScriptDialog::qtHasGroup(void)
+{
+	return (getCurGroup() != NULL) ? 1 : 0;
+}
+
+void ScriptDialog::qtDoNewFolder(void) { OnNewFolder(); }
+void ScriptDialog::qtDoNewScript(void) { OnNewScript(); }
+void ScriptDialog::qtDoEditScript(void) { OnEditScript(); }
+void ScriptDialog::qtDoCopyScript(void) { OnCopyScript(); }
+void ScriptDialog::qtDoDelete(void) { OnDelete(); }
+
+void ScriptDialog::qtCommitAndClose(void)
+{
+	// Commit the working model (m_sides -> TheSidesList via SidesListUndoable + save), like
+	// OnOK's non-search path. We do NOT call CDialog::OnOK() (that is the visible-modeless
+	// close path) and do NOT destroy the dialog here -- the bridge tears it down AFTER this
+	// returns, so `this` stays valid for the rest of the call.
+	OnSaveActual();
+	if (CMainFrame::GetMainFrame())
+	{
+		CMainFrame::GetMainFrame()->setFocusInScripting(false);
+	}
+}
+
+void ScriptDialog::qtCancelAndClose(void)
+{
+	// Discard the working model (nothing committed). Teardown happens in the bridge after
+	// this returns (see qtCommitAndClose).
+	if (CMainFrame::GetMainFrame())
+	{
+		CMainFrame::GetMainFrame()->setFocusInScripting(false);
+	}
+}
+
+void ScriptDialog::qtDropOn(int dragListType, int targetListType)
+{
+	// Resolve both nodes on the (hidden) MFC tree and reuse doDropOn unchanged -- it reads
+	// the packed ListType off each item, mutates m_sides (reorder / move / Ctrl auto-merge),
+	// and refreshes the MFC tree; the Qt window rebuilds afterwards. doDropOn reads the live
+	// Ctrl key state itself, so a Ctrl-drag in Qt still triggers the merge path.
+	ListType dragLT;
+	dragLT.IntToList(dragListType);
+	ListType targetLT;
+	targetLT.IntToList(targetListType);
+	HTREEITEM hDrag = findItem(dragLT);
+	HTREEITEM hTarget = findItem(targetLT);
+	if (hDrag != NULL && hTarget != NULL)
+	{
+		doDropOn(hDrag, hTarget);
+	}
+}
+
+// Case-insensitive "haystack contains needle" that walks the strings in place. Deliberately
+// NOT AsciiString::toLower(): that round-trips through a fixed 2K stack buffer with an
+// unbounded strcpy, and a big script's comment+uiText blows it (GS stack-cookie crash).
+static Bool qtContainsNoCase(const char *haystack, const char *needle)
+{
+	if (haystack == NULL || needle == NULL || needle[0] == 0)
+	{
+		return false;
+	}
+	for (const char *h = haystack; *h; h++)
+	{
+		const char *a = h;
+		const char *b = needle;
+		while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b))
+		{
+			a++;
+			b++;
+		}
+		if (*b == 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+// Does the script at the given selection deep-match the search text? Mirrors the deep scan
+// in OnFindNext: comment + uiText + every condition/action parameter string.
+static Bool qtScriptDeepMatches(Script *pScr, const AsciiString &needle)
+{
+	if (pScr == NULL)
+	{
+		return false;
+	}
+	AsciiString content = pScr->getComment();
+	content.concat(pScr->getUiText());
+	if (qtContainsNoCase(content.str(), needle.str()))
+	{
+		return true;
+	}
+	for (OrCondition *pOr = pScr->getOrCondition(); pOr; pOr = pOr->getNextOrCondition())
+	{
+		for (Condition *c = pOr->getFirstAndCondition(); c; c = c->getNext())
+		{
+			for (int p = 0; p < c->getNumParameters(); ++p)
+			{
+				if (qtContainsNoCase(c->getParameter(p)->getString().str(), needle.str()))
+				{
+					return true;
+				}
+			}
+		}
+	}
+	for (ScriptAction *a = pScr->getAction(); a; a = a->getNext())
+	{
+		for (int p = 0; p < a->getNumParameters(); ++p)
+		{
+			if (qtContainsNoCase(a->getParameter(p)->getString().str(), needle.str()))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+namespace {
+	// Finds the first node (in tree pre-order) strictly AFTER a 'from' node whose label or
+	// script content matches. from==0 means start at the top.
+	struct QtFindVisitor : public QtNodeVisitor {
+		ScriptDialog *dlg; AsciiString needle; int fromInt; Bool passedFrom; Bool found; int result;
+		QtFindVisitor(ScriptDialog *d, const AsciiString &n, int f)
+			: dlg(d), needle(n), fromInt(f), passedFrom(f == 0), found(false), result(0) {}
+		virtual void visit(int, int listTypeInt, int, const AsciiString &label)
+		{
+			if (found)
+			{
+				return;
+			}
+			if (!passedFrom)
+			{
+				if (listTypeInt == fromInt)
+				{
+					passedFrom = true;
+				}
+				return;
+			}
+			Bool match = qtContainsNoCase(label.str(), needle.str());
+			if (!match)
+			{
+				ListType lt;
+				lt.IntToList(listTypeInt);
+				if (lt.m_objType == ListType::SCRIPT_IN_PLAYER_TYPE ||
+					lt.m_objType == ListType::SCRIPT_IN_GROUP_TYPE)
+				{
+					int saved = dlg->qtGetSelection();
+					dlg->qtSetSelection(listTypeInt);
+					match = qtScriptDeepMatches(dlg->qtCurScript(), needle);
+					dlg->qtSetSelection(saved);
+				}
+			}
+			if (match)
+			{
+				found = true;
+				result = listTypeInt;
+			}
+		}
+	};
+}
+
+int ScriptDialog::qtFindNext(const char *text, int fromListType, int *outListType)
+{
+	if (text == NULL || text[0] == 0)
+	{
+		return 0;
+	}
+	AsciiString needle = text;
+	QtFindVisitor fv(this, needle, fromListType);
+	qtWalkModel(m_sides, m_bCleanScriptName, fv);
+	if (!fv.found)
+	{
+		return 0;
+	}
+	if (outListType != NULL)
+	{
+		*outListType = fv.result;
+	}
+	return 1;
+}
+
+int ScriptDialog::qtNodeMatches(int listTypeInt, const char *text, const char *label)
+{
+	// == the per-node test inside QtFindVisitor, exposed for the Qt window's live tree filter:
+	// a node matches if the text is in its (already-formatted) label, or -- for a script node --
+	// in the deep scan of its comment/UI text/parameters. Empty text matches everything.
+	if (text == NULL || text[0] == 0)
+	{
+		return 1;
+	}
+	AsciiString needle = text;
+	if (label != NULL && qtContainsNoCase(label, needle.str()))
+	{
+		return 1;
+	}
+	ListType lt;
+	lt.IntToList(listTypeInt);
+	if (lt.m_objType == ListType::SCRIPT_IN_PLAYER_TYPE ||
+		lt.m_objType == ListType::SCRIPT_IN_GROUP_TYPE)
+	{
+		int saved = qtGetSelection();
+		qtSetSelection(listTypeInt);
+		Bool match = qtScriptDeepMatches(qtCurScript(), needle);
+		qtSetSelection(saved);
+		return match ? 1 : 0;
+	}
+	return 0;
+}
+
+namespace {
+	// Does the string-valued parameter's value match `find`? whole = the WHOLE value must equal
+	// find; otherwise substring. matchCase toggles case sensitivity. Numeric params carry an empty
+	// m_string, so they never match -- no type allowlist needed.
+	Bool qtParamValueMatches(const AsciiString &value, const AsciiString &find,
+		Bool matchCase, Bool whole)
+	{
+		if (value.isEmpty())
+		{
+			return false;
+		}
+		if (whole)
+		{
+			return matchCase ? (value == find)
+			                 : (strcmpi(value.str(), find.str()) == 0);
+		}
+		if (matchCase)
+		{
+			return strstr(value.str(), find.str()) != NULL;
+		}
+		return qtContainsNoCase(value.str(), find.str());
+	}
+
+	// Replace occurrences of `find` with `repl` in a string (substring mode) honouring matchCase.
+	AsciiString qtReplaceInString(const AsciiString &value, const AsciiString &find,
+		const AsciiString &repl, Bool matchCase)
+	{
+		AsciiString out;
+		const char *s = value.str();
+		const int flen = find.getLength();
+		if (flen == 0)
+		{
+			return value;
+		}
+		while (*s != 0)
+		{
+			Bool hit = matchCase ? (strncmp(s, find.str(), flen) == 0)
+			                     : (strnicmp(s, find.str(), flen) == 0);
+			if (hit)
+			{
+				out.concat(repl);
+				s += flen;
+			}
+			else
+			{
+				char one[2] = { *s, 0 };
+				out.concat(one);
+				++s;
+			}
+		}
+		return out;
+	}
+
+	// forEachStringParamInScript (the shared per-script parameter walk) is defined higher up in this
+	// TU, next to the reference-tag builders that also use it; the find/replace/count visitors below
+	// reuse that same definition.
+
+	// Visitor: count matches, and (when doReplace) rewrite via friend_setString -- whole-value
+	// swaps the value entirely, substring splices the find text out.
+	struct ReplaceVisitor
+	{
+		AsciiString find, repl;
+		Bool matchCase, whole, doReplace;
+		int hits;
+		ReplaceVisitor() : hits(0) {}
+		void visit(Parameter *param, const AsciiString &value)
+		{
+			if (!qtParamValueMatches(value, find, matchCase, whole))
+			{
+				return;
+			}
+			++hits;
+			if (doReplace)
+			{
+				param->friend_setString(whole ? repl : qtReplaceInString(value, find, repl, matchCase));
+			}
+		}
+	};
+
+	int qtReplaceInScript(Script *pScr, const AsciiString &find, const AsciiString &repl,
+		Bool matchCase, Bool whole, Bool doReplace)
+	{
+		ReplaceVisitor v;
+		v.find = find; v.repl = repl; v.matchCase = matchCase; v.whole = whole; v.doReplace = doReplace;
+		forEachStringParamInScript(pScr, v);
+		return v.hits;
+	}
+
+	// Visitor: gather every distinct value that does not resolve, across a script. Covers the two
+	// parameter kinds whose values are names the matcher can do something useful with:
+	// OBJECT_TYPE (matched against the template catalog) and COMMAND_BUTTON (matched against the
+	// CommandButton.ini catalog). The verdict is getWarningText's, the same one behind the
+	// per-script "[Missing]" tag -- so a name that exists as a script object list is not "missing".
+	// An empty value is a placeholder, not a name we could ever match, so it is skipped.
+	struct MissingNameGatherer
+	{
+		std::vector<AsciiString> *names;
+		std::vector<int> *kinds;		// parallel: the Parameter::ParameterType each name came from
+		void visit(Parameter *param, const AsciiString &value)
+		{
+			const int type = param->getParameterType();
+			if (value.isEmpty())
+			{
+				return;
+			}
+			if (type != Parameter::OBJECT_TYPE && type != Parameter::COMMAND_BUTTON)
+			{
+				return;
+			}
+			if (type == Parameter::OBJECT_TYPE && TheThingFactory->findTemplate(value) != NULL)
+			{
+				return;		// resolves fine
+			}
+			if (EditParameter::getWarningText(param, FALSE).isEmpty())
+			{
+				return;		// resolves (or is a script object list) -- not missing
+			}
+			for (size_t i = 0; i < names->size(); i++)
+			{
+				if ((*names)[i] == value && (*kinds)[i] == type)
+				{
+					return;	// already gathered
+				}
+			}
+			names->push_back(value);
+			kinds->push_back(type);
+		}
+	};
+}
+
+// Every distinct unresolvable OBJECT_TYPE / COMMAND_BUTTON name across all players' scripts, in
+// encounter order. outKinds receives the Parameter::ParameterType each name came from, so the
+// caller knows which catalog to match it against.
+void ScriptDialog::qtCollectMissingNames(std::vector<AsciiString> &out, std::vector<int> &outKinds)
+{
+	out.clear();
+	outKinds.clear();
+	MissingNameGatherer v;
+	v.names = &out;
+	v.kinds = &outKinds;
+	for (int i = 0; i < m_sides.getNumSides(); ++i)
+	{
+		ScriptList *pSL = m_sides.getSideInfo(i)->getScriptList();
+		if (pSL == NULL)
+		{
+			continue;
+		}
+		for (Script *s = pSL->getScript(); s != NULL; s = s->getNext())
+		{
+			forEachStringParamInScript(s, v);
+		}
+		for (ScriptGroup *g = pSL->getScriptGroup(); g != NULL; g = g->getNext())
+		{
+			for (Script *s = g->getScript(); s != NULL; s = s->getNext())
+			{
+				forEachStringParamInScript(s, v);
+			}
+		}
+	}
+}
+
+// Resolve a packed-ListType node to its Script* without disturbing the real tree selection. NULL
+// if the listType isn't a (still-valid) script. Resolving a listType only exists as a side effect
+// of setting the selection, so this saves/sets/reads/restores m_curSelection.
+Script *ScriptDialog::qtScriptForListType(int listType)
+{
+	int saved = qtGetSelection();
+	qtSetSelection(listType);
+	Script *pScr = qtCurScript();
+	qtSetSelection(saved);
+	return pScr;
+}
+
+int ScriptDialog::qtScriptReplace(const char *find, const char *replace,
+	int matchCase, int wholeValue, int doReplace, int scopeListType)
+{
+	if (find == NULL || find[0] == 0)
+	{
+		return 0;
+	}
+	AsciiString findStr = find;
+	AsciiString replStr = (replace != NULL) ? replace : "";
+
+	// A count pass (doReplace == 0) never mutates; a replace pass snapshots for undo first, but
+	// only if there is at least one match (so an empty replace doesn't pollute the undo stack).
+	if (doReplace)
+	{
+		int total = qtScriptReplace(find, replace, matchCase, wholeValue, 0, scopeListType);
+		if (total == 0)
+		{
+			return 0;
+		}
+		qtPushUndoSnapshot();
+	}
+
+	int hits = 0;
+	if (scopeListType >= 0)
+	{
+		// Scoped: just the one selected script.
+		Script *pScr = qtScriptForListType(scopeListType);
+		if (pScr != NULL)
+		{
+			hits = qtReplaceInScript(pScr, findStr, replStr, matchCase != 0, wholeValue != 0, doReplace != 0);
+		}
+	}
+	else
+	{
+		for (int i = 0; i < m_sides.getNumSides(); ++i)
+		{
+			ScriptList *pSL = m_sides.getSideInfo(i)->getScriptList();
+			if (pSL == NULL)
+			{
+				continue;
+			}
+			for (Script *s = pSL->getScript(); s != NULL; s = s->getNext())
+			{
+				hits += qtReplaceInScript(s, findStr, replStr, matchCase != 0, wholeValue != 0, doReplace != 0);
+			}
+			for (ScriptGroup *g = pSL->getScriptGroup(); g != NULL; g = g->getNext())
+			{
+				for (Script *s = g->getScript(); s != NULL; s = s->getNext())
+				{
+					hits += qtReplaceInScript(s, findStr, replStr, matchCase != 0, wholeValue != 0, doReplace != 0);
+				}
+			}
+		}
+	}
+
+	if (doReplace && hits > 0)
+	{
+		updateWarnings(true);	// parameters changed -> refresh warning flags (== a normal edit)
+		updateIcons(TVI_ROOT);
+	}
+	return hits;
+}
+
+// Script editor "Replace Missing Entries": resolve every unresolvable OBJECT_TYPE name in the
+// scripts to its closest existing template, using the same name matcher the Replace Missing Unit
+// dialog uses, and report what was decided so wrong guesses can be corrected.
+//
+// Whole-value replacement only: an OBJECT_TYPE parameter holds exactly one template name, so a
+// substring rewrite would be wrong.
+int ScriptDialog::qtScriptReplaceMissing(void)
+{
+#ifndef RTS_HAS_QT
+	return 0;	// the matcher and the report are Qt-side
+#else
+	std::vector<AsciiString> missing;
+	std::vector<int> kinds;
+	qtCollectMissingNames(missing, kinds);
+	if (missing.empty())
+	{
+		return 0;
+	}
+
+	// Command buttons are matched against their own catalog, not the template catalog. Built once
+	// (parsing CommandButton.ini is not free) and only when a command button is actually missing.
+	// Held as an array of pointers, NOT joined into one string: ZH has thousands of command
+	// buttons, and the joined form overflows AsciiString's 32K MAX_LEN, which throws.
+	std::vector<AsciiString> commandButtons;
+	std::vector<const char *> commandButtonPtrs;
+	for (size_t i = 0; i < kinds.size(); i++)
+	{
+		if (kinds[i] == Parameter::COMMAND_BUTTON)
+		{
+			EditParameter::qtCollectCommandButtons(commandButtons);
+			for (size_t c = 0; c < commandButtons.size(); c++)
+			{
+				commandButtonPtrs.push_back(commandButtons[c].str());
+			}
+			break;
+		}
+	}
+
+	// Match every name FIRST, so the undo snapshot is only taken when something will actually
+	// change (an all-unmatched pass leaves the scripts and the undo stack alone).
+	std::vector<AsciiString> picks;
+	picks.resize(missing.size());
+	int resolvable = 0;
+	for (size_t i = 0; i < missing.size(); i++)
+	{
+		char picked[256];
+		picked[0] = 0;
+		Bool matched = false;
+		if (kinds[i] == Parameter::COMMAND_BUTTON)
+		{
+			matched = !commandButtonPtrs.empty()
+				&& WBQtNameMatch_BestOfList(missing[i].str(), &commandButtonPtrs[0],
+					(int)commandButtonPtrs.size(), picked, sizeof(picked)) != 0;
+		}
+		else
+		{
+			matched = WBQtReplaceUnit_BestMatch(missing[i].str(), NULL, 0, 0,
+				picked, sizeof(picked)) != 0;
+		}
+		if (matched)
+		{
+			picks[i] = picked;
+			++resolvable;
+		}
+	}
+
+	WBQtReplaceReport_Begin(WBQT_REPLACE_SOURCE_SCRIPTS);
+	if (resolvable > 0)
+	{
+		qtPushUndoSnapshot();
+	}
+
+	int replaced = 0;
+	for (size_t i = 0; i < missing.size(); i++)
+	{
+		int hits = 0;
+		if (!picks[i].isEmpty())
+		{
+			for (int s = 0; s < m_sides.getNumSides(); ++s)
+			{
+				ScriptList *pSL = m_sides.getSideInfo(s)->getScriptList();
+				if (pSL == NULL)
+				{
+					continue;
+				}
+				for (Script *scr = pSL->getScript(); scr != NULL; scr = scr->getNext())
+				{
+					hits += qtReplaceInScript(scr, missing[i], picks[i], true, true, true);
+				}
+				for (ScriptGroup *g = pSL->getScriptGroup(); g != NULL; g = g->getNext())
+				{
+					for (Script *scr = g->getScript(); scr != NULL; scr = scr->getNext())
+					{
+						hits += qtReplaceInScript(scr, missing[i], picks[i], true, true, true);
+					}
+				}
+			}
+			replaced += hits;
+		}
+		// One row per missing name either way -- an unmatched name still belongs in the report so
+		// it can be fixed by hand rather than silently staying broken.
+		WBQtReplaceReport_Add(missing[i].str(), picks[i].str(), hits);
+	}
+
+	if (replaced > 0)
+	{
+		updateWarnings(true);	// parameters changed -> refresh warning flags (== a normal edit)
+		updateIcons(TVI_ROOT);
+	}
+	return (int)missing.size();
+#endif
+}
+
+namespace {
+	// Tree-order walk that stops at the first SCRIPT node AFTER `fromInt` whose parameter values
+	// match -- so Next/Prev in the replace bar navigates exactly the scripts the count/replace act
+	// on (param values), not the broader deep-scan the plain find-next uses.
+	struct QtParamFindVisitor : public QtNodeVisitor {
+		ScriptDialog *dlg; AsciiString find; Bool matchCase, whole; int fromInt;
+		Bool passedFrom; Bool found; int result;
+		QtParamFindVisitor(ScriptDialog *d, const AsciiString &f, Bool mc, Bool wh, int from)
+			: dlg(d), find(f), matchCase(mc), whole(wh), fromInt(from),
+			  passedFrom(from == 0), found(false), result(0) {}
+		virtual void visit(int, int listTypeInt, int, const AsciiString &)
+		{
+			if (found)
+			{
+				return;
+			}
+			if (!passedFrom)
+			{
+				if (listTypeInt == fromInt)
+				{
+					passedFrom = true;
+				}
+				return;
+			}
+			ListType lt;
+			lt.IntToList(listTypeInt);
+			if (lt.m_objType != ListType::SCRIPT_IN_PLAYER_TYPE &&
+				lt.m_objType != ListType::SCRIPT_IN_GROUP_TYPE)
+			{
+				return;
+			}
+			int saved = dlg->qtGetSelection();
+			dlg->qtSetSelection(listTypeInt);
+			Script *pScr = dlg->qtCurScript();
+			Bool match = (pScr != NULL) &&
+				(qtReplaceInScript(pScr, find, AsciiString::TheEmptyString, matchCase, whole, false) > 0);
+			dlg->qtSetSelection(saved);
+			if (match)
+			{
+				found = true;
+				result = listTypeInt;
+			}
+		}
+	};
+}
+
+int ScriptDialog::qtFindNextParamMatch(int fromListType, const char *find,
+	int matchCase, int wholeValue, int *outListType)
+{
+	if (find == NULL || find[0] == 0)
+	{
+		return 0;
+	}
+	QtParamFindVisitor fv(this, AsciiString(find), matchCase != 0, wholeValue != 0, fromListType);
+	qtWalkModel(m_sides, m_bCleanScriptName, fv);
+	if (!fv.found)
+	{
+		return 0;
+	}
+	if (outListType != NULL)
+	{
+		*outListType = fv.result;
+	}
+	return 1;
+}
+
+namespace {
+	// Visitor: tally distinct string param values (containing `sub`, case-insensitive) into counts.
+	// Rides the shared forEachStringParamInScript walk so it scans the same scope as replace/count.
+	struct TallyVisitor
+	{
+		AsciiString sub;
+		std::map<AsciiString, int> *counts;
+		void visit(Parameter *, const AsciiString &value)
+		{
+			if (value.isEmpty())
+			{
+				return;
+			}
+			if (!sub.isEmpty() && !qtContainsNoCase(value.str(), sub.str()))
+			{
+				return;
+			}
+			(*counts)[value] += 1;
+		}
+	};
+	void qtTallyScriptParams(Script *pScr, const AsciiString &sub, std::map<AsciiString, int> &counts)
+	{
+		TallyVisitor v;
+		v.sub = sub;
+		v.counts = &counts;
+		forEachStringParamInScript(pScr, v);
+	}
+}
+
+int ScriptDialog::qtCollectParamValues(const char *substr, char *buf, int cap, int scopeListType)
+{
+	if (buf != NULL && cap > 0)
+	{
+		buf[0] = 0;
+	}
+	// Tally distinct values (containing substr) with their use counts.
+	AsciiString sub = (substr != NULL) ? substr : "";
+	std::map<AsciiString, int> counts;
+	if (scopeListType >= 0)
+	{
+		// Scoped: just the one selected script.
+		Script *pScr = qtScriptForListType(scopeListType);
+		if (pScr != NULL)
+		{
+			qtTallyScriptParams(pScr, sub, counts);
+		}
+	}
+	else
+	{
+		for (int i = 0; i < m_sides.getNumSides(); ++i)
+		{
+			ScriptList *pSL = m_sides.getSideInfo(i)->getScriptList();
+			if (pSL == NULL)
+			{
+				continue;
+			}
+			for (Script *s = pSL->getScript(); s != NULL; s = s->getNext())
+			{
+				qtTallyScriptParams(s, sub, counts);
+			}
+			for (ScriptGroup *g = pSL->getScriptGroup(); g != NULL; g = g->getNext())
+			{
+				for (Script *s = g->getScript(); s != NULL; s = s->getNext())
+				{
+					qtTallyScriptParams(s, sub, counts);
+				}
+			}
+		}
+	}
+
+	// Sort by count descending, then name, so the most-used values surface first. std::map is
+	// name-sorted; flip into a vector keyed by (-count, name).
+	std::vector<std::pair<int, AsciiString> > ordered;
+	for (std::map<AsciiString, int>::const_iterator it = counts.begin(); it != counts.end(); ++it)
+	{
+		ordered.push_back(std::make_pair(-it->second, it->first));
+	}
+	std::sort(ordered.begin(), ordered.end());
+
+	// Emit "value\tcount\n" per entry into buf (truncating cleanly at the cap). Returns the total
+	// number of distinct values (may exceed what fit).
+	AsciiString out;
+	for (size_t i = 0; i < ordered.size(); ++i)
+	{
+		AsciiString line;
+		line.format("%s\t%d\n", ordered[i].second.str(), -ordered[i].first);
+		if (buf != NULL && (int)(out.getLength() + line.getLength()) >= cap)
+		{
+			break;	// no room for this line -- stop before overflowing
+		}
+		out.concat(line);
+	}
+	if (buf != NULL && cap > 0)
+	{
+		strncpy(buf, out.str(), cap - 1);
+		buf[cap - 1] = 0;
+	}
+	return (int)ordered.size();
+}
+
+void ScriptDialog::qtVerify(void)
+{
+	// == OnVerifyAll: recompute all script/group warning flags. The Qt window rebuilds after,
+	// so the fresh flags reach the tree; updateIcons keeps the (hidden) MFC tree consistent.
+	updateWarnings(true);
+	updateIcons(TVI_ROOT);
+}
+
+void ScriptDialog::qtToggleActive(void)
+{
+	// == OnScriptActivate: flip the current script/group's active flag (uses m_curSelection,
+	// which the Qt window pushed before calling this).
+	OnScriptActivate();
+}
+
+void ScriptDialog::qtGetDetail(int listTypeInt, char *descOut, int descCap, char *commentOut, int commentCap)
+{
+	if (descOut != NULL && descCap > 0)
+	{
+		descOut[0] = 0;
+	}
+	if (commentOut != NULL && commentCap > 0)
+	{
+		commentOut[0] = 0;
+	}
+
+	// Resolve the node without disturbing the real selection.
+	ListType saved = m_curSelection;
+	ListType lt;
+	lt.IntToList(listTypeInt);
+	if (lt.m_playerIndex >= m_sides.getNumSides())
+	{
+		return;
+	}
+	m_curSelection = lt;
+	Script *pScript = getCurScript();
+
+	if (pScript != NULL)
+	{
+		// Description = the script's readable breakdown (== IDC_SCRIPT_DESCRIPTION).
+		if (descOut != NULL && descCap > 0)
+		{
+			strncpy(descOut, pScript->getUiText().str(), descCap - 1);
+			descOut[descCap - 1] = 0;
+		}
+
+		// Comment = comment + condition/action comments + the cross-script
+		// "[Referenced in]" tag, exactly like IDC_SCRIPT_COMMENT (the 'Disable references'
+		// checkbox skips the scan). parseLineBreaks is file-static in this TU.
+		AsciiString scriptComment = pScript->getComment();
+		AsciiString conditionComment = pScript->getConditionComment();
+		AsciiString actionComment = pScript->getActionComment();
+		if (!scriptComment.isEmpty())
+		{
+			scriptComment.concat("\n\n");
+		}
+		if (!conditionComment.isEmpty())
+		{
+			scriptComment.concat("[Condition Comment] : ");
+			scriptComment.concat(conditionComment);
+			scriptComment.concat("\n\n");
+		}
+		if (!actionComment.isEmpty())
+		{
+			scriptComment.concat("[Action Comment] : ");
+			scriptComment.concat(actionComment);
+			scriptComment.concat("\n\n");
+		}
+		// Reference tags, each on its own line: who calls this script, what scripts it calls, the
+		// map entities (units/waypoints) it names -- all clickable in the Qt detail pane -- and the
+		// object types it references that don't exist in the current data set.
+		AsciiString refTags[5];
+		refTags[0] = buildReferencedInTag(pScript);
+		refTags[1] = buildUsesTag(pScript);
+		refTags[2] = buildParamTypeTag(pScript, Parameter::UNIT, "[Units] : ");
+		refTags[3] = buildParamTypeTag(pScript, Parameter::WAYPOINT, "[Waypoints] : ");
+		refTags[4] = buildMissingTag(pScript);
+		for (int t = 0; t < 5; ++t)
+		{
+			if (refTags[t].isEmpty())
+			{
+				continue;
+			}
+			if (!scriptComment.isEmpty() && scriptComment.getCharAt(scriptComment.getLength() - 1) != '\n')
+			{
+				scriptComment.concat("\n\n");
+			}
+			scriptComment.concat(refTags[t]);
+		}
+		scriptComment = parseLineBreaks(scriptComment);
+		if (commentOut != NULL && commentCap > 0)
+		{
+			strncpy(commentOut, scriptComment.str(), commentCap - 1);
+			commentOut[commentCap - 1] = 0;
+		}
+	}
+
+	m_curSelection = saved;
+}
+
+// 9d checkboxes. Ids mirror WBQtPanelBridge.h's WBQT_SCK_*. Get reads the backing member;
+// Set writes the hidden MFC checkbox control then calls the real On* handler so the member,
+// registry persistence, and side effects (font/icon/tree rebuild) all match the MFC path.
+namespace {
+	enum { SCK_COMPRESS = 0, SCK_NEWICONS, SCK_CLEANNAME, SCK_AUTOVERIFY, SCK_SMARTCOPY,
+		SCK_FASTLOAD, SCK_SCRIPTMERGE, SCK_REFBYPARAM, SCK_DISABLEREF };
+	int sckControlId(int which)
+	{
+		switch (which)
+		{
+			case SCK_COMPRESS:    return IDC_COMPRESS;
+			case SCK_NEWICONS:    return IDC_NEWICONS;
+			case SCK_CLEANNAME:   return IDC_CLEANSCRIPTNAME;
+			case SCK_AUTOVERIFY:  return IDC_AUTO_VERIFY;
+			case SCK_SMARTCOPY:   return IDC_SMART_COPY;
+			case SCK_FASTLOAD:    return IDC_DEEPSCAN;
+			case SCK_SCRIPTMERGE: return IDC_SCRIPT_MERGE;
+			case SCK_REFBYPARAM:  return IDC_REFRENCEMODE1;
+			case SCK_DISABLEREF:  return IDC_DISABLEREFERENCE;
+			default: return 0;
+		}
+	}
+}
+
+int ScriptDialog::qtGetCheckbox(int which)
+{
+	switch (which)
+	{
+		case SCK_COMPRESS:    return m_bCompressed ? 1 : 0;
+		case SCK_NEWICONS:    return m_bNewIcons ? 1 : 0;
+		case SCK_CLEANNAME:   return m_bCleanScriptName ? 1 : 0;
+		case SCK_AUTOVERIFY:  return m_autoUpdateWarnings ? 1 : 0;
+		case SCK_SMARTCOPY:   return m_bSmartCopyEnabled ? 1 : 0;
+		case SCK_FASTLOAD:    return m_bDisableDeepScan ? 1 : 0;
+		case SCK_SCRIPTMERGE: return m_bAutoMergeScripts ? 1 : 0;
+		case SCK_REFBYPARAM:  return m_bCheckByParameter ? 1 : 0;
+		case SCK_DISABLEREF:  return m_bDisableReferences ? 1 : 0;
+		default: return 0;
+	}
+}
+
+void ScriptDialog::qtSetCheckbox(int which, int checked)
+{
+	int idc = sckControlId(which);
+	if (idc == 0)
+	{
+		return;
+	}
+	CButton *pButton = (CButton *)GetDlgItem(idc);
+	if (pButton != NULL)
+	{
+		pButton->SetCheck(checked ? 1 : 0);
+	}
+	// Drive the real handler (reads the checkbox back, sets the member, persists, side FX).
+	switch (which)
+	{
+		case SCK_COMPRESS:    OnCompress(); break;
+		case SCK_NEWICONS:    OnNewIcons(); break;
+		case SCK_CLEANNAME:   OnCleanScriptName(); break;
+		case SCK_AUTOVERIFY:  OnAutoVerify(); break;
+		case SCK_SMARTCOPY:   OnSmartCopy(); break;
+		case SCK_FASTLOAD:    OnDisableDeepScan(); break;
+		case SCK_SCRIPTMERGE: OnAutoMergeScripts(); break;
+		case SCK_REFBYPARAM:  OnCheckByParameterForReference(); break;
+		case SCK_DISABLEREF:  OnDisableReferencesEntirely(); break;
+		default: break;
+	}
+}
+
+void ScriptDialog::qtAddDebug(void)      { OnAddDebug(); }
+void ScriptDialog::qtRemoveDebug(void)   { OnRemoveDebug(); }
+void ScriptDialog::qtPatchGC(void)       { OnPatchGC(); }
+void ScriptDialog::qtExportScripts(void) { OnSave(); }
+void ScriptDialog::qtImportScripts(void) { OnLoad(); }
+void ScriptDialog::qtSaveNow(void)       { OnSaveActual(); }
+#endif
+
+void ScriptDialog::OnBegindragScriptTree(NMHDR* pNMHDR, LRESULT* pResult) 
 {
 	NM_TREEVIEW* pNMTreeView = (NM_TREEVIEW*)pNMHDR;
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
@@ -1953,71 +5042,179 @@ void ScriptDialog::OnBegindragScriptTree(NMHDR* pNMHDR, LRESULT* pResult)
 	m_curSelection.IntToList(pNMTreeView->itemNew.lParam);
 	if (m_curSelection.m_objType != ListType::PLAYER_TYPE) {
 		m_dragItem = pNMTreeView->itemNew.hItem;
-    pTree->SelectItem(m_dragItem);
+    pTree->SelectItem(m_dragItem); 
 		m_draggingTreeView = true;
  		SetCapture();
 	}
 	*pResult = 0;
 }
 
-void ScriptDialog::OnMouseMove(UINT nFlags, CPoint point)
+void ScriptDialog::OnMouseMove(UINT nFlags, CPoint point) 
 {
 	if (m_draggingTreeView) {
 		CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
+ 
+    HTREEITEM htiTarget;  // handle to target item 
+    TVHITTESTINFO tvht;  // hit test information 
 
-    HTREEITEM htiTarget;  // handle to target item
-    TVHITTESTINFO tvht;  // hit test information
-
-		const Int CENTER_OFFSET = 12;
+// Adjust the drag point to align with the center of the tree item.
+		const Int CENTER_OFFSET = 50;
 		point.y -= CENTER_OFFSET;
-    tvht.pt = point;
-    if ((htiTarget = pTree->HitTest( &tvht)) != nullptr) {
-			pTree->SelectDropTarget(htiTarget);
-    }
+    tvht.pt = point; 
+    if ((htiTarget = pTree->HitTest( &tvht)) != NULL) {
+			pTree->SelectDropTarget(htiTarget); 
+    } 
   }
-
+	
 	CDialog::OnMouseMove(nFlags, point);
 }
 
-void ScriptDialog::OnLButtonUp(UINT nFlags, CPoint point)
+void ScriptDialog::OnLButtonUp(UINT nFlags, CPoint point) 
 {
 	if (m_draggingTreeView) {
 		CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 		m_draggingTreeView = false;
 
 		ReleaseCapture();
-    HTREEITEM htiTarget;  // handle to target item
-    TVHITTESTINFO tvht;  // hit test information
+    HTREEITEM htiTarget;  // handle to target item 
+    TVHITTESTINFO tvht;  // hit test information 
 
-		const Int CENTER_OFFSET = 12;
+// Adjust the drag point to align with the center of the tree item.
+		const Int CENTER_OFFSET = 50;
 		point.y -= CENTER_OFFSET;
-    tvht.pt = point;
-    if ((htiTarget = pTree->HitTest( &tvht)) != nullptr) {
-      pTree->SelectItem(htiTarget);
+    tvht.pt = point; 
+    if ((htiTarget = pTree->HitTest( &tvht)) != NULL) { 
+      pTree->SelectItem(htiTarget); 
 			pTree->SelectDropTarget(htiTarget);
 			doDropOn(m_dragItem, htiTarget);
-    }
+    } 
 	}
 	CDialog::OnLButtonUp(nFlags, point);
 }
 
-void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget)
+void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget) 
 {
 	if (hDrag == hTarget) return;
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 	ListType drag;
 	drag.IntToList(pTree->GetItemData(hDrag));
 	ListType target;
-	target.IntToList(pTree->GetItemData(hTarget));
+	target.IntToList(pTree->GetItemData(hTarget));			
 
-	Script *dragScript = nullptr;
-	ScriptGroup *dragGroup = nullptr;
+	Script *dragScript = NULL;
+	ScriptGroup *dragGroup = NULL;
 	m_curSelection = drag;
 	Script *pScript = getCurScript();
 	ScriptList *pSL = m_sides.getSideInfo(m_curSelection.m_playerIndex)->getScriptList();
 	ScriptGroup *pGroup = getCurGroup();
-	if (pSL == nullptr) return;
+	bool isCtrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+	if (pSL == NULL) return;
+	
 	if (pScript) {
+		// NEW CODE: Check if dropping a script onto another script with auto-merge enabled
+		if (m_bAutoMergeScripts && isCtrlDown &&
+		    (target.m_objType == ListType::SCRIPT_IN_PLAYER_TYPE || 
+		     target.m_objType == ListType::SCRIPT_IN_GROUP_TYPE)) {
+			
+			// Get the target script
+			m_curSelection = target;
+			Script *targetScript = getCurScript();
+			
+			if (targetScript && pScript != targetScript) {
+				// MERGE OPERATION
+				Script *sourceScript = pScript;
+				
+				// Count actions being merged
+				Int trueActionCount = 0;
+				Int falseActionCount = 0;
+				
+				// Copy all true actions from source to target
+				ScriptAction *pAction = sourceScript->getAction();
+				
+				// Find the end of target's true action chain
+				ScriptAction *pTargetLastTrue = targetScript->getAction();
+				if (pTargetLastTrue) {
+					while (pTargetLastTrue->getNext()) {
+						pTargetLastTrue = pTargetLastTrue->getNext();
+					}
+				}
+				
+				// Append source true actions
+				while (pAction) {
+					trueActionCount++;
+					ScriptAction *pDup = pAction->duplicate();
+					if (pTargetLastTrue) {
+						pTargetLastTrue->setNextAction(pDup);
+						pTargetLastTrue = pDup;
+					} else {
+						targetScript->setAction(pDup);
+						pTargetLastTrue = pDup;
+					}
+					pAction = pAction->getNext();
+				}
+				
+				// Copy all false actions from source to target
+				pAction = sourceScript->getFalseAction();
+				
+				// Find the end of target's false action chain
+				ScriptAction *pTargetLastFalse = targetScript->getFalseAction();
+				if (pTargetLastFalse) {
+					while (pTargetLastFalse->getNext()) {
+						pTargetLastFalse = pTargetLastFalse->getNext();
+					}
+				}
+				
+				// Append source false actions
+				while (pAction) {
+					falseActionCount++;
+					ScriptAction *pDup = pAction->duplicate();
+					if (pTargetLastFalse) {
+						pTargetLastFalse->setNextAction(pDup);
+						pTargetLastFalse = pDup;
+					} else {
+						targetScript->setFalseAction(pDup);
+						pTargetLastFalse = pDup;
+					}
+					pAction = pAction->getNext();
+				}
+				
+				// Delete the source script
+				m_curSelection = drag;
+				pGroup = getCurGroup();
+				pSL = m_sides.getSideInfo(m_curSelection.m_playerIndex)->getScriptList();
+				
+				if (pGroup) {
+					pGroup->deleteScript(sourceScript);
+				} else {
+					pSL->deleteScript(sourceScript);
+				}
+				
+				// Mark target script as dirty and update warnings
+				targetScript->setDirty(true);
+				updateScriptWarning(targetScript);
+				
+				// Reload and update
+				pTree->DeleteItem(hDrag);
+				reloadPlayer(target.m_playerIndex, m_sides.getSideInfo(target.m_playerIndex)->getScriptList());
+				updateSelection(target);
+				updateIcons(TVI_ROOT);
+				
+				// Update the tree item text to refresh the display
+				HTREEITEM targetItem = findItem(target);
+				if (targetItem) {
+					pTree->SetItemText(targetItem, formatScriptLabel(targetScript, m_bCleanScriptName).str());
+				}
+				
+				CString msg;
+				msg.Format("Successfully merged script:\n%d true action(s)\n%d false action(s)", 
+				           trueActionCount, falseActionCount);
+				AfxMessageBox(msg, MB_OK | MB_ICONINFORMATION);
+				return;
+			}
+		}
+		
+		// ORIGINAL CODE: Normal script moving/reordering
 		dragScript = pScript->duplicate();
 		if (pGroup) {
 			pGroup->deleteScript(pScript);
@@ -2031,6 +5228,59 @@ void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget)
 				target.m_scriptIndex--;
 		}
 	}	else if (drag.m_objType == ListType::GROUP_TYPE) {
+		// NEW CODE: Check if dropping a group onto another group with auto-merge enabled
+		if (m_bAutoMergeScripts && isCtrlDown && target.m_objType == ListType::GROUP_TYPE) {
+			// MERGE OPERATION for groups
+			ScriptGroup *sourceGroup = pGroup;
+			
+			// Get the target group
+			m_curSelection = target;
+			ScriptGroup *targetGroup = getCurGroup();
+			
+			if (!targetGroup || !sourceGroup) {
+				AfxMessageBox("Error: Could not find groups for merging.", MB_OK | MB_ICONERROR);
+				return;
+			}
+			
+			// Copy all scripts from source to target
+			Int scriptCount = 0;
+			Script *pScr = sourceGroup->getScript();
+			while (pScr) {
+				scriptCount++;
+				pScr = pScr->getNext();
+			}
+			
+			// Add scripts to target group at the end
+			for (Script *pScrn = sourceGroup->getScript(); pScrn; pScrn = pScrn->getNext()) {
+				Script *pDup = pScrn->duplicate();
+				// Find the end position in target group
+				Int endPos = 0;
+				Script *pTargetScr = targetGroup->getScript();
+				while (pTargetScr) {
+					endPos++;
+					pTargetScr = pTargetScr->getNext();
+				}
+				targetGroup->addScript(pDup, endPos);
+			}
+			
+			// Delete the source group
+			m_curSelection = drag;
+			pSL = m_sides.getSideInfo(m_curSelection.m_playerIndex)->getScriptList();
+			pSL->deleteGroup(sourceGroup);
+			
+			// Reload and update
+			pTree->DeleteItem(hDrag);
+			reloadPlayer(drag.m_playerIndex, pSL);
+			updateSelection(target);
+			updateIcons(TVI_ROOT);
+			
+			CString msg;
+			msg.Format("Successfully merged %d script(s) into the target group.", scriptCount);
+			AfxMessageBox(msg, MB_OK | MB_ICONINFORMATION);
+			return;
+		}
+		
+		// ORIGINAL CODE (without popup): Normal group reordering
 		dragGroup = pGroup->duplicate();
 		pSL->deleteGroup(pGroup);
 		if (drag.m_objType != ListType::SCRIPT_IN_PLAYER_TYPE &&
@@ -2045,7 +5295,7 @@ void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget)
 	pSL = m_sides.getSideInfo(m_curSelection.m_playerIndex)->getScriptList();
 	pGroup = getCurGroup();
 	DEBUG_ASSERTCRASH((pSL), ("Hmm - bad data. jba."));
-	if (pSL == nullptr) return;
+	if (pSL == NULL) return;
 
 	// If we are dragging a group onto a script, adjust the group index so we add after.
 	if (drag.m_objType == ListType::GROUP_TYPE) {
@@ -2059,7 +5309,7 @@ void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget)
 	}
 
 	if (dragScript) {
-		if (pGroup) {
+		if (pGroup) { 
 				pGroup->addScript(dragScript, target.m_scriptIndex);
 		}	else {
 			pSL->addScript(dragScript, target.m_scriptIndex);
@@ -2083,17 +5333,17 @@ void ScriptDialog::doDropOn(HTREEITEM hDrag, HTREEITEM hTarget)
 	updateIcons(TVI_ROOT);
 }
 
-void ScriptDialog::OnMove(int x, int y)
+void ScriptDialog::OnMove(int x, int y) 
 {
 	CDialog::OnMove(x, y);
-
+	
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
 		::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Top", frameRect.top);
 		::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Left", frameRect.left);
 	}
-
+	
 }
 
 /** This function reacts to the selection of "active" from
@@ -2105,48 +5355,30 @@ void ScriptDialog::OnScriptActivate()
 	CTreeCtrl *pTree = (CTreeCtrl*)GetDlgItem(IDC_SCRIPT_TREE);
 	HTREEITEM item = findItem(m_curSelection);
 
-	if (getCurScript() != nullptr)
+	if (getCurScript() != NULL)
 	{
-		/// Updates attributes
+		// Toggle active state
 		active = getCurScript()->isActive();
 		getCurScript()->setActive(!active);
 
-		/// Updates screen to reflect change
+		// Update label
 		Script *pScript = getCurScript();
-		pTree->SetItemText(item, formatScriptLabel(pScript).str());
+		pTree->SetItemText(item, formatScriptLabel(pScript, m_bCleanScriptName).str());
 
-		if (getCurScript()->hasWarnings())
-		{
-			pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(4), TVIS_STATEIMAGEMASK);
-		}
-		else
-		{
-			if (getCurScript()->isActive())
-				pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(2), TVIS_STATEIMAGEMASK);
-			else
-				pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(6), TVIS_STATEIMAGEMASK);
-		}
+		// Set icon using centralized logic
+		setIconScript(item);
 	}
 	else if (getCurGroup() != nullptr)
 	{
-		/// Updates attributes
+		// Toggle active state
 		active = getCurGroup()->isActive();
 		getCurGroup()->setActive(!active);
 
-		/// Updates screen to reflect change
+		// Update label
 		ScriptGroup *pScriptGroup = getCurGroup();
 		pTree->SetItemText(item, formatScriptLabel(pScriptGroup).str());
 
-		if (getCurGroup()->hasWarnings())
-		{
-			pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(3), TVIS_STATEIMAGEMASK);
-		}
-		else
-		{
-			if (getCurGroup()->isActive())
-				pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(1), TVIS_STATEIMAGEMASK);
-			else
-				pTree->SetItemState(item, INDEXTOSTATEIMAGEMASK(5), TVIS_STATEIMAGEMASK);
-		}
+		// Set icon using centralized logic
+		setIconGroup(item);
 	}
 }

@@ -63,6 +63,7 @@
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8wrapper.h"
@@ -969,6 +970,35 @@ static void updateTowerPos( RenderObjClass* tower,
 
 }
 
+// Adriane [Deathscythe] Used for getting the width of the bridge
+BridgeInfo W3DBridgeBuffer::getBridgeInfoFromMapObject(MapObject *bridgePoint1, MapObject *bridgePoint2)
+{
+	BridgeInfo emptyInfo; // default return if not found
+
+	if (!bridgePoint1 || !bridgePoint1->getFlag(FLAG_BRIDGE_POINT1))
+		return emptyInfo;
+
+	if (!bridgePoint2 || !bridgePoint2->getFlag(FLAG_BRIDGE_POINT2))
+		return emptyInfo;
+
+	for (Int i = 0; i < m_numBridges; ++i)
+	{
+
+			if( m_bridges[ i ].getTemplateName() == bridgePoint1->getName() &&
+					m_bridges[ i ].getStart()->X == bridgePoint1->getLocation()->x &&
+					m_bridges[ i ].getStart()->Y == bridgePoint1->getLocation()->y &&
+					m_bridges[ i ].getEnd()->X == bridgePoint2->getLocation()->x &&
+					m_bridges[ i ].getEnd()->Y == bridgePoint2->getLocation()->y )
+			{
+			BridgeInfo result;
+			m_bridges[ i ].getBridgeInfo( &result );
+			return result;
+		}
+	}
+
+	return emptyInfo;
+}
+
 //=============================================================================
 // W3DBridgeBuffer::worldBuilderUpdateBridgeTowers
 //=============================================================================
@@ -1179,6 +1209,56 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 		//Force a cloud texture projection into stage 1
 		W3DShaderManager::resetShader(W3DShaderManager::ST_CLOUD_TEXTURE);
 
+	// Bridges light fixed function, so they receive the sun's shadow as a second pass
+	// that multiplies it into the first, set up the same way as the shroud pass below.
+	if (!wireframe && m_numBridges > 0 && TheW3DShadowMap != nullptr && TheW3DShadowMap->getReceivePass() != nullptr)
+	{
+		DX8Wrapper::Invalidate_Cached_Render_States();
+		DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
+		DX8Wrapper::Set_Material(m_vertexMaterial);
+		DX8Wrapper::Set_Index_Buffer(m_indexBridge,0);
+		DX8Wrapper::Set_Vertex_Buffer(m_vertexBridge);
+		DX8Wrapper::Apply_Render_State_Changes();
+		if (W3DShaderManager::setShader(W3DShaderManager::ST_SHADOW_MULTIPLY, 0))
+		{
+			for (curBridge=0; curBridge<m_numBridges; curBridge++) {
+				if (m_bridges[curBridge].isEnabled() && m_bridges[curBridge].isVisible()) {
+					//Pretend we're in wireframe so the bridge texture doesn't replace the shadow map.
+					m_bridges[curBridge].renderBridge(TRUE);
+				}
+			}
+		}
+		W3DShaderManager::resetShader(W3DShaderManager::ST_SHADOW_MULTIPLY);
+	}
+
+	// Bridges bake only the sun into their vertices, so a pass adds the dynamic lights that reach each one.
+	if (!wireframe && W3DShaderManager::getShaderPasses(W3DShaderManager::ST_POINT_LIGHTS) > 0)
+	{
+		DX8Wrapper::Invalidate_Cached_Render_States();
+		DX8Wrapper::Set_Shader(detailAlphaShader);
+		DX8Wrapper::Set_Material(m_vertexMaterial);
+		DX8Wrapper::Set_Index_Buffer(m_indexBridge,0);
+		DX8Wrapper::Set_Vertex_Buffer(m_vertexBridge);
+		DX8Wrapper::Apply_Render_State_Changes();
+		if (W3DShaderManager::setShader(W3DShaderManager::ST_POINT_LIGHTS, 0))
+		{
+			for (curBridge=0; curBridge<m_numBridges; curBridge++) {
+				if (m_bridges[curBridge].isEnabled() && m_bridges[curBridge].isVisible()) {
+					const SphereClass &bounds = m_bridges[curBridge].getBounds();
+					const AABoxClass box(bounds.Center, Vector3(bounds.Radius, bounds.Radius, bounds.Radius));
+					Int lights[W3DShaderManager::MAX_PIXEL_LIGHTS];
+					const Int lightCount = W3DShaderManager::pickPixelLights(box, lights);
+					if (lightCount == 0) {
+						continue;
+					}
+					W3DShaderManager::setDrawPixelLights(lights, lightCount);
+					m_bridges[curBridge].renderBridge(FALSE);
+				}
+			}
+		}
+		W3DShaderManager::resetShader(W3DShaderManager::ST_POINT_LIGHTS);
+	}
+
 	//Render shroud pass over all the bridges
 	if (!wireframe && TheTerrainRenderObject->getShroud())
 	{
@@ -1199,6 +1279,34 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 			}
 		}
 		W3DShaderManager::resetShader(W3DShaderManager::ST_SHROUD_TEXTURE);
+	}
+}
+
+//=============================================================================
+// W3DBridgeBuffer::renderShadowMapCaster
+//=============================================================================
+/** Draws the bridges with their own texture and alpha shader, so railings and
+trusses cast their cut-out shape. The depth pass overrides the rest of the state. */
+//=============================================================================
+void W3DBridgeBuffer::renderShadowMapCaster()
+{
+	if (m_curNumBridgeIndices == 0)
+	{
+		return;
+	}
+
+	DX8Wrapper::Set_Transform(D3DTS_WORLD, Matrix3D(true));
+	DX8Wrapper::Set_Material(m_vertexMaterial);
+	DX8Wrapper::Set_Index_Buffer(m_indexBridge,0);
+	DX8Wrapper::Set_Vertex_Buffer(m_vertexBridge);
+	DX8Wrapper::Set_Shader(detailAlphaShader);
+
+	for (Int curBridge=0; curBridge<m_numBridges; curBridge++)
+	{
+		if (m_bridges[curBridge].isEnabled() && m_bridges[curBridge].isVisible())
+		{
+			m_bridges[curBridge].renderBridge(FALSE);
+		}
 	}
 }
 

@@ -376,6 +376,13 @@ Bool OptionPreferences::getSelectionCircleEnabled(void) const
 	return FALSE;
 }
 
+// TheSuperHackers @feature Options.ini: DefensesRangeCircle = Yes rings the attack range of an
+// armed structure while it is being placed.
+Bool OptionPreferences::getDefensesRangeCircleEnabled(void) const
+{
+	return getBool("DefensesRangeCircle", FALSE);
+}
+
 // TheSuperHackers @feature Options.ini: ObjectDecals = No suppresses the decals objects ask for
 // with DisplayDecal. On by default, since the templates opted in.
 Bool OptionPreferences::getObjectDecalsEnabled(void) const
@@ -403,6 +410,110 @@ Bool OptionPreferences::getBloomDebugEnabled(void) const
 Bool OptionPreferences::getLaserRefEnabled(void) const
 {
 	return getBool("LaserRef", FALSE);
+}
+
+Bool OptionPreferences::getShadowMapEnabled(void) const
+{
+	return getBool("ShadowMap", TRUE);
+}
+
+Bool OptionPreferences::getSpecularEnabled(void) const
+{
+	return getBool("Specular", TRUE);
+}
+
+Bool OptionPreferences::getNormalMapsEnabled(void) const
+{
+	return getBool("NormalMaps", TRUE);
+}
+
+Bool OptionPreferences::getWaterReflectionsEnabled(void) const
+{
+	return getBool("WaterReflections", TRUE);
+}
+
+Bool OptionPreferences::getSoftParticlesEnabled(void) const
+{
+	return getBool("SoftParticles", TRUE);
+}
+
+Bool OptionPreferences::getFlameShadersEnabled(void) const
+{
+	return getBool("FlameShaders", TRUE);
+}
+
+Bool OptionPreferences::getElectricShadersEnabled(void) const
+{
+	return getBool("ElectricShaders", TRUE);
+}
+
+Bool OptionPreferences::getLaserShadersEnabled(void) const
+{
+	return getBool("LaserShaders", TRUE);
+}
+
+Bool OptionPreferences::getCryoShadersEnabled(void) const
+{
+	return getBool("CryoShaders", TRUE);
+}
+
+Bool OptionPreferences::getDynamicLightsEnabled(void) const
+{
+	return getBool("DynamicLights", TRUE);
+}
+
+Bool OptionPreferences::getPixelLightsEnabled(void) const
+{
+	return getBool("PixelLights", TRUE);
+}
+
+Bool OptionPreferences::getAmbientOcclusionEnabled(void) const
+{
+	return getBool("AmbientOcclusion", TRUE);
+}
+
+Bool OptionPreferences::getHeightBlendEnabled(void) const
+{
+	return getBool("HeightBlend", TRUE);
+}
+
+Bool OptionPreferences::getHQSkyEnabled(void) const
+{
+	return getBool("HQSky", TRUE);
+}
+
+Int OptionPreferences::getVSyncMode(void) const
+{
+	if (find("VSync") == end())
+	{
+		return -1;
+	}
+	return getBool("VSync", FALSE) ? 1 : 0;
+}
+
+Bool OptionPreferences::getLowLatencyEnabled(void) const
+{
+	return getBool("LowLatency", FALSE);
+}
+
+Bool OptionPreferences::getSmoothUnitMotionEnabled(void) const
+{
+	return getBool("SmoothUnitMotion", TRUE);
+}
+
+Bool OptionPreferences::getSpecularDebugEnabled(void) const
+{
+	return getBool("SpecularDebug", FALSE);
+}
+
+Bool OptionPreferences::getNormalMapDebugEnabled(void) const
+{
+	return getBool("NormalMapDebug", FALSE);
+}
+
+Bool OptionPreferences::getAmbientOcclusionDebugEnabled(void) const
+{
+	return getBool("AmbientOcclusionDebug", FALSE);
 }
 
 Bool OptionPreferences::getBorderlessWindowEnabled(void) const
@@ -1313,6 +1424,41 @@ Bool OptionPreferences::getShowMoneyPerMinute() const
 	}
 	return FALSE;
 }
+
+#if defined(GENERALS_ONLINE)
+Int OptionPreferences::getObserverNotificationFontSize() const
+{
+	OptionPreferences::const_iterator it = find("ObserverNotificationFontSize");
+	if (it == end())
+		return TheGlobalData->m_observerNotificationFontSize;
+
+	return clamp(0, atoi(it->second.str()), 15);
+}
+
+static Bool getYesNoPreference(const OptionPreferences &prefs, const char *key, Bool defaultValue)
+{
+	OptionPreferences::const_iterator it = prefs.find(key);
+	if (it == prefs.end())
+		return defaultValue;
+
+	return stricmp(it->second.str(), "yes") == 0;
+}
+
+Bool OptionPreferences::getObserverNotificationSpecialPowerUsage() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationSpecialPowerUsage", TheGlobalData->m_observerNotificationSpecialPowerUsage);
+}
+
+Bool OptionPreferences::getObserverNotificationSpecialPowerPurchase() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationSpecialPowerPurchase", TheGlobalData->m_observerNotificationSpecialPowerPurchase);
+}
+
+Bool OptionPreferences::getObserverNotificationMilestone() const
+{
+	return getYesNoPreference(*this, "ObserverNotificationMilestone", TheGlobalData->m_observerNotificationMilestone);
+}
+#endif
 
 Real OptionPreferences::getGameWindowTransitionSpeedMultiplier() const
 {

@@ -26,6 +26,9 @@
 #include "wbview3d.h"
 #include "Common/WellKnownKeys.h"
 #include "WorldBuilderDoc.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtScorchBridge.h"
+#endif
 
 #define DEFAULT_SCORCHMARK_RADIUS 20
 
@@ -56,6 +59,7 @@ void ScorchOptions::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(ScorchOptions, CDialog)
 	//{{AFX_MSG_MAP(ScorchOptions)
+	ON_WM_MOVE()
 	ON_CBN_SELENDOK(IDC_SCORCHTYPE, OnChangeScorchtype)
 	ON_EN_CHANGE(IDC_SIZE_EDIT, OnChangeSizeEdit)
 	//}}AFX_MSG_MAP
@@ -100,6 +104,11 @@ void ScorchOptions::updateTheUI()
 	if (pEdit)
 		pEdit->SetWindowText(str);
 	m_updating = false;
+#ifdef RTS_HAS_QT
+	// Keep the Qt Scorch panel (if shown) in step: re-seed its type/size from the
+	// selection we just read into the statics.
+	WBQtScorch_PushRefresh();
+#endif
 }
 
 void ScorchOptions::update()
@@ -257,6 +266,52 @@ void ScorchOptions::getAllSelectedDicts()
 		m_allSelectedDicts.push_back(pMapObj->getProperties());
 	}
 }
+
+void ScorchOptions::OnMove(int x, int y)
+{
+  /**
+   * Adriane [Deathscythe] -- Bug fix
+   * This is required to save the top and left position values.
+   * The handler is defined in COptionsPanel and must be called explicitly.
+   */
+	COptionsPanel::OnMove(x, y); // forward to base 
+}
+
+#ifdef RTS_HAS_QT
+//----------------------------------------------------------------------------------------
+// ScorchOptions Qt-support statics (declared in ScorchOptions.h; defined here so the Qt
+// Scorch panel can read the current type/size and drive the same Dict edits the MFC
+// handlers do -- changeScorch()/changeSize() build the DictItemUndoable against the
+// currently selected scorch MapObjects, exactly like OnChangeScorchtype/OnChangeSizeEdit.
+//----------------------------------------------------------------------------------------
+int ScorchOptions::qtGetScorchType(void)
+{
+	return (int)m_scorchtype;
+}
+
+double ScorchOptions::qtGetScorchSize(void)
+{
+	return (double)m_scorchsize;
+}
+
+void ScorchOptions::qtSetScorchType(int type)
+{
+	m_scorchtype = (Scorches)type;
+	if (m_staticThis)
+	{
+		m_staticThis->changeScorch();
+	}
+}
+
+void ScorchOptions::qtSetScorchSize(double size)
+{
+	m_scorchsize = (Real)size;
+	if (m_staticThis)
+	{
+		m_staticThis->changeSize();
+	}
+}
+#endif
 
 Dict** ScorchOptions::getAllSelectedDictsData()
 {

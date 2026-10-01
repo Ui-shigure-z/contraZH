@@ -36,6 +36,9 @@ LightClass(LightClass::POINT)
 	m_priorEnable = false;
 	m_enabled = true;
 	m_terrainOnly = false;
+	m_pixelLit = false;
+	m_bakedLastFrame = false;
+	m_pixelIndex = -1;
 	m_owner = nullptr;
 
 }

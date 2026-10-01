@@ -303,6 +303,7 @@ protected:
 	// post-processing
 	void post_process();
 	void post_process_fog();
+	void post_process_night_lights();
 
 	unsigned int get_sort_flags(int pass) const;
 	unsigned int get_sort_flags() const;
@@ -337,6 +338,7 @@ protected:
 	friend class MeshDeformClass;
 	friend class MeshLoadContextClass;
 	friend class DX8SkinFVFCategoryContainer;
+	friend class DX8FVFCategoryContainer;
 	friend class DX8MeshRendererClass;
 	friend class DX8PolygonRendererClass;
 };

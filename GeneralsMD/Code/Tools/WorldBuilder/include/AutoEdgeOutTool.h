@@ -31,12 +31,38 @@ class WorldHeightMapEdit;
 ///  Blend edges out tool.
 class AutoEdgeOutTool : public Tool
 {
+protected:
+	static Bool m_autoEdgeToolActive;
+	static Bool m_enableMirror;
+	static Bool m_mirrorX;   // left/right
+    static Bool m_mirrorY;   // top/bottom
+    static Bool m_mirrorDiag; // diagonal only (XY corner)
+
 public:
 	AutoEdgeOutTool();
 	virtual ~AutoEdgeOutTool() override;
 
+	static void toggleMirror() { m_enableMirror = !m_enableMirror; }
+	static void toggleMirrorX() { m_mirrorX = !m_mirrorX; }
+	static void toggleMirrorY() { m_mirrorY = !m_mirrorY; }
+	static void toggleMirrorXY() { m_mirrorDiag = !m_mirrorDiag; }
+
+#ifdef RTS_HAS_QT
+	// Qt panel support (WBQtBlendMaterialBridge): the Qt Blend Material panel seeds its
+	// mirror checkboxes from these; toggles still go through the toggle* methods above.
+	static Bool getEnableMirror() { return m_enableMirror; }
+	static Bool getMirrorX() { return m_mirrorX; }
+	static Bool getMirrorY() { return m_mirrorY; }
+	static Bool getMirrorXY() { return m_mirrorDiag; }
+#endif
+
 public:
+	void applyEdgeAt(CPoint pt, WorldHeightMapEdit* htMapEditCopy, Bool shiftKey);
+	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
 	/// Perform tool on mouse down.
-	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
-	virtual void activate() override; ///< Become the current tool.
+	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc);
+	virtual void activate(); ///< Become the current tool.
+	virtual void deactivate();
+
+	static Bool isActive(void) {return m_autoEdgeToolActive; }
 };

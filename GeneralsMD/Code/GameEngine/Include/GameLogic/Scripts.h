@@ -42,6 +42,15 @@
 #define THIS_PLAYER "<This Player>"
 #define LOCAL_PLAYER "<Local Player>"
 
+#define PLAYER_0 "player0"
+#define PLAYER_1 "player1"
+#define PLAYER_2 "player2"
+#define PLAYER_3 "player3"
+#define PLAYER_4 "player4"
+#define PLAYER_5 "player5"
+#define PLAYER_6 "player6"
+#define PLAYER_7 "player7"
+
 #define THE_PLAYER "ThePlayer"
 #define TEAM_THE_PLAYER "teamThePlayer"
 
@@ -637,6 +646,11 @@ protected:	// Note - If you add any member vars, you must take them into account
 	Real				m_conditionTime;		///< Amount of time (cum) to evaluate conditions.
 	Real				m_curTime;		///< Amount of time (cum) to evaluate conditions.
 	Int					m_conditionExecutedCount; ///< Number of times conditions evaluated.
+	
+	// Adriane [Deathscythe] Required for faster script validation
+	Bool m_dirty;
+	Bool m_warningUpdateToDate;
+
 
 public:
 	Script();
@@ -646,6 +660,11 @@ public:
 			const AsciiString& playerTemplateName, const AsciiString& newPlayerName) const;
 
 public:
+	void setDirty(Bool value) { m_dirty = value; }
+	Bool isDirty() const { return m_dirty; }
+	void setWarningsUpToDate(Bool value) { m_warningUpdateToDate = value; }
+	Bool areWarningsUpToDate() const { return m_warningUpdateToDate; }
+
 	void setName(AsciiString name) { m_scriptName = name;}
 	void setWarnings(Bool warnings) { m_hasWarnings = warnings;}
 	void setComment(AsciiString comment) { m_comment = comment;}
@@ -1066,7 +1085,8 @@ public:
 	AsciiString getName() const {return m_uiName;}
 	AsciiString getName2() const {return m_uiName2;}
 	Int getUiStrings(AsciiString strings[MAX_PARMS]) const;
-	Int getNumParameters() const {return m_numParameters;}
+	AsciiString getHelpText(void) const {return m_helpText;}
+	Int getNumParameters(void) const {return m_numParameters;}
 	enum Parameter::ParameterType getParameterType(Int ndx) const;
 };
 EMPTY_DTOR(Template)

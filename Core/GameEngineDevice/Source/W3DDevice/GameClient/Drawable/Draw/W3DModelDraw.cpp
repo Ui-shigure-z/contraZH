@@ -2015,10 +2015,14 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	m_selectionDecal = nullptr;
 	m_selectionDecalWanted = FALSE;
 	m_selectionDecalRadius = 0.0f;
+	m_selectionDecalColor = 0;
+	m_selectionDecalFootprint = FALSE;
 	m_objectDecal = nullptr;
 	m_trackRenderObject = nullptr;
 	m_lastTrackWasBackwards = FALSE;
 	m_isFirstDrawModule = FALSE;
+	m_drawnTurretFrame = 0;
+	m_drawnTurretValid = FALSE;
 	m_whichAnimInCurState = -1;
 	m_nextState = nullptr;
 	m_nextStateAnimLoopDuration = NO_NEXT_DURATION;
@@ -2157,27 +2161,46 @@ void W3DModelDraw::releaseShadows()	///< frees all shadow resources used by this
 	m_shadow = nullptr;
 }
 
+// With ShadowsAlwaysOn, a model without a Shadow still casts into the shadow map.
+static ShadowType getCastShadowType(const ThingTemplate *tmplate, Bool *mapOnly)
+{
+	ShadowType type = tmplate->getShadowType();
+	*mapOnly = FALSE;
+#if RTS_ZEROHOUR
+	if (type == SHADOW_NONE && TheGlobalData->m_shadowsAlwaysOn)
+	{
+		type = SHADOW_VOLUME;
+		*mapOnly = TRUE;
+	}
+#endif
+	return type;
+}
+
 /** Create shadow resources if not already present. This is used to dynamically enable/disable shadows by the options screen*/
 void W3DModelDraw::allocateShadows()
 {
 	const ThingTemplate *tmplate=getDrawable()->getTemplate();
 
 	//Check if we don't already have a shadow but need one for this type of model.
-	ShadowType type = tmplate->getShadowType();
+	Bool mapOnly;
+	ShadowType type = getCastShadowType(tmplate, &mapOnly);
 	if (m_shadow == nullptr && m_renderObject && TheW3DShadowManager && type != SHADOW_NONE
 		&& (m_isFirstDrawModule || !(type == SHADOW_DECAL || type == SHADOW_ALPHA_DECAL || type == SHADOW_ADDITIVE_DECAL)))
 	{
 		Shadow::ShadowTypeInfo shadowInfo;
 		strlcpy(shadowInfo.m_ShadowName, tmplate->getShadowTextureName().str(), ARRAY_SIZE(shadowInfo.m_ShadowName));
-		DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
+		DEBUG_ASSERTCRASH(mapOnly || shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
 		shadowInfo.allowUpdates			= FALSE;		//shadow image will never update
 		shadowInfo.allowWorldAlign	= TRUE;	//shadow image will wrap around world objects
-		shadowInfo.m_type						= (ShadowType)tmplate->getShadowType();
+		shadowInfo.m_type						= type;
 		shadowInfo.m_sizeX					= tmplate->getShadowSizeX();
 		shadowInfo.m_sizeY					= tmplate->getShadowSizeY();
 		shadowInfo.m_offsetX				= tmplate->getShadowOffsetX();
 		shadowInfo.m_offsetY				= tmplate->getShadowOffsetY();
 		shadowInfo.m_hasDynamicLength = tmplate->hasDynamicShadowLength();
+#if RTS_ZEROHOUR
+		shadowInfo.m_shadowMapOnly = mapOnly;
+#endif
 		//DEBUG_LOG((">>> W3DModelDraw::allocateShadows, shadowInfo.m_hasDynamicLength = %d", shadowInfo.m_hasDynamicLength));
   		m_shadow = TheW3DShadowManager->addShadow(m_renderObject, &shadowInfo);
 		if (m_shadow)
@@ -2837,6 +2860,60 @@ void W3DModelDraw::stopClientParticleSystems()
 }
 
 //-------------------------------------------------------------------------------------------------
+void W3DModelDraw::computeDrawnTurretAngles(Real* angles, Real* pitches)
+{
+	const Object *obj = getDrawable()->getObject();
+	const AIUpdateInterface* ai = obj ? obj->getAIUpdateInterface() : nullptr;
+	for (Int i = 0; i < MAX_TURRETS; ++i)
+	{
+		angles[i] = 0;
+		pitches[i] = 0;
+		if (ai)
+		{
+			ai->getTurretRotAndPitch((WhichTurretType)i, &angles[i], &pitches[i]);
+		}
+	}
+
+#if RTS_ZEROHOUR
+	// Turrets blend between their last two logic frames along with the drawable.
+	const Real progress = getDrawable()->getDrawnProgress();
+	if (progress >= 1.0f)
+	{
+		m_drawnTurretValid = FALSE;
+		return;
+	}
+
+	const UnsignedInt frame = TheGameLogic->getFrame();
+	const Bool advance = m_drawnTurretValid && frame == m_drawnTurretFrame + 1;
+	const Bool snap = !advance && !(m_drawnTurretValid && frame == m_drawnTurretFrame);
+
+	for (Int i = 0; i < MAX_TURRETS; ++i)
+	{
+		if (snap)
+		{
+			m_drawnTurretAngle[i][0] = angles[i];
+			m_drawnTurretPitch[i][0] = pitches[i];
+		}
+		else if (advance)
+		{
+			m_drawnTurretAngle[i][0] = m_drawnTurretAngle[i][1];
+			m_drawnTurretPitch[i][0] = m_drawnTurretPitch[i][1];
+		}
+		m_drawnTurretAngle[i][1] = angles[i];
+		m_drawnTurretPitch[i][1] = pitches[i];
+
+		const Real prevAngle = m_drawnTurretAngle[i][0];
+		const Real prevPitch = m_drawnTurretPitch[i][0];
+		angles[i] = prevAngle + normalizeAngle(angles[i] - prevAngle) * progress;
+		pitches[i] = prevPitch + normalizeAngle(pitches[i] - prevPitch) * progress;
+	}
+
+	m_drawnTurretFrame = frame;
+	m_drawnTurretValid = TRUE;
+#endif
+}
+
+//-------------------------------------------------------------------------------------------------
 /*
 	DANGER WARNING READ ME
 	DANGER WARNING READ ME
@@ -2857,21 +2934,17 @@ void W3DModelDraw::handleClientTurretPositioning()
 	if (!m_curState || !(m_curState->m_validStuff & ModelConditionInfo::TURRETS_VALID))
 		return;
 
+	Real turretAngles[MAX_TURRETS];
+	Real turretPitches[MAX_TURRETS];
+	computeDrawnTurretAngles(turretAngles, turretPitches);
+
 	for (int tslot = 0; tslot < MAX_TURRETS; ++tslot)
 	{
 		const ModelConditionInfo::TurretInfo& tur = m_curState->m_turrets[tslot];
-		Real turretAngle = 0;
-		Real turretPitch = 0;
+		Real turretAngle = turretAngles[tslot];
+		Real turretPitch = turretPitches[tslot];
 		if (tur.m_turretAngleBone || tur.m_turretPitchBone)
 		{
-			const Object *obj = getDrawable()->getObject();
-			if (obj)
-			{
-				const AIUpdateInterface* ai = obj->getAIUpdateInterface();
-				if (ai)
-					ai->getTurretRotAndPitch((WhichTurretType)tslot, &turretAngle, &turretPitch);
-			}
-
 			// do turret, if any
 			if (tur.m_turretAngleBone != 0)
 			{
@@ -2930,11 +3003,12 @@ void W3DModelDraw::handleClientTurretPositioning()
 */
 void W3DModelDraw::handleClientRecoil()
 {
-	const W3DModelDrawModuleData* d = getW3DModelDrawModuleData();
-	if (!(m_curState->m_validStuff & ModelConditionInfo::BARRELS_VALID))
+	if (!m_curState || !(m_curState->m_validStuff & ModelConditionInfo::BARRELS_VALID))
 	{
 		return;
 	}
+
+	const W3DModelDrawModuleData* d = getW3DModelDrawModuleData();
 
 	// Multiple weapon slots may reference the same recoil / muzzle-flash bone name (hence the
 	// same bone index). Applying per-slot directly to the bone makes the last processed slot
@@ -3257,20 +3331,24 @@ void W3DModelDraw::handleFXEvents()
 //-------------------------------------------------------------------------------------------------
 // TheSuperHackers @feature Selection ring decal.
 //-------------------------------------------------------------------------------------------------
-/** Put a green ring on the ground under this object, or take it away.
+/** Put a ring on the ground under this object, or take it away.
 	*
 	* Uses the projected shadow system rather than screen space lines, so the ring is genuinely
 	* projected onto the terrain and the model draws over it. It lives in its own slot rather than
 	* sharing m_terrainDecal, so selecting a horde unit does not evict its horde ring.
 	*
 	* Expects a PlainRingSelection.tga in the mod's assets. The engine appends the extension, and
-	* the art is tinted green at runtime, so a plain white or greyscale ring works. */
+	* the art is tinted at runtime, so a plain white or greyscale ring works.
+	*
+	* With footprint set, a renderer with the footprint shader outlines the collision shape instead. */
 //-------------------------------------------------------------------------------------------------
-void W3DModelDraw::setSelectionDecal(Bool enable, Real radius)
+void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color, Bool footprint)
 {
 	// remembered so the ring can be recreated after a model swap tears the render object down
 	m_selectionDecalWanted = enable;
 	m_selectionDecalRadius = radius;
+	m_selectionDecalColor = color;
+	m_selectionDecalFootprint = footprint;
 
 	if (m_selectionDecal)
 	{
@@ -3291,13 +3369,29 @@ void W3DModelDraw::setSelectionDecal(Bool enable, Real radius)
 	decalInfo.m_offsetX = 0.0f;
 	decalInfo.m_offsetY = 0.0f;
 
+	// Without a footprint the shader draws a ring of the radius.
+	const Object *obj = footprint ? getDrawable()->getObject() : nullptr;
+	decalInfo.m_footprint = TRUE;
+	if (obj != nullptr)
+	{
+		const GeometryInfo &geometry = obj->getGeometryInfo();
+		decalInfo.m_footprintIsCircle = geometry.getGeomType() != GEOMETRY_BOX;
+		decalInfo.m_footprintMajor = geometry.getMajorRadius();
+		decalInfo.m_footprintMinor = geometry.getMinorRadius();
+	}
+	else
+	{
+		decalInfo.m_footprintIsRing = TRUE;
+		decalInfo.m_footprintMajor = radius;
+	}
+
 	m_selectionDecal = TheProjectedShadowManager->addDecal(m_renderObject, &decalInfo);
 	if (m_selectionDecal)
 	{
 		m_selectionDecal->enableShadowInvisible(m_fullyObscuredByShroud);
 		m_selectionDecal->enableShadowRender(TRUE);
-		//the art is a plain ring, so tint it to the selection green
-		m_selectionDecal->setColor(GameMakeColor(0, 255, 0, 255));
+		//the art is a plain ring, so the caller's color is what tints it
+		m_selectionDecal->setColor(color);
 	}
 }
 
@@ -3736,21 +3830,25 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		}
 
 		// set up shadows
-		ShadowType type = tmplate->getShadowType();
+		Bool mapOnly;
+		ShadowType type = getCastShadowType(tmplate, &mapOnly);
 		if (m_renderObject && TheW3DShadowManager && type != SHADOW_NONE &&
 			(m_isFirstDrawModule || !(type == SHADOW_DECAL || type == SHADOW_ALPHA_DECAL || type == SHADOW_ADDITIVE_DECAL)))
 		{
 			Shadow::ShadowTypeInfo shadowInfo;
 			strlcpy(shadowInfo.m_ShadowName, tmplate->getShadowTextureName().str(), ARRAY_SIZE(shadowInfo.m_ShadowName));
-			DEBUG_ASSERTCRASH(shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
+			DEBUG_ASSERTCRASH(mapOnly || shadowInfo.m_ShadowName[0] != '\0', ("this should be validated in ThingTemplate now"));
 			shadowInfo.allowUpdates			= FALSE;		//shadow image will never update
 			shadowInfo.allowWorldAlign	= TRUE;	//shadow image will wrap around world objects
-			shadowInfo.m_type						= (ShadowType)tmplate->getShadowType();
+			shadowInfo.m_type						= type;
 			shadowInfo.m_sizeX					= tmplate->getShadowSizeX();
 			shadowInfo.m_sizeY					= tmplate->getShadowSizeY();
 			shadowInfo.m_offsetX				= tmplate->getShadowOffsetX();
 			shadowInfo.m_offsetY				= tmplate->getShadowOffsetY();
 			shadowInfo.m_hasDynamicLength = tmplate->hasDynamicShadowLength();
+#if RTS_ZEROHOUR
+			shadowInfo.m_shadowMapOnly = mapOnly;
+#endif
 			//DEBUG_LOG((">>> W3DModelDraw::allocateShadows, shadowInfo.m_hasDynamicLength = %d", shadowInfo.m_hasDynamicLength));
 
 			DEBUG_ASSERTCRASH(m_shadow == nullptr, ("m_shadow is not null"));
@@ -3764,7 +3862,9 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		// TheSuperHackers @fix The selection ring was bound to the render object that was just
 		// torn down; the object is still selected, so put the ring back on the new one.
 		if (m_selectionDecalWanted)
-			setSelectionDecal(TRUE, m_selectionDecalRadius);
+		{
+			setSelectionDecal(TRUE, m_selectionDecalRadius, m_selectionDecalColor, m_selectionDecalFootprint);
+		}
 
 		if( m_renderObject )
 		{
@@ -4272,6 +4372,24 @@ Int W3DModelDraw::clientOnly_getSubObjectNames(AsciiString* names, Int maxNames)
 	}
 
 	return total;
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool W3DModelDraw::clientOnly_getModelNameAndCenter(AsciiString* name, Coord3D* center) const
+{
+	if (m_renderObject == nullptr || m_curState == nullptr)
+	{
+		return false;
+	}
+
+	*name = m_curState->m_modelName;
+
+	const Vector3 &sphereCenter = m_renderObject->Get_Bounding_Sphere().Center;
+	center->x = sphereCenter.X;
+	center->y = sphereCenter.Y;
+	center->z = sphereCenter.Z;
+
+	return true;
 }
 #endif
 

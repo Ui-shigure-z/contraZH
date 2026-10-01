@@ -211,6 +211,7 @@ private:
 	Real									m_currentSubdualDamage;	///< Starts at zero and goes up.  Inherited modules will do something when "subdued".
 	Real									m_currentChronoDamage;	///< Same as Subdual, but for CHRONO_GUN
 	Real									m_currentJammingDamage;
+	Bool									m_isJammed;								///< tracked rather than derived, so a max health change cannot strand the jam
 	Bool									m_jammingSetUnselectable;	///< jam set UNSELECTABLE, so unjam may clear it
 	Real									m_currentFrozenDamage;
 

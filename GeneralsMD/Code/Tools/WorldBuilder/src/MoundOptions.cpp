@@ -25,6 +25,9 @@
 #include "MoundOptions.h"
 #include "WorldBuilderView.h"
 #include "MoundTool.h"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtPanelBridge.h"
+#endif
 
 MoundOptions *MoundOptions::m_staticThis = nullptr;
 Int MoundOptions::m_currentWidth = 0;
@@ -57,6 +60,9 @@ void MoundOptions::setFeather(Int feather)
 	CString buf;
 	buf.Format("%d", feather);
 	m_currentFeather = feather;
+#ifdef RTS_HAS_QT
+	WBQtMound_PushFeather(feather);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_FEATHER_EDIT);
 		if (pEdit) pEdit->SetWindowText(buf);
@@ -70,6 +76,9 @@ void MoundOptions::setWidth(Int width)
 	CString buf;
 	buf.Format("%d", width);
 	m_currentWidth = width;
+#ifdef RTS_HAS_QT
+	WBQtMound_PushWidth(width);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_SIZE_EDIT);
 		if (pEdit) pEdit->SetWindowText(buf);
@@ -81,6 +90,9 @@ void MoundOptions::setHeight(Int height)
 	char buffer[12];
 	snprintf(buffer, ARRAY_SIZE(buffer), "%d", height);
 	m_currentHeight = height;
+#ifdef RTS_HAS_QT
+	WBQtMound_PushHeight(height);
+#endif
 	if (m_staticThis && !m_staticThis->m_updating) {
 		CWnd *pEdit = m_staticThis->GetDlgItem(IDC_HEIGHT_EDIT);
 		if (pEdit) pEdit->SetWindowText(buffer);
@@ -104,6 +116,9 @@ BOOL MoundOptions::OnInitDialog()
 	m_brushFeatherPopup.SetupPopSliderButton(this, IDC_FEATHER_POPUP, this);
 	m_brushHeightPopup.SetupPopSliderButton(this, IDC_HEIGHT_POPUP, this);
 
+	m_currentWidth = 2;
+	m_currentFeather = 3; 
+	m_currentHeight = 9; 
 
 	m_staticThis = this;
 	m_updating = false;
@@ -271,12 +286,38 @@ void MoundOptions::PopSliderFinished(const long sliderID, long theVal)
 }
 
 
+void MoundOptions::OnToggleMirror()
+{
+	MoundTool::toggleMirror();
+}
+
+void MoundOptions::OnToggleMirrorX()
+{
+	MoundTool::toggleMirrorX();
+}
+
+void MoundOptions::OnToggleMirrorY()
+{
+	MoundTool::toggleMirrorY();
+}
+
+void MoundOptions::OnToggleMirrorXY()
+{
+	MoundTool::toggleMirrorXY();
+}
+
+
 BEGIN_MESSAGE_MAP(MoundOptions, COptionsPanel)
 	//{{AFX_MSG_MAP(MoundOptions)
 	ON_WM_HSCROLL()
 	ON_EN_CHANGE(IDC_FEATHER_EDIT, OnChangeFeatherEdit)
 	ON_EN_CHANGE(IDC_SIZE_EDIT, OnChangeSizeEdit)
 	ON_EN_CHANGE(IDC_HEIGHT_EDIT, OnChangeHeightEdit)
+
+	ON_BN_CLICKED(IDC_TOGGLE_MIRROR, OnToggleMirror)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORX, OnToggleMirrorX)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORY, OnToggleMirrorY)
+	ON_BN_CLICKED(IDC_TOGGLE_MIRRORXY, OnToggleMirrorXY)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 

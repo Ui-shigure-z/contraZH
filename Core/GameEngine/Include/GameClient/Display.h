@@ -135,6 +135,8 @@ public:
 	virtual void createLightPulse( const Coord3D *pos, const RGBColor *color, Real innerRadius,Real attenuationWidth,
 																 UnsignedInt increaseFrameTime, UnsignedInt decayFrameTime//, Bool donut = FALSE
 																 ) = 0;
+	/// an expanding ring that bends the scene, all in world units except strength when strengthInPixels counts it in pixels
+	virtual void createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationFrames ) {}
 
 	/// draw a line on the display in pixel coordinates with the specified color
 	virtual void drawLine( Int startX, Int startY, Int endX, Int endY,
@@ -195,6 +197,7 @@ public:
 	virtual Real getAverageFPS() = 0;	///< returns the average FPS.
 	virtual Real getCurrentFPS() = 0;	///< returns the current FPS.
 	virtual Int getLastFrameDrawCalls() = 0;  ///< returns the number of draw calls issued in the previous frame
+	virtual Bool toggleFaceCulling() { return TRUE; }	///< toggles back face culling and returns whether it is now on
 
 protected:
 	virtual void onBeginBatch() { }
@@ -206,6 +209,7 @@ protected:
 	UnsignedInt m_bitDepth;							///< bit depth of the display
 	Bool m_windowed;										///< TRUE when windowed, FALSE when fullscreen
 	Bool m_isBatching;
+	Int m_batchDepth;
 	View *m_viewList;										///< All of the views into the world
 
 	// Cinematic text data

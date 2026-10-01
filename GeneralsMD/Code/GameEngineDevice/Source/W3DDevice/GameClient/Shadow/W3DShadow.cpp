@@ -42,7 +42,6 @@
 #include "WW3D2/meshmdl.h"
 #include "Lib/BaseType.h"
 #include "W3DDevice/GameClient/HeightMap.h"
-#include "d3dx8math.h"
 #include "Common/GlobalData.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
@@ -50,6 +49,9 @@
 #include "WW3D2/statistics.h"
 #include "Common/Debug.h"
 #include "Common/PerfTimer.h"
+#include "GameClient/Drawable.h"
+#include "GameClient/DrawableInfo.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
 
 #define SUN_DISTANCE_FROM_GROUND	10000.0f	//distance of sun (our only light source).
 
@@ -107,6 +109,61 @@ void DoDecals(RenderInfoClass & rinfo)
 {
 	if (TheW3DProjectedShadowManager)
 		TheW3DProjectedShadowManager->renderDecals(rinfo, true);	//above-water subset
+}
+
+Bool IsShadowMapActive()
+{
+	return TheW3DShadowMap != nullptr && TheW3DShadowMap->hasDepth();
+}
+
+Bool IsShadowMapCaster(RenderObjClass *robj, Bool shadowEnabled)
+{
+	if (TheW3DShadowMap == nullptr)
+	{
+		return FALSE;
+	}
+
+	W3DShadowMap::CasterStats &stats = TheW3DShadowMap->getCasterStats();
+
+	if (!shadowEnabled || robj == nullptr)
+	{
+		++stats.disabled;
+		return FALSE;
+	}
+
+	if (!robj->Is_Not_Hidden_At_All())
+	{
+		++stats.hidden;
+		return FALSE;
+	}
+
+	// Same test the scene uses to hide drawables, so a unit under shroud or stealth
+	// casts no shadow that would give it away.
+	DrawableInfo *drawInfo = (DrawableInfo *)robj->Get_User_Data();
+	if (drawInfo != nullptr && drawInfo->m_drawable != nullptr)
+	{
+		Drawable *draw = drawInfo->m_drawable;
+		if (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud())
+		{
+			++stats.shrouded;
+			return FALSE;
+		}
+	}
+
+	if (!TheW3DShadowMap->isCasterInRange(robj->Get_Bounding_Sphere()))
+	{
+		++stats.outOfRange;
+		return FALSE;
+	}
+
+	if (!TheW3DShadowMap->isCasterShadowInView(robj->Get_Bounding_Sphere()))
+	{
+		++stats.outOfView;
+		return FALSE;
+	}
+
+	++stats.drawn;
+	return TRUE;
 }
 
 W3DShadowManager::W3DShadowManager( void )

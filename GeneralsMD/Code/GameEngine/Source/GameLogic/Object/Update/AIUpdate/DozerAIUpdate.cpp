@@ -1422,6 +1422,61 @@ Bool DozerPrimaryStateMachine::isFortifyMostImportant( State *thisState, void* u
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+DozerRestrictions::DozerRestrictions()
+{
+
+	m_canRepair = TRUE;
+
+}
+
+// ------------------------------------------------------------------------------------------------
+/** May this template be built or resumed? ForbiddenBuildObjects is checked first and always wins;
+	* AllowedBuildObjects, when set, is exclusive. Leaving both out allows everything. */
+// ------------------------------------------------------------------------------------------------
+Bool DozerRestrictions::isTemplateAllowedToBuild( const ThingTemplate *tmpl ) const
+{
+
+	if (tmpl == nullptr)
+	{
+		return TRUE;
+	}
+
+	if (m_allowedBuildObjects.empty() && m_forbiddenBuildObjects.empty())
+	{
+		return TRUE;
+	}
+
+	const AsciiString& name = tmpl->getName();
+
+	for (std::vector<AsciiString>::const_iterator it = m_forbiddenBuildObjects.begin();
+			 it != m_forbiddenBuildObjects.end(); ++it)
+	{
+		if (it->compareNoCase( name ) == 0)
+		{
+			return FALSE;
+		}
+	}
+
+	if (m_allowedBuildObjects.empty())
+	{
+		return TRUE;
+	}
+
+	for (std::vector<AsciiString>::const_iterator it = m_allowedBuildObjects.begin();
+			 it != m_allowedBuildObjects.end(); ++it)
+	{
+		if (it->compareNoCase( name ) == 0)
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 DozerAIUpdateModuleData::DozerAIUpdateModuleData()
 {
 
@@ -1441,6 +1496,11 @@ void DozerAIUpdateModuleData::buildFieldParse( MultiIniFieldParse& p)
 		{ "RepairHealthPercentPerSecond",	INI::parsePercentToReal,	nullptr, offsetof( DozerAIUpdateModuleData, m_repairHealthPercentPerSecond ) },
 		{ "BoredTime",										INI::parseDurationReal,		nullptr, offsetof( DozerAIUpdateModuleData, m_boredTime ) },
 		{ "BoredRange",										INI::parseReal,						nullptr, offsetof( DozerAIUpdateModuleData, m_boredRange ) },
+
+		{ "AllowedBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( DozerAIUpdateModuleData, m_restrictions.m_allowedBuildObjects ) },
+		{ "ForbiddenBuildObjects", INI::parseAsciiStringVectorAppend, nullptr, offsetof( DozerAIUpdateModuleData, m_restrictions.m_forbiddenBuildObjects ) },
+		{ "CanRepair", INI::parseBool, nullptr, offsetof( DozerAIUpdateModuleData, m_restrictions.m_canRepair ) },
+
 		{ nullptr, nullptr, nullptr, 0 }
 	};
 
@@ -1668,6 +1728,10 @@ Object *DozerAIUpdate::construct( const ThingTemplate *what,
 	// sanity
 	DEBUG_ASSERTCRASH( getObject()->getControllingPlayer() == owningPlayer,
 										 ("Dozer::Construct - The controlling player of the Dozer is not the owning player passed in") );
+
+	// a rebuild hole and an AI player skip the checks below, but neither may ignore the build list
+	if( canBuildTemplate( what ) == FALSE )
+		return nullptr;
 
 	// if we're not rebuilding, we have a few checks to pass first for sanity
 	if( isRebuild == FALSE )
@@ -2441,6 +2505,18 @@ Real DozerAIUpdate::getBoredRange() const
 		return TheAI->getAiData()->m_aiDozerBoredRadiusModifier*getDozerAIUpdateModuleData()->m_boredRange;
 	}
 	return getDozerAIUpdateModuleData()->m_boredRange;
+}
+
+// ------------------------------------------------------------------------------------------------
+Bool DozerAIUpdate::canBuildTemplate( const ThingTemplate *what ) const
+{
+	return getDozerAIUpdateModuleData()->m_restrictions.isTemplateAllowedToBuild( what );
+}
+
+// ------------------------------------------------------------------------------------------------
+Bool DozerAIUpdate::canRepairObjects() const
+{
+	return getDozerAIUpdateModuleData()->m_restrictions.m_canRepair;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

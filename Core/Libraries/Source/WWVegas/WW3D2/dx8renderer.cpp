@@ -48,6 +48,8 @@
 #include "dx8fvf.h"
 #include "dx8caps.h"
 #include "dx8rendererdebugger.h"
+#include "dx8instancing.h"
+#include "dx8skinning.h"
 #include "WWDebug/wwdebug.h"
 #include "WWDebug/wwprofile.h"
 #include "WWDebug/wwmemlog.h"
@@ -60,6 +62,9 @@
 #include "camera.h"
 #include "stripoptimizer.h"
 #include "meshgeometry.h"
+#include "lightenvironment.h"
+#include <algorithm>
+#include <vector>
 
 /*
 ** Global Instance of the DX8MeshRender
@@ -74,6 +79,36 @@ static DynamicVectorClass<Vector3>				_TempNormalBuffer;
 static MultiListClass<MeshModelClass>			_RegisteredMeshList;
 static TextureCategoryList							texture_category_delete_list;
 static FVFCategoryList								fvf_category_container_delete_list;
+
+// Meshes with a material pass that cannot be instanced. Its depth test of EQUAL needs the base
+// pass drawn the same way, so these meshes draw fixed function throughout.
+static std::vector<MeshClass *>					_FixedFunctionPassMeshes;
+static bool												_FixedFunctionPassMeshesSorted = true;
+
+// Base pass fragments drawn instanced in the current flush, whose material passes must be too.
+typedef std::pair<MeshClass *, DX8PolygonRendererClass *> InstancedFragment;
+static std::vector<InstancedFragment>			_InstancedFragments;
+static bool												_InstancedFragmentsSorted = true;
+
+static bool Has_Fixed_Function_Pass(MeshClass * mesh)
+{
+	if (!_FixedFunctionPassMeshesSorted)
+	{
+		std::sort(_FixedFunctionPassMeshes.begin(), _FixedFunctionPassMeshes.end());
+		_FixedFunctionPassMeshesSorted = true;
+	}
+	return std::binary_search(_FixedFunctionPassMeshes.begin(), _FixedFunctionPassMeshes.end(), mesh);
+}
+
+static bool Is_Instanced_Fragment(MeshClass * mesh, DX8PolygonRendererClass * renderer)
+{
+	if (!_InstancedFragmentsSorted)
+	{
+		std::sort(_InstancedFragments.begin(), _InstancedFragments.end());
+		_InstancedFragmentsSorted = true;
+	}
+	return std::binary_search(_InstancedFragments.begin(), _InstancedFragments.end(), InstancedFragment(mesh, renderer));
+}
 
 // helper data structure
 class PolyRemover : public MultiListObjectClass
@@ -238,6 +273,13 @@ bool DX8TextureCategoryClass::Is_Additive() const
 	return shader.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_ONE || shader.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_SRC_ALPHA;
 }
 
+// A glow mask on the texture replays the category into the bloom target, drawing the mask alone
+bool DX8TextureCategoryClass::Is_Emissive_Glow() const
+{
+	return DX8MeshRendererClass::Get_Bloom_Emissive_Intensity() > 0.0f && textures[0] != nullptr &&
+		textures[0]->Peek_Emissive_Map() != nullptr && !Is_Additive();
+}
+
 void DX8TextureCategoryClass::Add_Render_Task(DX8PolygonRendererClass * p_renderer,MeshClass * p_mesh)
 {
 	PolyRenderTaskClass * new_prt = new PolyRenderTaskClass(p_renderer,p_mesh);
@@ -286,8 +328,20 @@ void DX8FVFCategoryContainer::Remove_Texture_Category(DX8TextureCategoryClass* t
 	fvf_category_container_delete_list.Add_Tail(this);
 }
 
+// Per-polygon culling draws fixed function, so a culled pass cannot follow an instanced base.
+static bool Is_Window_Pass(MaterialPassClass * pass)
+{
+	return DX8InstancingClass::Is_Instanced_Material_Pass(pass) && (pass->Get_Cull_Volume() == nullptr || !MaterialPassClass::Is_Per_Polygon_Culling_Enabled());
+}
+
 void DX8FVFCategoryContainer::Add_Visible_Material_Pass(MaterialPassClass * pass,MeshClass * mesh)
 {
+	if (!Is_Window_Pass(pass))
+	{
+		_FixedFunctionPassMeshes.push_back(mesh);
+		_FixedFunctionPassMeshesSorted = false;
+	}
+
 	MatPassTaskClass * new_mpr = new MatPassTaskClass(pass,mesh);
 
 	if (visible_matpass_head == nullptr) {
@@ -302,8 +356,195 @@ void DX8FVFCategoryContainer::Add_Visible_Material_Pass(MaterialPassClass * pass
 	AnythingToRender=true;
 }
 
+static std::vector<MatPassTaskClass *>			_MaterialPassWindow;
+
+static bool Fragment_Renderer_Less(const InstancedFragment & a, const InstancedFragment & b)
+{
+	return (a.second != b.second) ? (a.second < b.second) : (a.first < b.first);
+}
+
+// A whitelisted pass on a mesh drawn with its own transform can join a window. Anything else is
+// drawn by the mesh as before, after the window it would otherwise overtake.
+static bool Allows_Material_Pass_Window(MaterialPassClass * pass, MeshClass * mesh)
+{
+	if (!Is_Window_Pass(pass) || mesh->Has_Material_Pass_Override())
+	{
+		return false;
+	}
+	return !mesh->Peek_Model()->Get_Flag(MeshModelClass::SKIN);
+}
+
+void DX8FVFCategoryContainer::Render_Instanced_Material_Passes()
+{
+	MatPassTaskClass * mpr = visible_matpass_head;
+	MatPassTaskClass * last_mpr = nullptr;
+	bool renderTasksRemaining=false;
+
+	while (mpr != nullptr) {
+		MeshClass * mesh = mpr->Peek_Mesh();
+
+		if (mesh->Get_Base_Vertex_Offset() == VERTEX_BUFFER_OVERFLOW)
+		{
+			last_mpr = mpr;
+			mpr = mpr->Get_Next_Visible();
+			renderTasksRemaining = true;
+			continue;
+		}
+
+		MatPassTaskClass * next_mpr = mpr->Get_Next_Visible();
+		if (last_mpr == nullptr) {
+			visible_matpass_head = next_mpr;
+		} else {
+			last_mpr->Set_Next_Visible(next_mpr);
+		}
+
+		if (Allows_Material_Pass_Window(mpr->Peek_Material_Pass(), mesh))
+		{
+			_MaterialPassWindow.push_back(mpr);
+		}
+		else
+		{
+			Render_Material_Pass_Window();
+			mesh->Render_Material_Pass(mpr->Peek_Material_Pass(),index_buffer);
+			delete mpr;
+		}
+		mpr = next_mpr;
+	}
+	Render_Material_Pass_Window();
+
+	visible_matpass_tail = renderTasksRemaining ? last_mpr : nullptr;
+}
+
+// Draws the window one pass at a time, in the order the passes first appear, which keeps each
+// mesh's own passes in order. A fragment whose base pass was instanced is instanced too.
+void DX8FVFCategoryContainer::Render_Material_Pass_Window()
+{
+	std::vector<MatPassTaskClass *> & window = _MaterialPassWindow;
+	if (window.empty())
+	{
+		return;
+	}
+
+	static std::vector<MaterialPassClass *> passes;
+	static std::vector<InstancedFragment> instanced;
+	static std::vector<InstancedFragment> fixed;
+	static std::vector<MeshClass *> meshes;
+	static std::vector<DX8PolygonRendererClass *> renderers;
+	static std::vector<int> counts;
+
+	for (size_t i=0;i<window.size();++i)
+	{
+		MaterialPassClass * pass = window[i]->Peek_Material_Pass();
+		if (std::find(passes.begin(), passes.end(), pass) == passes.end())
+		{
+			passes.push_back(pass);
+		}
+	}
+
+	for (size_t p=0;p<passes.size();++p)
+	{
+		MaterialPassClass * pass = passes[p];
+		for (size_t i=0;i<window.size();++i)
+		{
+			if (window[i]->Peek_Material_Pass() != pass)
+			{
+				continue;
+			}
+			MeshClass * mesh = window[i]->Peek_Mesh();
+			DX8PolygonRendererListIterator it(&mesh->Peek_Model()->PolygonRendererList);
+			for (;!it.Is_Done();it.Next())
+			{
+				DX8PolygonRendererClass * renderer = it.Peek_Obj();
+				if (renderer->Get_Pass() == 0)
+				{
+					InstancedFragment fragment(mesh, renderer);
+					(Is_Instanced_Fragment(mesh, renderer) ? instanced : fixed).push_back(fragment);
+				}
+			}
+		}
+
+		pass->Install_Materials();
+		DX8Wrapper::Set_Index_Buffer(index_buffer,0);
+
+		int instanced_calls = 0;
+		if (!instanced.empty())
+		{
+			std::sort(instanced.begin(), instanced.end(), Fragment_Renderer_Less);
+			size_t start = 0;
+			for (size_t i=1;i<=instanced.size();++i)
+			{
+				if (i == instanced.size() || instanced[i].second != instanced[start].second)
+				{
+					renderers.push_back(instanced[start].second);
+					counts.push_back((int)(i - start));
+					start = i;
+				}
+				meshes.push_back(instanced[i - 1].first);
+			}
+
+			// A pass spans every category of the container, so its groups go in batches one call can take.
+			size_t group = 0;
+			size_t first = 0;
+			while (group < renderers.size())
+			{
+				size_t end = group;
+				int batch = 0;
+				while (end < renderers.size() && (end == group || batch + counts[end] <= DX8InstancingClass::MAX_INSTANCES))
+				{
+					batch += counts[end];
+					++end;
+				}
+				if (DX8InstancingClass::Draw_Material_Pass_Groups(pass, &renderers[group], &counts[group], (int)(end - group), &meshes[first], FVF))
+				{
+					instanced_calls += (int)(end - group);
+				}
+				else
+				{
+					fixed.insert(fixed.end(), instanced.begin() + first, instanced.begin() + first + batch);
+				}
+				first += batch;
+				group = end;
+			}
+		}
+
+		for (size_t i=0;i<fixed.size();++i)
+		{
+			MeshClass * mesh = fixed[i].first;
+			if (mesh->Get_Lighting_Environment() != nullptr)
+			{
+				DX8Wrapper::Set_Light_Environment(mesh->Get_Lighting_Environment());
+			}
+			DX8Wrapper::Set_Transform(D3DTS_WORLD,mesh->Get_Transform());
+			pass->Install_Polygon_Materials(fixed[i].second);
+			fixed[i].second->Render(mesh->Get_Base_Vertex_Offset());
+		}
+
+		pass->UnInstall_Materials();
+		DX8MeshRendererClass::Record_Material_Pass(pass, instanced_calls + (int)fixed.size());
+
+		instanced.clear();
+		fixed.clear();
+		meshes.clear();
+		renderers.clear();
+		counts.clear();
+	}
+
+	for (size_t i=0;i<window.size();++i)
+	{
+		delete window[i];
+	}
+	window.clear();
+	passes.clear();
+}
+
 void DX8FVFCategoryContainer::Render_Procedural_Material_Passes()
 {
+	if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT && !sorting && Bind_Static_Buffers())
+	{
+		Render_Instanced_Material_Passes();
+		return;
+	}
+
 	// additional passes
 	MatPassTaskClass * mpr = visible_matpass_head;
 	MatPassTaskClass * last_mpr = nullptr;
@@ -393,7 +634,7 @@ void DX8TextureCategoryClass::Log(bool only_visible)
 	}
 	work2.Format("\n	material: %x (%s)\n	shader: %x", material, material ? material->Get_Name() : "-", shader);
 	work+=work2;
-	WWDEBUG_SAY((work));
+	RENDER_LOG((work));
 
 	work.Format("	%8s %8s %6s %6s %6s %5s %s",
 		"idx_cnt",
@@ -403,7 +644,7 @@ void DX8TextureCategoryClass::Log(bool only_visible)
 		"vi_rng",
 		"ident",
 		"name");
-	WWDEBUG_SAY((work));
+	RENDER_LOG((work));
 
 	DX8PolygonRendererListIterator it(&PolygonRendererList);
 	while (!it.Is_Done()) {
@@ -417,11 +658,11 @@ void DX8TextureCategoryClass::Log(bool only_visible)
 		}
 
 		if (prtc != nullptr) {
-			WWDEBUG_SAY(("+"));
+			RENDER_LOG(("+"));
 			p_renderer->Log();
 		} else {
 			if (!only_visible) {
-				WWDEBUG_SAY(("-"));
+				RENDER_LOG(("-"));
 				p_renderer->Log();
 			}
 		}
@@ -776,26 +1017,26 @@ void DX8RigidFVFCategoryContainer::Log(bool only_visible)
 #ifdef ENABLE_CATEGORY_LOG
 	StringClass work(255,true);
 	work.Format("DX8RigidFVFCategoryContainer --------------");
-	WWDEBUG_SAY((work));
+	RENDER_LOG((work));
 	if (vertex_buffer) {
 		StringClass fvfname(255,true);
 		vertex_buffer->FVF_Info().Get_FVF_Name(fvfname);
 		work.Format("VB size (used/total): %d/%d FVF: %s",used_vertices,vertex_buffer->Get_Vertex_Count(),fvfname);
-		WWDEBUG_SAY((work));
+		RENDER_LOG((work));
 	}
 	else {
-		WWDEBUG_SAY(("EMPTY VB"));
+		RENDER_LOG(("EMPTY VB"));
 	}
 	if (index_buffer) {
 		work.Format("IB size (used/total): %d/%d",used_indices,index_buffer->Get_Index_Count());
-		WWDEBUG_SAY((work));
+		RENDER_LOG((work));
 	}
 	else {
-		WWDEBUG_SAY(("EMPTY IB"));
+		RENDER_LOG(("EMPTY IB"));
 	}
 
 	for (unsigned p=0;p<passes;++p) {
-		WWDEBUG_SAY(("Pass: %d",p));
+		RENDER_LOG(("Pass: %d",p));
 
 		TextureCategoryListIterator it(&texture_category_list[p]);
 		while (!it.Is_Done()) {
@@ -1294,12 +1535,87 @@ void DX8FVFCategoryContainer::Generate_Texture_Categories(Vertex_Split_Table& sp
 
 // ----------------------------------------------------------------------------
 
+// Where a skin model's vertices sit in its container's skinned vertex buffer, and the bones they follow.
+struct SkinnedModelRecord
+{
+	MeshModelClass *						Model;
+	DX8SkinFVFCategoryContainer *		Container;
+	unsigned									VertexOffset;
+	DX8SkinningClass::PaletteStruct	Palette;
+};
+
+static std::vector<SkinnedModelRecord>		_SkinnedModels;
+
+static bool Skinned_Model_Less(const SkinnedModelRecord & record, const MeshModelClass * mmc)
+{
+	return record.Model < mmc;
+}
+
+static std::vector<SkinnedModelRecord>::iterator Find_Skinned_Model(const MeshModelClass * mmc)
+{
+	std::vector<SkinnedModelRecord>::iterator it = std::lower_bound(_SkinnedModels.begin(), _SkinnedModels.end(), mmc, Skinned_Model_Less);
+	return (it != _SkinnedModels.end() && it->Model == mmc) ? it : _SkinnedModels.end();
+}
+
+static const SkinnedModelRecord * Peek_Skinned_Model(const MeshModelClass * mmc)
+{
+	std::vector<SkinnedModelRecord>::iterator it = Find_Skinned_Model(mmc);
+	return (it != _SkinnedModels.end()) ? &*it : nullptr;
+}
+
+static int Find_Palette_Bone(const DX8SkinningClass::PaletteStruct & palette, unsigned short pivot)
+{
+	for (int bone=0;bone<palette.Count;++bone)
+	{
+		if (palette.Pivots[bone] == pivot)
+		{
+			return bone;
+		}
+	}
+	return -1;
+}
+
+// False when the model follows more bones than the palette holds.
+static bool Build_Palette(MeshModelClass * mmc, DX8SkinningClass::PaletteStruct & palette)
+{
+	const uint16 * links = mmc->Get_Vertex_Bone_Links();
+	palette.Count = 0;
+	for (int i=0;i<mmc->Get_Vertex_Count();++i)
+	{
+		if (Find_Palette_Bone(palette, links[i]) >= 0)
+		{
+			continue;
+		}
+		if (palette.Count == DX8SkinningClass::MAX_BONES)
+		{
+			return false;
+		}
+		palette.Pivots[palette.Count++] = links[i];
+	}
+	return true;
+}
+
+// The layout of DX8SkinningClass::Get_Vertex_FVF.
+struct SkinnedVertexStruct
+{
+	float			X, Y, Z;
+	float			NX, NY, NZ;
+	unsigned		Diffuse;
+	unsigned		Bone;
+	float			U1, V1;
+	float			U2, V2;
+};
+
+enum { SKINNED_VERTEX_BUFFER_SIZE = 4000 };
+
 DX8SkinFVFCategoryContainer::DX8SkinFVFCategoryContainer(bool sorting)
 	:
 	DX8FVFCategoryContainer(DX8_FVF_XYZNUV1,sorting),
 	VisibleVertexCount(0),
 	VisibleSkinHead(nullptr),
-	VisibleSkinTail(nullptr)
+	VisibleSkinTail(nullptr),
+	SkinnedVertexBuffer(nullptr),
+	UsedSkinnedVertices(0)
 {
 }
 
@@ -1307,6 +1623,106 @@ DX8SkinFVFCategoryContainer::DX8SkinFVFCategoryContainer(bool sorting)
 
 DX8SkinFVFCategoryContainer::~DX8SkinFVFCategoryContainer()
 {
+	Release_Skinned_Vertices();
+}
+
+// ----------------------------------------------------------------------------
+
+void DX8SkinFVFCategoryContainer::Forget_Skinned_Model(MeshModelClass* mmc)
+{
+	std::vector<SkinnedModelRecord>::iterator it = Find_Skinned_Model(mmc);
+	if (it != _SkinnedModels.end())
+	{
+		_SkinnedModels.erase(it);
+	}
+}
+
+void DX8SkinFVFCategoryContainer::Release_Skinned_Vertices()
+{
+	size_t kept = 0;
+	for (size_t i=0;i<_SkinnedModels.size();++i)
+	{
+		if (_SkinnedModels[i].Container != this)
+		{
+			_SkinnedModels[kept++] = _SkinnedModels[i];
+		}
+	}
+	_SkinnedModels.resize(kept);
+	REF_PTR_RELEASE(SkinnedVertexBuffer);
+	UsedSkinnedVertices = 0;
+}
+
+bool DX8SkinFVFCategoryContainer::Wants_Skinned_Vertices(MeshModelClass* mmc) const
+{
+	if (sorting || mmc->Get_Vertex_Count() > 65535 || !DX8SkinningClass::Is_Supported())
+	{
+		return false;
+	}
+	DX8SkinningClass::PaletteStruct palette;
+	return Build_Palette(mmc, palette);
+}
+
+// Copies the model's vertices in the order the CPU writes them, so the same indices address both.
+void DX8SkinFVFCategoryContainer::Add_Skinned_Vertices(MeshModelClass* mmc)
+{
+	if (!Wants_Skinned_Vertices(mmc))
+	{
+		return;
+	}
+	SkinnedModelRecord record;
+	record.Model = mmc;
+	record.Container = this;
+	Build_Palette(mmc, record.Palette);
+
+	const int vertex_count = mmc->Get_Vertex_Count();
+	if (SkinnedVertexBuffer == nullptr)
+	{
+		const int size = (vertex_count > SKINNED_VERTEX_BUFFER_SIZE) ? vertex_count : SKINNED_VERTEX_BUFFER_SIZE;
+		SkinnedVertexBuffer = NEW_REF(DX8VertexBufferClass,(DX8SkinningClass::Get_Vertex_FVF(), (unsigned short)size));
+		WWASSERT(SkinnedVertexBuffer->FVF_Info().Get_FVF_Size() == sizeof(SkinnedVertexStruct));
+	}
+	if (UsedSkinnedVertices + vertex_count > SkinnedVertexBuffer->Get_Vertex_Count())
+	{
+		return;
+	}
+
+	const Vector3 * locs = mmc->Get_Vertex_Array();
+	const Vector3 * norms = mmc->Get_Vertex_Normal_Array();
+	const Vector2 * uv0 = mmc->Get_UV_Array_By_Index(0);
+	const Vector2 * uv1 = mmc->Get_UV_Array_By_Index(1);
+	const unsigned * diffuse = mmc->Get_Color_Array(0,false);
+	const uint16 * links = mmc->Get_Vertex_Bone_Links();
+	{
+		VertexBufferClass::AppendLockClass l(SkinnedVertexBuffer,UsedSkinnedVertices,vertex_count);
+		SkinnedVertexStruct * verts = (SkinnedVertexStruct *)l.Get_Vertex_Array();
+		for (int v=0;v<vertex_count;++v)
+		{
+			verts[v].X = locs[v].X;
+			verts[v].Y = locs[v].Y;
+			verts[v].Z = locs[v].Z;
+			verts[v].NX = norms[v].X;
+			verts[v].NY = norms[v].Y;
+			verts[v].NZ = norms[v].Z;
+			verts[v].Diffuse = (diffuse != nullptr) ? diffuse[v] : 0;
+			verts[v].Bone = (unsigned)Find_Palette_Bone(record.Palette, links[v]);
+			verts[v].U1 = (uv0 != nullptr) ? uv0[v].X : 0.0f;
+			verts[v].V1 = (uv0 != nullptr) ? uv0[v].Y : 0.0f;
+			verts[v].U2 = (uv1 != nullptr) ? uv1[v].X : 0.0f;
+			verts[v].V2 = (uv1 != nullptr) ? uv1[v].Y : 0.0f;
+		}
+	}
+	record.VertexOffset = UsedSkinnedVertices;
+	UsedSkinnedVertices += vertex_count;
+
+	std::vector<SkinnedModelRecord>::iterator it = std::lower_bound(_SkinnedModels.begin(), _SkinnedModels.end(), mmc, Skinned_Model_Less);
+	if (it != _SkinnedModels.end() && it->Model == mmc)
+	{
+		*it = record;
+	}
+	else
+	{
+		_SkinnedModels.insert(it, record);
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -1316,14 +1732,14 @@ void DX8SkinFVFCategoryContainer::Log(bool only_visible)
 #ifdef ENABLE_CATEGORY_LOG
 	StringClass work(255,true);
 	work.Format("DX8SkinFVFCategoryContainer --------------");
-	WWDEBUG_SAY((work));
+	RENDER_LOG((work));
 
 	if (index_buffer) {
 		work.Format("IB size (used/total): %d/%d",used_indices,index_buffer->Get_Index_Count());
-		WWDEBUG_SAY((work));
+		RENDER_LOG((work));
 	}
 	else {
-		WWDEBUG_SAY(("EMPTY IB"));
+		RENDER_LOG(("EMPTY IB"));
 	}
 
 	for (unsigned pass=0;pass<passes;++pass) {
@@ -1346,6 +1762,16 @@ void DX8SkinFVFCategoryContainer::Render()
 		return;
 	}
 	AnythingToRender=false;
+
+	Render_Skinned_Meshes();
+	if (VisibleVertexCount == 0) {
+		for (unsigned pass=0;pass<passes;++pass) {
+			while (visible_texture_category_list[pass].Remove_Head()) {
+			}
+		}
+		clearVisibleSkinList();
+		return;
+	}
 
 	DX8Wrapper::Set_Vertex_Buffer(nullptr);	// Free up the reference to the current vertex buffer
 														// (in case it is the dynamic, which may have to be resized)
@@ -1489,10 +1915,161 @@ bool DX8SkinFVFCategoryContainer::Check_If_Mesh_Fits(MeshModelClass* mmc)
 		required_polygons+=mmc->Get_Gap_Filler()->Get_Polygon_Count();
 	}
 
-	if ((required_polygons*3*mmc->Get_Pass_Count())<=index_buffer->Get_Index_Count()-used_indices) {
-		return true;
+	if ((required_polygons*3*mmc->Get_Pass_Count())>index_buffer->Get_Index_Count()-used_indices) {
+		return false;
 	}
-	return false;
+	if (SkinnedVertexBuffer != nullptr && Wants_Skinned_Vertices(mmc)) {
+		return mmc->Get_Vertex_Count()<=SkinnedVertexBuffer->Get_Vertex_Count()-UsedSkinnedVertices;
+	}
+	return true;
+}
+
+// Every category a mesh draws in must be one the skin shader reproduces, since all its draws take one path.
+bool DX8SkinFVFCategoryContainer::Allows_Skinning(MeshClass * mesh, const MeshClass * const * pass_meshes, int pass_mesh_count)
+{
+	const SkinnedModelRecord * record = Peek_Skinned_Model(mesh->Peek_Model());
+	if (record == nullptr || record->Container != this)
+	{
+		DX8SkinningClass::Record_Rejection(DX8SkinningClass::REJECT_MODEL);
+		return false;
+	}
+	if (!DX8SkinningClass::Allows_Mesh(mesh))
+	{
+		DX8SkinningClass::Record_Rejection(DX8SkinningClass::REJECT_MESH);
+		return false;
+	}
+	if (std::binary_search(pass_meshes, pass_meshes + pass_mesh_count, mesh))
+	{
+		DX8SkinningClass::Record_Rejection(DX8SkinningClass::REJECT_PASS);
+		return false;
+	}
+	DX8PolygonRendererListIterator it(&mesh->Peek_Model()->PolygonRendererList);
+	for (;!it.Is_Done();it.Next())
+	{
+		DX8TextureCategoryClass * category = it.Peek_Obj()->Get_Texture_Category();
+		if (!DX8SkinningClass::Allows_Category(category->Get_Shader(), const_cast<VertexMaterialClass *>(category->Peek_Material()), category->Peek_Texture(1) != nullptr))
+		{
+			DX8SkinningClass::Record_Rejection(DX8SkinningClass::REJECT_CATEGORY);
+			return false;
+		}
+	}
+	return true;
+}
+
+void DX8SkinFVFCategoryContainer::Render_Skinned_Meshes()
+{
+	if (SkinnedVertexBuffer == nullptr || DX8SkinningClass::Get_Pass() == DX8VertexShadingClass::PASS_NONE)
+	{
+		return;
+	}
+
+	// A pass the skin shader cannot draw keeps its mesh on the CPU, base pass included.
+	static std::vector<MeshClass *> pass_meshes;
+	for (MatPassTaskClass * mpr = visible_matpass_head; mpr != nullptr; mpr = mpr->Get_Next_Visible())
+	{
+		if (!DX8SkinningClass::Allows_Material_Pass(mpr->Peek_Material_Pass()))
+		{
+			pass_meshes.push_back(mpr->Peek_Mesh());
+		}
+	}
+	std::sort(pass_meshes.begin(), pass_meshes.end());
+
+	// Meshes left to the CPU are marked as not yet in a vertex buffer, which holds back their draws.
+	int skinned = 0;
+	for (MeshClass * mesh = VisibleSkinHead; mesh != nullptr; mesh = mesh->Peek_Next_Visible_Skin())
+	{
+		if (Allows_Skinning(mesh, pass_meshes.empty() ? nullptr : &pass_meshes[0], (int)pass_meshes.size()))
+		{
+			mesh->Set_Base_Vertex_Offset(Peek_Skinned_Model(mesh->Peek_Model())->VertexOffset);
+			++skinned;
+		}
+		else
+		{
+			mesh->Set_Base_Vertex_Offset(VERTEX_BUFFER_OVERFLOW);
+		}
+	}
+	pass_meshes.clear();
+
+	if (skinned == 0 || !DX8SkinningClass::Begin_Sweep())
+	{
+		return;
+	}
+	DX8Wrapper::Set_Vertex_Buffer(SkinnedVertexBuffer);
+	DX8Wrapper::Set_Index_Buffer(index_buffer,0);
+	for (unsigned pass=0;pass<passes;++pass)
+	{
+		TextureCategoryListIterator it(&visible_texture_category_list[pass]);
+		for (;!it.Is_Done();it.Next())
+		{
+			it.Peek_Obj()->Render();
+		}
+	}
+	DX8SkinningClass::Begin_Material_Passes();
+	Render_Skinned_Material_Passes();
+	DX8SkinningClass::End_Sweep();
+	DX8SkinningClass::Record_Skinned_Meshes(skinned);
+
+	MeshClass * kept_head = nullptr;
+	MeshClass * kept_tail = nullptr;
+	unsigned int kept_vertices = 0;
+	MeshClass * mesh = VisibleSkinHead;
+	while (mesh != nullptr)
+	{
+		MeshClass * next = mesh->Peek_Next_Visible_Skin();
+		mesh->Set_Next_Visible_Skin(nullptr);
+		if (mesh->Get_Base_Vertex_Offset() == VERTEX_BUFFER_OVERFLOW)
+		{
+			if (kept_tail == nullptr)
+			{
+				kept_head = mesh;
+			}
+			else
+			{
+				kept_tail->Set_Next_Visible_Skin(mesh);
+			}
+			kept_tail = mesh;
+			kept_vertices += mesh->Peek_Model()->Get_Vertex_Count();
+		}
+		mesh = next;
+	}
+	VisibleSkinHead = kept_head;
+	VisibleSkinTail = kept_tail;
+	VisibleVertexCount = kept_vertices;
+}
+
+// The per-mesh material pass loop, with each mesh's palette loaded ahead of its passes.
+void DX8SkinFVFCategoryContainer::Render_Skinned_Material_Passes()
+{
+	MatPassTaskClass * mpr = visible_matpass_head;
+	MatPassTaskClass * last_mpr = nullptr;
+	bool renderTasksRemaining=false;
+
+	while (mpr != nullptr) {
+		MeshClass * mesh = mpr->Peek_Mesh();
+
+		if (mesh->Get_Base_Vertex_Offset() == VERTEX_BUFFER_OVERFLOW)
+		{
+			last_mpr = mpr;
+			mpr = mpr->Get_Next_Visible();
+			renderTasksRemaining = true;
+			continue;
+		}
+
+		DX8SkinningClass::Set_Mesh(mesh, Peek_Skinned_Model(mesh->Peek_Model())->Palette, nullptr);
+		mesh->Render_Material_Pass(mpr->Peek_Material_Pass(),index_buffer);
+		MatPassTaskClass * next_mpr = mpr->Get_Next_Visible();
+
+		if (last_mpr == nullptr) {
+			visible_matpass_head = next_mpr;
+		} else {
+			last_mpr->Set_Next_Visible(next_mpr);
+		}
+
+		delete mpr;
+		mpr = next_mpr;
+	}
+
+	visible_matpass_tail = renderTasksRemaining ? last_mpr : nullptr;
 }
 
 void DX8SkinFVFCategoryContainer::clearVisibleSkinList()
@@ -1537,6 +2114,7 @@ void DX8SkinFVFCategoryContainer::Reset()
 
 	REF_PTR_RELEASE(index_buffer);
 	used_indices=0;
+	Release_Skinned_Vertices();
 }
 
 // ----------------------------------------------------------------------------
@@ -1546,6 +2124,7 @@ void DX8SkinFVFCategoryContainer::Add_Mesh(MeshModelClass* mmc)
 	Vertex_Split_Table split_table(mmc);
 
 	Generate_Texture_Categories(split_table,0);
+	Add_Skinned_Vertices(mmc);
 }
 
 // ----------------------------------------------------------------------------
@@ -1729,6 +2308,182 @@ unsigned DX8TextureCategoryClass::Add_Mesh(
 
 // ----------------------------------------------------------------------------
 
+// An instanced draw shares one fixed-function setup, so texgen, specular and blend tricks rule a category out.
+// Without an active pass this measures the lit scene against the rules its instancing will need.
+bool DX8TextureCategoryClass::Allows_Instancing() const
+{
+	if (container->Is_Sorting() || Is_Additive() || m_gForceMultiply)
+	{
+		return false;
+	}
+	if (DX8InstancingClass::Get_Pass() != DX8InstancingClass::PASS_NONE)
+	{
+		return DX8InstancingClass::Allows_Category(shader, material, container->Get_FVF(), textures[1] != nullptr);
+	}
+	if (shader.Uses_Secondary_Gradient())
+	{
+		return false;
+	}
+	if (material != nullptr)
+	{
+		for (int stage=0;stage<MeshBuilderClass::MAX_STAGES;++stage)
+		{
+			if (material->Peek_Mapper(stage) != nullptr)
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static bool Mesh_Allows_Instancing(MeshClass * mesh)
+{
+	if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT && Has_Fixed_Function_Pass(mesh))
+	{
+		return false;
+	}
+	return DX8InstancingClass::Allows_Mesh(mesh);
+}
+
+static void Record_Eligible_Groups(std::vector<DX8PolygonRendererClass *> & renderers)
+{
+	std::sort(renderers.begin(), renderers.end());
+	size_t start = 0;
+	for (size_t i=1;i<=renderers.size();++i)
+	{
+		if (i == renderers.size() || renderers[i] != renderers[start])
+		{
+			DX8MeshRendererClass::Record_Eligible_Group((int)(i - start));
+			start = i;
+		}
+	}
+	renderers.clear();
+}
+
+static bool Task_Renderer_Less(PolyRenderTaskClass * a, PolyRenderTaskClass * b)
+{
+	return a->Peek_Polygon_Renderer() < b->Peek_Polygon_Renderer();
+}
+
+// Draws each large enough group of meshes sharing a polygon renderer in one call, and takes them off the task list.
+void DX8TextureCategoryClass::Render_Instanced_Groups(VertexMaterialClass * vmaterial)
+{
+	static std::vector<PolyRenderTaskClass *> candidates;
+	static std::vector<PolyRenderTaskClass *> drawn;
+	static std::vector<MeshClass *> meshes;
+	static std::vector<DX8PolygonRendererClass *> renderers;
+	static std::vector<int> counts;
+	static std::vector<PolyRenderTaskClass *> pending;
+	static std::vector<PolyRenderTaskClass *> rest;
+
+	for (PolyRenderTaskClass * prt = render_task_head; prt != nullptr; prt = prt->Get_Next_Visible())
+	{
+		MeshClass * mesh = prt->Peek_Mesh();
+		if (mesh->Get_Base_Vertex_Offset() != VERTEX_BUFFER_OVERFLOW && !prt->Peek_Polygon_Renderer()->Is_Strip() && Mesh_Allows_Instancing(mesh))
+		{
+			candidates.push_back(prt);
+		}
+	}
+	std::sort(candidates.begin(), candidates.end(), Task_Renderer_Less);
+
+	size_t start = 0;
+	for (size_t i=1;i<=candidates.size();++i)
+	{
+		if (i < candidates.size() && candidates[i]->Peek_Polygon_Renderer() == candidates[start]->Peek_Polygon_Renderer())
+		{
+			continue;
+		}
+		// Each group shares its first mesh's lights; meshes that cannot join wait for the next group.
+		pending.assign(candidates.begin() + start, candidates.begin() + i);
+		const size_t drawn_before = drawn.size();
+		while ((int)pending.size() >= DX8InstancingClass::MIN_GROUP_SIZE)
+		{
+			MeshClass * reference = pending[0]->Peek_Mesh();
+			const size_t first = meshes.size();
+			rest.clear();
+			for (size_t j=0;j<pending.size();++j)
+			{
+				if (j == 0 || DX8InstancingClass::Can_Share_Group(reference, pending[j]->Peek_Mesh()))
+				{
+					meshes.push_back(pending[j]->Peek_Mesh());
+					drawn.push_back(pending[j]);
+				}
+				else
+				{
+					rest.push_back(pending[j]);
+				}
+			}
+			const int count = (int)(meshes.size() - first);
+			if (count >= DX8InstancingClass::MIN_GROUP_SIZE)
+			{
+				renderers.push_back(pending[0]->Peek_Polygon_Renderer());
+				counts.push_back(count);
+			}
+			else
+			{
+				meshes.resize(first);
+				drawn.resize(drawn.size() - count);
+			}
+			pending.swap(rest);
+		}
+		if ((int)(i - start) >= DX8InstancingClass::MIN_GROUP_SIZE)
+		{
+			DX8InstancingClass::Add_Rejections(DX8InstancingClass::REJECT_LIGHTS, (int)(i - start - (drawn.size() - drawn_before)));
+		}
+		start = i;
+	}
+	candidates.clear();
+	pending.clear();
+	rest.clear();
+
+	const bool instanced = !renderers.empty() &&
+		DX8InstancingClass::Draw_Groups(&renderers[0], &counts[0], (int)renderers.size(), &meshes[0], vmaterial, container->Get_FVF());
+	if (instanced)
+	{
+		for (size_t group=0;group<counts.size();++group)
+		{
+			DX8MeshRendererClass::Record_Instanced_Group(counts[group]);
+		}
+		if (DX8InstancingClass::Get_Pass() == DX8InstancingClass::PASS_LIT)
+		{
+			for (size_t i=0;i<drawn.size();++i)
+			{
+				_InstancedFragments.push_back(InstancedFragment(drawn[i]->Peek_Mesh(), drawn[i]->Peek_Polygon_Renderer()));
+			}
+			_InstancedFragmentsSorted = false;
+		}
+	}
+	meshes.clear();
+	renderers.clear();
+	counts.clear();
+
+	if (!instanced)
+	{
+		drawn.clear();
+		return;
+	}
+	std::sort(drawn.begin(), drawn.end());
+
+	PolyRenderTaskClass * last_prt = nullptr;
+	PolyRenderTaskClass * prt = render_task_head;
+	while (prt) {
+		PolyRenderTaskClass * next_prt = prt->Get_Next_Visible();
+		if (std::binary_search(drawn.begin(), drawn.end(), prt)) {
+			if (last_prt == nullptr) {
+				render_task_head = next_prt;
+			} else {
+				last_prt->Set_Next_Visible(next_prt);
+			}
+			delete prt;
+		} else {
+			last_prt = prt;
+		}
+		prt = next_prt;
+	}
+	drawn.clear();
+}
+
 void DX8TextureCategoryClass::Render()
 {
 	#ifdef WWDEBUG
@@ -1775,7 +2530,15 @@ void DX8TextureCategoryClass::Render()
 
 
 	// finished tasks are kept for the bloom replay instead of being freed
-	const bool keepForBloom = DX8MeshRendererClass::Is_Bloom_Capture_Enabled() && Is_Additive();
+	const bool keepForBloom = DX8MeshRendererClass::Is_Bloom_Capture_Enabled() && (Is_Additive() || Is_Emissive_Glow());
+
+	// instanced groups leave the task list, so they would miss the replay
+	static std::vector<DX8PolygonRendererClass *> eligibleRenderers;
+	const bool categoryAllowsInstancing = Allows_Instancing() && !keepForBloom;
+	if (categoryAllowsInstancing && DX8InstancingClass::Get_Pass() != DX8InstancingClass::PASS_NONE)
+	{
+		Render_Instanced_Groups(vmaterial);
+	}
 
 	bool renderTasksRemaining=false;
 
@@ -1852,6 +2615,15 @@ void DX8TextureCategoryClass::Render()
 
 		Render_Task(prt, vmaterial, theShader, theAlphaShader, false);
 
+		if (!mesh->Peek_Model()->Get_Flag(MeshModelClass::SKIN))
+		{
+			DX8MeshRendererClass::Record_Rigid_Draw();
+			if (categoryAllowsInstancing && Mesh_Allows_Instancing(mesh))
+			{
+				eligibleRenderers.push_back(prt->Peek_Polygon_Renderer());
+			}
+		}
+
 		/*
 		** Move to the next render task.  Note that the delete should be fast because prt's are pooled
 		*/
@@ -1880,6 +2652,8 @@ void DX8TextureCategoryClass::Render()
 		prt = next_prt;
 	}
 
+	Record_Eligible_Groups(eligibleRenderers);
+
 	if (!renderTasksRemaining)
 	{
 		WWASSERT(!render_task_head);
@@ -1890,16 +2664,38 @@ void DX8TextureCategoryClass::Render()
 // second draw of the kept tasks into the bloom target, with the container's buffers already bound
 void DX8TextureCategoryClass::Render_Bloom()
 {
+	const bool glow = Is_Emissive_Glow();
 	for (unsigned i=0;i<MeshMatDescClass::MAX_TEX_STAGES;++i)
 	{
-		DX8Wrapper::Set_Texture(i,Peek_Texture(i));
+		TextureClass *texture = Peek_Texture(i);
+		if (glow)
+		{
+			texture = (i == 0) ? texture->Peek_Emissive_Map() : nullptr;
+		}
+		DX8Wrapper::Set_Texture(i,texture);
 	}
 
 	VertexMaterialClass *vmaterial=(VertexMaterialClass *)Peek_Material();
 	DX8Wrapper::Set_Material(vmaterial);
 
-	const ShaderClass theShader = Get_Shader();
+	ShaderClass theShader = Get_Shader();
+	if (glow)
+	{
+		const ShaderClass::CullModeType cullMode = theShader.Get_Cull_Mode();
+		theShader = ShaderClass::_PresetAdditiveShader;
+		theShader.Set_Cull_Mode(cullMode);
+	}
 	DX8Wrapper::Set_Shader(theShader);
+
+	// the mask is scaled by the texture factor in place of the lit vertex colour
+	if (glow)
+	{
+		DX8Wrapper::Apply_Render_State_Changes();
+		const float intensity = WWMath::Clamp(DX8MeshRendererClass::Get_Bloom_Emissive_Intensity(), 0.0f, 1.0f);
+		const unsigned level = (unsigned)(intensity * 255.0f);
+		DX8Wrapper::Set_DX8_Render_State(D3DRS_TEXTUREFACTOR, D3DCOLOR_ARGB(255, level, level, level));
+		DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+	}
 
 	while (bloom_task_head != nullptr)
 	{
@@ -1907,6 +2703,11 @@ void DX8TextureCategoryClass::Render_Bloom()
 		bloom_task_head = prt->Get_Next_Visible();
 		Render_Task(prt, vmaterial, theShader, theShader, true);
 		delete prt;
+	}
+
+	if (glow)
+	{
+		ShaderClass::Invalidate();
 	}
 }
 
@@ -1922,11 +2723,14 @@ void DX8TextureCategoryClass::Clear_Bloom_List()
 
 // draws one visible mesh fragment with the category's state already applied
 // the bloom replay of a sorting container cannot go through its buffers, which would only queue the draw
-static void Draw_Polygons(DX8FVFCategoryContainer * container, DX8PolygonRendererClass * renderer, MeshClass * mesh, bool replay)
+static void Draw_Polygons(DX8FVFCategoryContainer * container, DX8PolygonRendererClass * renderer, MeshClass * mesh, VertexMaterialClass * vmaterial, bool replay)
 {
 	if (replay && container->Is_Sorting()) {
 		static_cast<DX8RigidFVFCategoryContainer*>(container)->Draw_Copied(renderer,mesh->Get_Base_Vertex_Offset());
 	} else {
+		if (DX8SkinningClass::Is_Sweeping()) {
+			DX8SkinningClass::Set_Mesh(mesh,Peek_Skinned_Model(mesh->Peek_Model())->Palette,vmaterial);
+		}
 		renderer->Render(mesh->Get_Base_Vertex_Offset());
 	}
 }
@@ -2043,13 +2847,20 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 
 			if (mesh->Get_Alpha_Override() != 1.0)
 			{
+				// an unlit additive layer ignores the material, so the texture factor fades it
+				const bool unlitLayer = !mesh->Is_Additive() && Is_Additive() && !theShader.Uses_Primary_Gradient();
+				if (unlitLayer)
+				{
+					theAlphaShader = theShader;
+					theAlphaShader.Set_Primary_Gradient(ShaderClass::GRADIENT_MODULATE);
+				}
 				if (mesh->Is_Additive())
 				{	//additvie blended mesh can't switch to alpha or we will get a black outline.
 					//so adjust diffuse color instead.
 					//DEBUG_LOG((">>>DX8Renderer: ADDITIVE + ALPHA OVERRIDE - alpha = %f", mesh->Get_Alpha_Override()));
 					vmaterial->Set_Diffuse(mesh->Get_Alpha_Override(),mesh->Get_Alpha_Override(),mesh->Get_Alpha_Override());
 
-					vmaterial->Set_Emissive(mesh->Get_Emissive_Override(), mesh->Get_Emissive_Override(), mesh->Get_Emissive_Override());
+					vmaterial->Set_Emissive(oldEmissive.X * mesh->Get_Emissive_Override(), oldEmissive.Y * mesh->Get_Emissive_Override(), oldEmissive.Z * mesh->Get_Emissive_Override());
 
 					theAlphaShader = theShader;	//keep using additive blending.
 				}
@@ -2057,9 +2868,19 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 				DX8Wrapper::Set_Shader(theAlphaShader);
 				DX8Wrapper::Apply_Render_State_Changes();
 				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,(int)((float)0x60*mesh->Get_Alpha_Override()));
+				if (unlitLayer)
+				{
+					const unsigned level = (unsigned)(WWMath::Clamp(mesh->Get_Alpha_Override(), 0.0f, 1.0f) * 255.0f);
+					DX8Wrapper::Set_DX8_Render_State(D3DRS_TEXTUREFACTOR, D3DCOLOR_ARGB(255, level, level, level));
+					DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+				}
 
-				Draw_Polygons(container,renderer,mesh,replay);
+				Draw_Polygons(container,renderer,mesh,vmaterial,replay);
 
+				if (unlitLayer)
+				{
+					ShaderClass::Invalidate();
+				}
 				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0x60);
 				vmaterial->Set_Opacity(oldOpacity);	//restore previous value
 				vmaterial->Set_Diffuse(oldDiffuse.X,oldDiffuse.Y,oldDiffuse.Z);
@@ -2069,7 +2890,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 				DX8Wrapper::Set_Shader(theShader);	//restore previous value
 			}
 			else
-				Draw_Polygons(container,renderer,mesh,replay);
+				Draw_Polygons(container,renderer,mesh,vmaterial,replay);
 
 			if (oldMapper)	//did we override the uv offset?
 			{	oldMapper->Set_LastUsedSyncTime(oldUVOffsetSyncTime);
@@ -2079,7 +2900,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 			DX8Wrapper::Set_Material(vmaterial);	//restore previous material.
 		}
 		else
-			Draw_Polygons(container,renderer,mesh,replay);
+			Draw_Polygons(container,renderer,mesh,vmaterial,replay);
 	}
 //--------------------------------------------------------------------
 	if (mesh->Get_ObjectScale() != 1.0f)
@@ -2137,6 +2958,61 @@ void DX8MeshRendererClass::Shutdown()
 // ----------------------------------------------------------------------------
 
 bool DX8MeshRendererClass::bloom_capture=false;
+float DX8MeshRendererClass::bloom_emissive_intensity=0.0f;
+int DX8MeshRendererClass::stats_scene=DX8InstancingStatsStruct::SCENE_MAIN;
+DX8InstancingStatsStruct DX8MeshRendererClass::instancing_stats;
+
+void DX8MeshRendererClass::Record_Eligible_Group(int draws)
+{
+	int size_class = 3;
+	if (draws == 1)
+	{
+		size_class = 0;
+	}
+	else if (draws <= 3)
+	{
+		size_class = 1;
+	}
+	else if (draws <= 15)
+	{
+		size_class = 2;
+	}
+	instancing_stats.Scenes[stats_scene].EligibleDraws[size_class] += draws;
+}
+
+void DX8MeshRendererClass::Record_Instanced_Group(int draws)
+{
+	DX8InstancingStatsStruct::SceneStruct & scene = instancing_stats.Scenes[stats_scene];
+	scene.RigidDraws += draws;
+	scene.InstancedCalls++;
+	scene.InstancedMeshes += draws;
+	Record_Eligible_Group(draws);
+}
+
+void DX8MeshRendererClass::Record_Material_Pass(const MaterialPassClass* pass, int draws)
+{
+	// Copies of a pass count as the pass they copy.
+	pass = pass->Peek_Vertex_Shading_Key();
+	for (int i=0;i<DX8InstancingStatsStruct::MAX_PASSES;++i)
+	{
+		if (instancing_stats.Passes[i] == nullptr)
+		{
+			instancing_stats.Passes[i] = pass;
+		}
+		if (instancing_stats.Passes[i] == pass)
+		{
+			instancing_stats.PassDraws[i] += draws;
+			return;
+		}
+	}
+	instancing_stats.OtherPassDraws += draws;
+}
+
+void DX8MeshRendererClass::Take_Instancing_Stats(DX8InstancingStatsStruct& stats)
+{
+	stats = instancing_stats;
+	memset(&instancing_stats, 0, sizeof(instancing_stats));
+}
 
 void DX8MeshRendererClass::Add_Bloom_Category(DX8TextureCategoryClass* category)
 {
@@ -2185,7 +3061,8 @@ static void Add_Rigid_Mesh_To_Container(FVFCategoryList* container_list,unsigned
 {
 	WWASSERT(container_list);
 	DX8FVFCategoryContainer * container = nullptr;
-	bool sorting=((!!mmc->Get_Flag(MeshModelClass::SORT)) && WW3D::Is_Sorting_Enabled() && (mmc->Get_Sort_Level() == SORT_LEVEL_NONE));
+	bool sorting=((!!mmc->Get_Flag(MeshModelClass::SORT)) && WW3D::Is_Sorting_Enabled() && (mmc->Get_Sort_Level() == SORT_LEVEL_NONE) &&
+		!SortingRendererClass::Sorts_Meshes_Per_Object());
 
 	FVFCategoryListIterator it(container_list);
 	while (!it.Is_Done()) {
@@ -2210,6 +3087,7 @@ void DX8MeshRendererClass::Unregister_Mesh_Type(MeshModelClass* mmc)
 		delete n;
 	}
 	_RegisteredMeshList.Remove(mmc);
+	DX8SkinFVFCategoryContainer::Forget_Skinned_Model(mmc);
 
 	// Also remove the gap filler!
 	if (mmc->GapFiller) {
@@ -2225,7 +3103,7 @@ void DX8MeshRendererClass::Register_Mesh_Type(MeshModelClass* mmc)
 {
 	WWMEMLOG(MEM_GEOMETRY);
 #ifdef ENABLE_CATEGORY_LOG
-	WWDEBUG_SAY(("Registering mesh: %s (%d polys, %d verts + %d gap polygons)",mmc->Get_Name(),mmc->Get_Polygon_Count(),mmc->Get_Vertex_Count(),mmc->Get_Gap_Filler_Polygon_Count()));
+	RENDER_LOG(("Registering mesh: %s (%d polys, %d verts + %d gap polygons)",mmc->Get_Name(),mmc->Get_Polygon_Count(),mmc->Get_Vertex_Count(),mmc->Get_Gap_Filler_Polygon_Count()));
 #endif
 	bool skin=(mmc->Get_Flag(MeshModelClass::SKIN) && mmc->VertexBoneLink);
 	bool sorting=((!!mmc->Get_Flag(MeshModelClass::SORT)) && WW3D::Is_Sorting_Enabled() && (mmc->Get_Sort_Level() == SORT_LEVEL_NONE));
@@ -2297,7 +3175,7 @@ void DX8MeshRendererClass::Register_Mesh_Type(MeshModelClass* mmc)
 				_RegisteredMeshList.Add_Tail(mmc);
 			}
 			else {
-				WWDEBUG_SAY(("Error: Register_Mesh_Type failed! file: %s line: %d",__FILE__,__LINE__));
+				RENDER_LOG(("Error: Register_Mesh_Type failed! file: %s line: %d",__FILE__,__LINE__));
 			}
 		}
 	}
@@ -2370,6 +3248,11 @@ void DX8MeshRendererClass::Flush()
 
 	DX8Wrapper::Set_Vertex_Buffer(nullptr);
 	DX8Wrapper::Set_Index_Buffer(nullptr,0);
+
+	_InstancedFragments.clear();
+	_InstancedFragmentsSorted = true;
+	_FixedFunctionPassMeshes.clear();
+	_FixedFunctionPassMeshesSorted = true;
 }
 
 

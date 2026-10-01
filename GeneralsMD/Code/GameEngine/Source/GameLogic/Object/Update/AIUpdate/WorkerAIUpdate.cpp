@@ -170,6 +170,18 @@ Real WorkerAIUpdate::getBoredRange() const
 }
 
 // ------------------------------------------------------------------------------------------------
+Bool WorkerAIUpdate::canBuildTemplate( const ThingTemplate *what ) const
+{
+	return getWorkerAIUpdateModuleData()->m_restrictions.isTemplateAllowedToBuild( what );
+}
+
+// ------------------------------------------------------------------------------------------------
+Bool WorkerAIUpdate::canRepairObjects() const
+{
+	return getWorkerAIUpdateModuleData()->m_restrictions.m_canRepair;
+}
+
+// ------------------------------------------------------------------------------------------------
 void WorkerAIUpdate::createMachines()
 {
 
@@ -347,6 +359,10 @@ Object *WorkerAIUpdate::construct( const ThingTemplate *what,
 	// sanity
 	DEBUG_ASSERTCRASH( getObject()->getControllingPlayer() == owningPlayer,
 										 ("Dozer::Construct - The controlling player of the Dozer is not the owning player passed in") );
+
+	// a rebuild hole and an AI player skip the checks below, but neither may ignore the build list
+	if( canBuildTemplate( what ) == FALSE )
+		return nullptr;
 
 	// if we're not rebuilding, we have a few checks to pass first for sanity
 	if( isRebuild == FALSE )
@@ -1330,7 +1346,7 @@ Bool WorkerStateMachine::supplyTruckSubMachineWantsToEnter( State *thisState, vo
 	//If I detect a Supply force message, or if I have been put straight in dock,
 	//then the worker master part of me wants to switch to the Supply sub-brain
 
-	return update->isForcedIntoWantingState() || (masterState == AI_DOCK);
+	return (update->isForcedIntoWantingState() && !owner->isContained()) || (masterState == AI_DOCK);
 }
 
 // ------------------------------------------------------------------------------------------------

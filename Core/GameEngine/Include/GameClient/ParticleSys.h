@@ -180,8 +180,10 @@ public:
 
 	Particle( ParticleSystem *system, const ParticleInfo *data );
 
-	Bool update();												///< update this particle's behavior - return false if dead
-	void doWindMotion();									///< do wind motion (if present) from particle system
+	Bool update(); ///< update this particle's behavior - return false if dead
+
+	void draw( Real timeScale ); ///< render update
+	void doWindMotion( Real timeScale ); ///< do wind motion (if present) from particle system
 
 	void applyForce( const Coord3D *force );		///< add the given acceleration
 
@@ -198,12 +200,15 @@ public:
 
 	void controlParticleSystem( ParticleSystem *sys ) { m_systemUnderControl = sys; }
 	void detachControlledParticleSystem() { m_systemUnderControl = nullptr; }
+	ParticleSystem *getSystem() const { return m_system; }
 
 	// get priority of this particle ... which is the priority of the system it belongs to
 	ParticlePriorityType getPriority();
 
 	UnsignedInt getPersonality() { return m_personality; };
 	void setPersonality(UnsignedInt p) { m_personality = p; };
+
+	UnsignedInt getElapsedFrames() const;
 
 protected:
 
@@ -228,7 +233,6 @@ protected:
 	// most of the particle data is derived from ParticleInfo
 
 	Coord3D						m_accel;														///< current acceleration
-	Coord3D						m_lastPos;													///< previous position
 	UnsignedInt				m_lifetimeLeft;									///< lifetime remaining, if zero -> destroy
 	UnsignedInt				m_createTimestamp;							///< frame this particle was created
 
@@ -269,6 +273,8 @@ public:
 	virtual void crc( Xfer *xfer ) override;
 	virtual void xfer( Xfer *xfer ) override;
 	virtual void loadPostProcess() override;
+
+	void validate();
 
 	Bool m_isOneShot;														///< if true, destroy system after one burst has occurred
 
@@ -320,7 +326,7 @@ public:
 	};
 
 
-	RandomKeyframe m_alphaKey[ MAX_KEYFRAMES ];
+	RandomKeyframe m_alphaKey[ MAX_KEYFRAMES ];	///< alpha of particle
 	RGBColorKeyframe m_colorKey[ MAX_KEYFRAMES ];	///< color of particle
 
 	typedef Int Color;
@@ -440,6 +446,54 @@ public:
 	Bool m_conformToTerrain;
 	Bool m_isParticleUpTowardsEmitter;					///< if true, align the up direction to be towards the emitter.
 
+	// Auto shades the system as flame when it rides a projectile of a FLAME weapon.
+	enum FlameShaderMode
+	{
+		FLAME_SHADER_INVALID = 0,
+		FLAME_SHADER_AUTO,
+		FLAME_SHADER_YES,
+		FLAME_SHADER_NO,
+
+		FLAME_SHADER_COUNT
+	};
+	FlameShaderMode m_flameShader;
+
+	// Auto shades the system as electricity when its texture is in GameData.ini's ElectricParticleTextures.
+	enum ElectricShaderMode
+	{
+		ELECTRIC_SHADER_INVALID = 0,
+		ELECTRIC_SHADER_AUTO,
+		ELECTRIC_SHADER_YES,
+		ELECTRIC_SHADER_NO,
+
+		ELECTRIC_SHADER_COUNT
+	};
+	ElectricShaderMode m_electricShader;
+
+	// Auto shades a streak system as a laser when its texture is in GameData.ini's LaserParticleTextures.
+	enum LaserShaderMode
+	{
+		LASER_SHADER_INVALID = 0,
+		LASER_SHADER_AUTO,
+		LASER_SHADER_YES,
+		LASER_SHADER_NO,
+
+		LASER_SHADER_COUNT
+	};
+	LaserShaderMode m_laserShader;
+
+	// Auto shades the system as ice when its texture is in GameData.ini's CryoParticleTextures.
+	enum CryoShaderMode
+	{
+		CRYO_SHADER_INVALID = 0,
+		CRYO_SHADER_AUTO,
+		CRYO_SHADER_YES,
+		CRYO_SHADER_NO,
+
+		CRYO_SHADER_COUNT
+	};
+	CryoShaderMode m_cryoShader;
+
 	enum WindMotion
 	{
 		WIND_MOTION_INVALID = 0,
@@ -506,7 +560,48 @@ static const char *const WindMotionNames[] =
 };
 static_assert(ARRAY_SIZE(WindMotionNames) == ParticleSystemInfo::WIND_MOTION_COUNT + 1, "Incorrect array size");
 
+static const char *const FlameShaderModeNames[] =
+{
+	"NONE", "Auto", "Yes", "No", nullptr
+};
+static_assert(ARRAY_SIZE(FlameShaderModeNames) == ParticleSystemInfo::FLAME_SHADER_COUNT + 1, "Incorrect array size");
+
+static const char *const ElectricShaderModeNames[] =
+{
+	"NONE", "Auto", "Yes", "No", nullptr
+};
+static_assert(ARRAY_SIZE(ElectricShaderModeNames) == ParticleSystemInfo::ELECTRIC_SHADER_COUNT + 1, "Incorrect array size");
+
+static const char *const LaserShaderModeNames[] =
+{
+	"NONE", "Auto", "Yes", "No", nullptr
+};
+static_assert(ARRAY_SIZE(LaserShaderModeNames) == ParticleSystemInfo::LASER_SHADER_COUNT + 1, "Incorrect array size");
+
+static const char *const CryoShaderModeNames[] =
+{
+	"NONE", "Auto", "Yes", "No", nullptr
+};
+static_assert(ARRAY_SIZE(CryoShaderModeNames) == ParticleSystemInfo::CRYO_SHADER_COUNT + 1, "Incorrect array size");
+
 #endif
+
+// Flame shading and heat haze settings. In ParticleSystem.ini a negative value, the default, takes GameData.ini's.
+struct FlameShaderTuning
+{
+	Real warp;						///< how far the noise pushes the texture lookup, in texture widths
+	Real heat;						///< how fast bright texels run to white
+	Real flicker;					///< how far brightness swings with the noise, 0 for steady
+	Real breakup;					///< how much the faint fringe breaks up, 0 for none
+	Real noiseSize;				///< world units across one tile of flame noise
+	Real rise;						///< flame noise tiles climbed per second
+	Real hazeBend;				///< world units the haze bends the scene, measured at the flame
+	Real hazeSize;				///< haze sprite size as a multiple of the flame's
+	Real hazeLift;				///< haze sprite rise above the flame, as a multiple of its size
+	Real hazeNoiseSize;		///< world units across one tile of haze noise
+	Real hazeRise;				///< haze noise tiles climbed per second
+	Real hazeMask;				///< how quickly the flame's brightness reaches full haze strength
+};
 
 /**
  * A ParticleSystemTemplate, used by the ParticleSystemManager to instantiate ParticleSystems.
@@ -531,6 +626,14 @@ public:
 	static void parseRandomRGBColor( INI* ini, void *instance, void *store, const void* /*userData*/ );
 	static void parseRandomRGBColorRate( INI* ini, void *instance, void *store, const void* /*userData*/ );
 
+	Bool hasFlameTuning() const;	///< any FlameShaderTuning key is set on this system
+	/// GameData.ini's flame settings, with this template's own on top when it is not null.
+	static void resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning );
+	/// How much a cryo-shaded particle is drawn larger or smaller: this template's CryoParticleScale, else GameData.ini's.
+	Real getCryoParticleScale() const;
+	/// The same for an electric-shaded particle, from ElectricParticleScale.
+	Real getElectricParticleScale() const;
+
 protected:
 	friend class ParticleSystemManager;					///< @todo remove this friendship
 	friend class ParticleSystem;								///< @todo remove this friendship
@@ -548,6 +651,10 @@ protected:
 
 	// This has to be mutable because of the delayed initialization thing in createSlaveSystem
 	mutable const ParticleSystemTemplate *m_slaveTemplate;		///< if non-null, use this to create a slave system
+
+	FlameShaderTuning					m_flameTuning;
+	Real											m_cryoParticleScale;						///< negative takes GameData.ini's
+	Real											m_electricParticleScale;				///< negative takes GameData.ini's
 
 	// template attribute data inherited from ParticleSystemInfo class
 };
@@ -588,6 +695,8 @@ public:
 	virtual Bool update( Int localPlayerIndex );								///< update this particle system, return false if dead
 	void updateWindMotion();							///< update wind motion
 
+	void draw( Real timeScale ); ///< render update
+
 	void setControlParticle( Particle *p );			///< set control particle
 
 	void start();													///< (re)start a stopped particle system
@@ -626,6 +735,11 @@ public:
 	Bool shouldConformToTerrain() const { return m_isGroundAligned && m_conformToTerrain; }
 
 	ParticleShaderType getShaderType() const { return m_shaderType; }
+
+	Bool isFlame();		///< draw with the flame shader
+	Bool isElectric();	///< draw with the electric shader
+	Bool isLaser();		///< draw streaks with the laser shader
+	Bool isCryo();		///< draw with the cryo shader, over any other
 
 	void setSlave( ParticleSystem *slave );			///< set a slave system for us
 	ParticleSystem *getSlave() { return m_slaveSystem; }
@@ -693,6 +807,12 @@ public:
 
 protected:
 
+	struct VisibilityState
+	{
+		VisibilityState() : isShrouded(false) {}
+		Bool isShrouded;
+	};
+
 	// snapshot methods
 	virtual void crc( Xfer *xfer ) override;
 	virtual void xfer( Xfer *xfer ) override;
@@ -702,6 +822,11 @@ protected:
 																		ParticlePriorityType priority,
 																		Bool forceCreate = FALSE );	///< factory method for particles
 
+	void updateTransform();
+	void applyParentTransform(const Matrix3D &parentXfrm);
+	void applyLocalTransform();
+
+	VisibilityState updateVisibility( Int localPlayerIndex );
 
 	const ParticleInfo *generateParticleInfo( Int particleNum, Int particleCount );	///< generate a new, random set of ParticleInfo
 	const Coord3D *computeParticlePosition();		///< compute a position based on emission properties
@@ -761,6 +886,14 @@ protected:
 	Bool							m_isFirstPos;													///< true if this system hasn't been drawn before.
 	Bool							m_isSaveable;													///< true if this system should be saved/loaded
 	Bool							m_skipParentXfrm;											///< true if this system is already in world space.
+	Bool							m_flameKnown;													///< the Auto answer is worked out, at first draw once the projectile has launched
+	Bool							m_flameAuto;													///< the Auto answer
+	Bool							m_electricKnown;											///< the electric Auto answer is worked out
+	Bool							m_electricAuto;												///< the electric Auto answer
+	Bool							m_laserKnown;													///< the laser Auto answer is worked out
+	Bool							m_laserAuto;													///< the laser Auto answer
+	Bool							m_cryoKnown;													///< the cryo Auto answer is worked out
+	Bool							m_cryoAuto;														///< the cryo Auto answer
 
 
 	// the actual particle system data is inherited from ParticleSystemInfo
@@ -772,6 +905,11 @@ protected:
 /**
  * The particle system manager, responsible for maintaining all ParticleSystems
  */
+// TheSuperHackers @tweak The particle render update is now decoupled from the logic step.
+// The lifetime management and the velocity and rate changes remain coupled to the logic step.
+// The render updates integrate exactly one logic time step per logic frame, regardless of how many render updates
+// fall into it, so the particles follow the same course as in the original update.
+//
 class ParticleSystemManager : public SubsystemInterface,
 															public Snapshot
 {
@@ -788,7 +926,8 @@ public:
 
 	virtual void init() override;									///< initialize the manager
 	virtual void reset() override;									///< reset the manager and all particle systems
-	virtual void update() override;								///< update all particle systems
+	virtual void update() override;								///< logic update for all particle systems
+	virtual void draw() override;									///< render update for all particle systems
 
 	virtual Bool isDummy() const { return false; }
 
@@ -858,6 +997,9 @@ protected:
 	virtual void xfer( Xfer *xfer ) override;
 	virtual void loadPostProcess() override;
 
+	void completeLogicFrameDrawUpdate(); ///< render update for the rest of the current logic frame
+	void drawSystems( Real timeScale ); ///< render update for all particle systems
+
 	Particle *m_allParticlesHead[ NUM_PARTICLE_PRIORITIES ];
 	Particle *m_allParticlesTail[ NUM_PARTICLE_PRIORITIES ];
 
@@ -869,8 +1011,8 @@ protected:
 	UnsignedInt m_fieldParticleCount; ///< this does not need to be xfered, since it is evaluated every frame
 	UnsignedInt m_particleSystemCount;
 	Int m_onScreenParticleCount;                ///< number of particles displayed on screen per frame
-	UnsignedInt m_lastLogicFrameUpdate;
 	Int m_localPlayerIndex;	///<used to tell particle systems which particles can be skipped due to player shroud status
+	Real m_drawnLogicFramePhase; ///< How far the render updates have integrated the current logic frame, ranging 0 to 1.
 
 private:
 	TemplateMap m_templateMap;		///< a hash map of all particle system templates
@@ -896,6 +1038,7 @@ public:
 	virtual void reset() override {}
 #endif
 	virtual void update() override {}
+	virtual void draw() override {}
 
 	virtual Bool isDummy() const override { return true; }
 

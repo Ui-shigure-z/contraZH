@@ -547,8 +547,12 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 #endif
 
 	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
-	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
 	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
+	{ "LaserGroundGlowRadius",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
+	{ "LaserGroundGlowFalloff",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowFalloff ) },
+	{ "LaserGroundGlowWrap",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowWrap ) },
+	{ "LaserGroundGlowDebug",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowDebug ) },
+	{ "LaserGroundGlowOverlap",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowOverlap ) },
 
 	{ nullptr,					nullptr,						nullptr,						0 }
 
@@ -580,10 +584,92 @@ GlobalData::GlobalData()
   m_bloomStrength = 0.5f;
   m_bloomDebug = FALSE;
   m_laserRef = FALSE;
+  m_useDynamicLights = TRUE;
+  m_useSoftParticles = TRUE;
+  m_useFlameShaders = TRUE;
+  m_useElectricShaders = TRUE;
+  m_useLaserShaders = TRUE;
+  m_useCryoShaders = TRUE;
+  m_softParticleDistance = 12.0f;
+  m_flameWarp = 0.04f;
+  m_flameHeat = 2.2f;
+  m_flameFlicker = 0.3f;
+  m_flameBreakup = 1.0f;
+  m_flameNoiseSize = 20.0f;
+  m_flameRise = 0.8f;
+  m_hazeBend = 1.2f;
+  m_hazeSize = 1.5f;
+  m_hazeLift = 0.3f;
+  m_hazeNoiseSize = 14.0f;
+  m_hazeRise = 1.1f;
+  m_hazeMask = 2.0f;
+  m_electricParticleTextures.clear();
+  m_electricArcs = 1.5f;
+  m_electricArcSharpness = 10.0f;
+  m_electricNoiseSize = 40.0f;
+  m_electricJitter = 0.03f;
+  m_electricFlicker = 0.6f;
+  m_electricRate = 15.0f;
+  m_electricParticleScale = 1.0f;
+  m_laserParticleTextures.clear();
+  m_laserCore = 1.2f;
+  m_laserCoreWidth = 0.25f;
+  m_laserShimmer = 0.3f;
+  m_laserPulse = 0.4f;
+  m_laserPulseSize = 120.0f;
+  m_laserPulseSpeed = 400.0f;
+  m_laserDebug = FALSE;
+  m_cryoParticleTextures.clear();
+  m_cryoTint.red = 150.0f / 255.0f;
+  m_cryoTint.green = 215.0f / 255.0f;
+  m_cryoTint.blue = 1.0f;
+  m_cryoTintStrength = 0.8f;
+  m_cryoCore = 1.0f;
+  m_cryoCoreWidth = 0.3f;
+  m_cryoFrost = 0.5f;
+  m_cryoFrostSize = 200.0f;
+  m_cryoFrostSpeed = 60.0f;
+  m_cryoShards = 0.4f;
+  m_cryoShardSize = 8.0f;
+  m_cryoGlints = 2.0f;
+  m_cryoGlintSize = 1.5f;
+  m_cryoGlintRate = 2.0f;
+  m_cryoParticleScale = 1.0f;
+  m_useAmbientOcclusion = TRUE;
+  m_useHeightBlend = TRUE;
+  m_useHQSky = TRUE;
+  m_ambientOcclusionDebug = FALSE;
+  m_ambientOcclusionRadius = 12.0f;
+  m_ambientOcclusionStrength = 1.0f;
+  m_groundNoiseStrength = 0.12f;
+  m_groundNoiseSize = 1000.0f;
+  m_groundNoiseTint = 0.03f;
+  m_groundNoiseBrightness = 0.9f;
+  m_terrainHeightBlendStrength = 2.0f;
+  m_terrainHeightBlendSharpness = 4.0f;
+  m_terrainAtlasBorder = 8;
+  m_skyCloudSize = 600.0f;
+  m_skyCloudCoverage = 0.45f;
+  m_skyCloudSoftness = 0.25f;
+  m_skyCloudShadowStrength = 0.35f;
+  m_skyCloudShadowTint.red = 235.0f / 255.0f;
+  m_skyCloudShadowTint.green = 242.0f / 255.0f;
+  m_skyCloudShadowTint.blue = 1.0f;
+  m_skyCloudWindSpeed = 11.0f;
+  m_skyCloudWindAngle = 56.0f;
+  m_skyCloudChurn = 0.3f;
+  m_skyCloudBillow = 0.5f;
+  m_skyCloudDetail = 0.4f;
+  m_vsync = -1;
+  m_lowLatency = FALSE;
   m_alliedDecalMode = AlliedDecalMode_Default;
   m_laserGlowColor = 0;
-  m_laserGlowRadius = 0.0f;
   m_laserGlowIntensity = 0.7f;
+  m_laserGlowRadius = 0.0f;
+  m_laserGlowFalloff = 2.0f;
+  m_laserGlowWrap = 0.5f;
+  m_laserGlowDebug = FALSE;
+  m_laserGlowOverlap = TRUE;
 	m_newRadar = FALSE;
 	m_smartSelection = TRUE;
 	m_smartSelectionUseMouse = TRUE;
@@ -1260,6 +1346,18 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
 	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
 	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
+	TheWritableGlobalData->m_useDynamicLights = optionPref.getDynamicLightsEnabled();
+	TheWritableGlobalData->m_useSoftParticles = optionPref.getSoftParticlesEnabled();
+	TheWritableGlobalData->m_useFlameShaders = optionPref.getFlameShadersEnabled();
+	TheWritableGlobalData->m_useElectricShaders = optionPref.getElectricShadersEnabled();
+	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
+	TheWritableGlobalData->m_useCryoShaders = optionPref.getCryoShadersEnabled();
+	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
+	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
+	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();
+	TheWritableGlobalData->m_ambientOcclusionDebug = optionPref.getAmbientOcclusionDebugEnabled();
+	TheWritableGlobalData->m_vsync = optionPref.getVSyncMode();
+	TheWritableGlobalData->m_lowLatency = optionPref.getLowLatencyEnabled();
 	TheWritableGlobalData->m_alliedDecalMode = optionPref.getAlliedDecalMode();
 
 	Int val=optionPref.getGammaValue();

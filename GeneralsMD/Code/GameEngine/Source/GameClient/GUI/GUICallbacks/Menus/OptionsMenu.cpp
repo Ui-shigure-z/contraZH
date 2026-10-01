@@ -191,6 +191,7 @@ static GameWindow *   comboBoxAnisotropy          = nullptr;
 static GameWindow *   checkNumericalHealth        = nullptr;
 static GameWindow *   checkSmartPips              = nullptr;
 static GameWindow *   checkSelectionCircle        = nullptr;
+static GameWindow *   checkDefensesRangeCircle    = nullptr;
 static GameWindow *   checkObjectDecals           = nullptr;
 static GameWindow *   checkEasyMilitaryDrag       = nullptr;
 static GameWindow *   checkSmartSelection         = nullptr;
@@ -218,6 +219,20 @@ static GameWindow *   checkBloom                  = nullptr;
 static GameWindow *   textEntryBloomStrength      = nullptr;
 static GameWindow *   checkBloomDebug             = nullptr;
 static GameWindow *   checkLaserRef               = nullptr;
+static GameWindow *   checkShadowMap              = nullptr;
+static GameWindow *   checkSpecular               = nullptr;
+static GameWindow *   checkNormalMaps             = nullptr;
+static GameWindow *   checkWaterReflections       = nullptr;
+static NameKeyType    checkDynamicLightsID        = NAMEKEY_INVALID;
+static GameWindow *   checkDynamicLights          = nullptr;
+static GameWindow *   checkPixelLights            = nullptr;
+static GameWindow *   checkSoftParticles          = nullptr;
+static GameWindow *   checkAmbientOcclusion       = nullptr;
+static GameWindow *   checkHeightBlend            = nullptr;
+static GameWindow *   checkHQSky                  = nullptr;
+static GameWindow *   checkVSync                  = nullptr;
+static GameWindow *   checkLowLatency             = nullptr;
+static GameWindow *   checkSmoothUnitMotion       = nullptr;
 
 // Options.ini spellings, indexed by the matching enum and combo box position
 static const char *const HealthBarModeNames[] = { "Classic", "Damaged", "Always" };
@@ -454,6 +469,7 @@ static const BoolOption BoolOptions[] =
 	{ &checkNumericalHealth, "NumericalHealth", &OptionPreferences::getNumericalHealthEnabled, &GlobalData::m_numericalHealth, FALSE },
 	{ &checkSmartPips, "SmartPips", &OptionPreferences::getSmartPipsEnabled, &GlobalData::m_smartPips, FALSE },
 	{ &checkSelectionCircle, "SelectionCircle", &OptionPreferences::getSelectionCircleEnabled, &GlobalData::m_selectionCircleEnabled, FALSE },
+	{ &checkDefensesRangeCircle, "DefensesRangeCircle", &OptionPreferences::getDefensesRangeCircleEnabled, &GlobalData::m_defensesRangeCircle, FALSE },
 	{ &checkObjectDecals, "ObjectDecals", &OptionPreferences::getObjectDecalsEnabled, &GlobalData::m_objectDecalsEnabled, TRUE },
 	{ &checkEasyMilitaryDrag, "EasyMilitaryDrag", &OptionPreferences::getEasyMilitaryDragEnabled, &GlobalData::m_easyMilitaryDrag, FALSE },
 	{ &checkSmartSelection, "SmartSelection", &OptionPreferences::getSmartSelectionEnabled, &GlobalData::m_smartSelection, TRUE },
@@ -467,6 +483,18 @@ static const BoolOption BoolOptions[] =
 	{ &checkBloom, "Bloom", &OptionPreferences::getBloomEnabled, &GlobalData::m_useBloom, FALSE },
 	{ &checkBloomDebug, "BloomDebug", &OptionPreferences::getBloomDebugEnabled, &GlobalData::m_bloomDebug, FALSE },
 	{ &checkLaserRef, "LaserRef", &OptionPreferences::getLaserRefEnabled, &GlobalData::m_laserRef, FALSE },
+	{ &checkShadowMap, "ShadowMap", &OptionPreferences::getShadowMapEnabled, &GlobalData::m_useShadowMap, TRUE },
+	{ &checkSpecular, "Specular", &OptionPreferences::getSpecularEnabled, &GlobalData::m_useSpecular, TRUE },
+	{ &checkNormalMaps, "NormalMaps", &OptionPreferences::getNormalMapsEnabled, &GlobalData::m_useNormalMaps, TRUE },
+	{ &checkWaterReflections, "WaterReflections", &OptionPreferences::getWaterReflectionsEnabled, &GlobalData::m_waterReflections, TRUE },
+	{ &checkDynamicLights, "DynamicLights", &OptionPreferences::getDynamicLightsEnabled, &GlobalData::m_useDynamicLights, TRUE },
+	{ &checkPixelLights, "PixelLights", &OptionPreferences::getPixelLightsEnabled, &GlobalData::m_usePixelLights, TRUE },
+	{ &checkSoftParticles, "SoftParticles", &OptionPreferences::getSoftParticlesEnabled, &GlobalData::m_useSoftParticles, TRUE },
+	{ &checkAmbientOcclusion, "AmbientOcclusion", &OptionPreferences::getAmbientOcclusionEnabled, &GlobalData::m_useAmbientOcclusion, TRUE },
+	{ &checkHeightBlend, "HeightBlend", &OptionPreferences::getHeightBlendEnabled, &GlobalData::m_useHeightBlend, TRUE },
+	{ &checkHQSky, "HQSky", &OptionPreferences::getHQSkyEnabled, &GlobalData::m_useHQSky, TRUE },
+	{ &checkLowLatency, "LowLatency", &OptionPreferences::getLowLatencyEnabled, &GlobalData::m_lowLatency, FALSE },
+	{ &checkSmoothUnitMotion, "SmoothUnitMotion", &OptionPreferences::getSmoothUnitMotionEnabled, &GlobalData::m_smoothUnitMotion, TRUE },
 };
 
 // the strength is stored as 0..1 but edited as a percentage
@@ -504,6 +532,17 @@ static void updateGameOptionsEnables()
 	const Bool bloom = getCheck( checkBloom, FALSE );
 	enableWindow( textEntryBloomStrength, bloom );
 	enableWindow( checkBloomDebug, bloom );
+
+	enableWindow( checkPixelLights, getCheck( checkDynamicLights, TRUE ) );
+	enableWindow( checkHQSky, getCheck( checkCloudShadows, TRUE ) );
+
+	// the scene depth it reads is multisampled, and so unreadable, with anti-aliasing on
+	Int antiAliasing = 0;
+	if (comboBoxAntiAliasing)
+	{
+		GadgetComboBoxGetSelectedPos( comboBoxAntiAliasing, &antiAliasing );
+	}
+	enableWindow( checkAmbientOcclusion, antiAliasing <= 0 );
 }
 
 static void populateGameOptions()
@@ -588,10 +627,7 @@ static void setDefaults()
 	{
 	//-------------------------------------------------------------------------------------------------
 	// LOD
-	if ((TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE))
-	{
-		GadgetComboBoxSetSelectedPos(comboBoxDetail, (Int)TheGameLODManager->getRecommendedStaticLODLevel());
-	}
+	GadgetComboBoxSetSelectedPos(comboBoxDetail, (Int)TheGameLODManager->getRecommendedStaticLODLevel());
 
 	//-------------------------------------------------------------------------------------------------
 	// Resolution
@@ -706,6 +742,8 @@ static void setDefaults()
 		//
 		GadgetCheckBoxSetChecked( checkHeatEffects, TheGlobalData->m_useHeatEffects);
 
+		setCheck( checkVSync, WW3D::Is_VSync_On() );
+
 		//-------------------------------------------------------------------------------------------------
  		// Building Occlusion checkbox
 		//
@@ -799,6 +837,14 @@ static void saveOptions()
 		TheWritableGlobalData->m_useHeatEffects = GadgetCheckBoxIsChecked( checkHeatEffects );
 		(*pref)["HeatEffects"] = TheGlobalData->m_useHeatEffects ? "yes" : "no";
 
+		// Written only once changed, so an untouched Options.ini keeps vsync on in fullscreen and off in a window.
+		if (checkVSync != nullptr && GadgetCheckBoxIsChecked( checkVSync ) != (Bool)WW3D::Is_VSync_On())
+		{
+			TheWritableGlobalData->m_vsync = GadgetCheckBoxIsChecked( checkVSync ) ? 1 : 0;
+			(*pref)["VSync"] = TheGlobalData->m_vsync ? "yes" : "no";
+			WW3D::Set_VSync_Mode( TheGlobalData->m_vsync );
+		}
+
 		// Never write this out
 		//TheWritableGlobalData->m_useFpsLimit = !GadgetCheckBoxIsChecked( checkUnlockFps );
 		//(*pref)["FPSLimit"] = TheGlobalData->m_useFpsLimit ? "yes" : "no";
@@ -828,7 +874,14 @@ static void saveOptions()
 	if (comboBoxDetail && comboBoxDetail->winGetEnabled())
 	{
 		GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
+
+		// A match keeps the frame rate limit its game mode set, which the detail presets would overwrite
+		const Bool fpsLimit = TheGlobalData->m_useFpsLimit;
 		const Bool levelChanged = TheGameLODManager->setStaticLODLevel((StaticGameLODLevel)index);
+		if (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL)
+		{
+			TheWritableGlobalData->m_useFpsLimit = fpsLimit;
+		}
 
 		if (levelChanged)
 			(*pref)["StaticGameLOD"] = TheGameLODManager->getStaticGameLODLevelName(TheGameLODManager->getStaticLODLevel());
@@ -887,6 +940,14 @@ static void saveOptions()
 		// TheSuperHackers @info We are converting comboBox entry position to MultiSampleModeEnum values
 		index = clamp((int)OptionPreferences::AntiAliasingMode_OFF, index, (int)OptionPreferences::AntiAliasingMode_MSAA_8X);
 		mode = (index > 0) ? 1 << index : 0;
+
+		// The device is rebuilt with the new sample count, which falls back where the card lacks it
+		if (mode != (Int)WW3D::Get_MSAA_Mode())
+		{
+			WW3D::Set_MSAA_Mode( (WW3D::MultiSampleModeEnum)mode );
+			WW3D::Set_Render_Device( -1, -1, -1, -1, -1, false, true, true );
+			mode = (Int)WW3D::Get_MSAA_Mode();
+		}
 
 		TheWritableGlobalData->m_antiAliasLevel = mode;
     AsciiString prefString;
@@ -1041,6 +1102,7 @@ static void saveOptions()
 			(*pref)[option.prefKey] = on ? "yes" : "no";
 			TheWritableGlobalData->*option.field = on;
 		}
+		WW3D::Set_Low_Latency( TheGlobalData->m_lowLatency != FALSE );
 
 		// the radar caches this when it is created, so it waits for the next launch
 		const Bool large = getCheck( checkLargeBlips, pref->getRadarBlipSize() == RadarBlipSize_Large );
@@ -1251,6 +1313,19 @@ static void saveOptions()
 		(*pref)["PlayerInfoListFontSize"] = prefString;
 		TheInGameUI->refreshPlayerInfoListResources();
 	}
+
+#if defined(GENERALS_ONLINE)
+	//-------------------------------------------------------------------------------------------------
+	// Set Observer Notification Font Size
+	val = pref->getObserverNotificationFontSize();
+	if (val >= 0)
+	{
+		AsciiString prefString;
+		prefString.format("%d", val);
+		(*pref)["ObserverNotificationFontSize"] = prefString;
+		TheInGameUI->refreshObserverNotificationResources();
+	}
+#endif
 
 	//-------------------------------------------------------------------------------------------------
 	// Set User Font Scaling Percentage
@@ -1500,6 +1575,7 @@ static void initGameOptionsWindows()
 	checkNumericalHealth = findOptionsWindow( "OptionsMenu.wnd:CheckNumericalHealth" );
 	checkSmartPips = findOptionsWindow( "OptionsMenu.wnd:CheckSmartPips" );
 	checkSelectionCircle = findOptionsWindow( "OptionsMenu.wnd:CheckSelectionCircle" );
+	checkDefensesRangeCircle = findOptionsWindow( "OptionsMenu.wnd:CheckDefensesRangeCircle" );
 	checkObjectDecals = findOptionsWindow( "OptionsMenu.wnd:CheckObjectDecals" );
 	checkEasyMilitaryDrag = findOptionsWindow( "OptionsMenu.wnd:CheckEasyMilitaryDrag" );
 	checkSmartSelection = findOptionsWindow( "OptionsMenu.wnd:CheckSmartSelection" );
@@ -1524,6 +1600,19 @@ static void initGameOptionsWindows()
 	textEntryBloomStrength = findOptionsWindow( "OptionsMenu.wnd:TextEntryBloomStrength" );
 	checkBloomDebug = findOptionsWindow( "OptionsMenu.wnd:CheckBloomDebug" );
 	checkLaserRef = findOptionsWindow( "OptionsMenu.wnd:CheckLaserRef" );
+	checkShadowMap = findOptionsWindow( "OptionsMenu.wnd:CheckShadowMap" );
+	checkSpecular = findOptionsWindow( "OptionsMenu.wnd:CheckSpecular" );
+	checkNormalMaps = findOptionsWindow( "OptionsMenu.wnd:CheckNormalMaps" );
+	checkWaterReflections = findOptionsWindow( "OptionsMenu.wnd:CheckWaterReflections" );
+	checkDynamicLights = findOptionsWindow( "OptionsMenu.wnd:CheckDynamicLights", checkDynamicLightsID );
+	checkPixelLights = findOptionsWindow( "OptionsMenu.wnd:CheckPixelLights" );
+	checkSoftParticles = findOptionsWindow( "OptionsMenu.wnd:CheckSoftParticles" );
+	checkAmbientOcclusion = findOptionsWindow( "OptionsMenu.wnd:CheckAmbientOcclusion" );
+	checkHeightBlend = findOptionsWindow( "OptionsMenu.wnd:CheckHeightBlend" );
+	checkHQSky = findOptionsWindow( "OptionsMenu.wnd:CheckHQSky" );
+	checkVSync = findOptionsWindow( "OptionsMenu.wnd:CheckVSync" );
+	checkLowLatency = findOptionsWindow( "OptionsMenu.wnd:CheckLowLatency" );
+	checkSmoothUnitMotion = findOptionsWindow( "OptionsMenu.wnd:CheckSmoothUnitMotion" );
 
 	if (ButtonGameOptions)
 	{
@@ -1555,6 +1644,7 @@ static void initGameOptionsWindows()
 	setCheckText( checkNumericalHealth, "GUI:NumericalHealth", L"Show health as numbers", "TOOLTIP:NumericalHealth", L"Writes the hit points next to the health bar" );
 	setCheckText( checkSmartPips, "GUI:SmartPips", L"Always show ammo and cargo pips", "TOOLTIP:SmartPips", L"Shows ammo and passenger pips without selecting the unit" );
 	setCheckText( checkSelectionCircle, "GUI:SelectionCircle", L"Selection ring under units", "TOOLTIP:SelectionCircle", L"Draws a ring on the ground under selected units" );
+	setCheckText( checkDefensesRangeCircle, "GUI:DefensesRangeCircle", L"Attack range ring while placing", "TOOLTIP:DefensesRangeCircle", L"Rings the attack range of an armed structure while you position it" );
 	setCheckText( checkObjectDecals, "GUI:ObjectDecals", L"Object decals", "TOOLTIP:ObjectDecals", L"Draws the ground decals objects ask for" );
 	setCheckText( checkEasyMilitaryDrag, "GUI:EasyMilitaryDrag", L"Drag select skips builders", "TOOLTIP:EasyMilitaryDrag", L"A drag box that holds combat units leaves dozers and workers out" );
 	setCheckText( checkSmartSelection, "GUI:SmartSelection", L"Smart selection", "TOOLTIP:SmartSelection", L"Selecting a mixed group shows the command bar of the unit type you pick" );
@@ -1569,6 +1659,19 @@ static void initGameOptionsWindows()
 	setCheckText( checkBloomDebug, "GUI:BloomDebug", L"Debug view", "TOOLTIP:BloomDebug", L"Shows only the glow buffer on black" );
 	setTooltip( textEntryBloomStrength, "TOOLTIP:BloomStrength", L"0 to 100. How bright the glow is." );
 	setCheckText( checkLaserRef, "GUI:LaserRef", L"Lasers light the ground", "TOOLTIP:LaserRef", L"Laser beams cast a colored light on the terrain along their length" );
+	setCheckText( checkSpecular, "GUI:Specular", L"Specular highlights", "TOOLTIP:Specular", L"Vehicles and structures catch a highlight from the sun, brightest on metal and gone in shadow. Needs a Direct3D 9 card." );
+	setCheckText( checkNormalMaps, "GUI:NormalMaps", L"Surface detail", "TOOLTIP:NormalMaps", L"Panels, rivets and plating on vehicles and structures, and the ground's grain, catch and lose the sun's light. Uses a texture's normal map where one exists. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkWaterReflections, "GUI:WaterReflections", L"Water reflections", "TOOLTIP:WaterReflections", L"Lakes and seas mirror the cliffs, trees, units and buildings around them. Needs Smooth water and a Direct3D 9 card." );
+	setCheckText( checkDynamicLights, "GUI:DynamicLights", L"Dynamic lights", "TOOLTIP:DynamicLights", L"Explosions, muzzle flashes and lasers light the ground, units and buildings around them." );
+	setCheckText( checkPixelLights, "GUI:PixelLights", L"Per-pixel lights", "TOOLTIP:PixelLights", L"Dynamic lights fall in smooth circles that follow the ground's detail, instead of blocky patches. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkLowLatency, "GUI:LowLatency", L"Low latency mode", "TOOLTIP:LowLatency", L"Lets the game prepare only one frame ahead of the graphics card, so the screen answers the mouse sooner. Can lower the frame rate a little. Needs the Direct3D 9 build." );
+	setCheckText( checkSmoothUnitMotion, "GUI:SmoothUnitMotion", L"Smooth unit motion", "TOOLTIP:SmoothUnitMotion", L"Above 30 frames a second, units, projectiles and turrets glide between game updates instead of stepping 30 times a second. Single player, skirmish and replays." );
+	setCheckText( checkVSync, "GUI:VSync", L"Vertical sync", "TOOLTIP:VSync", L"Waits for the monitor's refresh before showing each frame, which stops tearing but can add a little input delay." );
+	setCheckText( checkAmbientOcclusion, "GUI:AmbientOcclusion", L"Ambient occlusion", "TOOLTIP:AmbientOcclusion", L"Creases, corners and the ground where units and buildings stand fall into soft shade. Off while anti-aliasing is on. Needs a Direct3D 9 card with Shader Model 2.0a or later." );
+	setCheckText( checkHeightBlend, "GUI:HeightBlend", L"Height blending", "TOOLTIP:HeightBlend", L"Where two terrain textures meet, the taller one's stones and clumps push into the other instead of a soft fade. Needs a Direct3D 9 card." );
+	setCheckText( checkHQSky, "GUI:HQSky", L"HQ sky", "TOOLTIP:HQSky", L"Cloud shadows drift softly, change shape as they go and never repeat, instead of sliding as one tiled pattern. Needs Cloud shadows and a Direct3D 9 card." );
+	setCheckText( checkSoftParticles, "GUI:SoftParticles", L"Soft particles", "TOOLTIP:SoftParticles", L"Smoke, dust and fire fade where they meet the ground and buildings, instead of cutting a hard line. Needs a Direct3D 9 card." );
+	setCheckText( checkShadowMap, "GUI:ShadowMap", L"Shadow mapping", "TOOLTIP:ShadowMap", L"Soft shadows shaped like their objects, falling on ground, bridges, units and buildings. 3D and 2D Shadows still choose which objects cast. Needs a Direct3D 9 card." );
 
 	setTooltip( comboBoxHealthBars, "TOOLTIP:HealthBars", L"Which units draw a health bar" );
 	setTooltip( comboBoxAlliedDecals, "TOOLTIP:AlliedDecals", L"Show where allies aim their general powers, in their player or faction color" );
@@ -1877,15 +1980,10 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	// populate anti aliasing modes
 	AsciiString selectedAliasingMode = (*pref)["AntiAliasing"];
-	GadgetComboBoxReset(comboBoxAntiAliasing);
-	AsciiString temp;
-	Int i=0;
-	for (; i < OptionPreferences::AntiAliasingMode_Count; ++i)
-	{
-		temp.format("GUI:AntiAliasing%d", i);
-		str = TheGameText->fetch( temp );
-		index = GadgetComboBoxAddEntry(comboBoxAntiAliasing, str, color);
-	}
+	static const WideChar *const AntiAliasingFallbacks[OptionPreferences::AntiAliasingMode_Count] = { L"Off", L"2x", L"4x", L"8x" };
+	addComboEntries( comboBoxAntiAliasing, "GUI:AntiAliasing", AntiAliasingFallbacks, OptionPreferences::AntiAliasingMode_Count, OptionPreferences::AntiAliasingMode_Count - 1 );
+	setLabelText( "OptionsMenu.wnd:AntiAliasingLabel", "GUI:AntiAliasing", L"Anti-aliasing" );
+	setTooltip( comboBoxAntiAliasing, "TOOLTIP:AntiAliasing", L"Smooths jagged edges. Ambient occlusion needs it off, and soft particles fade only against the ground while it is on." );
 	Int val = atoi(selectedAliasingMode.str());
 	Int pos = 0;
 
@@ -1927,7 +2025,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	UnsignedInt displayWidth = TheDisplay->getWidth();
 	UnsignedInt displayHeight = TheDisplay->getHeight();
 
-	for( i = 0; i < numResolutions; ++i )
+	for( Int i = 0; i < numResolutions; ++i )
 	{	Int xres,yres,bitDepth;
 		TheDisplay->getDisplayModeDescription(i,&xres,&yres,&bitDepth);
 		str.format(L"%d x %d",xres,yres);
@@ -1992,6 +2090,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GadgetCheckBoxSetChecked( checkNoDynamicLod, !TheGlobalData->m_enableDynamicLOD);
 
 	GadgetCheckBoxSetChecked( checkHeatEffects, TheGlobalData->m_useHeatEffects);
+
+	setCheck( checkVSync, WW3D::Is_VSync_On() );
 
 	GadgetCheckBoxSetChecked( checkUnlockFps, !TheGlobalData->m_useFpsLimit);
 
@@ -2122,8 +2222,12 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		buttonFirewallRefresh->winEnable(FALSE);
 
-		if (comboBoxDetail)
-			comboBoxDetail->winEnable(FALSE);
+		// Trees are placed and draw modules chosen as the map loads, so these wait for the next one
+		if (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL)
+		{
+			enableWindow( checkProps, FALSE );
+			enableWindow( checkExtraAnimations, FALSE );
+		}
 
 		if (comboBoxResolution)
 			comboBoxResolution->winEnable(FALSE);
@@ -2299,6 +2403,12 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 				GameWindow *control = (GameWindow *)mData1;
 				Int controlID = control->winGetWindowId();
 
+				if (controlID == comboBoxAntiAliasingID)
+				{
+					updateGameOptionsEnables();
+					break;
+				}
+
 				if (controlID == comboBoxDetailID)
 				{
 					Int index;
@@ -2384,7 +2494,8 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				cancelGameOptions();
 			}
-			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID )
+			else if (controlID == checkGridHotkeysID || controlID == checkKeyboardOverlayBackdropID || controlID == checkBloomID ||
+				controlID == checkDynamicLightsID || controlID == checkCloudShadowsID )
 			{
 				updateGameOptionsEnables();
 			}

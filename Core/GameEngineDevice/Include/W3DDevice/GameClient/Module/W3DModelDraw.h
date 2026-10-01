@@ -391,7 +391,7 @@ public:
 	virtual void setTerrainDecal(TerrainDecalType type) override;
 	// TheSuperHackers @feature Selection ring, kept in its own slot so it does not evict the
 	// horde or chem suit decal while a unit is selected.
-	virtual void setSelectionDecal(Bool enable, Real radius) override;
+	virtual void setSelectionDecal(Bool enable, Real radius, Color color, Bool footprint = FALSE) override;
 
 	virtual Bool isVisible() const override;
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override;
@@ -404,6 +404,7 @@ public:
 	virtual Bool clientOnly_getRenderObjBoneTransform(const AsciiString & boneName,Matrix3D * set_tm) const override;
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 	virtual Int clientOnly_getSubObjectNames(AsciiString* names, Int maxNames) const override;
+	virtual Bool clientOnly_getModelNameAndCenter(AsciiString* name, Coord3D* center) const override;
 #endif
 	virtual Int getPristineBonePositionsForConditionState(const ModelConditionFlags& condition, const char* boneNamePrefix, Int startIndex, Coord3D* positions, Matrix3D* transforms, Int maxBones) const override;
 	virtual Int getCurrentBonePositions(const char* boneNamePrefix, Int startIndex, Coord3D* positions, Matrix3D* transforms, Int maxBones) const override;
@@ -475,6 +476,7 @@ protected:
 	void setModelState(const ModelConditionInfo* newState);
 	const ModelConditionInfo* findBestInfo(const ModelConditionFlags& c) const;
 	void handleClientTurretPositioning();
+	void computeDrawnTurretAngles(Real* angles, Real* pitches);
 	void handleClientRecoil();
 	void recalcBonesForClientParticleSystems();
 	void stopClientParticleSystems();
@@ -555,6 +557,8 @@ private:
 	// stays selected.
 	Bool													m_selectionDecalWanted;
 	Real													m_selectionDecalRadius;
+	Color													m_selectionDecalColor;
+	Bool													m_selectionDecalFootprint;
 	// TheSuperHackers @feature Display decal from the template, in its own slot so it coexists
 	// with the object's shadow.
 	Shadow*												m_objectDecal;
@@ -566,6 +570,10 @@ private:
 	Bool													m_pauseAnimation;
 	Int														m_animationMode;
 	Bool													m_isFirstDrawModule;
+	Real													m_drawnTurretAngle[MAX_TURRETS][2];	///< turret angle one logic frame back, and at m_drawnTurretFrame
+	Real													m_drawnTurretPitch[MAX_TURRETS][2];	///< turret pitch one logic frame back, and at m_drawnTurretFrame
+	UnsignedInt										m_drawnTurretFrame;
+	Bool													m_drawnTurretValid;
 
 	void adjustAnimation(const ModelConditionInfo* prevState, Real prevAnimFraction);
 	Real getCurrentAnimFraction() const;

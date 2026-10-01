@@ -660,6 +660,67 @@ private:
 EMPTY_DTOR(LightPulseFXNugget)
 
 //-------------------------------------------------------------------------------------------------
+// An expanding ring on the ground that bends the scene around it, for the blast of a large explosion.
+class ShockwaveFXNugget : public FXNugget
+{
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ShockwaveFXNugget, "ShockwaveFXNugget")
+public:
+
+	ShockwaveFXNugget() : m_radius(0), m_width(0), m_strength(0), m_strengthInPixels(FALSE), m_durationFrames(0)
+	{
+	}
+
+	virtual void doFXObj(const Object* primary, const Object* /*secondary*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createShockwave(primary->getPosition(), m_radius, m_width, m_strength, m_strengthInPixels, m_durationFrames);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	virtual void doFXPos(const Coord3D *primary, const Matrix3D* /*primaryMtx*/, const Real /*primarySpeed*/, const Coord3D * /*secondary*/, const Real /*overrideRadius*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createShockwave(primary, m_radius, m_width, m_strength, m_strengthInPixels, m_durationFrames);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	static void parse(INI *ini, void *instance, void* /*store*/, const void* /*userData*/)
+	{
+		static const FieldParse myFieldParse[] =
+		{
+			{ "Radius",						INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_radius ) },
+			{ "Width",						INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_width ) },
+			{ "Strength",					INI::parseReal,										nullptr, offsetof( ShockwaveFXNugget, m_strength ) },
+			{ "StrengthInPixels",			INI::parseBool,										nullptr, offsetof( ShockwaveFXNugget, m_strengthInPixels ) },
+			{ "Duration",					INI::parseDurationUnsignedInt,	nullptr, offsetof( ShockwaveFXNugget, m_durationFrames ) },
+			{ nullptr, nullptr, nullptr, 0 }
+		};
+
+		ShockwaveFXNugget* nugget = newInstance( ShockwaveFXNugget );
+		ini->initFromINI(nugget, myFieldParse);
+		((FXList*)instance)->addFXNugget(nugget);
+	}
+
+private:
+	Real					m_radius;
+	Real					m_width;
+	Real					m_strength;
+	Bool					m_strengthInPixels;
+	UnsignedInt		m_durationFrames;
+};
+EMPTY_DTOR(ShockwaveFXNugget)
+
+//-------------------------------------------------------------------------------------------------
 class ViewShakeFXNugget : public FXNugget
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ViewShakeFXNugget, "ViewShakeFXNugget")
@@ -1151,6 +1212,7 @@ static const FieldParse TheFXListFieldParse[] =
 	{ "RayEffect",									RayEffectFXNugget::parse, nullptr, 0},
 	{ "Tracer",											TracerFXNugget::parse, nullptr, 0},
 	{ "LightPulse",									LightPulseFXNugget::parse, nullptr, 0},
+	{ "Shockwave",									ShockwaveFXNugget::parse, nullptr, 0},
 	{ "ViewShake",									ViewShakeFXNugget::parse, nullptr, 0},
 	{ "TerrainScorch",							TerrainScorchFXNugget::parse, nullptr, 0},
 	{ "ParticleSystem",							ParticleSystemFXNugget::parse, nullptr, 0},

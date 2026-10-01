@@ -59,6 +59,8 @@ protected:
 
 	Int m_prevXIndex;
 	Int m_prevYIndex;
+
+	static void revertAbandonedPreview(void); ///< Re-push the doc's height map after a stroke is dropped.
 public:
 	Tool(Int toolID, Int cursorID);
 	virtual ~Tool();
@@ -70,7 +72,15 @@ public:
 	virtual void activate(); ///< Become the current tool.
 	virtual void deactivate(){}; ///< Become not the current tool.
 
-	virtual Bool followsTerrain() {return true;};	 ///< True if the tool tracks the terrain, generally false if it modifies the terrain heights.
+	/// Throw away a stroke that was started but never finished, because the tool got
+	/// swapped out from under it (a modifier key or a palette click between the mouse
+	/// down and the mouse up).  Unlike deactivate() this must be safe to call at any
+	/// time on any tool, so it only drops the tool's own in-progress edit buffers and
+	/// reverts their on-screen preview - no panel, selection, or other tool-switching
+	/// side effects.  Tools that hold no stroke state need not override it.
+	virtual void abandonStroke(void) {};
+
+	virtual Bool followsTerrain(void) {return true;};	 ///< True if the tool tracks the terrain, generally false if it modifies the terrain heights.
 
 	virtual void mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {}
 	virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {}

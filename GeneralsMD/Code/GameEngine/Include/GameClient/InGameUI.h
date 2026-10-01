@@ -53,6 +53,10 @@ class VideoBuffer;
 class VideoStreamInterface;
 class CommandButton;
 class SpecialPowerTemplate;
+#if defined(GENERALS_ONLINE)
+class Player;
+enum ScienceType CPP_11(: Int);
+#endif
 class WindowLayout;
 class Anim2DTemplate;
 class Anim2D;
@@ -509,6 +513,7 @@ public:  // ********************************************************************
 	virtual void update() override;														///< Update the UI by calling preDraw(), draw(), and postDraw()
 	virtual void reset() override;															///< Reset
 	//-----------------------------------------------------------------------------------------------
+	void validate();
 
 	// interface for the popup messages
 	virtual void popupMessage( const AsciiString& message, Int x, Int y, Int width, Bool pause, Bool pauseMusic);
@@ -518,7 +523,11 @@ public:  // ********************************************************************
 
 	// interface for messages to the user
 	// srj sez: passing as const-ref screws up varargs for some reason. dunno why. just pass by value.
+#if defined(GENERALS_ONLINE)
+	virtual void messageColor( Bool isChat, const RGBColor *rgbColor, UnicodeString format, ... );	///< display a colored message to the user
+#else
 	virtual void messageColor( const RGBColor *rgbColor, UnicodeString format, ... );	///< display a colored message to the user
+#endif
 	virtual void messageNoFormat( const UnicodeString& message ); ///< display a message to the user
 	virtual void messageNoFormat( const RGBColor *rgbColor, const UnicodeString& message ); ///< display a colored message to the user
 	virtual void message( UnicodeString format, ... );				  ///< display a message to the user
@@ -558,6 +567,14 @@ public:  // ********************************************************************
 	// only when toggled on.
 	virtual void toggleArmorSetOverlay( void ) { m_armorSetOverlayOn = !m_armorSetOverlayOn; }
 	virtual Bool isArmorSetOverlayOn( void ) const { return m_armorSetOverlayOn; }
+	// The W3D model each draw module has loaded, as a callout with a leader line to that model.
+	virtual void toggleModelNameOverlay( void ) { m_modelNameOverlayOn = !m_modelNameOverlayOn; }
+	virtual Bool isModelNameOverlayOn( void ) const { return m_modelNameOverlayOn; }
+	// Laser template name and W3DLaserDraw module tags, drawn at the middle of each beam.
+	virtual void toggleLaserNameOverlay( void ) { m_laserNameOverlayOn = !m_laserNameOverlayOn; }
+	virtual Bool isLaserNameOverlayOn( void ) const { return m_laserNameOverlayOn; }
+	virtual void toggleLaserBeamBlockOverlay( void ) { m_laserBeamBlockOverlayOn = !m_laserBeamBlockOverlayOn; }
+	virtual Bool isLaserBeamBlockOverlayOn( void ) const { return m_laserBeamBlockOverlayOn; }
 #endif
 	void freeMessageResources();				///< free resources for the ui messages
 	void freeCustomUiResources();				///< free resources for custom ui elements
@@ -774,6 +791,12 @@ public:  // ********************************************************************
 	virtual void refreshSystemTimeResources();
 	virtual void refreshGameTimeResources();
 	virtual void refreshPlayerInfoListResources();
+#if defined(GENERALS_ONLINE)
+	virtual void refreshObserverNotificationResources();
+	void toggleObserverOverlay();
+	void notifyGeneralPromotion( Player *player, ScienceType science );
+	void notifySpecialPowerUsed( Player *player, const SpecialPowerTemplate *powerTemplate );
+#endif
 
 	virtual void disableTooltipsUntil(UnsignedInt frameNum);
 	virtual void clearTooltipsDisabled();
@@ -799,6 +822,12 @@ private:
 	void drawSystemTime(Int &x, Int &y);
 	void drawGameTime();
 	void drawPlayerInfoList();
+#if defined(GENERALS_ONLINE)
+	void drawObserverNotifications();
+	void checkObserverMilestones();
+	void addObserverNotification( const UnicodeString& message, Color color );
+	void resetObserverNotifications();
+#endif
 
 public:
 	void registerWindowLayout(WindowLayout *layout); // register a layout for updates
@@ -878,8 +907,31 @@ protected:
 		DisplayString *displayString;						///< display string used to render the message
 		UnsignedInt timestamp;									///< logic frame message was created on
 		Color color;														///< color to render this in
+#if defined(GENERALS_ONLINE)
+		Bool isChat;														///< chat lives as long as GO settings say
+#endif
 	};
 	enum { MAX_UI_MESSAGES = 6 };
+
+#if defined(GENERALS_ONLINE)
+	struct ObserverNotification
+	{
+		UnicodeString message;
+		Color color;
+		UnsignedInt createdMs;
+		Bool active;
+	};
+
+	struct ObserverMilestone
+	{
+		Bool reachedLevel3;
+		Bool reachedLevel5;
+		Bool reached10kCPM;
+		Bool gotPower;
+		Bool gotHunted;
+	};
+	enum { MAX_OBSERVER_NOTIFICATIONS = 8 };
+#endif
 
 	struct MilitarySubtitleData
 	{
@@ -902,6 +954,8 @@ protected:
 
 	void destroyPlacementIcons();													///< Destroy placement icons
 	void handleBuildPlacements();													///< handle updating of placement icons based on mouse pos
+	Real getPlacementRangeCircleRadius( const ThingTemplate *build ) const;	///< widest weapon reach of the thing being placed, 0 when it has none
+	void updatePlacementRangeCircle( Drawable *icon );			///< put the range ring under a placement ghost, or take it away
 	void handleRadiusCursor();																	///< handle updating of "radius cursors" that follow the mouse pos
 
 	//void showDesignatorDecals(const SpecialPowerTemplate* powerTemplate);
@@ -921,7 +975,11 @@ protected:
 	void setMouseCursor(Mouse::MouseCursor c);
 
 
+#if defined(GENERALS_ONLINE)
+	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr, Bool isChat = FALSE );  ///< internal workhorse for adding plain text for messages
+#else
 	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr );  ///< internal workhorse for adding plain text for messages
+#endif
 	void removeMessageAtIndex( Int i );				///< remove the message at index i
 
 	void updateFloatingText();						///< Update function to move our floating text
@@ -1055,6 +1113,12 @@ protected:
 			LabelType_MoneyPerMinute,
 			LabelType_Rank,
 			LabelType_Xp,
+#if defined(GENERALS_ONLINE)
+			LabelType_SciencePoints,
+			LabelType_Kills,
+			LabelType_Losses,
+			LabelType_Power,
+#endif
 
 			LabelType_Count
 		};
@@ -1066,6 +1130,13 @@ protected:
 			ValueType_MoneyPerMinute,
 			ValueType_Rank,
 			ValueType_Xp,
+#if defined(GENERALS_ONLINE)
+			ValueType_SciencePoints,
+			ValueType_Kills,
+			ValueType_Losses,
+			ValueType_Power,
+			ValueType_Army,
+#endif
 			ValueType_Name,
 
 			ValueType_Count
@@ -1076,6 +1147,9 @@ protected:
 			LastValues();
 			UnsignedInt values[LabelType_Count][MAX_PLAYER_COUNT];
 			UnicodeString name[MAX_PLAYER_COUNT];
+#if defined(GENERALS_ONLINE)
+			UnicodeString army[MAX_PLAYER_COUNT];
+#endif
 		};
 
 		DisplayString *labels[LabelType_Count];
@@ -1092,6 +1166,14 @@ protected:
 	Color													m_playerInfoListValueColor;
 	Color													m_playerInfoListDropColor;
 	UnsignedInt										m_playerInfoListBackgroundAlpha;
+#if defined(GENERALS_ONLINE)
+	Bool													m_observerOverlayHidden;
+	std::vector<ObserverNotification>	m_observerNotifications;
+	ObserverMilestone							m_observerMilestones[MAX_PLAYER_COUNT];
+	DisplayString									*m_observerNotificationString;
+	Int														m_observerNotificationPointSize;
+	UnsignedInt										m_observerMilestoneCheckFrame;
+#endif
 
 	// message data
 	UIMessage										m_uiMessages[ MAX_UI_MESSAGES ];/**< messages to display to the user, the
@@ -1155,6 +1237,9 @@ protected:
 	Bool												m_commandSetOverlayOn;
 	Bool												m_weaponSetOverlayOn;
 	Bool												m_armorSetOverlayOn;
+	Bool												m_modelNameOverlayOn;
+	Bool												m_laserNameOverlayOn;
+	Bool												m_laserBeamBlockOverlayOn;
 #endif
 
 	Color												m_messageColor1;

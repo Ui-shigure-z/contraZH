@@ -34,6 +34,12 @@
 #include "WorldBuilderView.h"
 //
 // FeatherTool class.
+
+Bool FeatherTool::m_enableMirror;
+Bool FeatherTool::m_mirrorX;   // left / right
+Bool FeatherTool::m_mirrorY;   // top  / bottom
+Bool FeatherTool::m_mirrorDiag;   // diagonal-only (XY corner)
+
 Int FeatherTool::m_feather = 0;
 Int FeatherTool::m_rate = 0;
 Int FeatherTool::m_radius = 0;
@@ -97,6 +103,20 @@ void FeatherTool::setRadius(Int radius)
 	}
 };
 
+/// Throw away an uncommitted stroke.
+/** The tool was swapped out between the mouse down and the mouse up, so the edit
+copies would otherwise stay ref'd until the next mouseDown released them. */
+void FeatherTool::abandonStroke(void)
+{
+	if (m_htMapEditCopy == NULL && m_htMapFeatherCopy == NULL && m_htMapRateCopy == NULL) {
+		return;
+	}
+	REF_PTR_RELEASE(m_htMapEditCopy);
+	REF_PTR_RELEASE(m_htMapFeatherCopy);
+	REF_PTR_RELEASE(m_htMapRateCopy);
+	revertAbandonedPreview();
+}
+
 /// Start tool.
 /** Setup the tool to start brushing - make a copy of the height map
 to edit, another copy because we need it :), and call mouseMovedDown. */
@@ -105,8 +125,11 @@ void FeatherTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 	if (m != TRACK_L) return;
 
 //	WorldHeightMapEdit *pMap = pDoc->GetHeightMap();
-	// just in case, release it.
+	// just in case, release them.  (All three are overwritten below, so all three
+	// have to be released or a stroke that never got its mouseUp leaks them.)
 	REF_PTR_RELEASE(m_htMapEditCopy);
+	REF_PTR_RELEASE(m_htMapFeatherCopy);
+	REF_PTR_RELEASE(m_htMapRateCopy);
 	m_htMapEditCopy = pDoc->GetHeightMap()->duplicate();
 	m_htMapFeatherCopy = pDoc->GetHeightMap()->duplicate();
 	m_htMapRateCopy = pDoc->GetHeightMap()->duplicate();
@@ -128,6 +151,14 @@ void FeatherTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 {
 	if (m != TRACK_L) return;
 
+	// No stroke in progress (the tool was swapped in mid-drag, so it never got the
+	// matching mouseDown) - nothing to commit.
+	if (m_htMapEditCopy == NULL) {
+		REF_PTR_RELEASE(m_htMapFeatherCopy);
+		REF_PTR_RELEASE(m_htMapRateCopy);
+		return;
+	}
+
 	WBDocUndoable *pUndo = new WBDocUndoable(pDoc, m_htMapEditCopy);
 	pDoc->AddAndDoUndoable(pUndo);
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
@@ -136,113 +167,144 @@ void FeatherTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 	REF_PTR_RELEASE(m_htMapRateCopy);
 }
 
+
+void FeatherTool::applyFeatherAt(CPoint ndx, IRegion2D& partialRange, Bool& redoRate)
+{
+    int brushWidth = m_feather;
+    int sub = brushWidth / 2;
+    int add = brushWidth - sub;
+
+    Int i, j;
+    for (i = ndx.x - sub; i < ndx.x + add; i++) {
+        if (i < 0 || i >= m_htMapEditCopy->getXExtent()) continue;
+        for (j = ndx.y - sub; j < ndx.y + add; j++) {
+            if (j < 0 || j >= m_htMapEditCopy->getYExtent()) continue;
+
+            Real blendFactor = calcRoundBlendFactor(ndx, i, j, m_feather, 0);
+            if (blendFactor > 0.0f) {
+                Int rate = m_htMapRateCopy->getHeight(i, j);
+                rate += blendFactor * m_rate * 5;
+                if (rate > 255) { rate = 255; redoRate = true; }
+                m_htMapRateCopy->setHeight(i, j, rate);
+
+                Int total = 0;
+                Real numSamples = 0;
+                Int radius = m_radius;
+                if (radius < 1) radius = 1;
+                if (radius > FeatherOptions::MAX_RADIUS) radius = FeatherOptions::MAX_RADIUS;
+
+                Int ii, jj;
+                for (ii = i - radius; ii < i + radius + 1; ii++) {
+                    for (jj = j - radius; jj < j + radius + 1; jj++) {
+                        Real dist = sqrt((float)((ii-i)*(ii-i) + (jj-j)*(jj-j)));
+                        if (dist < 1.0f) dist = 1.0f;
+                        // factor unused here but kept for clarity; clamped sampling below
+                        int iNdx = ii; if (iNdx < 0) iNdx = 1;
+                        if (iNdx >= m_htMapEditCopy->getXExtent()) iNdx = m_htMapEditCopy->getXExtent() - 1;
+                        int jNdx = jj; if (jNdx < 0) jNdx = 1;
+                        if (jNdx >= m_htMapEditCopy->getYExtent()) jNdx = m_htMapEditCopy->getYExtent() - 1;
+                        total += m_htMapFeatherCopy->getHeight(iNdx, jNdx);
+                        numSamples += 1;
+                    }
+                }
+                total = floor(total / numSamples);
+                UnsignedByte origHeight = m_htMapFeatherCopy->getHeight(i, j);
+                float rateF = rate / 255.0f;
+                total = floor(origHeight * (1.0f - rateF) + total * rateF + 0.5f);
+                m_htMapEditCopy->setHeight(i, j, total);
+            }
+        }
+    }
+
+    // Expand dirty region
+    if (ndx.x - brushWidth < partialRange.lo.x) partialRange.lo.x = ndx.x - brushWidth;
+    if (ndx.x + brushWidth > partialRange.hi.x) partialRange.hi.x = ndx.x + brushWidth;
+    if (ndx.y - brushWidth < partialRange.lo.y) partialRange.lo.y = ndx.y - brushWidth;
+    if (ndx.y + brushWidth > partialRange.hi.y) partialRange.hi.y = ndx.y + brushWidth;
+}
+
 /// Execute the tool.
 /** Smooth the height map at the current point. */
 void FeatherTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
-	Coord3D cpt;
-	pView->viewToDocCoords(viewPt, &cpt);
-	DrawObject::setFeedbackPos(cpt);
-	if (m != TRACK_L) return;
+    Coord3D cpt;
+    pView->viewToDocCoords(viewPt, &cpt);
+    DrawObject::setFeedbackPos(cpt);
+    pView->Invalidate();
+    pDoc->updateAllViews();
+    if (m != TRACK_L) return;
 
-	int brushWidth = m_feather;
+    // The stroke buffers are built in mouseDown.  A fast tool swap can retarget the
+    // tool between the down and the move, so the move arrives without them; bail
+    // rather than dereference null.
+    if (m_htMapEditCopy == NULL || m_htMapFeatherCopy == NULL || m_htMapRateCopy == NULL)
+    {
+        return;
+    }
 
-	CPoint ndx;
-	getCenterIndex(&cpt, m_feather, &ndx, pDoc);
+    CPoint ndx;
+    getCenterIndex(&cpt, m_feather, &ndx, pDoc);
+    m_prevXIndex = ndx.x;
+    m_prevYIndex = ndx.y;
 
-	//if (m_prevXIndex == ndx.x && m_prevYIndex == ndx.y) return;
+    int brushWidth = m_feather;
+    IRegion2D partialRange;
+    partialRange.lo.x = ndx.x - brushWidth;
+    partialRange.hi.x = ndx.x + brushWidth;
+    partialRange.lo.y = ndx.y - brushWidth;
+    partialRange.hi.y = ndx.y + brushWidth;
 
-	m_prevXIndex = ndx.x;
-	m_prevYIndex = ndx.y;
+    Bool redoRate = false;
 
-	int sub = brushWidth/2;
-	int add = brushWidth-sub;
+    // Primary stroke
+    applyFeatherAt(ndx, partialRange, redoRate);
 
-	// round brush
-	Int i, j;
-	Bool redoRate = false;
+    // Mirror across X (left/right)
+    if (m_enableMirror && (m_mirrorX || m_mirrorDiag))
+    {
+        CPoint mirrorX;
+        mirrorX.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+        mirrorX.y = ndx.y;
+        if (m_mirrorX)
+            applyFeatherAt(mirrorX, partialRange, redoRate);
 
-	for (i= ndx.x-sub; i< ndx.x+add; i++) {
-		if (i<0 || i>=m_htMapEditCopy->getXExtent()) {
-			continue;
-		}
-		for (j=ndx.y-sub; j<ndx.y+add; j++) {
-			if (j<0 || j>=m_htMapEditCopy->getYExtent()) {
-				continue;
-			}
-			Real blendFactor;
-			blendFactor = calcRoundBlendFactor(ndx, i, j, m_feather, 0);
-			// m_htMapEditCopy is the output.
-			// m_htMapFeatherCopy is the original input.
-			// m_htMapRateCopy is how much we use of the feathered data.
-			if (blendFactor > 0.0f) {
-				Int rate = m_htMapRateCopy->getHeight(i, j);
-				rate += blendFactor * m_rate*5;
-				if (rate>255) {
-					rate = 255;
-					redoRate = true;
-				}
-				m_htMapRateCopy->setHeight(i,j,rate);
-				Int total=0;
-				Real numSamples=0;
-				Int ii, jj;
-				Int radius = m_radius;
-				if (radius<1) radius=1;
-				if (radius>FeatherOptions::MAX_RADIUS) radius = FeatherOptions::MAX_RADIUS;
-				for (ii = i-radius; ii < i+radius+1; ii++) {
-					for (jj = j-radius; jj<j+radius+1; jj++) {
-						Real factor;
-						if (i==ii && j==jj) {
-							factor = 1.0f;
-						} else {
-							Real dist = sqrt((ii-i)*(ii-i)+(jj-j)*(jj-j));
-							if (dist<1.0) dist = 1.0;
-							if (dist>radius) {
-								factor = 0;
-							} else {
-								factor = 1.0f - (dist-1)/radius;
-							}
-						}
-						int iNdx = ii;
-						if (iNdx<0) iNdx = 1;
-						if (iNdx >=m_htMapEditCopy->getXExtent()) {
-							iNdx = m_htMapEditCopy->getXExtent()-1;
-						}
-						int jNdx = jj;
-						if (jNdx<0) jNdx = 1;
-						if (jNdx >=m_htMapEditCopy->getYExtent()) {
-							jNdx = m_htMapEditCopy->getYExtent()-1;
-						}
-						total += m_htMapFeatherCopy->getHeight(iNdx, jNdx);
-						numSamples+=1;
-					}
-				}
-				total = floor((total/numSamples));
-				UnsignedByte origHeight =  m_htMapFeatherCopy->getHeight(i, j);
-				float rateF = rate/255.0;
-				total = floor(origHeight*(1.0f-rateF) + total*rateF + 0.5f);
-				m_htMapEditCopy->setHeight(i, j, total);
-				pDoc->invalCell(i, j);
-			}
-		}
-	}
+        // Mirror across Y (top/bottom)
+        if (m_mirrorY)
+        {
+            CPoint mirrorY;
+            mirrorY.x = ndx.x;
+            mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+            applyFeatherAt(mirrorY, partialRange, redoRate);
+        }
 
-	IRegion2D partialRange;
-	partialRange.lo.x = ndx.x - brushWidth;
-	partialRange.hi.x = ndx.x + brushWidth;
-	partialRange.lo.y = ndx.y - brushWidth;
-	partialRange.hi.y = ndx.y + brushWidth;
-	pDoc->updateHeightMap(m_htMapEditCopy, true, partialRange);
-	if (redoRate) {
-		Int size = m_htMapRateCopy->getXExtent() * m_htMapRateCopy->getYExtent();
-		HeightSampleType *pData = m_htMapRateCopy->getDataPtr();
-		HeightSampleType *pFeather = m_htMapFeatherCopy->getDataPtr();
-		HeightSampleType *pEdit = m_htMapEditCopy->getDataPtr();
-		Int i;
-		for (i=0; i<size; i++) {
-			*pData++ = 0;
-			*pFeather = *pEdit;
-			pFeather++; pEdit++;
-		}
-	}
+        // Diagonal corner — when both axes or diag-only toggle
+        if (m_mirrorDiag || (m_mirrorX && m_mirrorY))
+        {
+            CPoint mirrorXY;
+            mirrorXY.x = m_htMapEditCopy->getXExtent() - 1 - ndx.x;
+            mirrorXY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+            applyFeatherAt(mirrorXY, partialRange, redoRate);
+        }
+    }
+    else if (m_enableMirror && m_mirrorY)
+    {
+        CPoint mirrorY;
+        mirrorY.x = ndx.x;
+        mirrorY.y = m_htMapEditCopy->getYExtent() - 1 - ndx.y;
+        applyFeatherAt(mirrorY, partialRange, redoRate);
+    }
+
+    pDoc->updateHeightMap(m_htMapEditCopy, true, partialRange);
+
+    if (redoRate) {
+        Int size = m_htMapRateCopy->getXExtent() * m_htMapRateCopy->getYExtent();
+        HeightSampleType *pData    = m_htMapRateCopy->getDataPtr();
+        HeightSampleType *pFeather = m_htMapFeatherCopy->getDataPtr();
+        HeightSampleType *pEdit    = m_htMapEditCopy->getDataPtr();
+        for (Int i = 0; i < size; i++) {
+            *pData++ = 0;
+            *pFeather = *pEdit;
+            pFeather++; pEdit++;
+        }
+    }
 }

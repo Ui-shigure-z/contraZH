@@ -46,6 +46,8 @@
 #include "GameClient/Color.h"
 
 #include "W3DDevice/GameClient/W3DAssetManager.h"
+#include "W3DDevice/GameClient/Module/W3DModelDraw.h"	// W3DModelDrawModuleData (per-module walk)
+#include "W3DDevice/GameClient/Module/W3DTreeDraw.h"		// W3DTreeDrawModuleData (tree fallback)
 #include "WW3D2/dx8wrapper.h"
 #include "WWLib/TARGA.h"
 
@@ -87,9 +89,28 @@ static UnsignedByte * saveSurface(IDirect3DSurface8 *surface)
 
 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
+#if defined(BUILD_WITH_D3D9)
+	// D3D9 dropped CreateImageSurface/CopyRects: read the render target back through a
+	// system-memory surface instead.
+	tempSurface=nullptr;
+	HRESULT hr=m_pDev->CreateOffscreenPlainSurface(desc.Width,desc.Height,desc.Format,D3DPOOL_SYSTEMMEM,&tempSurface,nullptr);
+	if (SUCCEEDED(hr))
+	{
+		hr=m_pDev->GetRenderTargetData(surface,tempSurface);
+	}
+	if (FAILED(hr))
+	{
+		if (tempSurface)
+		{
+			tempSurface->Release();
+		}
+		return nullptr;
+	}
+#else
 	HRESULT hr=m_pDev->CreateImageSurface(  desc.Width,desc.Height,desc.Format, &tempSurface);
 
 	hr=m_pDev->CopyRects(surface,nullptr,0,tempSurface,nullptr);
+#endif
 
 	D3DLOCKED_RECT lrect;
 
@@ -133,7 +154,7 @@ static UnsignedByte * saveSurface(IDirect3DSurface8 *surface)
 
 #else
 
-	static UnsignedByte bgraImage[3*PREVIEW_WIDTH*PREVIEW_HEIGHT];
+	static UnsignedByte bgraImage[3*(2*PREVIEW_WIDTH)*(2*PREVIEW_HEIGHT)];	// sized for the 2x Qt render
 	//bmp is same byte order
 	for (y=0; y<height; y++)
 	{
@@ -180,28 +201,79 @@ static UnsignedByte * saveSurface(IDirect3DSurface8 *surface)
 #endif
 }
 
-// return an array of BGRA pixels
-static UnsignedByte * generatePreview( const ThingTemplate *tt )
+// Create the render object to preview for this template, walking EVERY draw module and taking
+// the first one that yields a model the asset manager can actually create. Returns NULL if none
+// can be.
+//
+// getBestModelNameWBPrev() only ever consults draw module 0, which loses the preview outright
+// whenever module 0 isn't the one carrying the visible model. A map.ini that retargets an object
+// does exactly that: "AddModule" APPENDS draw modules, so the module at index 0 is whatever the
+// base template had -- commonly a marker/mound module, or one whose state says "Model = NONE"
+// (stored literally as "none", so Create_Render_Obj just fails). The real replacement model then
+// sits at index 1+ and never got looked at, so the panel showed "(no preview)" for precisely the
+// objects the user had retargeted.
+//
+// This mirrors what the viewport already does in WbView3d::invalObjectInView: try each module,
+// skip empty / "No ..." names, and tolerate an individual Create_Render_Obj failure instead of
+// giving up on the template.
+static RenderObjClass *createPreviewModel( const ThingTemplate *tt )
 {
-	// find the default model to preview
-	RenderObjClass *model = nullptr;
-	Real scale = 1.0f;
-	AsciiString modelName = "No Model Name";
-	if (tt)
+	if (tt == NULL)
 	{
-		ModelConditionFlags state;
-		state.clear();
-		WbView3d *p3View = CWorldBuilderDoc::GetActiveDoc()->GetActive3DView();
-		modelName = p3View->getBestModelName(tt, state);
-		scale = tt->getAssetScale();
+		return NULL;
 	}
-	// set render object, or create if we need to
-	if( modelName.isEmpty() == FALSE &&
-			strncmp( modelName.str(), "No ", 3 ) )
+
+	ModelConditionFlags state;
+	state.clear();
+
+	WW3DAssetManager *pMgr = W3DAssetManager::Get_Instance();
+	if (pMgr == NULL)
 	{
-	 	WW3DAssetManager *pMgr = W3DAssetManager::Get_Instance();
-		model = pMgr->Create_Render_Obj(modelName.str());
-		if (model)
+		return NULL;
+	}
+
+	const ModuleInfo &draws = tt->getDrawModuleInfo();
+	for (Int i = 0; i < draws.getCount(); ++i)
+	{
+		const ModuleData *mdd = draws.getNthData( i );
+		AsciiString modelName;
+
+		const W3DModelDrawModuleData *md = mdd ? mdd->getAsW3DModelDrawModuleData() : NULL;
+		if (md != NULL)
+		{
+			modelName = md->getBestModelNameForWB( state );
+		}
+		else
+		{
+			// Same W3DTreeDraw fallback getBestModelNameWBPrev has, kept so optimized trees
+			// still preview.
+			const W3DTreeDrawModuleData *td = mdd ? mdd->getAsW3DTreeDrawModuleData() : NULL;
+			if (td != NULL)
+			{
+				modelName = td->m_modelName;
+			}
+		}
+
+		if (modelName.isEmpty() || strncmp( modelName.str(), "No ", 3 ) == 0)
+		{
+			continue;
+		}
+		RenderObjClass *model = pMgr->Create_Render_Obj( modelName.str() );
+		if (model != NULL)
+		{
+			return model;
+		}
+	}
+	return NULL;
+}
+
+// return an array of BGRA pixels
+static UnsignedByte * generatePreview( const ThingTemplate *tt, Int renderSize = PREVIEW_WIDTH )
+{
+	// find the model to preview -- the first draw module that resolves to a creatable one.
+	RenderObjClass *model = createPreviewModel( tt );
+	if (model)
+	{
 		{
 			const AABoxClass bbox = model->Get_Bounding_Box();
 //			Real height = bbox.Extent.Z;
@@ -209,16 +281,22 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 			Real dist = sphere.Radius*0.5;
 			model->Set_Position(Vector3(-sphere.Center.X, -sphere.Center.Y, -sphere.Center.Z));
 
-			// Create reflection texture
-			TextureClass *objectTexture = DX8Wrapper::Create_Render_Target (PREVIEW_WIDTH, PREVIEW_HEIGHT);
+			// Create render target with its own depth buffer so it works when
+			// the main back buffer uses MSAA (mismatched multisample types
+			// between render target and depth surface cause D3D8 to fail).
+			TextureClass *objectTexture = NULL;
+			ZTextureClass *objectDepth = NULL;
+			DX8Wrapper::Create_Render_Target(renderSize, renderSize,
+				WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D16, &objectTexture, &objectDepth);
 			if (!objectTexture)
 			{
+				REF_PTR_RELEASE(objectDepth);
 				model->Release_Ref();
 				return nullptr;
 			}
 
-			// Set the render target
-			DX8Wrapper::Set_Render_Target_With_Z(objectTexture);
+			// Set the render target with its paired depth buffer
+			DX8Wrapper::Set_Render_Target_With_Z(objectTexture, objectDepth);
 
 			// create the camera
 			Bool orthoCamera = false;
@@ -255,6 +333,7 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 
 			REF_PTR_RELEASE(surface);
 
+			REF_PTR_RELEASE(objectDepth);
 			REF_PTR_RELEASE(objectTexture);
 			REF_PTR_RELEASE(camera);
 			return data;
@@ -263,6 +342,17 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 
 	return nullptr;
 }
+
+#ifdef RTS_HAS_QT
+// Qt Object panel entry point: reuse generatePreview() (the exact MFC render path).
+const UnsignedByte *ObjectPreview::qtRenderTemplatePreview(const ThingTemplate *tTempl)
+{
+	// 2x the MFC render: the Qt preview labels are larger than the old 85x78 control,
+	// so the center-quarter crop needs the extra pixels to stay sharp (same camera and
+	// framing -- the crop is proportional).
+	return generatePreview(tTempl, 2*PREVIEW_WIDTH);
+}
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 // ObjectPreview message handlers

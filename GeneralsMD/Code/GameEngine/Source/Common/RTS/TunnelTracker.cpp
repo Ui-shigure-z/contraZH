@@ -547,20 +547,19 @@ void TunnelTracker::crc( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 /** Xfer method
 	* Version Info:
-	* 1: Initial version */
+	* 1: Initial version
+	* 2: Auto-pop exit tunnels */
 // ------------------------------------------------------------------------------------------------
 void TunnelTracker::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
 	// tunnel object id list
 	xfer->xferSTLObjectIDList( &m_tunnelIDs );
-
-	xfer->xferSTLObjectIDList( &m_autoExitIDs );
 
 	// contain list count
 	xfer->xferInt( &m_containListSize );
@@ -596,8 +595,13 @@ void TunnelTracker::xfer( Xfer *xfer )
 
 	// tunnel count
 	xfer->xferUnsignedInt( &m_tunnelCount );
-	xfer->xferUnsignedInt( &m_tunnelAutoExitCount );
-	xfer->xferObjectID( &m_nextTunnelToPop );
+
+	if( version >= 2 )
+	{
+		xfer->xferSTLObjectIDList( &m_autoExitIDs );
+		xfer->xferUnsignedInt( &m_tunnelAutoExitCount );
+		xfer->xferObjectID( &m_nextTunnelToPop );
+	}
 
 }
 

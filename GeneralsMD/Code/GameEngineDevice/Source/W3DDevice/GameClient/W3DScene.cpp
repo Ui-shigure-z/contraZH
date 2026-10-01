@@ -33,6 +33,8 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <stdlib.h>
+#include <algorithm>
+#include <vector>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
@@ -52,11 +54,18 @@
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DStatusCircle.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
+#include "W3DDevice/GameClient/W3DLaserGlow.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8renderer.h"
+#include "WW3D2/dx8instancing.h"
+#include "WW3D2/dx8skinning.h"
+#include "WW3D2/statistics.h"
 #include "WW3D2/sortingrenderer.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/light.h"
@@ -120,6 +129,9 @@ RTS3DScene::RTS3DScene()
 
 	m_maskMaterialPass = NEW_REF(W3DMaskMaterialPassClass,());
 	m_customPassMode = SCENE_PASS_DEFAULT;
+	m_planarMirrorPass = FALSE;
+	m_planarMirrorZ = 0.0f;
+	m_planarMirrorRegion.zero();
 
 	m_heatVisionMaterialPass = NEW_REF(MaterialPassClass,());
 	m_heatVisionOnlyPass = NEW_REF(MaterialPassClass,());
@@ -428,7 +440,39 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 	if (currentFrame <= TheGlobalData->m_defaultOcclusionDelay)
 		currentFrame = TheGlobalData->m_defaultOcclusionDelay+1;	//make sure occlusion is enabled when game starts (frame 0).
 
-	if (ShaderClass::Is_Backface_Culling_Inverted())
+	if (m_planarMirrorPass)
+	{
+		for (it.First(); !it.Is_Done(); it.Next()) {
+
+			robj = it.Peek_Obj();
+
+			if (robj->Is_Force_Visible()) {
+				robj->Set_Visible(true);
+				continue;
+			}
+
+			const SphereClass &sphere = robj->Get_Bounding_Sphere();
+			Bool isVisible = !robj->Is_Hidden() && sphere.Center.Z + sphere.Radius > m_planarMirrorZ && !camera->Cull_Sphere(sphere);
+
+			drawInfo = (DrawableInfo *)robj->Get_User_Data();
+			if (drawInfo && (draw=drawInfo->m_drawable) != nullptr)
+			{
+				// The main pass flags occluders for delayed drawing, which this pass never does.
+				drawInfo->m_flags = DrawableInfo::ERF_IS_NORMAL;
+				if (isVisible && (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud() || !m_planarMirrorRegion.isInRegionNoZ(*draw->getPosition())))
+				{
+					isVisible = FALSE;
+				}
+				if (isVisible && draw->getEffectiveOpacity() != 1.0f && m_translucentObjectsCount < TheGlobalData->m_maxVisibleTranslucentObjects)
+				{
+					drawInfo->m_flags |= DrawableInfo::ERF_IS_TRANSLUCENT;
+					m_translucentObjectsBuffer[m_translucentObjectsCount++] = robj;
+				}
+			}
+			robj->Set_Visible(isVisible);
+		}
+	}
+	else if (ShaderClass::Is_Backface_Culling_Inverted())
 	{
 		//we are rendering reflections
 		///@todo: Have better flag to detect reflection pass
@@ -700,6 +744,8 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	ObjectShroudStatus ss=OBJECTSHROUD_INVALID;
 	Int extraMaterialPops=0;
 	Bool doExtraFlagsPop=FALSE;
+	Int pixelLights[W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS];
+	Int pixelLightCount=0;
 	LightClass **sceneLights=m_globalLight;
 
 	if (robj->Class_ID() == RenderObjClass::CLASSID_IMAGE3D	)
@@ -876,6 +922,37 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 
 			extraMaterialPops++;
 		}
+
+		// Receive the sun's shadow on opaque drawables. Skipped where the base pass is
+		// suppressed, since the pass only darkens pixels the base pass drew.
+		MaterialPassClass *shadowPass = (TheW3DShadowMap != nullptr) ? TheW3DShadowMap->getReceivePass() : nullptr;
+		if (shadowPass != nullptr && m_customPassMode == SCENE_PASS_DEFAULT && !doExtraFlagsPop && !m_planarMirrorPass &&
+			draw->getEffectiveOpacity() == 1.0f)
+		{
+			rinfo.Push_Material_Pass(shadowPass);
+			extraMaterialPops++;
+		}
+
+		// Vehicles and structures catch a per-pixel sun highlight and bumps. Infantry and the rest stay
+		// matte, and take the pass only for the dynamic lights it draws.
+		if (m_customPassMode == SCENE_PASS_DEFAULT && !doExtraFlagsPop && !m_planarMirrorPass && draw->getEffectiveOpacity() == 1.0f)
+		{
+			if (draw->getReceivesDynamicLights() && W3DShaderManager::supportsUnitPixelLights())
+			{
+				pixelLightCount = pickObjectPixelLights(sph, pixelLights);
+			}
+			const Bool lightsOnly = !draw->isKindOf(KINDOF_VEHICLE) && !draw->isKindOf(KINDOF_STRUCTURE);
+			MaterialPassClass *specularPass = W3DShaderManager::getSpecularPass(pixelLights, pixelLightCount, lightsOnly);
+			if (specularPass != nullptr)
+			{
+				rinfo.Push_Material_Pass(specularPass);
+				extraMaterialPops++;
+			}
+			else
+			{
+				pixelLightCount = 0;
+			}
+		}
 	}
 	else
 	{
@@ -923,6 +1000,10 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		  {
 			  W3DDynamicLight* pDyna = (W3DDynamicLight*)dynaLightIt.Peek_Obj();
 			  if (!pDyna->isEnabled() || pDyna->isTerrainOnly()) {
+				  continue;
+			  }
+			  // the specular pass adds this one per pixel
+			  if (std::find(pixelLights, pixelLights + pixelLightCount, pDyna->getPixelIndex()) != pixelLights + pixelLightCount) {
 				  continue;
 			  }
 			  SphereClass lSph = pDyna->Get_Bounding_Sphere();
@@ -988,9 +1069,16 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 	PrepareShadows();
 
 	//don't draw shadows in this mode because they interfere with destination alpha or are invisible (wireframe)
-	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
 		DoShadows(rinfo, false);	//draw all non-stencil shadows (decals) since they fall under other objects.
 
+	// Special passes change vertex state behind the mesh renderer's back, which the instancing shader would not see.
+	// Most units and structures draw in the occlusion flushes, which only change stencil state.
+	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		DX8InstancingClass::Begin_Lit_Pass();
+		DX8SkinningClass::Begin_Lit_Pass();
+	}
 	TheDX8MeshRenderer.Flush();	//draw all non-translucent objects.
 
 	//draw all non-translucent objects which were separated because they are hidden and need custom rendering.
@@ -1000,6 +1088,8 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 	if (DX8Wrapper::Has_Stencil())
 		flushOccludedObjectsIntoStencil(rinfo);
 #endif
+	DX8InstancingClass::End_Pass();
+	DX8SkinningClass::End_Pass();
 
 	// (gth) CNC3 Flush the shader meshes
 	SHD_FLUSH;
@@ -1008,14 +1098,26 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 	DoTrees(rinfo);
 
 	//don't draw shadows in this mode because they interfere with destination alpha
-	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
 		DoShadows(rinfo, true);	//draw all stencil shadows
+
+	// Water, decals and particles come after, so the occlusion darkens only opaque surfaces.
+	if (TheW3DAmbientOcclusion && m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
+	{
+		TheW3DAmbientOcclusion->render(rinfo);
+	}
+
+	// Laser light lands on the finished ground, and water drawn next covers what lies under it.
+	if (TheW3DLaserGlow && m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
+	{
+		TheW3DLaserGlow->render(rinfo);
+	}
 
 	WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
 
 	//draw the above-water decal subset AFTER water so those decals show over it (still depth-tested, so
 	//objects stay on top). Which decals qualify is decided per-decal (global flag + per-decal water mode).
-	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
 		DoDecals(rinfo);
 
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
@@ -1025,7 +1127,7 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 		//USE_PERF_TIMER(translucentRender)
 
 		//don't draw transparent in this mode because they interfere with destination alpha
-		if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+		if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
 			DoParticles(rinfo);	//queue up particles for rendering.
 
 		SortingRendererClass::Flush();	//draw sorted translucent polygons like particles.
@@ -1322,6 +1424,12 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
    Visibility_Checked = false;
 
 
+	// The terrain's vertex lighting reads the choice as it updates below.
+	if (!ShaderClass::Is_Backface_Culling_Inverted())
+	{
+		updatePixelLights(rinfo.Camera);
+	}
+
 	RefRenderObjListIterator it(&UpdateList);
 	// allow all objects in the update list to do their "every frame" processing
 	for (it.First(); !it.Is_Done(); it.Next()) {
@@ -1333,6 +1441,157 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 			// we only want to call On_Frame_Update if we aren't drawing water, as otherwise
 			// we get 2 frame updates per frame, and it screws up the particle emitters.
 			it.Peek_Obj()->On_Frame_Update();
+		}
+	}
+
+	// The specular pass lights with the map's own sun, not the shadow map's lifted one, so
+	// highlights and bumps sit where the object lighting says the sun is.
+	if (TheW3DShadowManager != nullptr)
+	{
+		const GlobalData::TerrainLighting &sun = TheGlobalData->m_terrainObjectsLighting[TheGlobalData->m_timeOfDay][0];
+		W3DShaderManager::setSpecularLight(TheW3DShadowManager->getLightPosWorld(0),
+			Vector3(sun.diffuse.red, sun.diffuse.green, sun.diffuse.blue),
+			TheGlobalData->m_useSpecular ? TheGlobalData->m_unitSpecularIntensity : 0.0f,
+			TheGlobalData->m_unitSpecularPower, TheGlobalData->m_specularDebug);
+		W3DShaderManager::setSurfaceBumps(TheGlobalData->m_useNormalMaps,
+			Vector3(sun.ambient.red, sun.ambient.green, sun.ambient.blue),
+			TheGlobalData->m_unitBumpHeight, TheGlobalData->m_unitNormalMapStrength);
+		W3DShaderManager::setTerrainBumps(TheGlobalData->m_useNormalMaps, TheGlobalData->m_terrainNormalMapStrength,
+			TheGlobalData->m_normalMapDebug);
+		W3DShaderManager::setTerrainGlint(TheGlobalData->m_useSpecular, TheGlobalData->m_terrainGlintIntensity,
+			TheGlobalData->m_terrainGlintGloss, TheGlobalData->m_terrainGlintAlbedo);
+		// Glow masks ride the specular pass, so turning highlights off drops them rather than keeping the pass alive.
+		W3DShaderManager::setEmissive(!TheGlobalData->m_useSpecular ? 0.0f : TheGlobalData->m_timeOfDay == TIME_OF_DAY_NIGHT
+			? TheGlobalData->m_unitEmissiveNightIntensity : TheGlobalData->m_unitEmissiveIntensity);
+
+		// Sampled rather than every frame, so a whole match stays readable.
+		static Int specularFrames = 0;
+		Int specularDraws, derivedGroups, normalMapGroups, emissiveGroups;
+		W3DShaderManager::takeSpecularCounts(specularDraws, derivedGroups, normalMapGroups, emissiveGroups);
+		const Int terrainBumpDraws = W3DShaderManager::takeTerrainBumpCount();
+		if (specularFrames % 300 == 0 && specularFrames <= 300 * 15)
+		{
+			RENDER_LOG(("Specular: frame %d, %d mesh draws, %d groups bumped from brightness, %d from normal maps, %d glowing, pass %s, %d terrain draws bumped",
+				specularFrames, specularDraws, derivedGroups, normalMapGroups, emissiveGroups,
+				W3DShaderManager::getSpecularPass() != nullptr ? "available" : "unavailable", terrainBumpDraws));
+		}
+		++specularFrames;
+	}
+
+	// The shadow receiver and the specular highlight are the passes the instanced main scene redraws itself.
+	DX8InstancingClass::Set_Instanced_Material_Passes(
+		(TheW3DShadowMap != nullptr) ? TheW3DShadowMap->getReceivePass() : nullptr, W3DShaderManager::getSpecularPassKey());
+
+	// Shows how many draws hardware instancing could merge and how many skins the GPU deformed.
+	// Water reflections render the scene again, so the counts add up every render of the interval.
+	{
+		static Int instancingFrames = 0;
+		static DX8InstancingStatsStruct::SceneStruct scenes[DX8InstancingStatsStruct::SCENE_COUNT];
+		static Int receiveDraws = 0;
+		static Int specularDraws = 0;
+		static Int otherPassDraws = 0;
+		static Int rejections[DX8InstancingClass::REJECT_COUNT];
+		static DX8SkinningClass::StatsStruct skinning;
+
+		DX8InstancingStatsStruct stats;
+		DX8MeshRendererClass::Take_Instancing_Stats(stats);
+		Int frameRejections[DX8InstancingClass::REJECT_COUNT];
+		DX8InstancingClass::Take_Rejections(frameRejections);
+		DX8SkinningClass::StatsStruct frameSkinning;
+		DX8SkinningClass::Take_Stats(frameSkinning);
+
+		const MaterialPassClass *receivePass = (TheW3DShadowMap != nullptr) ? TheW3DShadowMap->getReceivePass() : nullptr;
+		const MaterialPassClass *specularPass = W3DShaderManager::getSpecularPassKey();
+		otherPassDraws += stats.OtherPassDraws;
+		for (Int i = 0; i < DX8InstancingStatsStruct::MAX_PASSES; ++i)
+		{
+			if (stats.Passes[i] == nullptr)
+			{
+				continue;
+			}
+			if (stats.Passes[i] == receivePass)
+			{
+				receiveDraws += stats.PassDraws[i];
+			}
+			else if (stats.Passes[i] == specularPass)
+			{
+				specularDraws += stats.PassDraws[i];
+			}
+			else
+			{
+				otherPassDraws += stats.PassDraws[i];
+			}
+		}
+		for (Int scene = 0; scene < DX8InstancingStatsStruct::SCENE_COUNT; ++scene)
+		{
+			scenes[scene].RigidDraws += stats.Scenes[scene].RigidDraws;
+			for (Int size = 0; size < DX8InstancingStatsStruct::SIZE_CLASSES; ++size)
+			{
+				scenes[scene].EligibleDraws[size] += stats.Scenes[scene].EligibleDraws[size];
+			}
+			scenes[scene].InstancedCalls += stats.Scenes[scene].InstancedCalls;
+			scenes[scene].InstancedMeshes += stats.Scenes[scene].InstancedMeshes;
+		}
+		for (Int i = 0; i < DX8InstancingClass::REJECT_COUNT; ++i)
+		{
+			rejections[i] += frameRejections[i];
+		}
+		skinning.SkinnedMeshes[0] += frameSkinning.SkinnedMeshes[0];
+		skinning.SkinnedMeshes[1] += frameSkinning.SkinnedMeshes[1];
+		for (Int i = 0; i < DX8SkinningClass::REJECT_COUNT; ++i)
+		{
+			skinning.Rejections[i] += frameSkinning.Rejections[i];
+		}
+
+		if (instancingFrames % 600 == 0)
+		{
+			const DX8InstancingStatsStruct::SceneStruct &mainScene = scenes[DX8InstancingStatsStruct::SCENE_MAIN];
+			const DX8InstancingStatsStruct::SceneStruct &depthScene = scenes[DX8InstancingStatsStruct::SCENE_SHADOW_DEPTH];
+			RENDER_LOG(("Instancing: render %d, %d draw calls, %d skins; main %d rigid, eligible by group 1:%d 2-3:%d 4-15:%d 16+:%d, instanced %d meshes in %d calls; depth %d rigid, eligible 1:%d 2-3:%d 4-15:%d 16+:%d, instanced %d meshes in %d calls; passes receive %d specular %d other %d; fallbacks clip %d fog %d resource %d lights %d",
+				instancingFrames, Debug_Statistics::Get_Draw_Calls(), Debug_Statistics::Get_DX8_Skin_Renders(),
+				mainScene.RigidDraws, mainScene.EligibleDraws[0], mainScene.EligibleDraws[1], mainScene.EligibleDraws[2], mainScene.EligibleDraws[3],
+				mainScene.InstancedMeshes, mainScene.InstancedCalls,
+				depthScene.RigidDraws, depthScene.EligibleDraws[0], depthScene.EligibleDraws[1], depthScene.EligibleDraws[2], depthScene.EligibleDraws[3],
+				depthScene.InstancedMeshes, depthScene.InstancedCalls,
+				receiveDraws, specularDraws, otherPassDraws,
+				rejections[DX8InstancingClass::REJECT_CLIP_PLANE], rejections[DX8InstancingClass::REJECT_FOG],
+				rejections[DX8InstancingClass::REJECT_RESOURCE],
+				rejections[DX8InstancingClass::REJECT_LIGHTS]));
+			RENDER_LOG(("Skinning: render %d, skinned %d main %d depth; left to the CPU by state %d model %d mesh %d category %d pass %d",
+				instancingFrames, skinning.SkinnedMeshes[0], skinning.SkinnedMeshes[1],
+				skinning.Rejections[DX8SkinningClass::REJECT_STATE], skinning.Rejections[DX8SkinningClass::REJECT_MODEL],
+				skinning.Rejections[DX8SkinningClass::REJECT_MESH], skinning.Rejections[DX8SkinningClass::REJECT_CATEGORY],
+				skinning.Rejections[DX8SkinningClass::REJECT_PASS]));
+
+			memset(scenes, 0, sizeof(scenes));
+			receiveDraws = 0;
+			specularDraws = 0;
+			otherPassDraws = 0;
+			memset(rejections, 0, sizeof(rejections));
+			memset(&skinning, 0, sizeof(skinning));
+		}
+		++instancingFrames;
+	}
+
+	// Fill the shadow map before anything is queued for the main scene, because the
+	// depth pass flushes the mesh renderer and would otherwise consume those objects.
+	if (TheW3DShadowMap != nullptr && TheW3DShadowMap->isAvailable() &&
+		TheW3DShadowManager != nullptr &&
+		m_customPassMode == SCENE_PASS_DEFAULT &&
+		Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE &&
+		!ShaderClass::Is_Backface_Culling_Inverted())
+	{
+		// The 3D and 2D options still decide which objects cast, and this one how they are drawn.
+		if (TheGlobalData->m_useShadowMap && (TheGlobalData->m_useShadowVolumes || TheGlobalData->m_useShadowDecals))
+		{
+			TheW3DShadowMap->setShadowColor(TheW3DShadowManager->getShadowColor());
+			TheW3DShadowMap->updateFrustum(rinfo.Camera, TheW3DShadowManager->getLightPosWorld(0),
+				TheGlobalData->m_shadowMapMinSunElevation);
+			TheW3DShadowMap->renderDepthPass(rinfo);
+		}
+		else
+		{
+			TheW3DShadowMap->clearDepth();
 		}
 	}
 
@@ -1401,7 +1660,7 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 
 	// only render particles once per frame
 	if (terrainObject != nullptr && TheParticleSystemManager != nullptr &&
-		Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+		Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE && !m_planarMirrorPass)
 	{
 		TheParticleSystemManager->queueParticleRender();
 	}
@@ -1474,7 +1733,7 @@ void renderStenciledPlayerColor( UnsignedInt color, UnsignedInt stencilRef, Bool
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	m_pDev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	DX8_SET_FVF(m_pDev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
 
 	// Set stencil states
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILENABLE, TRUE );
@@ -1869,29 +2128,6 @@ void RTS3DScene::flushTranslucentObjects(RenderInfoClass & rinfo)
 }
 
 //=============================================================================
-// RTS3DScene::createLightsIterator
-//=============================================================================
-/** Returns an iterator of the lights in the scene. */
-//=============================================================================
-RefRenderObjListIterator * RTS3DScene::createLightsIterator()
-{
-	RefRenderObjListIterator * it = NEW RefRenderObjListIterator(&LightList);	// poolify
-	return it;
-}
-
-
-//=============================================================================
-// RTS3DScene::destroyLightsIterator
-//=============================================================================
-/** Destroys the iterator returned by createLightsIterator. */
-//=============================================================================
-void RTS3DScene::destroyLightsIterator(RefRenderObjListIterator * it)
-{
-	delete it;
-}
-
-
-//=============================================================================
 // RTS3DScene::addDynamicLight
 //=============================================================================
 /** Adds a dynamic light. */
@@ -1900,6 +2136,185 @@ void RTS3DScene::addDynamicLight(W3DDynamicLight * obj)
 {
 	m_dynamicLightList.Add(obj);
 	UpdateList.Add(obj);
+}
+
+// The lights nearest the middle of the view may be drawn per pixel. Each draw then takes its own
+// share of them, and the terrain's vertex lighting keeps what its tiles have no room for.
+namespace
+{
+	struct PixelLightCandidate
+	{
+		W3DDynamicLight *light;
+		Real gap;		///< how far outside the light's reach the screen centre is, in screen units
+		Real score;		///< reach times brightness, for lights at an equal gap
+	};
+
+	bool Pixel_Light_Before(const PixelLightCandidate &a, const PixelLightCandidate &b)
+	{
+		if (a.gap != b.gap)
+		{
+			return a.gap < b.gap;
+		}
+		return a.score > b.score;
+	}
+}
+
+void RTS3DScene::updatePixelLights(CameraClass &camera)
+{
+	static std::vector<PixelLightCandidate> candidates;
+	candidates.clear();
+
+	const Bool enabled = W3DShaderManager::supportsPixelLights() && TheGlobalData->m_usePixelLights;
+	Vector3 cameraRight;
+	camera.Get_Transform().Get_X_Vector(&cameraRight);
+
+	RefRenderObjListIterator it(&m_dynamicLightList);
+	for (it.First(); !it.Is_Done(); it.Next())
+	{
+		W3DDynamicLight *light = (W3DDynamicLight *)it.Peek_Obj();
+		light->setPixelIndex(-1);
+		if (!enabled || !light->isEnabled() || light->Get_Type() != LightClass::POINT)
+		{
+			continue;
+		}
+
+		// The terrain's vertex lighting skips lights with an inner radius this small.
+		double innerRadius, outerRadius;
+		light->Get_Far_Attenuation_Range(innerRadius, outerRadius);
+		if (innerRadius < 0.1 || outerRadius <= innerRadius || camera.Cull_Sphere(light->Get_Bounding_Sphere()))
+		{
+			continue;
+		}
+
+		Vector3 diffuse;
+		Vector3 ambient;
+		light->Get_Diffuse(&diffuse);
+		light->Get_Ambient(&ambient);
+		const Vector3 total = diffuse + ambient;
+		const Real score = (Real)outerRadius * max(total.X, max(total.Y, total.Z));
+		if (score <= 0.0f)
+		{
+			continue;
+		}
+
+		// Reach covering the screen centre, or a light too near to project, counts as sitting on it.
+		PixelLightCandidate candidate;
+		candidate.light = light;
+		candidate.score = score;
+		candidate.gap = 0.0f;
+		const Vector3 position = light->Get_Position();
+		Vector3 center;
+		Vector3 edge;
+		if (camera.Project(center, position) != CameraClass::OUTSIDE_NEAR_CLIP &&
+			camera.Project(edge, position + cameraRight * (Real)outerRadius) != CameraClass::OUTSIDE_NEAR_CLIP)
+		{
+			const Real distance = sqrt(center.X * center.X + center.Y * center.Y);
+			const Real reach = sqrt((edge.X - center.X) * (edge.X - center.X) + (edge.Y - center.Y) * (edge.Y - center.Y));
+			candidate.gap = max(distance - reach, 0.0f);
+		}
+		candidates.push_back(candidate);
+	}
+
+	std::sort(candidates.begin(), candidates.end(), Pixel_Light_Before);
+	const Int count = min((Int)candidates.size(), (Int)W3DShaderManager::MAX_PIXEL_LIGHT_CANDIDATES);
+
+	W3DShaderManager::PixelLight lights[W3DShaderManager::MAX_PIXEL_LIGHT_CANDIDATES];
+	for (Int i = 0; i < count; i++)
+	{
+		W3DDynamicLight *light = candidates[i].light;
+		light->setPixelIndex(i);
+
+		double innerRadius, outerRadius;
+		light->Get_Far_Attenuation_Range(innerRadius, outerRadius);
+		Vector3 ambient;
+		light->Get_Diffuse(&lights[i].diffuse);
+		light->Get_Ambient(&ambient);
+
+		// Every game light's ambient is a share of its diffuse, taken here by brightness.
+		const Real diffuseBrightness = max(lights[i].diffuse.X, max(lights[i].diffuse.Y, lights[i].diffuse.Z));
+		const Real ambientBrightness = max(ambient.X, max(ambient.Y, ambient.Z));
+		if (diffuseBrightness > 0.0f)
+		{
+			lights[i].ambientScale = ambientBrightness / diffuseBrightness;
+		}
+		else
+		{
+			lights[i].diffuse = ambient;
+			lights[i].ambientScale = 1.0f;
+		}
+
+		lights[i].position = light->Get_Position();
+		lights[i].innerRadius = (Real)innerRadius;
+		lights[i].outerRadius = (Real)outerRadius;
+		lights[i].terrainOnly = light->isTerrainOnly();
+	}
+	W3DShaderManager::setPixelLights(lights, count);
+
+	// Sampled every 300 frames, and only when an interval had lights, so quiet stretches stay out of the log.
+	static Int pixelLightFrames = 0;
+	static Int framesLit = 0;
+	static Int peakCount = 0;
+	framesLit += (count > 0) ? 1 : 0;
+	peakCount = max(peakCount, count);
+	if (++pixelLightFrames % 300 == 0)
+	{
+		if (framesLit > 0)
+		{
+			RENDER_LOG(("PixelLights: frame %d, terrain %s, units %s, %d of 300 frames lit, at most %d lights at once",
+				pixelLightFrames, W3DShaderManager::supportsTerrainPixelLights() ? "per pixel" : "per vertex",
+				W3DShaderManager::supportsUnitPixelLights() ? "per pixel" : "fixed function", framesLit, peakCount));
+		}
+		framesLit = 0;
+		peakCount = 0;
+	}
+}
+
+// Picks this frame's per-pixel lights that reach the sphere, strongest there first, as many as the specular pass takes.
+Int RTS3DScene::pickObjectPixelLights(const SphereClass &sphere, Int *lights)
+{
+	Real scores[W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS];
+	Int count = 0;
+
+	const Int candidates = W3DShaderManager::getPixelLightCount();
+	for (Int index = 0; index < candidates; index++)
+	{
+		const W3DShaderManager::PixelLight &pixelLight = W3DShaderManager::getPixelLight(index);
+		if (pixelLight.terrainOnly)
+		{
+			continue;
+		}
+
+		// Brightness at the sphere's nearest point, with the shader's falloff.
+		const Real distance = max((pixelLight.position - sphere.Center).Length() - sphere.Radius, 0.0f);
+		if (distance >= pixelLight.outerRadius)
+		{
+			continue;
+		}
+		const Real falloff = WWMath::Clamp((pixelLight.outerRadius - distance) / (pixelLight.outerRadius - pixelLight.innerRadius), 0.0f, 1.0f);
+		const Real brightness = max(pixelLight.diffuse.X, max(pixelLight.diffuse.Y, pixelLight.diffuse.Z)) * (1.0f + pixelLight.ambientScale);
+		const Real score = falloff * brightness;
+
+		// Kept sorted, so a full list drops its weakest.
+		Int slot = count;
+		while (slot > 0 && scores[slot - 1] < score)
+		{
+			slot--;
+		}
+		if (slot >= W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS)
+		{
+			continue;
+		}
+		const Int last = min(count, (Int)W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS - 1);
+		for (Int i = last; i > slot; i--)
+		{
+			scores[i] = scores[i - 1];
+			lights[i] = lights[i - 1];
+		}
+		scores[slot] = score;
+		lights[slot] = index;
+		count = min(count + 1, (Int)W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS);
+	}
+	return count;
 }
 
 //=============================================================================

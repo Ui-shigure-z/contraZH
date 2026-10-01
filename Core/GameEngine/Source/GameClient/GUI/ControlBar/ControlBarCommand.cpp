@@ -936,6 +936,26 @@ void ControlBar::updateContextCommand()
 }
 
 //-------------------------------------------------------------------------------------------------
+const Image* ControlBar::calculateVeterancyOverlayForLevel( VeterancyLevel level )
+{
+	//Return the appropriate image (including nullptr if no veterancy levels)
+	switch( level )
+	{
+		case LEVEL_VETERAN:
+			return m_rankVeteranIcon;
+		case LEVEL_ELITE:
+			return m_rankEliteIcon;
+		case LEVEL_HEROIC:
+			return m_rankHeroicIcon;
+		case LEVEL_FOUR:
+			return m_rankFourIcon;
+		case LEVEL_FIVE:
+			return m_rankFiveIcon;
+	}
+	return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 const Image* ControlBar::calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate )
 {
 	VeterancyLevel level = LEVEL_REGULAR;
@@ -1003,23 +1023,7 @@ const Image* ControlBar::calculateVeterancyOverlayForObject( const Object *obj )
 	{
 		return nullptr;
 	}
-	VeterancyLevel level = obj->getVeterancyLevel();
-
-	//Return the appropriate image (including nullptr if no veterancy levels)
-	switch( level )
-	{
-		case LEVEL_VETERAN:
-			return m_rankVeteranIcon;
-		case LEVEL_ELITE:
-			return m_rankEliteIcon;
-		case LEVEL_HEROIC:
-			return m_rankHeroicIcon;
-		case LEVEL_FOUR:
-			return m_rankFourIcon;
-		case LEVEL_FIVE:
-			return m_rankFiveIcon;
-	}
-	return nullptr;
+	return calculateVeterancyOverlayForLevel( obj->getVeterancyLevel() );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1133,6 +1137,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 		GUICommandType commandType = command->getCommandType();
 		if( commandType != GUI_COMMAND_SELL &&
 				commandType != GUI_COMMAND_EVACUATE &&
+				commandType != GUI_COMMAND_EVACUATE_TO_WORK &&
 				commandType != GUI_COMMAND_AUTO_FILL &&
 				commandType != GUI_COMMAND_EXIT_CONTAINER &&
 				commandType != GUI_COMMAND_BEACON_DELETE &&
@@ -1209,6 +1214,9 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 
 			// if building anything at all right now we can't build another
 			if( dozerAI->isTaskPending( DOZER_TASK_BUILD ) == TRUE )
+				return COMMAND_RESTRICTED;
+
+			if( dozerAI->canBuildTemplate( whatToBuild ) == FALSE )
 				return COMMAND_RESTRICTED;
 
 			// return whether or not the player can build this thing
@@ -1437,6 +1445,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 		}
 
 		case GUI_COMMAND_EVACUATE:
+		case GUI_COMMAND_EVACUATE_TO_WORK:
 		{
 
 			// if we have no contained objects we can't evacuate anything

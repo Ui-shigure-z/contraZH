@@ -39,11 +39,11 @@ set(GAMEENGINEDEVICE_SRC
 #    Include/W3DDevice/GameClient/W3DBridgeBuffer.h
 #    Include/W3DDevice/GameClient/W3DBufferManager.h
 #    Include/W3DDevice/GameClient/W3DCustomScene.h
-#    Include/W3DDevice/GameClient/W3DDebugDisplay.h
-#    Include/W3DDevice/GameClient/W3DDebugIcons.h
-#    Include/W3DDevice/GameClient/W3DDisplay.h
-#    Include/W3DDevice/GameClient/W3DDisplayString.h
-#    Include/W3DDevice/GameClient/W3DDisplayStringManager.h
+    Include/W3DDevice/GameClient/W3DDebugDisplay.h
+    Include/W3DDevice/GameClient/W3DDebugIcons.h
+    Include/W3DDevice/GameClient/W3DDisplay.h
+    Include/W3DDevice/GameClient/W3DDisplayString.h
+    Include/W3DDevice/GameClient/W3DDisplayStringManager.h
 #    Include/W3DDevice/GameClient/W3DDynamicLight.h
 #    Include/W3DDevice/GameClient/W3DFileSystem.h
     Include/W3DDevice/GameClient/W3DGadget.h
@@ -68,7 +68,15 @@ set(GAMEENGINEDEVICE_SRC
 #    Include/W3DDevice/GameClient/W3DShadow.h
 #    Include/W3DDevice/GameClient/W3DShroud.h
     Include/W3DDevice/GameClient/W3DSmudge.h
+    Include/W3DDevice/GameClient/W3DShadowMap.h
     Include/W3DDevice/GameClient/W3DSnow.h
+    Include/W3DDevice/GameClient/W3DSoftParticles.h
+    Include/W3DDevice/GameClient/W3DShockwave.h
+    Include/W3DDevice/GameClient/W3DLaserGlow.h
+    Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
+    Include/W3DDevice/GameClient/W3DGroundNoise.h
+    Include/W3DDevice/GameClient/W3DNoiseTexture.h
+    Include/W3DDevice/GameClient/W3DSkyClouds.h
 #    Include/W3DDevice/GameClient/W3DStatusCircle.h
     Include/W3DDevice/GameClient/W3DTerrainBackground.h
     Include/W3DDevice/GameClient/W3DTerrainTracks.h
@@ -153,11 +161,11 @@ set(GAMEENGINEDEVICE_SRC
 #    Source/W3DDevice/GameClient/W3DAssetManagerExposed.cpp
 #    Source/W3DDevice/GameClient/W3DBibBuffer.cpp
 #    Source/W3DDevice/GameClient/W3DBridgeBuffer.cpp
-#    Source/W3DDevice/GameClient/W3DDebugDisplay.cpp
-#    Source/W3DDevice/GameClient/W3DDebugIcons.cpp
-#    Source/W3DDevice/GameClient/W3DDisplay.cpp
-#    Source/W3DDevice/GameClient/W3DDisplayString.cpp
-#    Source/W3DDevice/GameClient/W3DDisplayStringManager.cpp
+    Source/W3DDevice/GameClient/W3DDebugDisplay.cpp
+    Source/W3DDevice/GameClient/W3DDebugIcons.cpp
+    Source/W3DDevice/GameClient/W3DDisplay.cpp
+    Source/W3DDevice/GameClient/W3DDisplayString.cpp
+    Source/W3DDevice/GameClient/W3DDisplayStringManager.cpp
 #    Source/W3DDevice/GameClient/W3DDynamicLight.cpp
 #    Source/W3DDevice/GameClient/W3DFileSystem.cpp
 #    Source/W3DDevice/GameClient/W3DGameClient.cpp
@@ -173,8 +181,16 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/W3DBloom.cpp
     Source/W3DDevice/GameClient/W3DShaderManager.cpp
 #    Source/W3DDevice/GameClient/W3DShroud.cpp
+    Source/W3DDevice/GameClient/W3DShadowMap.cpp
     Source/W3DDevice/GameClient/W3DSmudge.cpp
     Source/W3DDevice/GameClient/W3DSnow.cpp
+    Source/W3DDevice/GameClient/W3DSoftParticles.cpp
+    Source/W3DDevice/GameClient/W3DShockwave.cpp
+    Source/W3DDevice/GameClient/W3DLaserGlow.cpp
+    Source/W3DDevice/GameClient/W3DAmbientOcclusion.cpp
+    Source/W3DDevice/GameClient/W3DGroundNoise.cpp
+    Source/W3DDevice/GameClient/W3DNoiseTexture.cpp
+    Source/W3DDevice/GameClient/W3DSkyClouds.cpp
 #    Source/W3DDevice/GameClient/W3DStatusCircle.cpp
     Source/W3DDevice/GameClient/W3DTerrainBackground.cpp
     Source/W3DDevice/GameClient/W3DTerrainTracks.cpp

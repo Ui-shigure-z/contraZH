@@ -166,11 +166,16 @@ public:
 	void								Set_Zbuffer_Range(float znear,float zfar) {ZBufferMin = znear;ZBufferMax=zfar;}
 	void								Get_Zbuffer_Range(float & znear,float & zfar) const {znear=ZBufferMin;zfar=ZBufferMax;}
 
+	// Moves the D3D near plane onto a world plane with the camera on its negative side; culling ignores it
+	void								Set_Oblique_Clip_Plane(const PlaneClass & world_plane) {ObliqueClipPlane = world_plane;ObliqueClipEnabled = true;}
+	void								Clear_Oblique_Clip_Plane() {ObliqueClipEnabled = false;}
+
 	// Methods for setting the View Plane.
 	// NOTE: View plane is always at a distance of 1.0 from the eye.
 	void								Set_View_Plane(const Vector2 & min,const Vector2 & max);
 	void								Set_View_Plane(float hfov,float vfov = -1);
 	void								Set_Aspect_Ratio(float width_to_height);
+	void                                Set_Aspect_Ratio_HackedForWB(float width_to_height);
 
 	// Methods for querying the View Plane settings.
 	void								Get_View_Plane(Vector2 & set_min,Vector2 & set_max) const;
@@ -246,6 +251,8 @@ protected:
 	float								ZFar;				// far clip plane distance
 	float								ZBufferMin;		// smallest value we'll write into the z-buffer (usually 0.0)
 	float								ZBufferMax;		// largest value we'll write into the z-buffer (usually 1.0)
+	bool								ObliqueClipEnabled;
+	PlaneClass						ObliqueClipPlane;
 
 	mutable bool					FrustumValid;
 	mutable FrustumClass			Frustum;							// world-space frustum and clip planes

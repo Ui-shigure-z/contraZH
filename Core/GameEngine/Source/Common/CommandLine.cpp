@@ -422,6 +422,24 @@ Int parseHeadless(char *args[], int num)
 	return 1;
 }
 
+#if defined(GENERALS_ONLINE)
+Int parseExportStats(char *args[], int num)
+{
+	TheWritableGlobalData->m_exportStats = TRUE;
+	return 1;
+}
+
+Int parseStatsUrl(char *args[], int num)
+{
+	if (num > 1)
+	{
+		TheWritableGlobalData->m_statsUrl = args[1];
+		return 2;
+	}
+	return 1;
+}
+#endif
+
 Int parseReplay(char *args[], int num)
 {
 	if (num > 1)
@@ -679,16 +697,17 @@ Int parsePreload( char *args[], int num )
 
 	return 1;
 }
-#endif
 
-
-#if defined(RTS_DEBUG)
 Int parseDisplayDebug(char *args[], int)
 {
 	TheWritableGlobalData->m_displayDebug = TRUE;
 
 	return 1;
 }
+#endif
+
+
+#if defined(RTS_DEBUG)
 
 Int parseFile(char *args[], int num)
 {
@@ -1180,6 +1199,11 @@ static CommandLineParam paramsForStartup[] =
 	// (If you have 4 cores, call it with -jobs 4)
 	// If you do not call this, all replays will be simulated in sequence in the same process.
 	{ "-jobs", parseJobs },
+#if defined(GENERALS_ONLINE)
+	// Export game stats as JSON next to the replay; -statsUrl posts the compressed result.
+	{ "-exportStats", parseExportStats },
+	{ "-statsUrl", parseStatsUrl },
+#endif
 
 	// TheSuperHackers @feature CryoTheRenegade 14/08/2026
 	// Use the current working directory as provided by the OS, or an explicit path.
@@ -1303,7 +1327,6 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-stateMachineDebug", parseStateMachineDebug },
 	{ "-jabber", parseJabber },
 	{ "-munkee", parseMunkee },
-	{ "-displayDebug", parseDisplayDebug },
 	{ "-file", parseFile },
 
 //	{ "-preload", parsePreload },
@@ -1355,6 +1378,7 @@ static CommandLineParam paramsForEngineInit[] =
 
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 	{ "-preload", parsePreload },
+	{ "-displayDebug", parseDisplayDebug },
 #endif
 
 

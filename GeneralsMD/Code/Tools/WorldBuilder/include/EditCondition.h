@@ -61,6 +61,7 @@ public:
 
 protected:
 	void formatConditionText(Int parmNdx);
+	void ParseHelpText(const CString& helpText);
 protected:
 	Condition *m_condition;
 	Bool			m_updating;
@@ -70,6 +71,9 @@ protected:
 	Int				m_curEditParameter;
 	CTreeCtrl	m_conditionTreeView;
 
+	CFont m_treeFont;
+	CFont m_oldFont;
+	BOOL m_bCompressed;
 protected:
 
 	// Generated message map functions
@@ -77,6 +81,11 @@ protected:
 	virtual BOOL OnInitDialog() override;
 	afx_msg void OnSelchangeConditionType();
 	afx_msg void OnTimer(UINT nIDEvent);
+
+	afx_msg void OnCompress();
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
+	virtual void OnOK();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

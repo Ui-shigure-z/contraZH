@@ -29,10 +29,13 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+
+#include <chrono>
 #include "GameClient/GameClient.h"
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Common/ActionManager.h"
+#include "Common/FramePacer.h"
 #include "Common/GameEngine.h"
 #include "Common/GameState.h"
 #include "Common/Recorder.h"
@@ -104,6 +107,12 @@ GameClient::GameClient()
 	m_textBearingDrawableList.clear();
 
 	m_frame = 0;
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+	m_legacyFrameEndLastMs = 0;
+	m_legacyFrameMsAccrued = 0;
+#endif
 
 	m_drawableList = nullptr;
 
@@ -525,6 +534,8 @@ void GameClient::update()
 	USE_PERF_TIMER(GameClient_update)
 	PROFILER_FRAME_MARK;
 	PROFILER_SECTION_COLOR(0x2196F3);
+
+	GlobalData::reloadEditedIni();
 	// create the FRAME_TICK message
 	GameMessage *frameMsg = TheMessageStream->appendMessage( GameMessage::MSG_FRAME_TICK );
 	frameMsg->appendTimestampArgument( getFrame() );
@@ -645,6 +656,7 @@ void GameClient::update()
 
 
 		// call the update for all client drawables
+		const Real timeScale = TheFramePacer->getActualLogicTimeScaleOverFpsRatio();
 		Drawable* draw = firstDrawable();
 		while (draw)
 		{	// update() could free the Drawable, so go ahead and grab 'next'
@@ -692,7 +704,7 @@ void GameClient::update()
 					draw->setFullyObscuredByShroud(ss >= OBJECTSHROUD_FOGGED);
 				}
 			}
-			draw->updateDrawable();
+			draw->updateDrawable(timeScale);
 			draw = next;
 		}
 	}
@@ -705,15 +717,6 @@ void GameClient::update()
 	}
 #endif
 
-	// update all particle systems
-	if( !freezeTime )
-	{
-		// update particle systems
-		TheParticleSystemManager->setLocalPlayerIndex(localPlayerIndex);
-//		TheParticleSystemManager->update();
-
-	}
-
 	// update the terrain visuals
 	{
 		TheTerrainVisual->UPDATE();
@@ -722,6 +725,15 @@ void GameClient::update()
 	// update display
 	{
 		TheDisplay->UPDATE();
+	}
+
+	// update all particle systems
+	// TheSuperHackers @info The particle update follows the display update, because that
+	// moves bone-attached particle systems to the current client bone transforms of their drawables.
+	if( !freezeTime && TheGameLogic->hasUpdated() )
+	{
+		TheParticleSystemManager->setLocalPlayerIndex(localPlayerIndex);
+		TheParticleSystemManager->UPDATE();
 	}
 
 	{
@@ -747,6 +759,22 @@ void GameClient::update()
 		// update the in game UI
 		TheInGameUI->UPDATE();
 	}
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	const Int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	if (!freezeTime)
+	{
+		m_legacyFrameMsAccrued += nowMs - m_legacyFrameEndLastMs;
+	}
+	m_legacyFrameEndLastMs = nowMs;
+
+	m_frameLegacyLast = m_frameLegacy;
+	if (m_legacyFrameMsAccrued >= MSEC_PER_SECOND / BaseFps)
+	{
+		m_legacyFrameMsAccrued = 0;
+		m_frameLegacy++;
+	}
+#endif
 }
 
 void GameClient::draw()
@@ -956,6 +984,47 @@ void GameClient::setTimeOfDay( TimeOfDay tod )
 
 		draw = draw->getNextDrawable();
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Change the time of day of the running game. This refreshes the lighting, the models, the
+	* ambient sounds and the player indicator colors, all of which are presentation only. */
+//-------------------------------------------------------------------------------------------------
+Bool GameClient::switchTimeOfDay( TimeOfDay tod )
+{
+
+	if( TheWritableGlobalData->setTimeOfDay( tod ) == FALSE )
+	{
+		return FALSE;
+	}
+
+	// this relights the terrain and the water, moves the shadows and tells the drawables
+	setTimeOfDay( tod );
+
+	for( Drawable *draw = firstDrawable(); draw; draw = draw->getNextDrawable() )
+	{
+
+		// Only drawables standing in for an object have night models or an indicator color, so the
+		// decorative ones have nothing to refresh.
+		if( draw->getObject() == NULL )
+		{
+			continue;
+		}
+
+		if( TheGlobalData->m_forceModelsToFollowTimeOfDay )
+		{
+			// this just forces a refresh, so the day and night models get swapped
+			ModelConditionFlags empty;
+			draw->clearAndSetModelConditionFlags( empty, empty );
+		}
+
+		// picks up the day or night flavor of the player indicator color
+		draw->changedTeam();
+
+	}
+
+	return TRUE;
+
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -114,10 +114,13 @@ public: // Editing methods.
 	static UnsignedByte *getPointerToClassTileData(Int texClass);
 
 	void blendTile(Int xIndex, Int yIndex, Int srcXIndex, Int srcYIndex, Int srcClass, Int edgeClass);
-	void autoBlendOut(Int xIndex, Int yIndex, Int edgeIndex = -1);
+	void unblendArea(Int xIndex, Int yIndex);
+	void autoBlendOut(Int xIndex, Int yIndex, Int edgeIndex = -1, Bool hvGap = false, Bool dGap = false, Bool revalidateBlends = false);
 	Int getTextureClass(Int xIndex, Int yIndex, Bool baseClass=false);
+	Bool setTextureClass(Int xIndex, Int yIndex, Int textureClass);
 	void setHeight(Int xIndex, Int yIndex, UnsignedByte height);
 	void setCliff(Int xIndex, Int yIndex, Bool impassable) {setCliffState(xIndex, yIndex, impassable);}
+	void setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate);
 	Bool setTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile);
 	Bool floodFill(Int xIndex, Int yIndex, Int textureClass, Bool doReplace);
 	static Int getNumTexClasses() {return m_numGlobalTextureClasses;};
@@ -155,7 +158,8 @@ public: // Editing methods.
 	void getBoundary(Int ndx, ICoord2D* border) const;
 	void addBoundary(ICoord2D* boundaryToAdd);
 	void changeBoundary(Int ndx, ICoord2D *border);
-	void removeLastBoundary();
+	void removeLastBoundary(void);
+	void removeAllExtraBoundaries();
 
 	// outNdx must not be null, but outHandle can be.
 	// outHandle: 0 means BL, 1 means TL, 2 means TR, 3 means BR

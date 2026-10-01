@@ -139,7 +139,7 @@ Bool SoundManager::addAudioEvent(DynamicAudioEventRTS *eventToAdd)
 		DEBUG_LOG((" - appended to request list with handle '%d'.", (UnsignedInt) eventToAdd->getPlayingHandle()));
 #endif
 		AudioRequest *audioRequest = TheAudio->allocateAudioRequest();
-		audioRequest->m_pendingEvent.Assign_Add_Ref(eventToAdd);
+		audioRequest->m_pendingEvent = eventToAdd;
 		audioRequest->m_request = AR_Play;
 		TheAudio->appendAudioRequest(audioRequest);
 		return true;
@@ -184,9 +184,13 @@ Bool SoundManager::canPlayNow( AudioEventRTS *event )
 				return false;
 			}
 
-			const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+			// Shroud is a running-game concept: with no player list / partition manager there is
+			// nothing to be shrouded from (WorldBuilder previews a map's ambient sounds without a
+			// game), so the sound is simply not culled.
+			const Int localPlayerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
 
-			if( (event->getAudioEventInfo()->m_type & ST_SHROUDED) &&
+			if( ThePartitionManager &&
+					 (event->getAudioEventInfo()->m_type & ST_SHROUDED) &&
 					 ThePartitionManager->getShroudStatusForPlayer(localPlayerIndex, pos) != CELLSHROUD_CLEAR )
 			{
 #ifdef INTENSIVE_AUDIO_DEBUG

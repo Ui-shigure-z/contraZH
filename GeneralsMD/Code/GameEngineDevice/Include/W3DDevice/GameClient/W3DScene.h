@@ -75,6 +75,10 @@ public:
 	void setCustomPassMode (CustomScenePassModes mode) {m_customPassMode = mode;}
 	CustomScenePassModes getCustomPassMode ()	{return m_customPassMode;}
 
+	/// The shader water's reflection draws what the main view would above the water plane
+	void setPlanarMirrorPass(Bool on, Real planeZ, const Region3D &region) {m_planarMirrorPass = on; m_planarMirrorZ = planeZ; m_planarMirrorRegion = region;}
+	Bool isPlanarMirrorPass() const {return m_planarMirrorPass;}
+
 	void Flush(RenderInfoClass & rinfo);	//draw queued up models.
 	/// Drawing control method
 	void drawTerrainOnly(Bool draw) {m_drawTerrainOnly = draw;};
@@ -85,12 +89,11 @@ public:
 	/// Lighting methods
 	void addDynamicLight(W3DDynamicLight * obj);
 	void removeDynamicLight(W3DDynamicLight * obj);
-	RefRenderObjListIterator *createLightsIterator();
-	void destroyLightsIterator(RefRenderObjListIterator * it);
 	RefRenderObjListClass *getDynamicLights() {return &m_dynamicLightList;};
 	W3DDynamicLight *getADynamicLight();
 	void setGlobalLight(LightClass *pLight,Int lightIndex=0);
 	LightEnvironmentClass &getDefaultLightEnv() {return m_defaultLightEnv;}
+	RefRenderObjListClass* getLightList() { return &LightList; }
 
 	virtual void init() override {}
 	virtual void update() override {}
@@ -101,6 +104,8 @@ public:
 protected:
 	void renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex);
 	void updateFixedLightEnvironments(RenderInfoClass & rinfo);
+	void updatePixelLights(CameraClass &camera);	///< picks the dynamic lights the shaders may draw per pixel this frame
+	Int pickObjectPixelLights(const SphereClass &sphere, Int *lights);	///< the ones the specular pass draws on one object
 	void flushTranslucentObjects(RenderInfoClass & rinfo);
 	void flushOccludedObjects(RenderInfoClass & rinfo);
 	void flagOccludedObjects(CameraClass * camera);
@@ -132,6 +137,9 @@ protected:
 	///Custom rendering passes for each possible player color on the map
 	MaterialPassClass *m_occludedMaterialPass[MAX_PLAYER_COUNT];
 	CustomScenePassModes m_customPassMode;					///< flag used to force a non-standard rendering of scene.
+	Bool m_planarMirrorPass;										///< drawing the shader water's reflection
+	Real m_planarMirrorZ;											///< water plane the reflection mirrors
+	Region3D m_planarMirrorRegion;								///< drawables outside it were not moved this frame
 	Int m_translucentObjectsCount;	///< number of translucent objects to render this frame.
 	RenderObjClass **m_translucentObjectsBuffer;	///< queue of current frame's translucent objects.
 	Int m_occludedObjectsCount;	///<number of objects in current frame that need special rendering because occluded.

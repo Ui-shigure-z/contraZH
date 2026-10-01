@@ -20,7 +20,6 @@
 #include "missingtexture.h"
 #include "texture.h"
 #include "dx8wrapper.h"
-#include <d3dx8core.h>
 
 static unsigned missing_image_width=128;
 static unsigned missing_image_height=128;
@@ -41,21 +40,35 @@ IDirect3DTexture8* MissingTexture::_Get_Missing_Texture()
 IDirect3DSurface8* MissingTexture::_Create_Missing_Surface()
 {
 	IDirect3DSurface8 *texture_surface = nullptr;
-	DX8_ErrorCode(_MissingTexture->GetSurfaceLevel(0, &texture_surface));
+	DX8_ErrorCode(DX8Wrapper::_Peek_Lockable_Texture(_MissingTexture)->GetSurfaceLevel(0, &texture_surface));
 	D3DSURFACE_DESC texture_surface_desc;
 	::ZeroMemory(&texture_surface_desc, sizeof(D3DSURFACE_DESC));
 	DX8_ErrorCode(texture_surface->GetDesc(&texture_surface_desc));
 
 	IDirect3DSurface8 *surface = nullptr;
+#if defined(BUILD_WITH_D3D9)
+	// Read back on the CPU, so it has to be system memory
+	DX8CALL(CreateOffscreenPlainSurface(
+		texture_surface_desc.Width,
+		texture_surface_desc.Height,
+		texture_surface_desc.Format,
+		D3DPOOL_SYSTEMMEM,
+		&surface,
+		nullptr));
+#else
 	DX8CALL(CreateImageSurface(
 		texture_surface_desc.Width,
 		texture_surface_desc.Height,
 		texture_surface_desc.Format,
 		&surface));
-	DX8CALL(CopyRects(texture_surface, nullptr, 0, surface, nullptr));
+#endif
+	DX8Wrapper::_Copy_DX8_Rects(texture_surface, nullptr, 0, surface, nullptr);
 	texture_surface->Release();
 	return surface;
 }
+
+// Translucent magenta, so a texture that failed to load is obvious in game
+static const unsigned MISSING_TEXTURE_COLOR=0x7FFF00FF;
 
 void MissingTexture::_Init()
 {
@@ -68,6 +81,7 @@ void MissingTexture::_Init()
 		WW3D_FORMAT_A8R8G8B8,
 		MIP_LEVELS_ALL
 	);
+	IDirect3DTexture8* lockable=DX8Wrapper::_Peek_Lockable_Texture(tex);
 
 	D3DLOCKED_RECT locked_rect;
 	RECT rect;
@@ -76,7 +90,7 @@ void MissingTexture::_Init()
 	rect.top=0;
 	rect.bottom=missing_image_height;
 	DX8_ErrorCode(
-		tex->LockRect(
+		lockable->LockRect(
 			0,
 			&locked_rect,
 			&rect,
@@ -89,32 +103,34 @@ void MissingTexture::_Init()
 		for (unsigned x=0; x<missing_image_width; x++)
 		{
 			//*buffer++=missing_image_palette[*pixels++];
-			*buffer++=0x7FFF00FF;
+			*buffer++=MISSING_TEXTURE_COLOR;
 		}
 		buffer=(unsigned*)locked_rect.pBits;
-		buffer+=locked_rect.Pitch/sizeof(unsigned)*y;
+		buffer+=locked_rect.Pitch/sizeof(unsigned)*(y+1);
 	}
 
-	DX8_ErrorCode(tex->UnlockRect(0));
+	DX8_ErrorCode(lockable->UnlockRect(0));
 
+	// Every texel is the same color, so each mip is just that color again
 	for (unsigned i=1;i<tex->GetLevelCount();++i) {
-		IDirect3DSurface8 *src,*dst;
-		DX8_ErrorCode(tex->GetSurfaceLevel(i-1,&src));
-		DX8_ErrorCode(tex->GetSurfaceLevel(i,&dst));
+		D3DSURFACE_DESC desc;
+		DX8_ErrorCode(tex->GetLevelDesc(i,&desc));
 
-		DX8_ErrorCode(D3DXLoadSurfaceFromSurface(
-			dst,
-			nullptr,	// palette
-			nullptr,	// rect
-			src,
-			nullptr,	// palette
-			nullptr,	// rect
-			D3DX_FILTER_BOX,	// box is good for 2:1 filtering
-			0));
+		D3DLOCKED_RECT mip_rect;
+		DX8_ErrorCode(lockable->LockRect(i,&mip_rect,nullptr,0));
 
-		src->Release();
-		dst->Release();
+		for (unsigned y=0;y<desc.Height;y++)
+		{
+			unsigned *row=(unsigned*)((unsigned char*)mip_rect.pBits+mip_rect.Pitch*y);
+			for (unsigned x=0;x<desc.Width;x++)
+			{
+				row[x]=MISSING_TEXTURE_COLOR;
+			}
+		}
+
+		DX8_ErrorCode(lockable->UnlockRect(i));
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(tex);
 
 	_MissingTexture=tex;
 /*

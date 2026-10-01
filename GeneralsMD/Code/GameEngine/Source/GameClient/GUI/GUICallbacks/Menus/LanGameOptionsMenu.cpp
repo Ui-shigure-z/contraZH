@@ -69,6 +69,10 @@ extern void MapSelectorTooltip(GameWindow *window, WinInstanceData *instData,	Un
 extern void gameAcceptTooltip(GameWindow *window, WinInstanceData *instData, UnsignedInt mouse);
 Color white = GameMakeColor( 255, 255, 255, 255 );
 static bool s_isIniting = FALSE;
+
+// Blocks the checkbox message from re-entering the commit while the controls are refreshed
+static bool s_isShowingMaxCameraHeight = FALSE;
+
 // window ids ------------------------------------------------------------------------------
 static NameKeyType parentLanGameOptionsID = NAMEKEY_INVALID;
 
@@ -680,6 +684,8 @@ void lanUpdateSlotList()
 // Zero means no shared limit, and the entry then shows GameData's value greyed out
 static void showLanMaxCameraHeight(Int value, Bool host)
 {
+	s_isShowingMaxCameraHeight = TRUE;
+
 	const Bool enabled = value != 0;
 	GadgetCheckBoxSetChecked(checkMaxCameraHeight, enabled);
 	UnicodeString shown;
@@ -687,6 +693,8 @@ static void showLanMaxCameraHeight(Int value, Bool host)
 	GadgetTextEntrySetText(textEntryMaxCameraHeight, shown);
 	checkMaxCameraHeight->winEnable(host);
 	textEntryMaxCameraHeight->winEnable(host && enabled);
+
+	s_isShowingMaxCameraHeight = FALSE;
 }
 
 // The host's shared camera limit; unchecked means none and every player keeps GameData's limit
@@ -694,6 +702,11 @@ static void commitLanMaxCameraHeight()
 {
 	LANGameInfo *myGame = TheLAN->GetMyGame();
 	if (!myGame || !myGame->amIHost() || !checkMaxCameraHeight || !textEntryMaxCameraHeight)
+	{
+		return;
+	}
+
+	if (s_isShowingMaxCameraHeight)
 	{
 		return;
 	}

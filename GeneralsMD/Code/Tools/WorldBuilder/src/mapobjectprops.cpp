@@ -32,9 +32,17 @@
 #include "Common/UnicodeString.h"
 #include "Common/WellKnownKeys.h"
 #include "Common/AudioEventInfo.h"
+#include "Common/AudioEventRTS.h"
+#include "Common/file.h"
+#include "Common/FileSystem.h"
+#include <mmsystem.h>
 
 #include "GameLogic/Module/UpgradeModule.h"
 #include "GameLogic/Module/GenerateMinefieldBehavior.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtObjectPropsBridge.h"
+#include "qt/panels/WBQtAnimScrubBridge.h"
+#endif
 
 const char* NEUTRAL_TEAM_UI_STR = "(neutral)";
 const char* NEUTRAL_TEAM_INTERNAL_STR = "team";
@@ -65,7 +73,9 @@ MapObjectProps::MapObjectProps(Dict* dictToEdit, const char* title, CWnd* pParen
   m_posUndoable( nullptr ),
   m_angle( 0 ),
   m_defaultEntryIndex(0),
-  m_defaultIsNone(true)
+  m_defaultIsNone(true),
+  m_soundPreviewPlaying(false),
+  m_soundComboTextWidth(0)
 {
 
 
@@ -98,6 +108,7 @@ void MapObjectProps::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(MapObjectProps, CDialog)
+  ON_WM_MOVE()
 	//{{AFX_MSG_MAP(MapObjectProps)
 	ON_BN_CLICKED(IDC_CUSTOMIZE_CHECKBOX, customizeToDict)
 	ON_BN_CLICKED(IDC_EDITPROP, OnEditprop)
@@ -116,7 +127,7 @@ BEGIN_MESSAGE_MAP(MapObjectProps, CDialog)
 	ON_BN_CLICKED(IDC_SCALE_ON, OnScaleOn)
 	ON_CBN_KILLFOCUS(IDC_MAPOBJECT_HitPoints, _HPsToDict)
 	ON_CBN_SELCHANGE(IDC_MAPOBJECT_Aggressiveness, _AggressivenessToDict)
-	ON_CBN_SELCHANGE(IDC_MAPOBJECT_Script, _ScriptToDict)
+	// ON_CBN_SELCHANGE(IDC_MAPOBJECT_Script, _ScriptToDict)
 	ON_CBN_SELCHANGE(IDC_MAPOBJECT_StartingHealth, _HealthToDict)
 	ON_CBN_SELCHANGE(IDC_MAPOBJECT_Team, _TeamToDict)
 	ON_CBN_SELCHANGE(IDC_MAPOBJECT_Time, _TimeToDict)
@@ -124,6 +135,9 @@ BEGIN_MESSAGE_MAP(MapObjectProps, CDialog)
 	ON_CBN_SELCHANGE(IDC_MAPOBJECT_Weather, _WeatherToDict)
 	ON_CBN_SELCHANGE(IDC_PRIORITY_COMBO, priorityToDict)
 	ON_CBN_SELCHANGE(IDC_SOUND_COMBO, attachedSoundToDict)
+	ON_BN_CLICKED(IDC_PLAY_SOUND_BUTTON, OnPlaySound)
+	ON_WM_TIMER()
+	ON_WM_DESTROY()
 	ON_CBN_SELENDOK(IDC_MAPOBJECT_HitPoints, _HPsToDict)
 	ON_EN_KILLFOCUS(IDC_LOOPCOUNT_EDIT, loopCountToDict)
 	ON_EN_KILLFOCUS(IDC_MAPOBJECT_Angle, SetAngle)
@@ -197,6 +211,7 @@ void MapObjectProps::_DictToTeam()
   AsciiString name;
   CComboBox *owner = (CComboBox*)GetDlgItem(IDC_MAPOBJECT_Team);
   owner->ResetContent();
+    owner->SetRedraw(FALSE); 
   for (i = 0; i < TheSidesList->getNumTeams(); i++)
   {
     name = TheSidesList->getTeamInfo(i)->getDict()->getAsciiString(TheKey_teamName);
@@ -208,7 +223,10 @@ void MapObjectProps::_DictToTeam()
   i = -1;
   if (m_dictToEdit)
   {
-    name = m_dictToEdit->getAsciiString(TheKey_originalOwner);
+    // exists-checked (see qtGetCurTeam): objects without an originalOwner key must not
+    // assert; FindStringExact on the empty string then yields -1 -> blank combo, as before.
+    Bool ooExists = false;
+    name = m_dictToEdit->getAsciiString(TheKey_originalOwner, &ooExists);
     if (name == NEUTRAL_TEAM_INTERNAL_STR)
       name = NEUTRAL_TEAM_UI_STR;
     i = owner->FindStringExact(-1, name.str());
@@ -216,6 +234,8 @@ void MapObjectProps::_DictToTeam()
 
   }
   owner->SetCurSel(i);
+  owner->SetRedraw(TRUE);  
+  owner->Invalidate();    
 }
 
 /// Move data from object to dialog controls
@@ -227,35 +247,46 @@ void MapObjectProps::_DictToName()
   {
     name = m_dictToEdit->getAsciiString(TheKey_objectName, &exists);
   }
+  
+  // Then, if there's multiple units selected, add the Single Selection Only string
+  if (m_allSelectedDicts.size() > 1) {
+    name = "Single Select Only You Dumb Ass!";
+  }
 
   CWnd* pItem = GetDlgItem(IDC_MAPOBJECT_Name);
   if (pItem)
   {
     pItem->SetWindowText(name.str());
+    
+    if (m_allSelectedDicts.size() > 1){
+      pItem->EnableWindow(FALSE); // Disable the control when multiple units are selected
+    } else {
+      pItem->EnableWindow(TRUE); // Ensure the control is enabled when only one unit is selected
+    }
   }
 }
 
 /// Move data from object to dialog controls
-void MapObjectProps::_DictToScript()
-{
-  if (!m_dictToEdit)
-  {
-    return;
-  }
-
-  Bool exists;
-  CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_MAPOBJECT_Script);
-  // Load the subroutine scripts into the combo box.
-  EditParameter::loadScripts(pCombo, true);
-  /*Int stringNdx =*/ pCombo->AddString("<none>");
-  AsciiString script = m_dictToEdit->getAsciiString(TheKey_objectScriptAttachment, &exists);
-
-  if (script.isEmpty()) {
-    pCombo->SelectString(-1, "<none>");
-  } else {
-    pCombo->SelectString(-1, script.str());
-  }
-}
+// void MapObjectProps::_DictToScript(void)
+// {
+//   if (!m_dictToEdit) 
+//   {
+//     return;
+//   }
+  
+//   Bool exists;
+//   CComboBox *pCombo = (CComboBox*)GetDlgItem(IDC_MAPOBJECT_Script);
+//   // Load the subroutine scripts into the combo box.
+//   EditParameter::loadScripts(pCombo, true);
+//   /*Int stringNdx =*/ pCombo->AddString("<none>");
+//   AsciiString script = m_dictToEdit->getAsciiString(TheKey_objectScriptAttachment, &exists);
+  
+//   if (script.isEmpty()) {
+//     pCombo->SelectString(-1, "<none>");
+//   } else {
+//     pCombo->SelectString(-1, script.str());
+//   }
+// }
 
 /// Move data from dialog controls to object
 void MapObjectProps::_TeamToDict()
@@ -285,6 +316,12 @@ void MapObjectProps::_NameToDict()
 {
   getAllSelectedDicts();
 
+  // We only work for single selections
+  if (m_allSelectedDicts.size() != 1) {
+    return;
+  }
+    
+  
   CWnd *owner = GetDlgItem(IDC_MAPOBJECT_Name);
   CString cstr;
   owner->GetWindowText(cstr);
@@ -303,26 +340,33 @@ void MapObjectProps::_NameToDict()
   }
 }
 
+/**
+ * Adriane [Deathscythe]
+ * Commenting out ScriptToDict is intentional.
+ * Somehow things still work, even though it was never meant to.
+ * 
+ * The feature was cut from the panel, but the underlying code still works.
+ */
 /// Move data from dialog controls to object
-void MapObjectProps::_ScriptToDict()
-{
-  getAllSelectedDicts();
-
-  CComboBox *owner = (CComboBox*)GetDlgItem(IDC_MAPOBJECT_Script);
-  static char buf[1024];
-  owner->GetWindowText(buf, sizeof(buf)-2);
-
-  CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
-  if ( pDoc )
-  {
-    Dict newDict;
-    newDict.setAsciiString(TheKey_objectScriptAttachment, AsciiString(buf));
-    DictItemUndoable *pUndo = new DictItemUndoable(getAllSelectedDictsData(), newDict, newDict.getNthKey(0), m_allSelectedDicts.size());
-    pDoc->AddAndDoUndoable(pUndo);
-    REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
-    // Update is called by Do
-  }
-}
+// void MapObjectProps::_ScriptToDict(void)
+// {
+//   getAllSelectedDicts();
+  
+//   CComboBox *owner = (CComboBox*)GetDlgItem(IDC_MAPOBJECT_Script);
+//   static char buf[1024];
+//   owner->GetWindowText(buf, sizeof(buf)-2);
+  
+//   CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+//   if ( pDoc )
+//   {
+//     Dict newDict;
+//     newDict.setAsciiString(TheKey_objectScriptAttachment, AsciiString(buf));
+//     DictItemUndoable *pUndo = new DictItemUndoable(m_allSelectedDicts.begin(), newDict, newDict.getNthKey(0), m_allSelectedDicts.size());
+//     pDoc->AddAndDoUndoable(pUndo);
+//     REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
+//     // Update is called by Do	
+//   }
+// }
 
 
 /// Move data from object to dialog controls
@@ -582,8 +626,8 @@ void MapObjectProps::GetPopSliderInfo(const long sliderID, long *pMin, long *pMa
 	switch (sliderID) {
 
 		case IDC_HEIGHT_POPUP:
-			*pMin = -50;
-			*pMax = 50;
+			*pMin = -100;
+			*pMax = 100;
 			*pInitial = m_height;
 			*pLineSize = 1;
 			break;
@@ -1585,7 +1629,11 @@ void MapObjectProps::OnDblclkProperties()
 static const Char NO_SOUND_STRING[] = "(None)";
 static const Char BASE_DEFAULT_STRING[] = "Default";
 
-void MapObjectProps::OnSelchangeProperties()
+static int comboEntryTextWidth( CComboBox *combo, int index );
+static int maxComboTextWidth( CComboBox *combo );
+static void setComboDropWidth( CComboBox *combo, int textWidth );
+
+void MapObjectProps::OnSelchangeProperties() 
 {
 
 }
@@ -1640,18 +1688,35 @@ void MapObjectProps::updateTheUI()
 		// simply break after the first one that's selected
 		break;
 	}
+#ifdef RTS_HAS_QT
+	WBQtObjectProps_PushRefresh();
+	// The Animation Scrubber follows the selection. This runs on EVERY selection click, so the
+	// call must stay cheap -- it no-ops unless the scrubber window exists AND is visible.
+	WBQtAnimScrub_PushRefresh();
+#endif
 }
 
 /// Move *all* data from object to dialog controls
 void MapObjectProps::updateTheUI(MapObject *pMapObj)
 {
-  _DictToName();
+#ifdef RTS_HAS_QT
+	// De-bridged (qt-debridge): windowless -> no controls to seed. The void overload
+	// above still walks the selection (m_dictSource/m_dictToEdit) and pushes the Qt
+	// refresh; every value the Qt panel shows derives from the dict via the qtM*
+	// statics in WBQtObjectPropsBridge.cpp.
+	if (GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+#endif
   _DictToTeam();
-  _DictToScript();
+  // _DictToScript();
   _DictToWeather();
   _DictToTime();
   _DictToScale();
   _DictToPrebuiltUpgrades();
+  // load this dogshit after the prebuilt upgrades idk why but the selection check here works 
+  _DictToName(); 
 	_DictToHealth();
   _DictToHPs();
   _DictToEnabled();
@@ -1731,9 +1796,14 @@ void MapObjectProps::InitSound()
     m_defaultIsNone = true;
 
     soundComboBox->InsertString( 1, NO_SOUND_STRING );
+
+    // One-time full measure of the dropdown width; per-selection refreshes reuse it
+    // (see maxComboTextWidth).
+    m_soundComboTextWidth = maxComboTextWidth( soundComboBox );
+    setComboDropWidth( soundComboBox, m_soundComboTextWidth );
   }
 
-}
+} // end InitSound
 
 
 // Adds a series of Undoable's to the given MultipleUndoable which clears the
@@ -1782,6 +1852,8 @@ void MapObjectProps::clearCustomizeFlag( CWorldBuilderDoc* pDoc, MultipleUndoabl
 /// Move data from dialog controls to object(s)
 void MapObjectProps::attachedSoundToDict()
 {
+  stopSoundPreview();
+
   CComboBox * soundComboBox = (CComboBox *)GetDlgItem(IDC_SOUND_COMBO);
   if ( soundComboBox == nullptr )
     return;
@@ -2063,9 +2135,208 @@ void MapObjectProps::priorityToDict()
 }
 
 
+// Pixel width of a single combo entry's text in the combo's font.
+static int comboEntryTextWidth( CComboBox *combo, int index )
+{
+  if ( combo == NULL || index < 0 || index >= combo->GetCount() )
+    return 0;
+  CDC *dc = combo->GetDC();
+  if ( dc == NULL )
+    return 0;
+  CFont *oldFont = dc->SelectObject( combo->GetFont() );
+  CString itemText;
+  combo->GetLBText( index, itemText );
+  int cx = dc->GetTextExtent( itemText ).cx;
+  dc->SelectObject( oldFont );
+  combo->ReleaseDC( dc );
+  return cx;
+}
+
+// Widest entry text in the combo. This walks EVERY entry -- the sound combo holds
+// thousands of audio events, so it must only run once per panel creation (InitSound).
+// dictToAttachedSound runs on every selection click and must NOT re-walk the list
+// (doing so cost ~200ms of select/deselect latency); it measures only its new
+// Default entry against the cached InitSound result.
+static int maxComboTextWidth( CComboBox *combo )
+{
+  if ( combo == NULL )
+    return 0;
+  CDC *dc = combo->GetDC();
+  if ( dc == NULL )
+    return 0;
+  CFont *oldFont = dc->SelectObject( combo->GetFont() );
+  int maxWidth = 0;
+  const int count = combo->GetCount();
+  for ( int i = 0; i < count; ++i )
+  {
+    CString itemText;
+    combo->GetLBText( i, itemText );
+    int cx = dc->GetTextExtent( itemText ).cx;
+    if ( cx > maxWidth )
+      maxWidth = cx;
+  }
+  dc->SelectObject( oldFont );
+  combo->ReleaseDC( dc );
+  return maxWidth;
+}
+
+// The Attached Sound combo box is narrow (to fit the Listen button); size its
+// dropdown list to the given text width so the full event names stay readable.
+static void setComboDropWidth( CComboBox *combo, int textWidth )
+{
+  if ( combo == NULL )
+    return;
+  combo->SetDroppedWidth( textWidth + ::GetSystemMetrics( SM_CXVSCROLL ) + 8 );
+}
+
+static const UINT SOUND_PREVIEW_TIMER_ID = 0x5051;
+
+// Duration in ms of an in-memory RIFF/WAVE buffer (data-chunk bytes over the
+// fmt-chunk average byte rate). Returns 0 when the header can't be read.
+static UnsignedInt wavDurationMs(const unsigned char *buf, UnsignedInt size)
+{
+  if (buf == NULL || size < 44 ||
+      memcmp(buf, "RIFF", 4) != 0 || memcmp(buf + 8, "WAVE", 4) != 0)
+    return 0;
+
+  UnsignedInt avgBytesPerSec = 0;
+  UnsignedInt dataSize = 0;
+  UnsignedInt pos = 12;
+  while (pos + 8 <= size)
+  {
+    UnsignedInt chunkSize;
+    memcpy(&chunkSize, buf + pos + 4, 4);
+    if (memcmp(buf + pos, "fmt ", 4) == 0 && pos + 20 <= size)
+      memcpy(&avgBytesPerSec, buf + pos + 16, 4); // nAvgBytesPerSec: 8 bytes into the chunk data
+    else if (memcmp(buf + pos, "data", 4) == 0)
+      dataSize = chunkSize;
+    pos += 8 + chunkSize + (chunkSize & 1);
+  }
+
+  if (avgBytesPerSec == 0)
+    return 0;
+  return (UnsignedInt)((double)dataSize * 1000.0 / (double)avgBytesPerSec);
+}
+
+/// Play/stop a preview of the attached sound currently selected in the combo box
+void MapObjectProps::OnPlaySound(void)
+{
+  if (m_soundPreviewPlaying)
+  {
+    stopSoundPreview();
+    return;
+  }
+
+  CComboBox * soundComboBox = (CComboBox *)GetDlgItem(IDC_SOUND_COMBO);
+  if ( soundComboBox == NULL )
+    return;
+
+  Int index = soundComboBox->GetCurSel();
+  if ( index == CB_ERR )
+    return;
+
+  CString currentString;
+  soundComboBox->GetLBText( index, currentString );
+  if ( currentString == NO_SOUND_STRING || ( index == m_defaultEntryIndex && m_defaultIsNone ) )
+    return; // nothing to play
+
+  if ( index == m_defaultEntryIndex )
+  {
+    // Correct the current string e.g. remove "Default <" and ">"
+    currentString = m_defaultEntryName.str();
+  }
+
+  AsciiString eventName( static_cast< const char * >( currentString ) );
+  AudioEventInfo * audioEventInfo = TheAudio->findAudioEventInfo( eventName );
+  if ( audioEventInfo == NULL )
+    return;
+
+  // Resolve the event to its audio file the same way the script-editor preview does.
+  // TheAudio->addAudioEvent can't be used here: playback only starts inside
+  // TheAudio->update(), which WB never pumps (and which dereferences the game's
+  // TheTacticalView), so the preview goes through Win32 PlaySound instead.
+  AudioEventRTS event;
+  event.setEventName( eventName );
+  event.setAudioEventInfo( audioEventInfo );
+  event.generateFilename();
+  if ( event.getFilename().isEmpty() )
+    return;
+
+  // Read through TheFileSystem so sounds packed in .big archives work too;
+  // PlaySound then plays from memory (the buffer must stay alive while playing)
+  File *file = TheFileSystem->openFile( event.getFilename().str(), File::READ | File::BINARY );
+  if ( file == NULL )
+    return;
+  Int size = file->size();
+  if ( size <= 0 )
+  {
+    file->close();
+    return;
+  }
+  m_soundPreviewData.resize( size );
+  Int bytesRead = file->read( &m_soundPreviewData[0], size );
+  file->close();
+  if ( bytesRead != size )
+  {
+    m_soundPreviewData.clear();
+    return;
+  }
+
+  Bool looping = ( audioEventInfo->m_control & AC_LOOP ) != 0;
+  DWORD flags = SND_MEMORY | SND_ASYNC | SND_NODEFAULT;
+  if ( looping )
+    flags |= SND_LOOP;
+  if ( !::PlaySound( (LPCSTR)&m_soundPreviewData[0], NULL, flags ) )
+  {
+    m_soundPreviewData.clear();
+    return;
+  }
+
+  m_soundPreviewPlaying = true;
+  SetDlgItemText( IDC_PLAY_SOUND_BUTTON, "Stop" );
+
+  // One-shot sounds flip the button back when they finish; loops play until stopped
+  if ( !looping )
+  {
+    UnsignedInt ms = wavDurationMs( &m_soundPreviewData[0], (UnsignedInt)size );
+    SetTimer( SOUND_PREVIEW_TIMER_ID, ms > 0 ? ms + 100 : 10000, NULL );
+  }
+}
+
+void MapObjectProps::stopSoundPreview(void)
+{
+  if ( !m_soundPreviewPlaying )
+    return;
+  ::PlaySound( NULL, NULL, 0 );
+  KillTimer( SOUND_PREVIEW_TIMER_ID );
+  m_soundPreviewPlaying = false;
+  m_soundPreviewData.clear();
+  if ( GetDlgItem( IDC_PLAY_SOUND_BUTTON ) )
+    SetDlgItemText( IDC_PLAY_SOUND_BUTTON, "Listen" );
+}
+
+void MapObjectProps::OnTimer(UINT nIDEvent)
+{
+  if ( nIDEvent == SOUND_PREVIEW_TIMER_ID )
+  {
+    // the one-shot preview finished playing on its own
+    stopSoundPreview();
+    return;
+  }
+  COptionsPanel::OnTimer( nIDEvent );
+}
+
+void MapObjectProps::OnDestroy()
+{
+  stopSoundPreview();
+  COptionsPanel::OnDestroy();
+}
+
 /// Move data from object to dialog controls
 void MapObjectProps::dictToAttachedSound()
 {
+  stopSoundPreview();
+
   CComboBox * soundComboBox = (CComboBox *)GetDlgItem(IDC_SOUND_COMBO);
   if ( soundComboBox == nullptr )
     return;
@@ -2114,6 +2385,14 @@ void MapObjectProps::dictToAttachedSound()
   {
     m_defaultEntryIndex = soundComboBox->InsertString(0, BASE_DEFAULT_STRING);
   }
+
+  // The new "Default <...>" entry may be the longest one: measure just that entry
+  // against the cached full-list width from InitSound(). This runs on every selection
+  // click, so re-measuring the whole list here (thousands of sound events) is what
+  // caused the ~200ms select/deselect latency regression.
+  int defaultEntryWidth = comboEntryTextWidth( soundComboBox, m_defaultEntryIndex );
+  setComboDropWidth( soundComboBox,
+    defaultEntryWidth > m_soundComboTextWidth ? defaultEntryWidth : m_soundComboTextWidth );
 
   // Now select the correct entry in the list box
   AsciiString sound;
@@ -2798,7 +3077,7 @@ void MapObjectProps::enableButtons()
 }
 
 
-/*static*/ MapObject *MapObjectProps::getSingleSelectedMapObject()
+/*static*/ MapObject *MapObjectProps::getSingleSelectedObject(void)
 {
 	MapObject *pMapObj;
 	MapObject *theMapObj = nullptr;
@@ -2813,15 +3092,21 @@ void MapObjectProps::enableButtons()
 			selCount++;
 		}
 	}
-	if (selCount==1 && theMapObj) {
+	if (selCount>0 && theMapObj) {
 		return theMapObj;
 	}
 	return(nullptr);
 }
 
-
-
-
+void MapObjectProps::OnMove(int x, int y)
+{
+  /**
+   * Adriane [Deathscythe] -- Bug fix
+   * This is required to save the top and left position values.
+   * The handler is defined in COptionsPanel and must be called explicitly.
+   */
+	COptionsPanel::OnMove(x, y); // forward to base 
+}
 
 void MapObjectProps::OnOK()
 {
@@ -2891,3 +3176,957 @@ void MapObjectProps::OnKillfocusMAPOBJECTXYPosition()
   SetPosition();
 }
 
+
+#ifdef RTS_HAS_QT
+//----------------------------------------------------------------------------------------
+// Qt front-end support (Phase 1: selection + General name/team). The MFC panel stays the
+// singleton (TheMapObjectProps); setters write the hidden MFC control then call the real
+// _XToDict handler so the DictItemUndoable / multi-select path is reused unchanged.
+//----------------------------------------------------------------------------------------
+namespace {
+	void qtCopyStr(char *out, int cap, const char *src)
+	{
+		if (out == NULL || cap <= 0) { return; }
+		if (src == NULL) { out[0] = 0; return; }
+		strncpy(out, src, cap - 1);
+		out[cap - 1] = 0;
+	}
+}
+
+int MapObjectProps::qtHasSelection(void)
+{
+	return (getSingleSelectedObject() != NULL) ? 1 : 0;
+}
+
+int MapObjectProps::qtGetSelCount(void)
+{
+	int n = 0;
+	for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+	{
+		if (pMapObj->isSelected() && !pMapObj->isWaypoint() && !pMapObj->isLight())
+		{
+			n++;
+		}
+	}
+	return n;
+}
+
+int MapObjectProps::qtGetName(char *out, int cap)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		qtCopyStr(out, cap, "");
+		return 0;
+	}
+	Bool exists;
+	AsciiString name = TheMapObjectProps->m_dictToEdit->getAsciiString(TheKey_objectName, &exists);
+	qtCopyStr(out, cap, name.str());
+	return 1;
+}
+
+void MapObjectProps::qtSetName(const char *name)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Name);
+	if (pEdit != NULL)
+	{
+		pEdit->SetWindowText(name ? name : "");
+	}
+	TheMapObjectProps->_NameToDict();
+}
+
+int MapObjectProps::qtGetTeamCount(void)
+{
+	return TheSidesList ? TheSidesList->getNumTeams() : 0;
+}
+
+int MapObjectProps::qtGetTeamName(int i, char *out, int cap)
+{
+	if (i < 0 || i >= TheSidesList->getNumTeams())
+	{
+		return 0;
+	}
+	AsciiString name = TheSidesList->getTeamInfo(i)->getDict()->getAsciiString(TheKey_teamName);
+	if (name == NEUTRAL_TEAM_INTERNAL_STR)
+	{
+		name = NEUTRAL_TEAM_UI_STR;
+	}
+	qtCopyStr(out, cap, name.str());
+	return 1;
+}
+
+int MapObjectProps::qtGetCurTeam(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return -1;
+	}
+	// exists-checked: waypoints/roads and some scripted objects have no originalOwner key, and
+	// this runs on EVERY selection click -- an unchecked read pops the "dict key missing"
+	// assert per click on such objects. Missing -> -1 -> the panel blanks the Team combo.
+	Bool exists = false;
+	AsciiString cur = TheMapObjectProps->m_dictToEdit->getAsciiString(TheKey_originalOwner, &exists);
+	if (!exists)
+	{
+		return -1;
+	}
+	for (int i = 0; i < TheSidesList->getNumTeams(); i++)
+	{
+		if (TheSidesList->getTeamInfo(i)->getDict()->getAsciiString(TheKey_teamName) == cur)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+void MapObjectProps::qtSetTeam(int i)
+{
+	if (TheMapObjectProps == NULL || i < 0 || i >= TheSidesList->getNumTeams())
+	{
+		return;
+	}
+	// Set the hidden MFC combo text to the chosen team, then let _TeamToDict read it back
+	// (it maps the neutral UI string to the internal one and builds the undoable).
+	AsciiString name = TheSidesList->getTeamInfo(i)->getDict()->getAsciiString(TheKey_teamName);
+	if (name == NEUTRAL_TEAM_INTERNAL_STR)
+	{
+		name = NEUTRAL_TEAM_UI_STR;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Team);
+	if (pCombo != NULL)
+	{
+		int sel = pCombo->FindStringExact(-1, name.str());
+		if (sel >= 0)
+		{
+			pCombo->SetCurSel(sel);
+		}
+		else
+		{
+			pCombo->SetWindowText(name.str());
+		}
+	}
+	TheMapObjectProps->_TeamToDict();
+}
+
+//----------------------------------------------------------------------------------------
+// Phase 2: Logical section (flags, aggressiveness, veterancy, starting health, hit points,
+// vision / shroud / stopping distances). Each setter writes the hidden MFC control's state
+// then calls the real _XToDict handler so the DictItemUndoable / multi-select path is reused.
+//----------------------------------------------------------------------------------------
+
+// Flag ids -- keep in sync with the WBQT_OBJPROP_FLAG_* enum in WBQtObjectPropsBridge.h.
+enum
+{
+	QT_FLAG_ENABLED = 0,
+	QT_FLAG_INDESTRUCTIBLE,
+	QT_FLAG_UNSELLABLE,
+	QT_FLAG_TARGETABLE,
+	QT_FLAG_POWERED,
+	QT_FLAG_RECRUITABLEAI,
+	QT_FLAG_SELECTABLE
+};
+
+namespace
+{
+	// Map a flag id to its dialog control id. Returns 0 for an unknown id.
+	int qtFlagControlId(int which)
+	{
+		switch (which)
+		{
+			case QT_FLAG_ENABLED:        return IDC_MAPOBJECT_Enabled;
+			case QT_FLAG_INDESTRUCTIBLE: return IDC_MAPOBJECT_Indestructible;
+			case QT_FLAG_UNSELLABLE:     return IDC_MAPOBJECT_Unsellable;
+			case QT_FLAG_TARGETABLE:     return IDC_MAPOBJECT_Targetable;
+			case QT_FLAG_POWERED:        return IDC_MAPOBJECT_Powered;
+			case QT_FLAG_RECRUITABLEAI:  return IDC_MAPOBJECT_RecruitableAI;
+			case QT_FLAG_SELECTABLE:     return IDC_MAPOBJECT_Selectable;
+			default: return 0;
+		}
+	}
+}
+
+int MapObjectProps::qtGetFlag(int which)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	int id = qtFlagControlId(which);
+	if (id == 0)
+	{
+		return 0;
+	}
+	CButton *pButton = (CButton *)TheMapObjectProps->GetDlgItem(id);
+	if (pButton == NULL)
+	{
+		return 0;
+	}
+	// GetCheck() returns 0/1, or 2 for the Selectable box's tri-state 'default' value.
+	return pButton->GetCheck();
+}
+
+void MapObjectProps::qtSetFlag(int which, int state)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	int id = qtFlagControlId(which);
+	if (id == 0)
+	{
+		return;
+	}
+	CButton *pButton = (CButton *)TheMapObjectProps->GetDlgItem(id);
+	if (pButton != NULL)
+	{
+		pButton->SetCheck(state);
+	}
+	switch (which)
+	{
+		case QT_FLAG_ENABLED:        TheMapObjectProps->_EnabledToDict();        break;
+		case QT_FLAG_INDESTRUCTIBLE: TheMapObjectProps->_IndestructibleToDict(); break;
+		case QT_FLAG_UNSELLABLE:     TheMapObjectProps->_UnsellableToDict();     break;
+		case QT_FLAG_TARGETABLE:     TheMapObjectProps->_TargetableToDict();     break;
+		case QT_FLAG_POWERED:        TheMapObjectProps->_PoweredToDict();        break;
+		case QT_FLAG_RECRUITABLEAI:  TheMapObjectProps->_RecruitableAIToDict();  break;
+		case QT_FLAG_SELECTABLE:     TheMapObjectProps->_SelectableToDict();     break;
+		default: break;
+	}
+}
+
+int MapObjectProps::qtGetAggressiveness(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectAggressiveness, &exists);
+}
+
+void MapObjectProps::qtSetAggressiveness(int value)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	// _AggressivenessToDict reads the combo's text, so select the matching string first.
+	const char *label = "Normal";
+	switch (value)
+	{
+		case -2: label = "Sleep";      break;
+		case -1: label = "Passive";    break;
+		case  0: label = "Normal";     break;
+		case  1: label = "Alert";      break;
+		case  2: label = "Aggressive"; break;
+		default: label = "Normal";     break;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Aggressiveness);
+	if (pCombo != NULL)
+	{
+		pCombo->SelectString(-1, label);
+	}
+	TheMapObjectProps->_AggressivenessToDict();
+}
+
+int MapObjectProps::qtGetVeterancy(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectVeterancy, &exists);
+}
+
+void MapObjectProps::qtSetVeterancy(int index)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Veterancy);
+	if (pCombo != NULL && index >= 0)
+	{
+		pCombo->SetCurSel(index);
+	}
+	TheMapObjectProps->_VeterancyToDict();
+}
+
+int MapObjectProps::qtGetHealthPercent(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 100;
+	}
+	Bool exists;
+	Int v = TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectInitialHealth, &exists);
+	if (!exists)
+	{
+		return 100;
+	}
+	return v;
+}
+
+void MapObjectProps::qtSetHealthPercent(int value)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	// _HealthToDict reads the combo text (Dead/25%/50%/75%/100%/Other) and, for Other, the edit
+	// box. Drive both so any value round-trips exactly like the MFC panel: 0 is the "Dead" item.
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_StartingHealth);
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_StartingHealthEdit);
+	if (pCombo == NULL)
+	{
+		return;
+	}
+	if (value == 0 || value == 25 || value == 50 || value == 75 || value == 100)
+	{
+		if (value == 0)
+		{
+			pCombo->SelectString(-1, "Dead");
+		}
+		else
+		{
+			static char buf[8];
+			sprintf(buf, "%d%%", value);
+			pCombo->SelectString(-1, buf);
+		}
+		if (pEdit != NULL)
+		{
+			pEdit->SetWindowText("");
+		}
+	}
+	else
+	{
+		pCombo->SelectString(-1, "Other");
+		if (pEdit != NULL)
+		{
+			static char buf[16];
+			sprintf(buf, "%d", value);
+			pEdit->EnableWindow(TRUE);
+			pEdit->SetWindowText(buf);
+		}
+	}
+	TheMapObjectProps->_HealthToDict();
+}
+
+int MapObjectProps::qtGetMaxHPs(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return -1;
+	}
+	Bool exists;
+	Int v = TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectMaxHPs, &exists);
+	if (!exists)
+	{
+		return -1;
+	}
+	return v;
+}
+
+void MapObjectProps::qtSetMaxHPs(int hps)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	// _HPsToDict reads the combo text and atoi's it (0 -> -1 == Default For Unit). Setting the
+	// window text to the number (or empty for default) makes it round-trip.
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_HitPoints);
+	if (pCombo != NULL)
+	{
+		if (hps <= 0)
+		{
+			pCombo->SetWindowText("");
+		}
+		else
+		{
+			static char buf[16];
+			sprintf(buf, "%d", hps);
+			pCombo->SetWindowText(buf);
+		}
+	}
+	TheMapObjectProps->_HPsToDict();
+}
+
+int MapObjectProps::qtGetVisionDistance(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectVisualRange, &exists);
+}
+
+void MapObjectProps::qtSetVisionDistance(int dist)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_VisionDistance);
+	if (pEdit != NULL)
+	{
+		if (dist <= 0)
+		{
+			pEdit->SetWindowText("");
+		}
+		else
+		{
+			static char buf[16];
+			sprintf(buf, "%d", dist);
+			pEdit->SetWindowText(buf);
+		}
+	}
+	TheMapObjectProps->_VisibilityToDict();
+}
+
+int MapObjectProps::qtGetShroudClearingDistance(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectShroudClearingDistance, &exists);
+}
+
+void MapObjectProps::qtSetShroudClearingDistance(int dist)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_ShroudClearingDistance);
+	if (pEdit != NULL)
+	{
+		if (dist <= 0)
+		{
+			pEdit->SetWindowText("");
+		}
+		else
+		{
+			static char buf[16];
+			sprintf(buf, "%d", dist);
+			pEdit->SetWindowText(buf);
+		}
+	}
+	TheMapObjectProps->_ShroudClearingDistanceToDict();
+}
+
+double MapObjectProps::qtGetStoppingDistance(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 1.0;
+	}
+	Bool exists;
+	Real v = TheMapObjectProps->m_dictToEdit->getReal(TheKey_objectStoppingDistance, &exists);
+	if (!exists)
+	{
+		return 1.0;
+	}
+	return v;
+}
+
+void MapObjectProps::qtSetStoppingDistance(double dist)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_StoppingDistance);
+	if (pEdit != NULL)
+	{
+		static char buf[32];
+		sprintf(buf, "%g", dist);
+		pEdit->SetWindowText(buf);
+	}
+	TheMapObjectProps->_StoppingDistanceToDict();
+}
+
+//----------------------------------------------------------------------------------------
+// Phase 3a: Visual section (weather, time, XY position, Z offset, angle). Weather/Time are
+// index combos driven through _WeatherToDict / _TimeToDict; XY / Z / Angle write the hidden
+// MFC edit then call the real SetPosition / SetZOffset / SetAngle (single-object, via
+// ModifyObjectUndoable) so the undo path is reused. The getters read the members the MFC
+// Show* helpers already populated during updateTheUI.
+//----------------------------------------------------------------------------------------
+
+int MapObjectProps::qtGetWeather(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectWeather, &exists);
+}
+
+void MapObjectProps::qtSetWeather(int index)
+{
+	if (TheMapObjectProps == NULL || index < 0)
+	{
+		return;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Weather);
+	if (pCombo != NULL)
+	{
+		pCombo->SetCurSel(index);
+	}
+	TheMapObjectProps->_WeatherToDict();
+}
+
+int MapObjectProps::qtGetTime(void)
+{
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_dictToEdit == NULL)
+	{
+		return 0;
+	}
+	Bool exists;
+	return TheMapObjectProps->m_dictToEdit->getInt(TheKey_objectTime, &exists);
+}
+
+void MapObjectProps::qtSetTime(int index)
+{
+	if (TheMapObjectProps == NULL || index < 0)
+	{
+		return;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Time);
+	if (pCombo != NULL)
+	{
+		pCombo->SetCurSel(index);
+	}
+	TheMapObjectProps->_TimeToDict();
+}
+
+int MapObjectProps::qtGetPosition(char *out, int cap)
+{
+	if (out == NULL || cap <= 0)
+	{
+		return 0;
+	}
+	if (TheMapObjectProps == NULL || TheMapObjectProps->m_selectedObject == NULL)
+	{
+		out[0] = 0;
+		return 0;
+	}
+	_snprintf(out, cap - 1, "%0.2f, %0.2f",
+		TheMapObjectProps->m_position.x, TheMapObjectProps->m_position.y);
+	out[cap - 1] = 0;
+	return 1;
+}
+
+void MapObjectProps::qtSetPosition(const char *text)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_XYPosition);
+	if (pEdit != NULL)
+	{
+		pEdit->SetWindowText(text ? text : "");
+	}
+	TheMapObjectProps->SetPosition();
+}
+
+double MapObjectProps::qtGetZOffset(void)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0.0;
+	}
+	return TheMapObjectProps->m_height;
+}
+
+void MapObjectProps::qtSetZOffset(double z)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_ZOffset);
+	if (pEdit != NULL)
+	{
+		static char buf[32];
+		sprintf(buf, "%0.2f", z);
+		pEdit->SetWindowText(buf);
+	}
+	TheMapObjectProps->SetZOffset();
+}
+
+double MapObjectProps::qtGetAngle(void)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0.0;
+	}
+	return TheMapObjectProps->m_angle;
+}
+
+void MapObjectProps::qtSetAngle(double deg)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CWnd *pEdit = TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_Angle);
+	if (pEdit != NULL)
+	{
+		static char buf[32];
+		sprintf(buf, "%0.2f", deg);
+		pEdit->SetWindowText(buf);
+	}
+	TheMapObjectProps->SetAngle();
+}
+
+//----------------------------------------------------------------------------------------
+// Phase 3b: Sound section. The MFC dictTo* handlers (run during updateTheUI) set both the
+// value AND the enabled state of every sound control, encoding all the customize/looping/
+// none gating. So the Qt getters just read the LIVE MFC control (check/text + IsWindowEnabled)
+// and the setters write the control then call the matching *ToDict handler. Any control write
+// re-runs updateTheUI (via the undoable's Do), which re-gates everything and pushes back to Qt.
+//----------------------------------------------------------------------------------------
+
+// Sound flag ids -- keep in sync with the WBQT_SND_* enum in WBQtObjectPropsBridge.h.
+enum
+{
+	QT_SND_CUSTOMIZE = 0,
+	QT_SND_ENABLED,
+	QT_SND_LOOPING
+};
+// Sound int-edit ids.
+enum
+{
+	QT_SND_LOOPCOUNT = 0,
+	QT_SND_VOLUME,
+	QT_SND_MINVOLUME,
+	QT_SND_MINRANGE,
+	QT_SND_MAXRANGE
+};
+
+namespace
+{
+	int qtSndFlagControlId(int which)
+	{
+		switch (which)
+		{
+			case QT_SND_CUSTOMIZE: return IDC_CUSTOMIZE_CHECKBOX;
+			case QT_SND_ENABLED:   return IDC_ENABLED_CHECKBOX;
+			case QT_SND_LOOPING:   return IDC_LOOPING_CHECKBOX;
+			default: return 0;
+		}
+	}
+	int qtSndIntControlId(int which)
+	{
+		switch (which)
+		{
+			case QT_SND_LOOPCOUNT: return IDC_LOOPCOUNT_EDIT;
+			case QT_SND_VOLUME:    return IDC_VOLUME_EDIT;
+			case QT_SND_MINVOLUME: return IDC_MIN_VOLUME_EDIT;
+			case QT_SND_MINRANGE:  return IDC_MIN_RANGE_EDIT;
+			case QT_SND_MAXRANGE:  return IDC_MAX_RANGE_EDIT;
+			default: return 0;
+		}
+	}
+}
+
+int MapObjectProps::qtGetSoundCount(void)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_SOUND_COMBO);
+	return pCombo ? pCombo->GetCount() : 0;
+}
+
+int MapObjectProps::qtGetSoundItem(int i, char *out, int cap)
+{
+	if (out == NULL || cap <= 0 || TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_SOUND_COMBO);
+	if (pCombo == NULL || i < 0 || i >= pCombo->GetCount())
+	{
+		return 0;
+	}
+	CString text;
+	pCombo->GetLBText(i, text);
+	strncpy(out, (const char *)text, cap - 1);
+	out[cap - 1] = 0;
+	return 1;
+}
+
+int MapObjectProps::qtGetSoundCurSel(void)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return -1;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_SOUND_COMBO);
+	return pCombo ? pCombo->GetCurSel() : -1;
+}
+
+void MapObjectProps::qtSetSoundCurSel(int i)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_SOUND_COMBO);
+	if (pCombo != NULL && i >= 0)
+	{
+		pCombo->SetCurSel(i);
+	}
+	TheMapObjectProps->attachedSoundToDict();
+}
+
+int MapObjectProps::qtGetSoundPlaying(void)
+{
+	return (TheMapObjectProps != NULL && TheMapObjectProps->m_soundPreviewPlaying) ? 1 : 0;
+}
+
+void MapObjectProps::qtToggleSoundPreview(void)
+{
+	if (TheMapObjectProps != NULL)
+	{
+		TheMapObjectProps->OnPlaySound();
+	}
+}
+
+int MapObjectProps::qtGetSoundFlag(int which)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	int id = qtSndFlagControlId(which);
+	CButton *pButton = id ? (CButton *)TheMapObjectProps->GetDlgItem(id) : NULL;
+	return pButton ? pButton->GetCheck() : 0;
+}
+
+int MapObjectProps::qtGetSoundFlagEnabled(int which)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	int id = qtSndFlagControlId(which);
+	CWnd *pWnd = id ? TheMapObjectProps->GetDlgItem(id) : NULL;
+	return (pWnd && pWnd->IsWindowEnabled()) ? 1 : 0;
+}
+
+void MapObjectProps::qtSetSoundFlag(int which, int on)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	int id = qtSndFlagControlId(which);
+	CButton *pButton = id ? (CButton *)TheMapObjectProps->GetDlgItem(id) : NULL;
+	if (pButton != NULL)
+	{
+		pButton->SetCheck(on ? 1 : 0);
+	}
+	switch (which)
+	{
+		case QT_SND_CUSTOMIZE: TheMapObjectProps->customizeToDict(); break;
+		case QT_SND_ENABLED:   TheMapObjectProps->enabledToDict();   break;
+		case QT_SND_LOOPING:   TheMapObjectProps->loopingToDict();   break;
+		default: break;
+	}
+}
+
+int MapObjectProps::qtGetSoundInt(int which, int *outEnabled)
+{
+	if (outEnabled != NULL)
+	{
+		*outEnabled = 0;
+	}
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	int id = qtSndIntControlId(which);
+	CWnd *pEdit = id ? TheMapObjectProps->GetDlgItem(id) : NULL;
+	if (pEdit == NULL)
+	{
+		return 0;
+	}
+	if (outEnabled != NULL)
+	{
+		*outEnabled = pEdit->IsWindowEnabled() ? 1 : 0;
+	}
+	CString text;
+	pEdit->GetWindowText(text);
+	return atoi((const char *)text);
+}
+
+void MapObjectProps::qtSetSoundInt(int which, int value)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	int id = qtSndIntControlId(which);
+	CWnd *pEdit = id ? TheMapObjectProps->GetDlgItem(id) : NULL;
+	if (pEdit != NULL)
+	{
+		static char buf[32];
+		sprintf(buf, "%d", value);
+		pEdit->SetWindowText(buf);
+	}
+	switch (which)
+	{
+		case QT_SND_LOOPCOUNT: TheMapObjectProps->loopCountToDict(); break;
+		case QT_SND_VOLUME:    TheMapObjectProps->volumeToDict();    break;
+		case QT_SND_MINVOLUME: TheMapObjectProps->minVolumeToDict(); break;
+		case QT_SND_MINRANGE:  TheMapObjectProps->minRangeToDict();  break;
+		case QT_SND_MAXRANGE:  TheMapObjectProps->maxRangeToDict();  break;
+		default: break;
+	}
+}
+
+int MapObjectProps::qtGetSoundPriorityCount(void)
+{
+	// == InitSound's `for (i = 0; i <= AP_CRITICAL; i++)` -- read the engine table directly
+	// rather than the never-created MFC combo (GetDlgItem is always NULL in the Qt build).
+	return AP_CRITICAL + 1;
+}
+
+int MapObjectProps::qtGetSoundPriorityName(int i, char *out, int cap)
+{
+	if (out == NULL || cap <= 0)
+	{
+		return 0;
+	}
+	if (i < 0 || i > AP_CRITICAL)
+	{
+		return 0;
+	}
+	strncpy(out, theAudioPriorityNames[i], cap - 1);
+	out[cap - 1] = 0;
+	return 1;
+}
+
+int MapObjectProps::qtGetSoundPriority(int *outEnabled)
+{
+	if (outEnabled != NULL)
+	{
+		*outEnabled = 0;
+	}
+	if (TheMapObjectProps == NULL)
+	{
+		return -1;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_PRIORITY_COMBO);
+	if (pCombo == NULL)
+	{
+		return -1;
+	}
+	if (outEnabled != NULL)
+	{
+		*outEnabled = pCombo->IsWindowEnabled() ? 1 : 0;
+	}
+	return pCombo->GetCurSel();
+}
+
+void MapObjectProps::qtSetSoundPriority(int i)
+{
+	if (TheMapObjectProps == NULL || i < 0)
+	{
+		return;
+	}
+	CComboBox *pCombo = (CComboBox *)TheMapObjectProps->GetDlgItem(IDC_PRIORITY_COMBO);
+	if (pCombo != NULL)
+	{
+		pCombo->SetCurSel(i);
+	}
+	TheMapObjectProps->priorityToDict();
+}
+
+//----------------------------------------------------------------------------------------
+// Phase 3c: Pre-built upgrades listbox (multi-select, single-object). The Qt list mirrors the
+// MFC listbox that _DictToPrebuiltUpgrades fills + pre-selects; the setter writes the MFC item
+// selection then calls _PrebuiltUpgradesToDict (which rebuilds the grant-upgrade keys).
+//----------------------------------------------------------------------------------------
+
+int MapObjectProps::qtGetUpgradeCount(void)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	CListBox *pBox = (CListBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_BuildWithUpgrades);
+	return pBox ? pBox->GetCount() : 0;
+}
+
+int MapObjectProps::qtGetUpgradeItem(int i, char *out, int cap)
+{
+	if (out == NULL || cap <= 0 || TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	CListBox *pBox = (CListBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_BuildWithUpgrades);
+	if (pBox == NULL || i < 0 || i >= pBox->GetCount())
+	{
+		return 0;
+	}
+	CString text;
+	pBox->GetText(i, text);
+	strncpy(out, (const char *)text, cap - 1);
+	out[cap - 1] = 0;
+	return 1;
+}
+
+int MapObjectProps::qtGetUpgradeSelected(int i)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return 0;
+	}
+	CListBox *pBox = (CListBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_BuildWithUpgrades);
+	if (pBox == NULL || i < 0 || i >= pBox->GetCount())
+	{
+		return 0;
+	}
+	return (pBox->GetSel(i) > 0) ? 1 : 0;
+}
+
+void MapObjectProps::qtSetUpgradeSelected(int i, int on)
+{
+	if (TheMapObjectProps == NULL)
+	{
+		return;
+	}
+	CListBox *pBox = (CListBox *)TheMapObjectProps->GetDlgItem(IDC_MAPOBJECT_BuildWithUpgrades);
+	if (pBox == NULL || i < 0 || i >= pBox->GetCount())
+	{
+		return;
+	}
+	// Set the item's selection only; the Qt panel calls qtCommitUpgrades() once after applying the
+	// whole selection set, so a multi-item change produces a single undoable (not one per item).
+	pBox->SetSel(i, on ? TRUE : FALSE);
+}
+
+void MapObjectProps::qtCommitUpgrades(void)
+{
+	if (TheMapObjectProps != NULL)
+	{
+		TheMapObjectProps->_PrebuiltUpgradesToDict();
+	}
+}
+#endif

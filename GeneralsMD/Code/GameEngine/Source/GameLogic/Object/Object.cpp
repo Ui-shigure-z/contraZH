@@ -69,6 +69,9 @@
 #include "GameLogic/Module/AutoHealBehavior.h"
 #include "GameLogic/Module/BehaviorModule.h"
 #include "GameLogic/Module/BodyModule.h"
+#if defined(GENERALS_ONLINE)
+#include "Common/StatsExporter.h"
+#endif
 #include "GameLogic/Module/CollideModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/DeployStyleAIUpdate.h"
@@ -1177,11 +1180,6 @@ void Object::setStatus( ObjectStatusMaskType objectStatus, Bool set )
 
 			if (m_partitionData)
 				m_partitionData->makeDirty(true);
-		}
-
-		if (set && objectStatus.test(OBJECT_STATUS_UNSELECTABLE) && m_drawable)
-		{
-			TheInGameUI->deselectDrawable(m_drawable);
 		}
 
 	}
@@ -3286,6 +3284,13 @@ void Object::scoreTheKill( const Object *victim, const DamageInfo *damageInfo )
 		controller->getScoreKeeper()->addObjectDestroyed(victim);
 		controller->addSkillPointsForKill(this, victim);
 		controller->doBountyForKill(this, victim);
+#if defined(GENERALS_ONLINE)
+		if (TheGlobalData->m_exportStats)
+		{
+			const DamageInfo *damageInfo = victim->getBodyModule() ? victim->getBodyModule()->getLastDamageInfo() : nullptr;
+			StatsExporterRecordKill(this, victim, damageInfo);
+		}
+#endif
 	}
 
 	// Now handle experience, if we can gain any
@@ -4181,9 +4186,11 @@ void Object::friend_adjustPowerForPlayer( Bool incoming )
 //-------------------------------------------------------------------------------------------------
 void Object::onDisabledEdge(Bool becomingDisabled)
 {
+#if !(RTS_GENERALS && RETAIL_COMPATIBLE_CRC)
 	// rip through the behavior modules and call the onDisabledEdge for any modules that care
 	for( BehaviorModule **module = m_behaviors; *module; ++module )
 		(*module)->onDisabledEdge( becomingDisabled );
+#endif
 
 	Player* controller = getControllingPlayer();
 	// can be called during game teardown, thus controller can be null
@@ -4916,6 +4923,12 @@ void Object::onCapture( Player *oldOwner, Player *newOwner )
 
 	// this gets the new owner some points
 	newOwner->getScoreKeeper()->addObjectCaptured(this);
+#if defined(GENERALS_ONLINE)
+	if (TheGlobalData->m_exportStats)
+	{
+		StatsExporterRecordCapture(this, oldOwner, newOwner);
+	}
+#endif
 
 	// rip through the behavior modules and call the onCapture for any modules that care
 	for( BehaviorModule **module = m_behaviors; *module; ++module )
@@ -6098,6 +6111,7 @@ void Object::doCommandButton( const CommandButton *commandButton, CommandSourceT
 			case GUI_COMMAND_ATTACK_MOVE:
 			case GUI_COMMAND_REVERSE_MOVE:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
 			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
@@ -6230,6 +6244,7 @@ void Object::doCommandButtonAtObject( const CommandButton *commandButton, Object
 			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
 			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
@@ -6399,6 +6414,7 @@ void Object::doCommandButtonUsingWaypoints( const CommandButton *commandButton, 
 			case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
 			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_STOP:
 			case GUI_COMMAND_DOZER_CONSTRUCT:
 			case GUI_COMMAND_DOZER_CONSTRUCT_CANCEL:
@@ -6938,11 +6954,7 @@ void Object::enterGroup( AIGroup *group )
 	// if we are in another group, remove ourselves from it first
 	leaveGroup();
 
-#if RETAIL_COMPATIBLE_AIGROUP
 	m_group = group;
-#else
-	m_group.Assign_Add_Ref(group);
-#endif
 }
 
 //-------------------------------------------------------------------------------------------------

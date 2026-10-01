@@ -1,27 +1,10 @@
-/*
-**	Command & Conquer Generals Zero Hour(tm)
-**	Copyright 2025 Electronic Arts Inc.
-**
-**	This program is free software: you can redistribute it and/or modify
-**	it under the terms of the GNU General Public License as published by
-**	the Free Software Foundation, either version 3 of the License, or
-**	(at your option) any later version.
-**
-**	This program is distributed in the hope that it will be useful,
-**	but WITHOUT ANY WARRANTY; without even the implied warranty of
-**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-**	GNU General Public License for more details.
-**
-**	You should have received a copy of the GNU General Public License
-**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
 //{{NO_DEPENDENCIES}}
-// Microsoft Developer Studio generated include file.
+// Microsoft Visual C++ generated include file.
 // Used by WorldBuilder.rc
 //
 #define IDPREVIEWSOUND                  3
 #define IDC_PREVIEWSOUND                3
+#define IDC_SAVE_ACTUAL                 3
 #define IDD_ABOUTBOX                    100
 #define IDR_MAINFRAME                   128
 #define IDR_MAPDOC                      128
@@ -44,6 +27,7 @@
 #define IDD_OBJECT_OPTIONS              145
 #define IDC_EYEDROPPER                  146
 #define IDD_CONTOUR_OPTIONS             146
+#define IDD_TRACING_OVERLAY_OPTIONS     246
 #define IDC_PLACE_OBJECT                147
 #define IDD_TERRAIN_MODAL               147
 #define IDC_POINTER                     148
@@ -140,6 +124,27 @@
 #define IDD_MAPOBJECT_PROPPAGE_VISUAL   237
 #define IDD_MAPOBJECT_PROPPAGE_UPGRADES 238
 #define IDD_MAPOBJECT_PROPPAGE_SOUND    239
+#define IDC_ABORT_ALL                   240
+#define IDC_SCRIPT_SEARCH               241
+#define IDC_FIND_NEXT                   242
+#define IDD_TOAST                       242
+#define IDC_OBJECT_SEARCH_EDIT          243
+#define IDD_MINIMAP                     243
+#define IDD_WAVE_EDITOR_OPTIONS         244
+#define IDD_STOCHASTIC_OPTIONS          257
+#define IDC_OBJECT_SEARCH_BUTTON        244
+#define IDC_OBJECT_SEARCH_RESET_BTN     245
+#define IDC_OBJECT_EDIT                 246
+#define IDC_SEARCH_EDIT                 247
+#define IDC_FIND_BUTTON                 248
+#define IDC_RESET_BUTTON                249
+#define IDB_FOLDERSCRIPTB               250
+#define IDB_PHLOGO                      251
+#define IDC_OBJECT_SEARCH_EDIT_PICK     252
+#define IDC_OBJECT_SEARCH_BUTTON_PICK   253
+#define IDC_OBJECT_SEARCH_RESET_BTN_PICK 254
+#define IDC_ROAD_SNAP_POINT_EDIT        255
+#define IDC_HINT_TEXT                   256
 #define IDC_HEIGHT_COMBO                1000
 #define IDC_CELL_WIDTH                  1001
 #define IDC_INITIAL_HEIGHT              1002
@@ -167,9 +172,11 @@
 #define IDC_BROWSE                      1013
 #define IDC_TOP_RIGHT                   1013
 #define IDC_UNIT_TYPE3_BUTTON           1013
+#define IDC_OPEN_MOLDS_FOLDER           1013
 #define IDC_NEWPROP                     1014
 #define IDC_CENTER_LEFT                 1014
 #define IDC_UNIT_TYPE4_BUTTON           1014
+#define IDC_OPEN_LINK_MOLDS             1014
 #define IDC_NEWTEAM                     1015
 #define IDC_CENTER                      1015
 #define IDC_UNIT_TYPE5_BUTTON           1015
@@ -191,6 +198,9 @@
 #define IDC_SIZE_POPUP2                 1024
 #define IDC_SLIDER1                     1025
 #define IDC_SHOW_CONTOURS               1026
+#define IDC_TRACE_OPACITY_SLIDER        1383
+#define IDC_TRACE_OPACITY_LABEL         1384
+#define IDC_TRACE_FILTER_COMBO          1385
 #define IDC_OBJECT_HEIGHT_EDIT          1027
 #define IDC_ROAD_NAME                   1028
 #define IDC_ROAD_TREEVIEW               1029
@@ -201,17 +211,23 @@
 #define IDC_WIDTH_LABEL3                1032
 #define IDC_TERRAIN_TREEVIEW            1033
 #define IDC_SLIDER3                     1034
+#define IDC_TERRAIN_TREEVIEW_FAV        1034
 #define IDC_SWAP_TEXTURES               1035
 #define IDC_SIZE_POPUP                  1036
 #define IDC_SIZE_EDIT                   1037
 #define IDC_MESHMOLD_TREEVIEW           1038
+#define IDC_SET_FAV                     1038
 #define IDC_PREVIEW                     1039
 #define IDC_RADIUS_POPUP                1039
+#define IDC_DEL_FAV                     1039
 #define IDC_ANGLE_EDIT                  1040
 #define IDC_RATE_EDIT                   1040
+#define IDC_REL_FAV                     1040
 #define IDC_FB_EDIT                     1041
 #define IDC_RATE_POPUP                  1041
+#define IDC_Z_EDIT                      1041
 #define IDC_FB_POPUP                    1042
+#define IDC_Z_POPUP                     1042
 #define IDC_RA_EDIT                     1043
 #define IDC_GA_EDIT                     1044
 #define IDC_BA_EDIT                     1045
@@ -256,6 +272,7 @@
 #define IDC_RADIO_TERRAIN               1077
 #define IDC_EXPORT                      1077
 #define IDC_RADIO_OBJECTS               1078
+#define IDC_SHOW_OBJECTS                1078
 #define IDC_RADIO_EVERYTHING            1079
 #define IDC_TIME_OF_DAY_CAPTION         1080
 #define IDC_ALPHA_EDIT                  1081
@@ -266,8 +283,12 @@
 #define IDC_MAPOBJECT_BuildWithUpgrades 1100
 #define IDC_LIST2                       1101
 #define IDC_PLAYER_LIST                 1101
+#define IDC_HVGAP                       1102
 #define IDC_BUTTON2                     1103
+#define IDC_DGAP                        1103
 #define IDC_BUTTON3                     1104
+#define IDC_HVGAP2                      1104
+#define IDC_REVALIDATEBLENDS            1104
 #define IDC_BUTTON4                     1105
 #define IDC_BUTTON5                     1106
 #define IDC_OR                          1107
@@ -288,10 +309,13 @@
 #define IDC_SCRIPT_NAME                 1127
 #define IDC_VERIFY                      1127
 #define IDC_RICH_EDIT_HERE              1128
+#define IDC_VERIFYALL                   1128
 #define IDC_PATCH_GC                    1129
 #define IDC_CONDITION_TREE              1130
 #define IDC_CONDITION_LIST              1130
+#define IDC_ADD_DEBUG                   1130
 #define IDC_EDIT_CONDITION              1131
+#define IDC_REMOVE_DEBUG                1131
 #define IDC_CONDITION_TYPE              1132
 #define IDC_CAPTION                     1133
 #define IDC_COMBO                       1134
@@ -303,6 +327,8 @@
 #define IDC_COPY                        1140
 #define IDC_EDIT_COMMENT                1141
 #define IDC_TEAMS_TREEVIEW              1142
+#define IDC_MOVETOFALSE                 1142
+#define IDC_MOVETOTRUE                  1142
 #define IDC_TEAM_SINGLETON              1143
 #define IDC_TEAMNAME                    1144
 #define IDC_MAPOBJECT_Team              1144
@@ -321,8 +347,11 @@
 #define IDC_PLAYERNAME                  1151
 #define IDC_MOVEDOWNTEAM                1151
 #define IDC_PLAYERFACTION               1152
+#define IDC_EXPAND_SHRINK_TEAM          1152
 #define IDC_GROUP_NAME                  1153
+#define IDC_EXPORT_TEAMS                1153
 #define IDC_ANGLE_POPUP                 1154
+#define IDC_IMPORT_TEAMS                1154
 #define IDC_RAISE                       1155
 #define IDC_LOWER                       1156
 #define IDC_SCALE_EDIT                  1157
@@ -356,22 +385,34 @@
 #define IDC_TRANSPORTS_EXIT             1167
 #define IDC_MAKE_RIVER                  1167
 #define IDC_WAYPOINT_LOCATIONY          1167
+#define IDC_COMPRESS                    1167
+#define IDC_COPY_MODE                   1167
 #define IDC_PLAYERISCOMPUTER            1168
 #define IDC_CHECK3                      1168
 #define IDC_TEAM_STARTS_FULL            1168
 #define IDC_WAYPOINT_BIDIRECTIONAL      1168
+#define IDC_NEWICONS                    1168
+#define IDC_COPY_MODE2                  1168
 #define IDC_GROUP_ACTIVE                1169
 #define IDC_MAPOBJECT_Selectable2       1169
+#define IDC_DEEPSCAN                    1169
+#define IDC_COPY_MODE2_1                1169
 #define IDC_PLAYERDISPLAYNAME           1170
 #define IDC_CHECK4                      1170
 #define IDC_TRANSPORTS_RETURN           1170
+#define IDC_SMART_COPY                  1170
+#define IDC_COPY_MODE_FLIP              1170
 #define IDC_PLAYER_ATTITUDE_OUT         1171
 #define IDC_CHECK5                      1171
 #define IDC_AVOID_THREATS               1171
+#define IDC_CLEANSCRIPTNAME             1171
 #define IDC_WARNINGS_CAPTION            1172
 #define IDC_CHECK6                      1172
+#define IDC_REFRENCEMODE1               1172
 #define IDC_WARNINGS                    1173
+#define IDC_DISABLEREFERENCE            1173
 #define IDC_EDIT_X                      1174
+#define IDC_SCRIPT_MERGE                1174
 #define IDC_EDIT_Y                      1175
 #define IDC_OBJECT_TREEVIEW             1175
 #define IDC_EDIT_Z                      1176
@@ -445,6 +486,7 @@
 #define IDC_ON_UNIT_DESTROYED_SCRIPT    1208
 #define IDC_TeamGeneric_Script11        1208
 #define IDC_TeamGeneric_Script12        1209
+#define IDC_TEAMS                       1209
 #define IDC_Grove_Type1                 1210
 #define IDC_TeamGeneric_Script13        1210
 #define IDC_Grove_Per1                  1211
@@ -462,21 +504,33 @@
 #define IDC_Grove_Per5                  1220
 #define IDC_Grove_NumberTrees           1221
 #define IDC_FENCE_SPACING_EDIT          1222
+#define IDC_Grove_Type6                 1222
+#define IDC_Grove_Per6                  1223
 #define IDC_AUTO_REINFORCE              1224
 #define IDC_PERIMETER_DEFENSE           1224
+#define IDC_Grove_Type7                 1224
 #define IDC_AI_RECRUITABLE              1225
 #define IDC_ATTACK_COMMON_TARGET        1225
+#define IDC_Grove_Per7                  1225
 #define IDC_BASE_DEFENSE                1226
 #define IDC_TEAM_NAME                   1226
+#define IDC_Grove_Type8                 1226
 #define IDC_PRODUCTION_CONDITION        1227
+#define IDC_Grove_Per8                  1227
 #define IDC_PRODUCTION_PRIORITY         1228
+#define IDC_Grove_Type9                 1228
 #define IDC_PRIORITY_INCREASE           1229
 #define IDC_ENEMY_INTERACTIONS          1229
+#define IDC_Grove_Per9                  1229
 #define IDC_PRIORITY_DECREASE           1230
+#define IDC_Grove_Type10                1230
 #define IDC_MAPOBJECT_StartingHealthEdit 1231
+#define IDC_Grove_Per10                 1231
 #define IDC_MAPOBJECT_Enabled           1232
+#define IDC_Grove_Type11                1232
 #define IDC_MAPOBJECT_Destructible      1233
 #define IDC_MAPOBJECT_Indestructible    1233
+#define IDC_Grove_Per11                 1233
 #define IDC_MAPOBJECT_Sellable          1234
 #define IDC_MAPOBJECT_Whiner            1235
 #define IDC_MAPOBJECT_Deployed          1236
@@ -498,7 +552,10 @@
 #define IDC_Grove_AllowWaterPlacement   1254
 #define IDC_Grove_AllowCliffPlacement   1255
 #define IDC_ANCHOR_LABEL                1256
+#define IDC_Grove_UsePropsOnly          1256
 #define IDC_JOIN                        1257
+#define IDC_Grove_WithoutProps          1257
+#define IDC_Grove_WithProps             1258
 #define IDC_WATER_HEIGHT1               1258
 #define IDC_WATER_HEIGHT2               1259
 #define IDC_WAYPOINT_CAPTION2           1260
@@ -556,6 +613,14 @@
 #define IDC_CHECK_RULER                 1328
 #define IDC_SIDES                       1329
 #define IDC_RULER_WIDTH                 1330
+#define IDC_RULER_USE_METERS            1388
+#define IDC_RULER_SHOW_GRID             1389
+#define IDC_WAVE_MODE_PAINT             1390
+#define IDC_WAVE_SHOW_SHORELINE         1391
+#define IDC_WAVE_MODE_BUCKET            1398
+#define IDC_WAVE_BRUSH_SIZE             1399
+#define IDC_WAVE_BRUSH_SIZE_LABEL       1400
+#define IDC_WAVE_DELETE_ALL             1401
 #define IDC_UPDATE_TEAM_MEMBERS         1331
 #define IDC_USE_TEAM_DEFAULTS           1332
 #define IDC_LOOPING_CHECKBOX            1333
@@ -563,6 +628,7 @@
 #define IDC_CUSTOMIZE_CHECKBOX          1335
 #define IDC_MAPOBJECT_Scale             1336
 #define IDC_SOUND_COMBO                 1346
+#define IDC_PLAY_SOUND_BUTTON           1392
 #define IDC_LOOPCOUNT_EDIT              1347
 #define IDC_MIN_VOLUME_EDIT             1348
 #define IDC_PRIORITY_COMBO              1349
@@ -570,11 +636,62 @@
 #define IDC_MAX_RANGE_EDIT              1351
 #define IDC_VOLUME_EDIT                 1352
 #define IDC_MAPOBJECT_XYPosition        1353
+#define IDC_DEV_NOTE                    1354
+#define IDC_MAP_SEARCH_EDIT             1355
+#define IDC_MAP_FIND_BUTTON             1356
+#define IDC_MAP_SEARCH_RESET_BTN        1357
+#define IDC_AIWP_LBL1                   1358
+#define IDC_AIWP_LBL2                   1359
+#define IDC_AIWP_LBL3                   1360
+#define IDC_TRAINSWP_LBL1               1361
+#define IDC_TRAINSWP_LBL2               1362
+#define IDC_TRAINSWP_LBL3               1363
+#define IDC_TRAINSWP_LBL4               1364
+#define IDC_TRAINSWP_LBLH2              1365
+#define IDC_TRAINSWP_LBLH1              1366
+#define IDC_TRAINSWP_LBLH0              1367
+#define IDC_AIWP_LBLH0                  1368
+#define IDC_PACKED_MAPS                 1369
+#define IDC_TOGGLE_MIRRORX              1370
+#define IDC_TOGGLE_MIRRORXY             1371
+#define IDC_DIALOG_FONT                 1371
+#define IDC_TOGGLE_MIRRORY              1372
+#define IDC_DIALOG_FONT_LABEL           1372
+#define IDC_VIEWPORT_RESOLUTION         1386
+#define IDC_VIEWPORT_RESOLUTION_LABEL   1387
+#define IDC_WAVE_TYPE_LABEL             1373
+#define IDC_TOGGLE_MIRROR               1373
+#define IDC_WAVE_CYCLE_TYPE             1374
+#define IDC_PAINT_MODE_COMBO            1374
+#define IDC_WAVE_UNDO                   1375
+#define IDC_WAVE_SAVE                   1376
+#define IDC_WAVE_RELOAD                 1377
+#define IDC_TOGGLE_PAINTMODE            1377
+#define IDC_WAVE_LIST                   1378
+#define IDC_TOGGLE_NOMIX                1378
+#define IDC_WAVE_DELETE                 1379
 #define IDC_STATIC_MAPOBJECT_GENERAL    1379
+#define IDC_WAVE_MODE_CREATE            1380
 #define IDC_STATIC_MAPOBJECT_LOGICAL    1380
+#define IDC_WAVE_MODE_MANIPULATE        1381
 #define IDC_STATIC_MAPOBJECT_SOUND      1381
+#define IDC_WAVE_SHOW_LINES             1382
 #define IDC_STATIC_MAPOBJECT_VISUAL     1382
 #define IDC_MAPOBJECT_DISTANCE          1383
+#define IDC_HELP_CAPTION                1384
+#define IDC_HELP_TEXT                   1385
+#define ID_FILE_JUMPTOGAME_WD           1386
+#define IDC_FENCE_ONLY                  1387
+#define ID_FILE_JUMPTOFOLDER            1388
+#define ID_FILE_WBSETTINGS              1389
+#define ID_FILE_GENERATE_MAPSTRNINI     1390
+#define ID_VIEW_SHOWSUBDRAW             1391
+#define ID_DISABLEMAPPREVGENERATE       1392
+#define ID_FILE_AUTOSAVEFOLDER          1393
+#define ID_FILE_GAMEFOLDER              1394
+#define ID_FILE_GAMEFOLDERDATA          1395
+#define ID_VIEW_SHOWBASERADIUS          1396
+#define ID_FILE_JUMPTOFOLDERDATA        1397
 #define ID_BRUSH_TOOL                   32771
 #define IDM_ShowGrid                    32772
 #define ID_FEATHERTOOL                  32791
@@ -608,6 +725,7 @@
 #define ID_EDIT_LINK_CENTERS            32925
 #define ID_VIEW_SHOW_OBJECTS            32926
 #define ID_VIEW_SHOWTEXTURE             32927
+#define ID_VIEW_SHOW_OBJECTS_SELECTED   32928
 #define ID_TS_REMAP                     32929
 #define ID_VIEW_SHOWCONTOURS            32930
 #define ID_EDIT_DELETE                  32931
@@ -641,6 +759,7 @@
 #define ID_WAYPOINT_TOOL                32964
 #define ID_EDIT_GLOBALLIGHTOPTIONS      32965
 #define ID_VIEW_SHOWWAYPOINTS           32966
+#define ID_VIEW_SHOWWATER               32967
 #define ID_POLYGON_TOOL                 32968
 #define ID_VIEW_SHOWPOLYGONTRIGGERS     32969
 #define ID_EDIT_PLAYERLIST              32970
@@ -653,6 +772,7 @@
 #define ID_EDIT_SCRIPTS                 32977
 #define ID_EDIT_TEAMLIST                32978
 #define ID_FENCE_TOOL                   32979
+#define ID_VIEW_FIXEDCOLOREDWAYPOINTS   32980
 #define ID_VIEW_SHOWIMPASSABLEAREAS     32981
 #define ID_TEXTURESIZING_TILE4X4        32982
 #define ID_TEXTURESIZING_TILE6X6        32983
@@ -676,6 +796,12 @@
 #define ID_EDIT_PICKWAYPOINTS           33002
 #define ID_VIEW_LABELS                  33003
 #define ID_VIEW_SHOWMODELS              33004
+#define ID_VIEW_ANIMATEMODELS           33404
+#define ID_VIEW_LISTEN_ENABLED          33405
+#define ID_VIEW_LISTEN_PERMANENT        33406
+#define ID_VIEW_LISTEN_ALL              33407
+#define ID_VIEW_LISTEN_NONE             33408
+#define ID_VIEW_SHOWPLAYINGSOUNDS       33409
 #define ID_EDIT_SELECTINVALIDTEAM       33005
 #define ID_FILE_DUMPTOFILE              33006
 #define ID_SCORCH_TOOL                  33007
@@ -688,6 +814,8 @@
 #define ID_VIEW_LAYERS_LIST             33015
 #define ID_INSERTNEWLAYER               33017
 #define ID_DELETECURRENTLAYER           33018
+#define ID_GROUP_PIVOT_CENTER           33019
+#define ID_GROUP_ROTATE_OBJECT          33020
 #define ID_LAYERSLIST_MERGELAYERINTO_BOGUS 33021
 #define ID_LAYERSLIST_MERGELAYERINTO_BEGIN 33022
 #define ID_LAYERSLIST_MERGELAYERINTO_END 33121
@@ -702,6 +830,7 @@
 #define ID_VIEW_GARRISONED              33326
 #define ID_EDIT_PICKROADS               33327
 #define ID_SCRIPTACTIVATE               33328
+#define ID_VIEW_RULERGRID               33329
 #define ID_BORDERTOOL                   33330
 #define ID_VIEW_SHOWMAPBOUNDARIES       33331
 #define ID_TOGGLE_PITCH_AND_ROTATE      33332
@@ -718,6 +847,84 @@
 #define ID_SELECTLAYEROBJECT            33344
 #define ID_SELECTACTIVELAYER            33345
 #define ID_VIEW_SHOW_SOUND_CIRCLES      33346
+#define ID_WINDOW_PREVIEW1280X768       33347
+#define IDC_Grove_SetName               33348
+#define IDC_Grove_SaveSet               33349
+#define IDC_LAUNCH_ONSTARTUP            33350
+#define IDC_Grove_Settings              33350
+#define ID_VIEW_SHOWTRACINGOVERLAY      33351
+#define ID_LOD_MODE_1                   33352
+#define ID_LOD_MODE_2                   33353
+#define ID_LOD_MODE_3                   33354
+#define ID_VIEW_LABELS_EXTRA            33355
+#define ID_REMOVEBOUNDARIES             33356
+#define ID_FILE_JUMPTOGAME_WM           33357
+#define ID_REVALIDATE_RENDER            33358
+#define ID_MSAA_NONE                    33359
+#define ID_MSAA_2X                      33360
+#define ID_MSAA_4X                      33361
+#define ID_MSAA_8X                      33362
+#define ID_TEXT_SHADOW                  33363
+#define ID_TEXFILTER_DEFAULT            33364
+#define ID_TEXFILTER_ANISO16X           33365
+#define ID_VIEW_MINIMAP                 33366
+#define ID_MINIMAP_SHOWOBJECTS          33367
+#define ID_MINIMAP_REFRESH_OFF          33368
+#define ID_MINIMAP_REFRESH_100          33369
+#define ID_MINIMAP_REFRESH_250          33370
+#define ID_MINIMAP_REFRESH_1000         33371
+#define ID_MINIMAP_RES_1024             33372
+#define ID_MINIMAP_RES_256              33373
+#define ID_MINIMAP_RES_512              33374
+#define ID_MINIMAP_RES_2048             33375
+#define ID_TEXT_ANTIALIAS               33376
+#define ID_MINIMAP_REFRESH_16           33377
+#define ID_MINIMAP_REFRESH_33           33378
+#define ID_MINIMAP_SHOWROADS            33379
+#define ID_MINIMAP_CULLOBJECTS          33380
+#define ID_TEXT_ANCHOR_DEFAULT          33381
+#define ID_TEXT_ANCHOR_NEW              33382
+#define ID_MINIMAP_SNAP45               33383
+#define ID_TEXT_RENDERER_OLD            33384
+#define ID_TEXT_RENDERER_NEW            33385
+#define ID_TEXT_RENDERER_ATLAS          33386
+#define ID_MINIMAP_SHOWBORDER           33387
+#define ID_MINIMAP_FULLEXTENT           33388
+#define ID_WAVE_EDITOR_TOOL             33389
+#define ID_STOCHASTIC_TOOL              33445
+#define ID_VIEW_SHOWWAVELINES           33390
+#define ID_VIEW_SHOWFULLWIREFRAME       33391
+#define ID_VIEW_SHOWSELECTIONOVERLAY    33392
+#define ID_TEXT_LABELCULL_OFF           33393
+#define ID_TEXT_LABELCULL_NEAR          33394
+#define ID_TEXT_LABELCULL_MEDIUM        33395
+#define ID_TEXT_LABELCULL_FAR           33396
+#define ID_VIEW_RESETDEVICE             33397
+#define ID_SHOW_ASSERT_DIALOGS          33398
+#define ID_FILE_RELOAD_MAPINI           33399
+#define ID_FILE_WATCH_MAPINI            33400
+#define ID_FILE_CHECK_MAPINI            33401
+#define ID_FILE_VERBOSE_MAPINI          33402
+#define ID_FILE_EDIT_MAPINI             33420
+#define ID_FILE_OPEN_MAPINI             33403
+#define ID_VIEW_LISTEN_TOGGLE           33421
+#define ID_VIEW_SHOWFULLMODEL           33422
+#define ID_VIEW_BONENAMES               33423
+#define ID_VIEW_LOGBONERESOLUTION       33424
+#define ID_VIEW_ANIMSCRUBBER            33425
+#define ID_DEBUG_PATHFIND_CLIFF         33426
+#define ID_DEBUG_PATHFIND_WATER         33427
+#define ID_DEBUG_PATHFIND_OBJECTS       33428
+#define ID_DEBUG_PATHFIND_PASSABILITY   33429
+#define ID_MAPGEN_GENERATE              33430
+#define ID_MAPGEN_RANDOMIZE             33431
+#define ID_FX_SHADOWMAP                 33432
+#define ID_FX_BLOOM                     33433
+#define ID_FX_EFFECTSHADERS             33434
+#define ID_FX_HQSKY                     33435
+#define ID_FX_NORMALMAPS                33436
+#define ID_FX_HEIGHTBLEND               33437
+#define ID_FX_SPECULAR                  33438
 #define IDS_NEW                         61446
 #define IDS_RESIZE                      61447
 #define IDS_REMOVING_INUSE_TEAM         61448
@@ -759,15 +966,51 @@
 #define IDS_DUPLICATE_TEAM_REMOVED      61483
 #define IDS_PLAYERLESS_TEAM_REMOVED     61484
 #define IDS_NEED_TO_FIX_TEAMS           61485
+#define IDC_HOTKEYLIST                  61486
+#define IDC_FIND_QUERY                  61487
+#define IDC_FIND_HKEY_BUTTON            61488
+#define IDC_FIND_QUERY_OBJ              61489
+#define IDC_FIND_OBJ_BUTTON             61490
+#define IDC_REFRESH_OBJ_BUTTON          61491
+#define IDC_FIND_QUERY_WP               61492
+#define IDC_FIND_WP_BUTTON              61493
+#define IDC_REFRESH_WP_BUTTON           61494
+#define IDB_WB_LOGO                     61495
+#define IDB_TOOLBAR_DARK                61700
+#define IDC_EXPAND                      61495
+#define IDC_TOGGLE_PREVIEW_SOUND        61496
+#define IDC_DECREASE                    61496
+#define IDC_SHRINK                      61496
+#define IDC_TOGGLE_PREV_FEEDBACK        61497
+#define IDC_OPEN_LINK_DISCORD           61497
+#define IDC_TERRAIN_COPY_SELECT         61498
+#define IDC_TOGGLE_WATER_HEIGHT         61498
+#define IDC_TERRAIN_COPY_APPLY          61499
+#define IDC_TERRAIN_ROTATE1             61500
+#define IDC_TERRAIN_ROTATE2             61501
+#define IDC_TERRAIN_ROTATE3             61502
+#define IDC_TERRAIN_ROTATE4             61503
+#define ID_VIEW_SHOWROADS               61504
+#define ID_QTTHEME_SYSTEM               61600
+#define ID_QTTHEME_DARK                 61601
+#define ID_QTTHEME_LIGHT                61602
+#define ID_MCP_SERVER_ENABLED           61610
+#define ID_MCP_SERVER_INFORMATION       61611
+#define ID_FPSCAP_30                    33439
+#define ID_FPSCAP_60                    33440
+#define ID_FPSCAP_120                   33441
+#define ID_FPSCAP_UNCAPPED              33442
+#define ID_TEXT_OUTLINE                 33443
+#define ID_FILE_WATERTUNING_MAPINI      33446
 
 // Next default values for new objects
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        242
-#define _APS_NEXT_COMMAND_VALUE         33347
-#define _APS_NEXT_CONTROL_VALUE         1354
+#define _APS_NEXT_RESOURCE_VALUE        258
+#define _APS_NEXT_COMMAND_VALUE         33447
+#define _APS_NEXT_CONTROL_VALUE         1393
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

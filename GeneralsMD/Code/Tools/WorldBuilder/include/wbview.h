@@ -63,11 +63,19 @@ protected:
 
 	static Bool					m_snapToGrid;
 
+	Bool					m_showObjectsSelected;	
  	Bool					m_showObjects;			  ///< Flag whether object icons are drawn in the 2d and 3d view.
  	Bool					m_showModels;					///< Flag whether models are drawn in the 2d and 3d view.
  	Bool					m_showNames;					///< Flag whether names are drawn in the 2d and 3d view.
+	Bool					m_showNamesExtra; /// extra deets like object properties	
 	Bool					m_showGarrisoned;
 	Bool					m_showWaypoints;
+	Bool                    m_togglePivotFarthest;
+	Bool					m_toggleObjectRotationWithGroup;
+	Bool					m_showObjectProperties;
+	Bool					m_showWater;
+	Bool                    m_useFixedColoredWaypoints;
+	Bool					m_showRoads;
 	Bool					m_showPolygonTriggers;
  	Bool					m_showTerrain;			  ///< Flag whether terrain is rendered or not. (Useful for debugging)
 
@@ -83,6 +91,7 @@ protected:
 	// Box feedback.
 	RECT										m_feedbackBox;
 	Bool										m_doRectFeedback;
+	Bool										m_rectFeedbackSubtract;	///< True if the box removes from the selection rather than adding.
 	int											m_doRulerFeedback;
 	Coord3D									m_rulerPoints[2];
 	Real										m_rulerLength;
@@ -96,9 +105,14 @@ protected:
 	// Attributes
 public:
 
-	void doRectFeedback(Bool doFeedback, RECT &rect) {m_feedbackBox=rect;m_doRectFeedback = doFeedback;};
+	void doRectFeedback(Bool doFeedback, RECT &rect) {m_feedbackBox=rect;m_doRectFeedback = doFeedback;m_rectFeedbackSubtract = false;};
+	void doRectFeedback(Bool doFeedback, RECT &rect, Bool subtract) {m_feedbackBox=rect;m_doRectFeedback = doFeedback;m_rectFeedbackSubtract = subtract;};
+	Bool isRectFeedbackSubtract(void) const {return m_rectFeedbackSubtract;};
 	void doRulerFeedback(int doRulerFeedback) {m_doRulerFeedback = doRulerFeedback;}
 	void rulerFeedbackInfo(Coord3D &point1, Coord3D &point2, Real dist);
+	int getRulerFeedback(void) const { return m_doRulerFeedback; }
+	const Coord3D& getRulerPoint(int i) const { return m_rulerPoints[i]; }
+	Real getRulerLength(void) const { return m_rulerLength; }
 
 	void doLightFeedback(Bool doFeedback, Coord3D direction, Int lightIndex) { m_doLightFeedback=doFeedback; if (m_doLightFeedback) m_lightDirection[lightIndex]=direction;}
 
@@ -137,21 +151,25 @@ public:
 
 	void snapPoint(Coord3D *thePt) {if (m_snapToGrid || m_lockAngle) {thePt->x = MAP_XY_FACTOR*floor(thePt->x/MAP_XY_FACTOR+0.5); thePt->y = MAP_XY_FACTOR*floor(thePt->y/MAP_XY_FACTOR+0.5);};};
 
-	virtual TPickedStatus picked(MapObject *pObj, Coord3D docPt);
-	virtual MapObject *picked3dObjectInView(CPoint viewPt) {return nullptr;};
-	virtual BuildListInfo *pickedBuildObjectInView(CPoint viewPt) {return nullptr;};
+	virtual TPickedStatus picked(MapObject *pObj, Coord3D docPt, Bool ctrlKeyDown = false);
+	virtual MapObject *picked3dObjectInView(CPoint viewPt) {return NULL;};
+	virtual BuildListInfo *pickedBuildObjectInView(CPoint viewPt) {return NULL;};
 
 	Bool isPolygonTriggerVisible() {return m_showPolygonTriggers;};
 	Bool isWaypointVisible() {return m_showWaypoints;};
 	Bool isNamesVisible() {return m_showNames;};
 	void setShowModels(Bool show) {m_showModels = show;}
-	Bool getShowModels() { return m_showModels;}
-	Bool getShowTerrain() { return m_showTerrain;}
+	Bool getShowModels(void) { return m_showModels;}
+	Bool getShowRoads(void) {return m_showRoads;}
+	Bool getShowTerrain(void) { return m_showTerrain;}
+	Bool isLockedAngle(void) {return m_lockAngle;}
 
 	void setShowGarrisoned(Bool show) {m_showGarrisoned = show;}
 	Bool getShowGarrisoned() { return m_showGarrisoned;}
 
-	virtual Bool isDoingPitch() { return false; }
+	Bool getShowObjects(void) { return m_showObjects || m_showObjectsSelected;}
+
+	virtual Bool isDoingPitch( void ) { return false; }
 
 // Operations
 public:
@@ -195,6 +213,12 @@ protected:
 	afx_msg void OnUpdateViewSnaptogrid(CCmdUI* pCmdUI);
 	afx_msg void OnViewShowObjects();
 	afx_msg void OnUpdateViewShowObjects(CCmdUI* pCmdUI);
+	afx_msg void OnTogglePivotFarthest();
+	afx_msg void OnUpdateTogglePivotFarthest(CCmdUI* pCmdUI);
+	afx_msg void OnToggleObjectRotationWithGroup();
+	afx_msg void OnUpdateToggleObjectRotationWithGroup(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowObjectsSelected();
+	afx_msg void OnUpdateViewShowObjectsSelected(CCmdUI* pCmdUI);
 	afx_msg void OnEditSelectdup();
 	afx_msg void OnEditSelectsimilar();
 	afx_msg void OnEditSelectinvalidteam();
@@ -207,6 +231,12 @@ protected:
 	afx_msg void OnEditGloballightoptions();
 	afx_msg void OnViewShowwaypoints();
 	afx_msg void OnUpdateViewShowwaypoints(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowWater();
+	afx_msg void OnUpdateViewShowWater(CCmdUI* pCmdUI);
+	afx_msg void OnViewUseFixedColorWaypoints();
+	afx_msg void OnUpdateViewUseFixedColorWaypoints(CCmdUI* pCmdUI);
+	afx_msg void OnViewShowRoads();
+	afx_msg void OnUpdateViewShowRoads(CCmdUI* pCmdUI);
 	afx_msg void OnViewShowpolygontriggers();
 	afx_msg void OnUpdateViewShowpolygontriggers(CCmdUI* pCmdUI);
 	afx_msg void OnEditPlayerlist();
@@ -237,6 +267,8 @@ protected:
 	afx_msg void OnUpdatePickSounds(CCmdUI* pCmdUI);
 	afx_msg void OnShowNames();
 	afx_msg void OnUpdateShowNames(CCmdUI* pCmdUI);
+	afx_msg void OnShowNamesExtra();
+	afx_msg void OnUpdateShowNamesExtra(CCmdUI* pCmdUI);
 	afx_msg void OnValidationFixTeams();
 	afx_msg void OnShowTerrain();
 	afx_msg void OnUpdateShowTerrain(CCmdUI* pCmdUI);

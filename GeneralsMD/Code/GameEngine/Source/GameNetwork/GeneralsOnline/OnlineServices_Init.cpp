@@ -581,12 +581,12 @@ void NGMP_OnlineServicesManager::CaptureScreenshot(bool bResizeForTransmit, std:
 				HRESULT hr;
 
 				D3DDISPLAYMODE mode;
-				if (SUCCEEDED(hr = DX8Wrapper::_Get_D3D_Device8()->GetDisplayMode(&mode)))
+				if (SUCCEEDED(hr = DX8Wrapper::_Get_D3D_Device8()->GetDisplayMode(DX8_SWAPCHAIN &mode)))
 				{
-					if (SUCCEEDED(hr = DX8Wrapper::_Get_D3D_Device8()->CreateImageSurface(mode.Width, mode.Height,
+					if (SUCCEEDED(hr = DX8_CREATE_IMAGE_SURFACE(DX8Wrapper::_Get_D3D_Device8(), mode.Width, mode.Height,
 						D3DFMT_A8R8G8B8, &surf)))
 					{
-						if (SUCCEEDED(hr = DX8Wrapper::_Get_D3D_Device8()->GetFrontBuffer(surf)))
+						if (SUCCEEDED(hr = DX8_GET_FRONT_BUFFER(DX8Wrapper::_Get_D3D_Device8(), surf)))
 						{
 							// gather all our data
 							int pitch = 0;

@@ -89,6 +89,11 @@ protected:
 	Bool             m_defaultIsNone; //< The default for this object is no sound
 	AsciiString      m_defaultEntryName; //< The original name of the default entry
 
+	Bool             m_soundPreviewPlaying; //< The Play button is currently in its "Stop" state
+	std::vector<unsigned char> m_soundPreviewData; //< In-memory WAV the preview plays from (must outlive playback)
+	Int              m_soundComboTextWidth; //< Widest sound-combo entry, measured once in InitSound (px)
+	void stopSoundPreview(void);
+
 	ModifyObjectUndoable *m_posUndoable;
 	Coord3D m_position;
 
@@ -100,24 +105,25 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(MapObjectProps)
-	virtual BOOL OnInitDialog() override;
-	virtual void OnOK() override;
-	virtual void OnCancel() override;
+	virtual BOOL OnInitDialog();
+	afx_msg void OnMove(int x, int y);
+	virtual void OnOK();
+	virtual void OnCancel();
 	afx_msg void OnSelchangeProperties();
 	afx_msg void OnEditprop();
 	afx_msg void OnNewprop();
 	afx_msg void OnRemoveprop();
 	afx_msg void OnDblclkProperties();
 
-	afx_msg void _TeamToDict();
-	afx_msg void _NameToDict();
-	afx_msg void _ScriptToDict();
-	afx_msg void _WeatherToDict();
-	afx_msg void _TimeToDict();
-	afx_msg void _ScaleToDict();
-	afx_msg void SetZOffset();
-	afx_msg void SetAngle();
-	afx_msg void SetPosition();
+	afx_msg void _TeamToDict(void);
+	afx_msg void _NameToDict(void);
+	// afx_msg void _ScriptToDict(void);
+	afx_msg void _WeatherToDict(void);
+	afx_msg void _TimeToDict(void);
+	afx_msg void _ScaleToDict(void);
+	afx_msg void SetZOffset(void);
+	afx_msg void SetAngle(void);
+	afx_msg void SetPosition(void);
 	afx_msg void OnScaleOn();
 	afx_msg void OnScaleOff();
 	afx_msg void OnKillfocusMAPOBJECTXYPosition();
@@ -135,40 +141,43 @@ protected:
 	afx_msg void _RecruitableAIToDict();
 	afx_msg void _SelectableToDict();
 	afx_msg void _HPsToDict();
-	afx_msg void _StoppingDistanceToDict();
-	afx_msg void attachedSoundToDict();
-	afx_msg void customizeToDict();
-	afx_msg void enabledToDict();
-	afx_msg void loopingToDict();
-	afx_msg void loopCountToDict();
-	afx_msg void minVolumeToDict();
-	afx_msg void volumeToDict();
-	afx_msg void minRangeToDict();
-	afx_msg void maxRangeToDict();
-	afx_msg void priorityToDict();
+	afx_msg void _StoppingDistanceToDict(void);
+	afx_msg void attachedSoundToDict(void);
+	afx_msg void customizeToDict(void);
+	afx_msg void enabledToDict(void);
+	afx_msg void loopingToDict(void);
+	afx_msg void loopCountToDict(void);
+	afx_msg void minVolumeToDict(void);
+	afx_msg void volumeToDict(void);
+	afx_msg void minRangeToDict(void);
+	afx_msg void maxRangeToDict(void);
+	afx_msg void priorityToDict(void);
+	afx_msg void OnPlaySound(void);
+	afx_msg void OnTimer(UINT nIDEvent);
+	afx_msg void OnDestroy();
 		//}}AFX_MSG
 
 	DECLARE_MESSAGE_MAP()
 
-	void _DictToName();
-	void _DictToTeam();
-	void _DictToScript();
-	void _DictToScale();
-	void _DictToWeather();
-	void _DictToTime();
-	void _DictToPrebuiltUpgrades();
-	void _DictToHealth();
-	void _DictToHPs();
-	void _DictToEnabled();
-	void _DictToDestructible();
-	void _DictToUnsellable();
-	void _DictToTargetable();
+	void _DictToName(void);
+	void _DictToTeam(void);
+	// void _DictToScript(void);
+	void _DictToScale(void);
+	void _DictToWeather(void);
+	void _DictToTime(void);
+	void _DictToPrebuiltUpgrades(void);
+	void _DictToHealth(void);
+	void _DictToHPs(void);
+	void _DictToEnabled(void);
+	void _DictToDestructible(void);
+	void _DictToUnsellable(void);
+	void _DictToTargetable(void);
 
-	void _DictToPowered();
-	void _DictToAggressiveness();
-	void _DictToVisibilityRange();
-	void _DictToVeterancy();
-	void _DictToShroudClearingDistance();
+	void _DictToPowered(void);
+	void _DictToAggressiveness(void);
+	void _DictToVisibilityRange(void);
+	void _DictToVeterancy(void);
+	void _DictToShroudClearingDistance(void);
 	void _DictToRecruitableAI();
 	void _DictToSelectable();
 	void _DictToStoppingDistance();
@@ -194,9 +203,136 @@ protected:
 	virtual void PopSliderFinished(const long sliderID, long theVal) override;
 
 public:
-	static MapObject *getSingleSelectedMapObject();
-	static void update();
+	static MapObject *getSingleSelectedObject(void);
+	static void update(void);
 
+#ifdef RTS_HAS_QT
+	// Qt front-end support (WBQtObjectPropsBridge). The MFC panel stays created + hidden
+	// (TheMapObjectProps intact) so update()/getSingleSelectedObject keep working; the Qt
+	// panel reads the selected object's props + drives the same _XToDict handlers. Defined
+	// in mapobjectprops.cpp. Phase 1: selection + General (name/team).
+	static int  qtHasSelection(void);
+	static int  qtGetSelCount(void);
+	static int  qtGetName(char *out, int cap);
+	static void qtSetName(const char *name);
+	static int  qtGetTeamCount(void);
+	static int  qtGetTeamName(int i, char *out, int cap);
+	static int  qtGetCurTeam(void);
+	static void qtSetTeam(int i);
+	// Phase 2: Logical section. Flags use the WBQT_OBJPROP_FLAG_* ids; the getters return
+	// the current state and the setters write the hidden MFC control then run the real
+	// _XToDict handler (so the DictItemUndoable / multi-select path is reused).
+	static int  qtGetFlag(int which);
+	static void qtSetFlag(int which, int state);
+	static int  qtGetAggressiveness(void);
+	static void qtSetAggressiveness(int value);
+	static int  qtGetVeterancy(void);
+	static void qtSetVeterancy(int index);
+	static int  qtGetHealthPercent(void);
+	static void qtSetHealthPercent(int value);
+	static int  qtGetMaxHPs(void);
+	static void qtSetMaxHPs(int hps);
+	static int  qtGetVisionDistance(void);
+	static void qtSetVisionDistance(int dist);
+	static int  qtGetShroudClearingDistance(void);
+	static void qtSetShroudClearingDistance(int dist);
+	static double qtGetStoppingDistance(void);
+	static void qtSetStoppingDistance(double dist);
+	// Phase 3a: Visual section. Weather/Time are index combos; XY/Z/Angle drive the same
+	// ModifyObjectUndoable path as the MFC edits (single-object).
+	static int  qtGetWeather(void);
+	static void qtSetWeather(int index);
+	static int  qtGetTime(void);
+	static void qtSetTime(int index);
+	static int  qtGetPosition(char *out, int cap);
+	static void qtSetPosition(const char *text);
+	static double qtGetZOffset(void);
+	static void qtSetZOffset(double z);
+	static double qtGetAngle(void);
+	static void qtSetAngle(double deg);
+	// Phase 3b: Sound section. The MFC dictTo* handlers already encode the enable-state gating
+	// (customize off disables the rest; looping off disables loop count; sound == none disables
+	// customize/enabled), so the Qt getters read the LIVE MFC control (value + IsWindowEnabled)
+	// after updateTheUI has run, and the setters write the control then call the *ToDict handler.
+	static int  qtGetSoundCount(void);
+	static int  qtGetSoundItem(int i, char *out, int cap);
+	static int  qtGetSoundCurSel(void);
+	static void qtSetSoundCurSel(int i);
+	static int  qtGetSoundPlaying(void);
+	static void qtToggleSoundPreview(void);
+	// which = WBQT_SND_* id; Get returns the checkbox state, GetEnabled its enable state.
+	static int  qtGetSoundFlag(int which);
+	static int  qtGetSoundFlagEnabled(int which);
+	static void qtSetSoundFlag(int which, int on);
+	// Numeric sound edits (loop count int; volumes/ranges are the 0-100 / raw ints the edits show).
+	static int  qtGetSoundInt(int which, int *outEnabled);
+	static void qtSetSoundInt(int which, int value);
+	static int  qtGetSoundPriorityCount(void);
+	static int  qtGetSoundPriorityName(int i, char *out, int cap);
+	static int  qtGetSoundPriority(int *outEnabled);
+	static void qtSetSoundPriority(int i);
+	// Phase 3c: Pre-built upgrades listbox (multi-select, single-object). The Qt list mirrors
+	// the MFC listbox; the setter writes the MFC item selection then runs _PrebuiltUpgradesToDict.
+	static int  qtGetUpgradeCount(void);
+	static int  qtGetUpgradeItem(int i, char *out, int cap);
+	static int  qtGetUpgradeSelected(int i);
+	static void qtSetUpgradeSelected(int i, int on);
+	static void qtCommitUpgrades(void);
+
+	// De-bridged (windowless) mode -- branch qt-debridge. The qtM* variants replicate the
+	// _XToDict handlers' model cores with the VALUE passed in instead of read back from a
+	// hidden control, so they work when the panel window is never Create()d. Defined in
+	// src/WBQtObjectPropsBridge.cpp (member statics may be defined in any TU); this
+	// class's .cpp stays additions-only.
+	static int  qtMGetFlag(int which);
+	static int  qtMGetPosition(char *out, int cap);
+	static double qtMGetZOffset(void);
+	static double qtMGetAngle(void);
+	static void qtMSetName(const char *name);
+	static void qtMSetTeam(int i);
+	static void qtMSetFlag(int which, int state);
+	static void qtMSetAggressiveness(int value);
+	static void qtMSetVeterancy(int index);
+	static void qtMSetHealthPercent(int value);
+	static void qtMSetMaxHPs(int hps);
+	static void qtMSetVisionDistance(int dist);
+	static void qtMSetShroudClearingDistance(int dist);
+	static void qtMSetStoppingDistance(double dist);
+	static void qtMSetWeather(int index);
+	static void qtMSetTime(int index);
+	static void qtMSetPosition(const char *text);
+	static void qtMSetZOffset(double z);
+	static void qtMSetAngle(double deg);
+	// Scrub batching (== the MFC pop-slider lazy m_posUndoable): between Begin and
+	// End, qtMSetZOffset/qtMSetAngle mutate ONE undoable instead of one per tick.
+	static void qtMBeginPosScrub(void);
+	static void qtMEndPosScrub(void);
+	// Sound sub-panel: the combo catalog and all customize/looping/none gating derive
+	// from the dict + AudioEventInfo defaults instead of the seeded hidden controls.
+	static void qtMSoundEnsureCatalog(void);
+	static void qtMSoundRefreshDefault(void);
+	static int  qtMSoundCurIndex(void);
+	static void qtMCurSoundName(AsciiString &nameOut, Bool &isNoneOut);
+	static void qtMStopSoundPreview(void);
+	static int  qtMGetSoundCount(void);
+	static int  qtMGetSoundItem(int i, char *out, int cap);
+	static int  qtMGetSoundCurSel(void);
+	static void qtMSetSoundCurSel(int i);
+	static void qtMToggleSoundPreview(void);
+	static int  qtMGetSoundFlag(int which);
+	static int  qtMGetSoundFlagEnabled(int which);
+	static void qtMSetSoundFlag(int which, int checked);
+	static int  qtMGetSoundInt(int which, int *outEnabled);
+	static void qtMSetSoundInt(int which, int value);
+	static int  qtMGetSoundPriority(int *outEnabled);
+	static void qtMSetSoundPriority(int i);
+	static int  qtMGetUpgradeCount(void);
+	static int  qtMGetUpgradeItem(int i, char *out, int cap);
+	static int  qtMGetUpgradeSelected(int i);
+	static void qtMSetUpgradeSelected(int i, int on);
+	static void qtMCommitUpgrades(void);
+#endif
+  
 private:
   /// Disallow copying: Object is not set up to be copied
   MapObjectProps( const MapObjectProps & other ); // Deliberately undefined

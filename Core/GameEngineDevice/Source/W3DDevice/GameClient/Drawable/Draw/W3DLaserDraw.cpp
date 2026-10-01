@@ -46,10 +46,13 @@
 #include "W3DDevice/GameClient/Module/W3DLaserDraw.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
+#include "W3DDevice/GameClient/W3DLaserGlow.h"
 #include "W3DDevice/GameClient/W3DScene.h"
+#include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "WW3D2/rinfo.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/segline.h"
+#include "WW3D2/sortingrenderer.h"
 #include "WWMath/vector3.h"
 #include "WW3D2/assetmgr.h"
 #include "WW3D2/surfaceclass.h"
@@ -141,6 +144,15 @@ W3DLaserDrawModuleData::W3DLaserDrawModuleData()
 	m_groundGlowColor = 0;
 	m_groundGlowRadius = 0.0f;
 	m_groundGlowIntensity = 0.0f;
+	m_laserShader = TRUE;
+	m_electricShader = FALSE;
+	m_cryoShader = FALSE;
+
+	Real *setting = &m_shaderTuning.laserCore;
+	for (UnsignedInt i = 0; i < sizeof( m_shaderTuning ) / sizeof( Real ); ++i)
+	{
+		setting[i] = -1.0f;
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -178,9 +190,86 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "GroundGlowColor",					INI::parseColorInt,							nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowColor) },
 		{ "GroundGlowRadius",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowRadius) },
 		{ "GroundGlowIntensity",			INI::parsePercentToReal,				nullptr, offsetof(W3DLaserDrawModuleData, m_groundGlowIntensity) },
+		{ "LaserShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_laserShader) },
+		{ "ElectricShader",						INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_electricShader) },
+		{ "CryoShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_cryoShader) },
+		{ "LaserCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCore) },
+		{ "LaserCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCoreWidth) },
+		{ "LaserShimmer",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserShimmer) },
+		{ "LaserPulse",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulse) },
+		{ "LaserPulseSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulseSize) },
+		{ "LaserPulseSpeed",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulseSpeed) },
+		{ "ElectricArcs",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricArcs) },
+		{ "ElectricArcSharpness",			INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricArcSharpness) },
+		{ "ElectricNoiseSize",				INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricNoiseSize) },
+		{ "ElectricJitter",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricJitter) },
+		{ "ElectricFlicker",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricFlicker) },
+		{ "ElectricRate",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricRate) },
+		{ "CryoTint",								INI::parseRGBColor,								nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTint) },
+		{ "CryoTintStrength",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTintStrength) },
+		{ "CryoCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCore) },
+		{ "CryoCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCoreWidth) },
+		{ "CryoFrost",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrost) },
+		{ "CryoFrostSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSize) },
+		{ "CryoFrostSpeed",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSpeed) },
+		{ "CryoShards",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShards) },
+		{ "CryoShardSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShardSize) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+void W3DLaserDrawModuleData::resolveShaderTuning( const BeamShaderTuning *own, BeamShaderTuning &tuning )
+{
+	tuning.laserCore = TheGlobalData->m_laserCore;
+	tuning.laserCoreWidth = TheGlobalData->m_laserCoreWidth;
+	tuning.laserShimmer = TheGlobalData->m_laserShimmer;
+	tuning.laserPulse = TheGlobalData->m_laserPulse;
+	tuning.laserPulseSize = TheGlobalData->m_laserPulseSize;
+	tuning.laserPulseSpeed = TheGlobalData->m_laserPulseSpeed;
+	tuning.electricArcs = TheGlobalData->m_electricArcs;
+	tuning.electricArcSharpness = TheGlobalData->m_electricArcSharpness;
+	tuning.electricNoiseSize = TheGlobalData->m_electricNoiseSize;
+	tuning.electricJitter = TheGlobalData->m_electricJitter;
+	tuning.electricFlicker = TheGlobalData->m_electricFlicker;
+	tuning.electricRate = TheGlobalData->m_electricRate;
+	tuning.cryoTint = TheGlobalData->m_cryoTint;
+	tuning.cryoTintStrength = TheGlobalData->m_cryoTintStrength;
+	tuning.cryoCore = TheGlobalData->m_cryoCore;
+	tuning.cryoCoreWidth = TheGlobalData->m_cryoCoreWidth;
+	tuning.cryoFrost = TheGlobalData->m_cryoFrost;
+	tuning.cryoFrostSize = TheGlobalData->m_cryoFrostSize;
+	tuning.cryoFrostSpeed = TheGlobalData->m_cryoFrostSpeed;
+	tuning.cryoShards = TheGlobalData->m_cryoShards;
+	tuning.cryoShardSize = TheGlobalData->m_cryoShardSize;
+
+	if (own == nullptr)
+	{
+		return;
+	}
+
+	const Real *setting = &own->laserCore;
+	Real *resolved = &tuning.laserCore;
+	for (UnsignedInt i = 0; i < sizeof( tuning ) / sizeof( Real ); ++i)
+	{
+		if (setting[i] >= 0.0f)
+		{
+			resolved[i] = setting[i];
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+Real W3DLaserDrawModuleData::getIceTint( const BeamShaderTuning &tuning, RGBColor &tint )
+{
+	const Real brightest = MAX( MAX( tuning.cryoTint.red, tuning.cryoTint.green ), MAX( tuning.cryoTint.blue, 0.001f ) );
+	tint.red = tuning.cryoTint.red / brightest;
+	tint.green = tuning.cryoTint.green / brightest;
+	tint.blue = tuning.cryoTint.blue / brightest;
+	return MIN( MAX( tuning.cryoTintStrength, 0.0f ), 1.0f );
 }
 
 
@@ -304,6 +393,18 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 				line->Set_Width( width );
 				line->Set_Color( Vector3( red, green, blue ) );
 				line->Set_UV_Offset_Rate( Vector2(0.0f, data->m_scrollRate) );	//amount to scroll texture on each draw
+				if( data->m_cryoShader )
+				{
+					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
+				}
+				else if( data->m_electricShader )
+				{
+					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_ELECTRIC | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
+				}
+				else if( data->m_laserShader )
+				{
+					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_LASER | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
+				}
 				if( m_texture )
 				{
 					if (data->m_gridColumnsTotal > 1) {
@@ -392,10 +493,10 @@ static Color pickGlowColor( Color moduleColor, Color globalColor )
 static const Real MIN_GROUND_LIGHT_RADIUS = 15.0f;
 
 // widens every light past its sharp radius, which stretches the falloff over more vertices
-static const Real GROUND_LIGHT_BLUR = 1.5f;
+static const Real GROUND_LIGHT_BLUR = 1.25f;
 
-// one terrain cell of extra falloff is the most the blur may add
-static const Real MAX_GROUND_LIGHT_BLUR = 10.0f;
+// the most extra falloff the blur may add
+static const Real MAX_GROUND_LIGHT_BLUR = 6.0f;
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -429,6 +530,19 @@ void W3DLaserDraw::getGroundGlowColor( Real &red, Real &green, Real &blue ) cons
 		red *= m_textureColor.red;
 		green *= m_textureColor.green;
 		blue *= m_textureColor.blue;
+	}
+
+	// a cryo-shaded beam lights the ground in the ice colour it is drawn in
+	if (data->m_cryoShader && TheW3DSoftParticles != nullptr && TheW3DSoftParticles->cryoEnabled())
+	{
+		BeamShaderTuning tuning;
+		W3DLaserDrawModuleData::resolveShaderTuning( &data->m_shaderTuning, tuning );
+		RGBColor tint;
+		const Real strength = W3DLaserDrawModuleData::getIceTint( tuning, tint );
+		const Real peak = MAX( red, MAX( green, blue ) );
+		red += (tint.red * peak - red) * strength;
+		green += (tint.green * peak - green) * strength;
+		blue += (tint.blue * peak - blue) * strength;
 	}
 
 	// normalize so a dim color still lights at the same strength as a bright one
@@ -496,9 +610,31 @@ void W3DLaserDraw::releaseGroundLights()
 void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 {
 	// the ground is lit from the first frame and goes dark the moment the beam starts to fade or decay
-	if (!TheGlobalData->m_laserRef || update->isEnding() || update->getAlphaScale() <= 0.0f || update->getWidthScale() <= 0.0f)
+	if (!TheGlobalData->m_laserRef || !TheGlobalData->m_useDynamicLights || update->isEnding() || update->getAlphaScale() <= 0.0f || update->getWidthScale() <= 0.0f)
 	{
 		releaseGroundLights();
+		return;
+	}
+
+	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
+
+	// A shader lights the ground per pixel where it can, with one light shaped like the beam, so no light strip is needed.
+	if (TheW3DLaserGlow != nullptr && TheW3DLaserGlow->isEnabled())
+	{
+		releaseGroundLights();
+
+		const Real derivedReach = MAX( data->m_outerBeamWidth, MIN_GROUND_LIGHT_RADIUS ) * GROUND_LIGHT_BLUR;
+		const Real reach = pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, derivedReach ) * update->getWidthScale();
+		const Real intensity = pickGlowReal( data->m_groundGlowIntensity, TheGlobalData->m_laserGlowIntensity, 0.7f );
+		Real glowRed, glowGreen, glowBlue;
+		getGroundGlowColor( glowRed, glowGreen, glowBlue );
+
+		const Coord3D *start = update->getStartPos();
+		const Coord3D *end = update->getEndPos();
+		// the glow pulses along with a laser-shaded beam and holds steady under any other
+		const BeamShaderTuning *pulses = (data->m_laserShader && !data->m_electricShader && !data->m_cryoShader) ? &data->m_shaderTuning : nullptr;
+		TheW3DLaserGlow->add( Vector3( start->x, start->y, start->z ), Vector3( end->x, end->y, end->z ), reach,
+			Vector3( glowRed, glowGreen, glowBlue ) * intensity, pulses );
 		return;
 	}
 
@@ -518,7 +654,6 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 		return;
 	}
 
-	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
 	const Coord3D *beamStart = update->getStartPos();
 	const Coord3D *beamEnd = update->getEndPos();
 	Real dx = beamEnd->x - beamStart->x;
@@ -526,7 +661,8 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 	Real beamLength = sqrt( dx * dx + dy * dy );
 
 	// terrain lighting is per vertex on a 10 unit grid, so a radius under 1.5 cells lights scattered vertices
-	Real spacing = MAX( pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, 2.0f * data->m_outerBeamWidth ), MIN_GROUND_LIGHT_RADIUS );
+	Real wanted = pickGlowReal( data->m_groundGlowRadius, TheGlobalData->m_laserGlowRadius, data->m_outerBeamWidth );
+	Real spacing = MAX( wanted, MIN_GROUND_LIGHT_RADIUS );
 
 	// centers one spacing apart so the linear falloffs sum to a level strip; the unscaled spacing keeps the count steady while the beam widens
 	Int count = (Int)ceil( beamLength / spacing );

@@ -49,6 +49,7 @@
 #include "Common/FileSystem.h"
 #include "Common/GameAudio.h"
 #include "Common/INI.h"
+#include "Common/LocalFileSystem.h"
 #include "Common/Registry.h"
 #include "Common/OptionPreferences.h"
 #include "Common/ThingTemplate.h"
@@ -239,7 +240,6 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "Use3WayTerrainBlends",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_use3WayTerrainBlends ) },
 	{ "StretchTerrain",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_stretchTerrain ) },
 	{ "UseHalfHeightMap",					INI::parseBool,				nullptr,			offsetof( GlobalData, m_useHalfHeightMap ) },
-	{ "ViewportHeightScale",      INI::parseReal,				NULL,			offsetof( GlobalData, m_viewportHeightScale ) },
 
 	{ "DrawEntireTerrain",					INI::parseBool,				nullptr,			offsetof( GlobalData, m_drawEntireTerrain ) },
 	{ "TerrainLOD",									INI::parseIndexList,	TerrainLODNames,	offsetof( GlobalData, m_terrainLOD ) },
@@ -250,6 +250,80 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "DownwindAngle",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_downwindAngle ) },
 	{ "UseShadowVolumes",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_useShadowVolumes ) },
 	{ "UseShadowDecals",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_useShadowDecals ) },
+	{ "ShadowMapMinSunElevation",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_shadowMapMinSunElevation ) },
+	{ "ShadowsAlwaysOn",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_shadowsAlwaysOn ) },
+	{ "UnitSpecularIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularIntensity ) },
+	{ "UnitSpecularPower",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularPower ) },
+	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
+	{ "UnitNormalMapStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitNormalMapStrength ) },
+	{ "TerrainNormalMapStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainNormalMapStrength ) },
+	{ "TerrainGlintIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintIntensity ) },
+	{ "TerrainGlintGloss",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintGloss ) },
+	{ "TerrainGlintAlbedo",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintAlbedo ) },
+	{ "UnitEmissiveIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveIntensity ) },
+	{ "UnitEmissiveNightIntensity",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitEmissiveNightIntensity ) },
+	{ "SoftParticleDistance",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_softParticleDistance ) },
+	{ "FlameWarp",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameWarp ) },
+	{ "FlameHeat",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameHeat ) },
+	{ "FlameFlicker",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameFlicker ) },
+	{ "FlameBreakup",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameBreakup ) },
+	{ "FlameNoiseSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameNoiseSize ) },
+	{ "FlameRise",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_flameRise ) },
+	{ "HazeBend",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeBend ) },
+	{ "HazeSize",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeSize ) },
+	{ "HazeLift",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeLift ) },
+	{ "HazeNoiseSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeNoiseSize ) },
+	{ "HazeRise",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeRise ) },
+	{ "HazeMask",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_hazeMask ) },
+	{ "ElectricParticleTextures",			INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_electricParticleTextures ) },
+	{ "ElectricArcs",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricArcs ) },
+	{ "ElectricArcSharpness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricArcSharpness ) },
+	{ "ElectricNoiseSize",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricNoiseSize ) },
+	{ "ElectricJitter",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricJitter ) },
+	{ "ElectricFlicker",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricFlicker ) },
+	{ "ElectricRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_electricRate ) },
+	{ "ElectricParticleScale",			INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_electricParticleScale ) },
+	{ "LaserParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_laserParticleTextures ) },
+	{ "LaserCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCore ) },
+	{ "LaserCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserCoreWidth ) },
+	{ "LaserShimmer",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserShimmer ) },
+	{ "LaserPulse",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulse ) },
+	{ "LaserPulseSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSize ) },
+	{ "LaserPulseSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserPulseSpeed ) },
+	{ "LaserDebug",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserDebug ) },
+	{ "CryoParticleTextures",				INI::parseAsciiStringVectorAppend,	nullptr,	offsetof( GlobalData, m_cryoParticleTextures ) },
+	{ "CryoTint",							INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_cryoTint ) },
+	{ "CryoTintStrength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoTintStrength ) },
+	{ "CryoCore",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCore ) },
+	{ "CryoCoreWidth",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoCoreWidth ) },
+	{ "CryoFrost",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrost ) },
+	{ "CryoFrostSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSize ) },
+	{ "CryoFrostSpeed",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoFrostSpeed ) },
+	{ "CryoShards",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShards ) },
+	{ "CryoShardSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoShardSize ) },
+	{ "CryoGlints",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlints ) },
+	{ "CryoGlintSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintSize ) },
+	{ "CryoGlintRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintRate ) },
+	{ "CryoParticleScale",				INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_cryoParticleScale ) },
+	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
+	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
+	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
+	{ "GroundNoiseSize",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseSize ) },
+	{ "GroundNoiseTint",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseTint ) },
+	{ "GroundNoiseBrightness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseBrightness ) },
+	{ "TerrainHeightBlendStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendStrength ) },
+	{ "TerrainHeightBlendSharpness",		INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainHeightBlendSharpness ) },
+	{ "TerrainAtlasBorder",					INI::parseInt,				nullptr,			offsetof( GlobalData, m_terrainAtlasBorder ) },
+	{ "SkyCloudSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSize ) },
+	{ "SkyCloudCoverage",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudCoverage ) },
+	{ "SkyCloudSoftness",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudSoftness ) },
+	{ "SkyCloudShadowStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudShadowStrength ) },
+	{ "SkyCloudShadowTint",				INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_skyCloudShadowTint ) },
+	{ "SkyCloudWindSpeed",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindSpeed ) },
+	{ "SkyCloudWindAngle",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudWindAngle ) },
+	{ "SkyCloudChurn",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudChurn ) },
+	{ "SkyCloudBillow",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudBillow ) },
+	{ "SkyCloudDetail",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudDetail ) },
 	{ "TextureReductionFactor",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_textureReductionFactor ) },
 	{ "UseBehindBuildingMarker",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableBehindBuildingMarkers ) },
 	{ "WaterPositionX",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_waterPositionX ) },
@@ -715,8 +789,12 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{"ChronoDamageOpacityEnd", INI::parsePercentToReal, NULL, offsetof(GlobalData, m_chronoDisableAlphaEnd) },
 
 	{ "LaserGroundGlowColor",				INI::parseColorInt,			nullptr,			offsetof( GlobalData, m_laserGlowColor ) },
-	{ "LaserGroundGlowRadius",			INI::parseReal,					nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
 	{ "LaserGroundGlowIntensity",		INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_laserGlowIntensity ) },
+	{ "LaserGroundGlowRadius",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowRadius ) },
+	{ "LaserGroundGlowFalloff",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowFalloff ) },
+	{ "LaserGroundGlowWrap",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_laserGlowWrap ) },
+	{ "LaserGroundGlowDebug",			INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowDebug ) },
+	{ "LaserGroundGlowOverlap",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_laserGlowOverlap ) },
 	
 	// {"ChronoDamageTintStatusType", TintStatusFlags::parseSingleBitFromINI, NULL, offsetof(GlobalData, m_chronoTintStatusType) },
 	{"ChronoDamageParticleSystemLarge", INI::parseAsciiString, NULL, offsetof(GlobalData, m_chronoDisableParticleSystemLarge) },
@@ -775,9 +853,33 @@ GlobalData::GlobalData()
   m_bloomStrength = 0.5f;
   m_bloomDebug = FALSE;
   m_laserRef = FALSE;
+  m_useShadowMap = TRUE;
+  m_useSpecular = TRUE;
+  m_useNormalMaps = TRUE;
+  m_waterReflections = TRUE;
+  m_useSoftParticles = TRUE;
+  m_useFlameShaders = TRUE;
+  m_useElectricShaders = TRUE;
+  m_useLaserShaders = TRUE;
+  m_useCryoShaders = TRUE;
+  m_useDynamicLights = TRUE;
+  m_usePixelLights = TRUE;
+  m_useAmbientOcclusion = TRUE;
+  m_useHeightBlend = TRUE;
+  m_useHQSky = TRUE;
+  m_vsync = -1;
+  m_lowLatency = FALSE;
+  m_smoothUnitMotion = TRUE;
+  m_specularDebug = FALSE;
+  m_normalMapDebug = FALSE;
+  m_ambientOcclusionDebug = FALSE;
   m_laserGlowColor = 0;
-  m_laserGlowRadius = 0.0f;
   m_laserGlowIntensity = 0.7f;
+  m_laserGlowRadius = 0.0f;
+  m_laserGlowFalloff = 2.0f;
+  m_laserGlowWrap = 0.5f;
+  m_laserGlowDebug = FALSE;
+  m_laserGlowOverlap = TRUE;
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	m_shroudOn = TRUE;
@@ -882,6 +984,84 @@ GlobalData::GlobalData()
 	m_downwindAngle = ( -0.785f );//Northeast!
 	m_useShadowVolumes = FALSE;
 	m_useShadowDecals = FALSE;
+	m_shadowMapMinSunElevation = 30.0f;
+	m_shadowsAlwaysOn = FALSE;
+	m_unitSpecularIntensity = 0.35f;
+	m_unitSpecularPower = 24.0f;
+	m_unitBumpHeight = 0.15f;
+	m_unitNormalMapStrength = 1.0f;
+	m_terrainNormalMapStrength = 2.0f;
+	m_terrainGlintIntensity = 0.25f;
+	m_terrainGlintGloss = 12.0f;
+	m_terrainGlintAlbedo = 0.5f;
+	m_unitEmissiveIntensity = 0.5f;
+	m_unitEmissiveNightIntensity = 1.5f;
+	m_softParticleDistance = 12.0f;
+	m_flameWarp = 0.04f;
+	m_flameHeat = 2.2f;
+	m_flameFlicker = 0.3f;
+	m_flameBreakup = 1.0f;
+	m_flameNoiseSize = 20.0f;
+	m_flameRise = 0.8f;
+	m_hazeBend = 1.2f;
+	m_hazeSize = 1.5f;
+	m_hazeLift = 0.3f;
+	m_hazeNoiseSize = 14.0f;
+	m_hazeRise = 1.1f;
+	m_hazeMask = 2.0f;
+	m_electricParticleTextures.clear();
+	m_electricArcs = 1.5f;
+	m_electricArcSharpness = 10.0f;
+	m_electricNoiseSize = 40.0f;
+	m_electricJitter = 0.03f;
+	m_electricFlicker = 0.6f;
+	m_electricRate = 15.0f;
+	m_electricParticleScale = 1.0f;
+	m_laserParticleTextures.clear();
+	m_laserCore = 1.2f;
+	m_laserCoreWidth = 0.25f;
+	m_laserShimmer = 0.3f;
+	m_laserPulse = 0.4f;
+	m_laserPulseSize = 120.0f;
+	m_laserPulseSpeed = 400.0f;
+	m_laserDebug = FALSE;
+	m_cryoParticleTextures.clear();
+	m_cryoTint.red = 150.0f / 255.0f;
+	m_cryoTint.green = 215.0f / 255.0f;
+	m_cryoTint.blue = 1.0f;
+	m_cryoTintStrength = 0.8f;
+	m_cryoCore = 1.0f;
+	m_cryoCoreWidth = 0.3f;
+	m_cryoFrost = 0.5f;
+	m_cryoFrostSize = 200.0f;
+	m_cryoFrostSpeed = 60.0f;
+	m_cryoShards = 0.4f;
+	m_cryoShardSize = 8.0f;
+	m_cryoGlints = 2.0f;
+	m_cryoGlintSize = 1.5f;
+	m_cryoGlintRate = 2.0f;
+	m_cryoParticleScale = 1.0f;
+	m_ambientOcclusionRadius = 12.0f;
+	m_ambientOcclusionStrength = 1.0f;
+	m_groundNoiseStrength = 0.12f;
+	m_groundNoiseSize = 1000.0f;
+	m_groundNoiseTint = 0.03f;
+	m_groundNoiseBrightness = 0.9f;
+	m_terrainHeightBlendStrength = 2.0f;
+	m_terrainHeightBlendSharpness = 4.0f;
+	m_terrainAtlasBorder = 8;
+	m_skyCloudSize = 600.0f;
+	m_skyCloudCoverage = 0.45f;
+	m_skyCloudSoftness = 0.25f;
+	m_skyCloudShadowStrength = 0.35f;
+	m_skyCloudShadowTint.red = 235.0f / 255.0f;
+	m_skyCloudShadowTint.green = 242.0f / 255.0f;
+	m_skyCloudShadowTint.blue = 1.0f;
+	m_skyCloudWindSpeed = 11.0f;
+	m_skyCloudWindAngle = 56.0f;
+	m_skyCloudChurn = 0.3f;
+	m_skyCloudBillow = 0.5f;
+	m_skyCloudDetail = 0.4f;
 	m_textureReductionFactor = -1;
 	m_enableBehindBuildingMarkers = TRUE;
 	m_scriptDebug = FALSE;
@@ -1188,6 +1368,12 @@ GlobalData::GlobalData()
 
 	m_showMoneyPerMinute = FALSE;
 	m_allowMoneyPerMinuteForPlayer = FALSE;
+#if defined(GENERALS_ONLINE)
+	m_observerNotificationFontSize = 10;
+	m_observerNotificationSpecialPowerUsage = TRUE;
+	m_observerNotificationSpecialPowerPurchase = TRUE;
+	m_observerNotificationMilestone = TRUE;
+#endif
 
 	m_gameWindowTransitionSpeedMultiplier = 1.0f;
 
@@ -1221,6 +1407,10 @@ GlobalData::GlobalData()
 
 	m_simulateReplays.clear();
 	m_simulateReplayJobs = SIMULATE_REPLAYS_SEQUENTIAL;
+#if defined(GENERALS_ONLINE)
+	m_exportStats = FALSE;
+	m_statsUrl.clear();
+#endif
 
 	for (i = LEVEL_FIRST; i <= LEVEL_LAST; ++i)
 		m_healthBonus[i] = 1.0f;
@@ -1293,6 +1483,7 @@ GlobalData::GlobalData()
 	m_buildTimerDisplayMode = BuildTimerDisplayMode_Default;
 	m_castMode = CastMode_Default;
 	m_selectionCircleEnabled = FALSE;
+	m_defensesRangeCircle = FALSE;
 	m_objectDecalsEnabled = TRUE;
 	m_smartPips = FALSE;
 	m_numericalHealth = FALSE;
@@ -1485,11 +1676,141 @@ void GlobalData::reset()
 
 }
 
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+
+// Keys the renderer reads every frame, so a new value shows at once. The rest are read at load.
+static const char *const LiveGameDataKeys[] =
+{
+	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength",
+	"TerrainGlintIntensity", "TerrainGlintGloss", "TerrainGlintAlbedo",
+	"UnitEmissiveIntensity", "UnitEmissiveNightIntensity", "SoftParticleDistance",
+	"AmbientOcclusionRadius", "AmbientOcclusionStrength",
+	"GroundNoiseStrength", "GroundNoiseSize", "GroundNoiseTint", "GroundNoiseBrightness",
+	"TerrainHeightBlendStrength", "TerrainHeightBlendSharpness", "TerrainAtlasBorder",
+	"SkyCloudSize", "SkyCloudCoverage", "SkyCloudSoftness", "SkyCloudShadowStrength", "SkyCloudShadowTint",
+	"SkyCloudWindSpeed", "SkyCloudWindAngle", "SkyCloudChurn", "SkyCloudBillow", "SkyCloudDetail",
+	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
+	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
+	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
+	"ElectricParticleScale",
+	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
+	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
+	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
+	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
+	nullptr
+};
+
+// A key with no value opens a nested block such as SubdualDamageDefaults, which is read through to its End.
+static void parseIgnoredField( INI* ini, void *instance, void *store, const void *userData )
+{
+	if (ini->getNextTokenOrNull() == nullptr)
+	{
+		// The catch-all entry takes every field inside, so none reads as unknown.
+		static const FieldParse anyField[] = { { nullptr, parseIgnoredField, nullptr, 0 } };
+		Int unused = 0;
+		ini->initFromINI( &unused, anyField );
+	}
+}
+
+// The GameData field table with every key but the live ones read and dropped, or null outside a reload.
+static const FieldParse *LiveReloadTable = nullptr;
+
+#endif
+
+//-------------------------------------------------------------------------------------------------
+// Tuning the renderer means seeing each change, so cheat builds reload its GameData.ini keys when the
+// file is saved. Only those keys change, so Options.ini choices and map overrides stay as they are.
+//-------------------------------------------------------------------------------------------------
+void GlobalData::reloadEditedIni()
+{
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	static UnsignedInt checkTime = 0;
+	static Int64 lastTimestamp = 0;
+
+	const UnsignedInt now = timeGetTime();
+	if (now - checkTime < 500)
+	{
+		return;
+	}
+	checkTime = now;
+
+	const AsciiString fileName("Data\\INI\\GameData.ini");
+	FileInfo info;
+	if (TheLocalFileSystem == nullptr || !TheLocalFileSystem->getFileInfo(fileName, &info))
+	{
+		return;
+	}
+	const Int64 timestamp = info.timestamp();
+	const Bool firstLook = (lastTimestamp == 0);
+	if (timestamp == lastTimestamp)
+	{
+		return;
+	}
+	lastTimestamp = timestamp;
+	if (firstLook)
+	{
+		return;
+	}
+
+	static FieldParse liveTable[ARRAY_SIZE(s_GlobalDataFieldParseTable)];
+	static Bool built = FALSE;
+	if (!built)
+	{
+		built = TRUE;
+		for (UnsignedInt i = 0; i < ARRAY_SIZE(s_GlobalDataFieldParseTable); ++i)
+		{
+			liveTable[i] = s_GlobalDataFieldParseTable[i];
+			if (liveTable[i].token == nullptr)
+			{
+				break;
+			}
+
+			Bool live = FALSE;
+			for (const char *const *key = LiveGameDataKeys; *key != nullptr; ++key)
+			{
+				if (stricmp(*key, liveTable[i].token) == 0)
+				{
+					live = TRUE;
+					break;
+				}
+			}
+			if (!live)
+			{
+				liveTable[i].parse = parseIgnoredField;
+			}
+		}
+	}
+
+	LiveReloadTable = liveTable;
+	try
+	{
+		INI ini;
+		ini.load( fileName, INI_LOAD_MULTIFILE, nullptr );
+	}
+	catch (...)
+	{
+		LiveReloadTable = nullptr;
+		RENDER_LOG(("GameData.ini stopped at an error, so only the keys above it took effect until the next save"));
+		return;
+	}
+	LiveReloadTable = nullptr;
+	RENDER_LOG(("GameData.ini render tuning reloaded"));
+#endif
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Parse GameData entry */
 //-------------------------------------------------------------------------------------------------
 void GlobalData::parseGameDataDefinition( INI* ini )
 {
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	if (LiveReloadTable != nullptr)
+	{
+		ini->initFromINI( TheWritableGlobalData, LiveReloadTable );
+		return;
+	}
+#endif
+
 	if( TheWritableGlobalData && ini->getLoadType() != INI_LOAD_MULTIFILE)
 	{
 
@@ -1533,6 +1854,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_buildTimerDisplayMode = optionPref.getBuildTimerDisplayMode();
 	TheWritableGlobalData->m_castMode = optionPref.getCastMode();
 	TheWritableGlobalData->m_selectionCircleEnabled = optionPref.getSelectionCircleEnabled();
+	TheWritableGlobalData->m_defensesRangeCircle = optionPref.getDefensesRangeCircleEnabled();
 	TheWritableGlobalData->m_objectDecalsEnabled = optionPref.getObjectDecalsEnabled();
 	TheWritableGlobalData->m_smartPips = optionPref.getSmartPipsEnabled();
 	TheWritableGlobalData->m_numericalHealth = optionPref.getNumericalHealthEnabled();
@@ -1572,6 +1894,12 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_gameTimeFontSize = optionPref.getGameTimeFontSize();
 	TheWritableGlobalData->m_playerInfoListFontSize = optionPref.getPlayerInfoListFontSize();
 	TheWritableGlobalData->m_showMoneyPerMinute = optionPref.getShowMoneyPerMinute();
+#if defined(GENERALS_ONLINE)
+	TheWritableGlobalData->m_observerNotificationFontSize = optionPref.getObserverNotificationFontSize();
+	TheWritableGlobalData->m_observerNotificationSpecialPowerUsage = optionPref.getObserverNotificationSpecialPowerUsage();
+	TheWritableGlobalData->m_observerNotificationSpecialPowerPurchase = optionPref.getObserverNotificationSpecialPowerPurchase();
+	TheWritableGlobalData->m_observerNotificationMilestone = optionPref.getObserverNotificationMilestone();
+#endif
 	TheWritableGlobalData->m_gameWindowTransitionSpeedMultiplier = optionPref.getGameWindowTransitionSpeedMultiplier();
 
 	TheWritableGlobalData->m_antiAliasLevel = optionPref.getAntiAliasing();
@@ -1581,6 +1909,26 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_bloomStrength = optionPref.getBloomStrength();
 	TheWritableGlobalData->m_bloomDebug = optionPref.getBloomDebugEnabled();
 	TheWritableGlobalData->m_laserRef = optionPref.getLaserRefEnabled();
+	TheWritableGlobalData->m_useShadowMap = optionPref.getShadowMapEnabled();
+	TheWritableGlobalData->m_useSpecular = optionPref.getSpecularEnabled();
+	TheWritableGlobalData->m_useNormalMaps = optionPref.getNormalMapsEnabled();
+	TheWritableGlobalData->m_waterReflections = optionPref.getWaterReflectionsEnabled();
+	TheWritableGlobalData->m_useSoftParticles = optionPref.getSoftParticlesEnabled();
+	TheWritableGlobalData->m_useFlameShaders = optionPref.getFlameShadersEnabled();
+	TheWritableGlobalData->m_useElectricShaders = optionPref.getElectricShadersEnabled();
+	TheWritableGlobalData->m_useLaserShaders = optionPref.getLaserShadersEnabled();
+	TheWritableGlobalData->m_useCryoShaders = optionPref.getCryoShadersEnabled();
+	TheWritableGlobalData->m_useDynamicLights = optionPref.getDynamicLightsEnabled();
+	TheWritableGlobalData->m_usePixelLights = optionPref.getPixelLightsEnabled();
+	TheWritableGlobalData->m_useAmbientOcclusion = optionPref.getAmbientOcclusionEnabled();
+	TheWritableGlobalData->m_useHeightBlend = optionPref.getHeightBlendEnabled();
+	TheWritableGlobalData->m_useHQSky = optionPref.getHQSkyEnabled();
+	TheWritableGlobalData->m_vsync = optionPref.getVSyncMode();
+	TheWritableGlobalData->m_lowLatency = optionPref.getLowLatencyEnabled();
+	TheWritableGlobalData->m_smoothUnitMotion = optionPref.getSmoothUnitMotionEnabled();
+	TheWritableGlobalData->m_specularDebug = optionPref.getSpecularDebugEnabled();
+	TheWritableGlobalData->m_normalMapDebug = optionPref.getNormalMapDebugEnabled();
+	TheWritableGlobalData->m_ambientOcclusionDebug = optionPref.getAmbientOcclusionDebugEnabled();
 	TheWritableGlobalData->m_borderlessWindow = optionPref.getBorderlessWindowEnabled();
 
 	Int val=optionPref.getGammaValue();

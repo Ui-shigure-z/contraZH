@@ -53,7 +53,11 @@ class Vector4;
 class StringClass;
 class DX8VertexBufferClass;
 class FVFInfoClass;
+#if defined(BUILD_WITH_D3D9)
+#include "WW3D2/dx8compat.h"
+#else
 struct IDirect3DVertexBuffer8;
+#endif
 class VertexBufferClass;
 struct VertexFormatXYZNDUV2;
 
@@ -100,6 +104,9 @@ public:
 	public:
 		AppendLockClass(VertexBufferClass* vertex_buffer,unsigned start_index, unsigned index_range);
 		~AppendLockClass();
+	private:
+		unsigned StartIndex;
+		unsigned IndexRange;
 	};
 
 	static unsigned Get_Total_Buffer_Count();
@@ -216,6 +223,11 @@ public:
 
 	IDirect3DVertexBuffer8* Get_DX8_Vertex_Buffer() { return VertexBuffer; }
 
+	/// The system memory copy a static buffer is written through on D3D9Ex, or null.
+	unsigned char* Peek_Shadow() { return Shadow; }
+	/// Copies a byte range of the system memory copy into the buffer.
+	void Upload_Shadow(unsigned first_byte, unsigned byte_count);
+
 	void Copy(const Vector3* loc, unsigned first_vertex, unsigned count);
 	void Copy(const Vector3* loc, const Vector2* uv, unsigned first_vertex, unsigned count);
 	void Copy(const Vector3* loc, const Vector3* norm, unsigned first_vertex, unsigned count);
@@ -225,6 +237,8 @@ public:
 
 protected:
 	IDirect3DVertexBuffer8*		VertexBuffer;
+	// D3D9Ex puts static buffers in the default pool, where a lock need not keep the bytes it is not given.
+	unsigned char*				Shadow;
 
 	void Create_Vertex_Buffer(UsageType usage);
 };

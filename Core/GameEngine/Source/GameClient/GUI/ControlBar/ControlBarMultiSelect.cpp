@@ -431,19 +431,31 @@ void ControlBar::populateMultiSelectBuildQueue(ObjectVector *producerList)
 	productionPointer.resize(producerCount);
 	currentBuildTime.resize(producerCount);
 
+	m_displayedQueueSignature.clear();
+	m_displayedQueueSignature.reserve(producerCount);
 
 	// ShigureUi 13/9/2026 calculate all first production's finish time
 	for (i = 0; i < producerCount; i++)
 	{
 		pu = (*producerList)[i]->getProductionUpdateInterface();
 		if (!pu)
+		{
+			// a partial signature could match a later partial pass and suppress a real repaint
+			m_displayedQueueSignature.clear();
 			return;  // sanity
+		}
 
 		if (!thePlayer)
 			thePlayer = (*producerList)[i]->getControllingPlayer();
 		allPU[i] = pu;
 		productionPointer[i] = pu->firstProduction();
 		productionSum += pu->getProductionCount();
+
+		QueueSignature signature;
+		signature.producer = (*producerList)[i];
+		signature.head = productionPointer[i] ? productionPointer[i]->getProductionID() : PRODUCTIONID_INVALID;
+		signature.count = pu->getProductionCount();
+		m_displayedQueueSignature.push_back(signature);
 		currentBuildTime[i] = 1e9;
 		if (productionPointer[i])
 		{
@@ -810,17 +822,30 @@ void ControlBar::updateContextMultiSelect()
 
 		if (anyProductionExist)
 		{
-			int productionSum = 0;
+			// Compare each producer's head and count, not their sum: an entry gained at one
+			// producer and lost at another leaves the sum alone and the queue unrepainted.
+			Bool queueChanged = (Int)m_displayedQueueSignature.size() != producerCount;
 
-			for (i = 0; i < producerCount; i++)
+			for (i = 0; !queueChanged && i < producerCount; i++)
 			{
 				pu = producerList[i]->getProductionUpdateInterface();
-				if (pu)
-					productionSum += pu->getProductionCount();
+				if (!pu)
+				{
+					// the populate pass bails on this too, so its signature can never match
+					queueChanged = TRUE;
+					break;
+				}
+
+				const ProductionEntry *head = pu->firstProduction();
+				QueueSignature signature;
+				signature.producer = producerList[i];
+				signature.head = head ? head->getProductionID() : PRODUCTIONID_INVALID;
+				signature.count = pu->getProductionCount();
+				queueChanged = signature != m_displayedQueueSignature[i];
 			}
 
 			// update the whole queue as necessary
-			if (productionSum != m_displayedQueueCount)
+			if (queueChanged)
 				populateMultiSelectBuildQueue(&producerList);
 
 			//

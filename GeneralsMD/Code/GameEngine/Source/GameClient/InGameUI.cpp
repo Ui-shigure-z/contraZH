@@ -33,6 +33,7 @@
 #define DEFINE_RADIUSCURSOR_NAMES
 
 #include "Common/ActionManager.h"
+#include "Common/DrawModule.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameType.h"
@@ -49,6 +50,13 @@
 #include "Common/BuildAssistant.h"
 #include "Common/Recorder.h"
 #include "Common/SpecialPower.h"
+#if defined(GENERALS_ONLINE)
+#include "Common/Energy.h"
+#include "Common/PlayerTemplate.h"
+#include "Common/Science.h"
+#include "Common/ScoreKeeper.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#endif
 
 #include "GameClient/Anim2D.h"
 #include "GameClient/ControlBar.h"
@@ -101,6 +109,10 @@
 
 // ------------------------------------------------------------------------------------------------
 static const RGBColor IllegalBuildColor = { 1.0, 0.0, 0.0 };
+
+// TheSuperHackers @feature Range ring under a structure being placed. Red marks illegal placement
+// and green marks selection, so the ring takes a third color.
+static const Color PlacementRangeCircleColor = GameMakeColor( 0, 192, 255, 255 );
 
 // ------------------------------------------------------------------------------------------------
 static UnicodeString formatMoneyValue(UnsignedInt amount)
@@ -472,7 +484,7 @@ void InGameUI::xfer( Xfer *xfer )
 					xfer->xferBool(&swInfo->m_hiddenByScript);
 					xfer->xferBool(&swInfo->m_hiddenByScience);
 					xfer->xferBool(&swInfo->m_ready);
-          if ( currentVersion >= 3 )
+          if ( version >= 3 )
           {
             xfer->xferBool( &swInfo->m_evaReadyPlayed );
           }
@@ -519,7 +531,7 @@ void InGameUI::xfer( Xfer *xfer )
 			xfer->xferBool(&hiddenByScript);
 			xfer->xferBool(&hiddenByScience);
 			xfer->xferBool(&ready);
-      if ( currentVersion >= 3 )
+      if ( version >= 3 )
       {
         xfer->xferBool( &evaReadyPlayed );
       }
@@ -992,7 +1004,21 @@ void INI::parseInGameUIDefinition( INI* ini )
 	{
 		// parse the ini weapon definition
 		ini->initFromINI( TheInGameUI, TheInGameUI->getFieldParse() );
+		TheInGameUI->validate();
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::validate()
+{
+#if ENABLE_GUI_HACKS
+	// TheSuperHackers @bugfix bobtista 02/09/2026 Correct the known retail InGameUI.ini message delay typo
+	if (m_messageDelayMS == 75000)
+	{
+		m_messageDelayMS = 7500;
+	}
+#endif
+	m_messageDelayMS = max(0, m_messageDelayMS);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1049,6 +1075,12 @@ void InGameUI::PlayerInfoList::init(const AsciiString &fontName, Int pointSize, 
 	labels[LabelType_MoneyPerMinute]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelMoneyPerMinute", L"+"));
 	labels[LabelType_Rank]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelRank", L"*"));
 	labels[LabelType_Xp]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelXp", L"XP"));
+#if defined(GENERALS_ONLINE)
+	labels[LabelType_SciencePoints]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelSciencePoints", L"SP"));
+	labels[LabelType_Kills]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelKills", L"K"));
+	labels[LabelType_Losses]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelLosses", L"L"));
+	labels[LabelType_Power]->setText(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:PlayerInfoListLabelPower", L"P"));
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1214,6 +1246,9 @@ InGameUI::InGameUI()
 	m_commandSetOverlayOn = FALSE;
 	m_weaponSetOverlayOn = FALSE;
 	m_armorSetOverlayOn = FALSE;
+	m_modelNameOverlayOn = FALSE;
+	m_laserNameOverlayOn = FALSE;
+	m_laserBeamBlockOverlayOn = FALSE;
 #endif
 
 	// TheSuperHackers @info the default font, size and positions of the various counters were chosen based on GenTools implementation
@@ -1270,6 +1305,12 @@ InGameUI::InGameUI()
 	m_playerInfoListValueColor = GameMakeColor(253, 251, 251, 255);
 	m_playerInfoListDropColor = GameMakeColor(0, 0, 0, 255);
 	m_playerInfoListBackgroundAlpha = 170;
+#if defined(GENERALS_ONLINE)
+	m_observerOverlayHidden = FALSE;
+	m_observerNotificationString = nullptr;
+	m_observerNotificationPointSize = TheGlobalData->m_observerNotificationFontSize;
+	m_observerMilestoneCheckFrame = 0;
+#endif
 
 	m_superweaponPosition.x = 0.7f;
 	m_superweaponPosition.y = 0.7f;
@@ -2069,6 +2110,7 @@ void InGameUI::handleBuildPlacements()
 						UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
 						drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
 						m_placeIcon[ i ] = TheThingFactory->newDrawable( m_pendingPlaceType, drawableStatus );
+						updatePlacementRangeCircle( m_placeIcon[ i ] );
 					}
 
 				}
@@ -2180,11 +2222,26 @@ void InGameUI::update()
 	// frame
 	//
 	UnsignedInt currLogicFrame = TheGameLogic->getFrame();
-	const int messageTimeout = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
+#if defined(GENERALS_ONLINE)
+	if (TheGameLogic->isInGame() && TheControlBar->isObserverControlBarOn() && !m_observerOverlayHidden)
+	{
+		checkObserverMilestones();
+	}
+
+	// TheSuperHackers @bugfix bobtista 13/08/2026 Convert milliseconds to logic frames
+	const int messageTimeoutStandard = REAL_TO_INT_CEIL( ConvertDurationFromMsecsToFrames( (Real)m_messageDelayMS ) );
+	const int messageTimeoutChat = NGMP_OnlineServicesManager::Settings.GetChatLifeSeconds() * LOGICFRAMES_PER_SECOND;
+#else
+	// TheSuperHackers @bugfix bobtista 13/08/2026 Convert milliseconds to logic frames
+	const int messageTimeout = REAL_TO_INT_CEIL( ConvertDurationFromMsecsToFrames( (Real)m_messageDelayMS ) );
+#endif
 	UnsignedByte r, g, b, a;
 	Int amount;
 	for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
 	{
+#if defined(GENERALS_ONLINE)
+		const int messageTimeout = m_uiMessages[ i ].isChat ? messageTimeoutChat : messageTimeoutStandard;
+#endif
 
 		if( currLogicFrame - m_uiMessages[ i ].timestamp > messageTimeout )
 		{
@@ -2193,7 +2250,12 @@ void InGameUI::update()
 			GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
 
 			// start fading the alpha on this color down
+#if defined(GENERALS_ONLINE)
+			// The fade is authored in 30 Hz frames.
+			amount = REAL_TO_INT( ((currLogicFrame - m_uiMessages[ i ].timestamp - messageTimeout) / GENERALS_ONLINE_HIGH_FPS_FRAME_MULTIPLIER * 0.01f) );
+#else
 			amount = REAL_TO_INT( ((currLogicFrame - m_uiMessages[ i ].timestamp) * 0.01f) );
+#endif
 			if( a - amount < 0 )
 				a = 0;
 			else
@@ -2465,6 +2527,9 @@ void InGameUI::reset()
 		1.0f);
 
 	ResetInGameChat();
+#if defined(GENERALS_ONLINE)
+	resetObserverNotifications();
+#endif
 
 	// stop any movie currently playing
 	stopMovie();
@@ -2591,6 +2656,10 @@ void InGameUI::freeCustomUiResources()
 	m_gameTimeFrameString = nullptr;
 
 	m_playerInfoList.clear();
+#if defined(GENERALS_ONLINE)
+	TheDisplayStringManager->freeDisplayString(m_observerNotificationString);
+	m_observerNotificationString = nullptr;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2670,7 +2739,11 @@ void InGameUI::message( UnicodeString format, ... )
 /** Interface for display text messages to the user */
 //-------------------------------------------------------------------------------------------------
 // srj sez: passing as const-ref screws up varargs for some reason. dunno why. just pass by value.
+#if defined(GENERALS_ONLINE)
+void InGameUI::messageColor( Bool isChat, const RGBColor *rgbColor, UnicodeString format, ... )
+#else
 void InGameUI::messageColor( const RGBColor *rgbColor, UnicodeString format, ... )
+#endif
 {
 	UnicodeString formattedMessage;
 
@@ -2685,7 +2758,11 @@ void InGameUI::messageColor( const RGBColor *rgbColor, UnicodeString format, ...
 	{
 		formattedMessage.set( buf );
 		// add the text to the ui
+#if defined(GENERALS_ONLINE)
+		addMessageText( formattedMessage, rgbColor, isChat );
+#else
 		addMessageText( formattedMessage, rgbColor );
+#endif
 	}
 	else
 	{
@@ -2695,7 +2772,11 @@ void InGameUI::messageColor( const RGBColor *rgbColor, UnicodeString format, ...
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+#if defined(GENERALS_ONLINE)
+void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor, Bool isChat )
+#else
 void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor )
+#endif
 {
 	Int i;
 	Color color1 = m_messageColor1;
@@ -2725,6 +2806,9 @@ void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBC
 	//
 	m_uiMessages[ 0 ].fullText = formattedMessage;
 	m_uiMessages[ 0 ].timestamp = TheGameLogic->getFrame();
+#if defined(GENERALS_ONLINE)
+	m_uiMessages[ 0 ].isChat = isChat;
+#endif
 	m_uiMessages[ 0 ].displayString = TheDisplayStringManager->newDisplayString();
 	m_uiMessages[ 0 ].displayString->setFont( TheFontLibrary->getFont( m_messageFont,
 																						TheGlobalLanguageData->adjustFontSize(m_messagePointSize), m_messageBold ) );
@@ -3237,11 +3321,14 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 	// Note: These are only non-null if there is exactly one thing selected.
 	const Drawable *srcDraw = nullptr;
 	const Object *srcObj = nullptr;
-	if (getSelectCount() == 1) {
+	if (getSelectCount() >= 1) {
 		srcDraw = getAllSelectedDrawables()->front();
 		srcObj = (srcDraw ? srcDraw->getObject() : nullptr);
 	}
 
+	if (getSelectCount() > 1 && (!srcObj || !srcObj->isKindOf(KINDOF_STRUCTURE) || !srcObj->isLocallyControlled() ||
+		m_mouseMode != MOUSEMODE_DEFAULT || t != GameMessage::MSG_DO_MOVETO_HINT))
+		srcObj = nullptr;
 	switch (m_mouseMode)
 	{
 		case MOUSEMODE_DEFAULT:
@@ -3831,6 +3918,80 @@ void InGameUI::destroySpecialPowerLocationDecals( void )
 }
 
 //-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Placement range ring.
+//-------------------------------------------------------------------------------------------------
+/** Widest reach of any weapon the template can ever field.
+	*
+	* Every weapon set counts, not just the default one, so an upgradeable defense shows the reach it
+	* ends up with rather than one the player has to measure again after the upgrade. Matches the
+	* outermost circle WorldBuilder draws for the same template. */
+//-------------------------------------------------------------------------------------------------
+Real InGameUI::getPlacementRangeCircleRadius( const ThingTemplate *build ) const
+{
+	Real widest = 0.0f;
+
+	if( build == nullptr )
+	{
+		return widest;
+	}
+
+	const WeaponTemplateSetVector& sets = build->getWeaponTemplateSets();
+	for( WeaponTemplateSetVector::const_iterator it = sets.begin(); it != sets.end(); ++it )
+	{
+		if( it->hasAnyWeapons() == false )
+		{
+			continue;
+		}
+
+		for( Int slot = 0; slot < WEAPONSLOT_COUNT; ++slot )
+		{
+			const WeaponTemplate *weapon = it->getNth( (WeaponSlotType)slot );
+			if( weapon == nullptr )
+			{
+				continue;
+			}
+
+			const Real range = weapon->getUnmodifiedAttackRange();
+			if( range > widest )
+			{
+				widest = range;
+			}
+		}
+	}
+
+	return widest;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Show or hide the range ring under one placement ghost.
+	*
+	* The ghost has no Object, so it can never be selected and never carries a selection ring; the
+	* decal slot is free for as long as it exists. The decal follows the render object, so the ring
+	* tracks the ghost around the map without any per frame work. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::updatePlacementRangeCircle( Drawable *icon )
+{
+	if( icon == nullptr )
+	{
+		return;
+	}
+
+	Real radius = 0.0f;
+	if( TheGlobalData && TheGlobalData->m_defensesRangeCircle
+			&& m_pendingPlaceType && m_pendingPlaceType->canPossiblyHaveAnyWeapon() )
+	{
+		radius = getPlacementRangeCircleRadius( m_pendingPlaceType );
+	}
+
+	const Bool wanted = radius > 0.0f;
+	for( DrawModule **dm = icon->getDrawModules(); *dm; ++dm )
+	{
+		(*dm)->setSelectionDecal( wanted, radius, PlacementRangeCircleColor );
+		break;	// first draw module only, so rings do not stack
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Destroy any drawables we have in our placement icon array and set to null */
 //-------------------------------------------------------------------------------------------------
 void InGameUI::destroyPlacementIcons()
@@ -3944,6 +4105,8 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 			// set the "icon" in the icon array at the first index
 			DEBUG_ASSERTCRASH( m_placeIcon[ 0 ] == nullptr, ("placeBuildAvailable, build icon array is not empty!") );
 			m_placeIcon[ 0 ] = draw;
+
+			updatePlacementRangeCircle( draw );
 
 		}
 		else
@@ -4364,10 +4527,24 @@ void InGameUI::postWindowDraw()
 		drawGameTime();
 	}
 
+#if defined(GENERALS_ONLINE)
+	if (m_observerOverlayHidden)
+	{
+		return;
+	}
+#endif
+
 	if (m_playerInfoListPointSize > 0 && TheGameLogic->isInGame() && TheControlBar->isObserverControlBarOn())
 	{
 		drawPlayerInfoList();
 	}
+
+#if defined(GENERALS_ONLINE)
+	if (TheGameLogic->isInGame() && TheControlBar->isObserverControlBarOn())
+	{
+		drawObserverNotifications();
+	}
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -5053,8 +5230,13 @@ void InGameUI::militarySubtitle( const AsciiString& label, Int duration )
 
 	// calculate where this screen position should be since the position being passed in is based off 8x6
 	Coord2D multiplier;
+#if defined(GENERALS_ONLINE_WIDESCREEN)
+	multiplier.x = (Real)TheDisplay->getWidth() / GENERALS_ONLINE_WIDESCREEN_X_SCALE;
+	multiplier.y = (Real)TheDisplay->getHeight() / GENERALS_ONLINE_WIDESCREEN_Y_SCALE;
+#else
 	multiplier.x = (Real)TheDisplay->getWidth() / (Real)DEFAULT_DISPLAY_WIDTH;
 	multiplier.y = (Real)TheDisplay->getHeight() / (Real)DEFAULT_DISPLAY_HEIGHT;
+#endif
 
 	// lets bring out the data structure!
 	m_militarySubtitle = NEW MilitarySubtitleData;
@@ -6678,6 +6860,9 @@ void InGameUI::refreshCustomUiResources()
 	refreshSystemTimeResources();
 	refreshGameTimeResources();
 	refreshPlayerInfoListResources();
+#if defined(GENERALS_ONLINE)
+	refreshObserverNotificationResources();
+#endif
 }
 
 void InGameUI::refreshNetworkLatencyResources()
@@ -6752,6 +6937,314 @@ void InGameUI::refreshGameTimeResources()
 	m_gameTimeString->setFont(gameTimeFont);
 	m_gameTimeFrameString->setFont(gameTimeFont);
 }
+
+#if defined(GENERALS_ONLINE)
+// ------------------------------------------------------------------------------------------------
+// Observer notifications: a feed of promotions, power use and milestones for spectators.
+// ------------------------------------------------------------------------------------------------
+namespace
+{
+	const UnsignedInt NOTIFICATION_SLIDE_IN_MS = 300;
+	const UnsignedInt NOTIFICATION_VISIBLE_MS = 3000;
+	const UnsignedInt NOTIFICATION_SLIDE_OUT_MS = 300;
+	const UnsignedInt NOTIFICATION_LIFETIME_MS = NOTIFICATION_SLIDE_IN_MS + NOTIFICATION_VISIBLE_MS + NOTIFICATION_SLIDE_OUT_MS;
+	const Real NOTIFICATION_BRIGHTNESS_BOOST = 0.4f;
+	const Int NOTIFICATION_LEFT_MARGIN = 7;
+	const Int NOTIFICATION_VERTICAL_OFFSET = 300;
+	const Int NOTIFICATION_PADDING_X = 15;
+	const Int NOTIFICATION_PADDING_Y = 10;
+	const Int NOTIFICATION_BOX_SPACING = 5;
+
+	// 0..1 slides in, 1 holds, 1..2 slides out, 2 is expired.
+	Real computeNotificationProgress(UnsignedInt ageMs)
+	{
+		if (ageMs < NOTIFICATION_SLIDE_IN_MS)
+		{
+			return (Real)ageMs / NOTIFICATION_SLIDE_IN_MS;
+		}
+		if (ageMs < NOTIFICATION_SLIDE_IN_MS + NOTIFICATION_VISIBLE_MS)
+		{
+			return 1.0f;
+		}
+		if (ageMs < NOTIFICATION_LIFETIME_MS)
+		{
+			return 1.0f + (Real)(ageMs - NOTIFICATION_SLIDE_IN_MS - NOTIFICATION_VISIBLE_MS) / NOTIFICATION_SLIDE_OUT_MS;
+		}
+		return 2.0f;
+	}
+
+	Real easeNotificationProgress(Real progress)
+	{
+		if (progress < 1.0f)
+		{
+			return 1.0f - (1.0f - progress) * (1.0f - progress);
+		}
+		const Real t = progress - 1.0f;
+		return t * t;
+	}
+
+	// The command button that grants the power carries the player facing name.
+	UnicodeString findSpecialPowerDisplayName(const SpecialPowerTemplate *powerTemplate)
+	{
+		for (const CommandButton *button = TheControlBar->getCommandButtons(); button != nullptr; button = button->getNext())
+		{
+			if (button->getSpecialPowerTemplate() == powerTemplate && button->getTextLabel().isNotEmpty())
+			{
+				return TheGameText->fetch(button->getTextLabel());
+			}
+		}
+		return UnicodeString::TheEmptyString;
+	}
+}
+
+void InGameUI::refreshObserverNotificationResources()
+{
+	m_observerNotificationPointSize = TheGlobalData->m_observerNotificationFontSize;
+	if (m_observerNotificationPointSize <= 0)
+	{
+		return;
+	}
+
+	if (!m_observerNotificationString)
+	{
+		m_observerNotificationString = TheDisplayStringManager->newDisplayString();
+	}
+	const Int adjustedPointSize = TheGlobalLanguageData->adjustFontSize(m_observerNotificationPointSize);
+	m_observerNotificationString->setFont(TheWindowManager->winFindFont(m_playerInfoListFont, adjustedPointSize, TRUE));
+}
+
+void InGameUI::toggleObserverOverlay()
+{
+	m_observerOverlayHidden = !m_observerOverlayHidden;
+}
+
+void InGameUI::resetObserverNotifications()
+{
+	m_observerNotifications.clear();
+	for (Int i = 0; i < MAX_PLAYER_COUNT; ++i)
+	{
+		m_observerMilestones[i] = ObserverMilestone();
+	}
+	m_observerMilestoneCheckFrame = 0;
+}
+
+void InGameUI::addObserverNotification( const UnicodeString& message, Color color )
+{
+	ObserverNotification notification;
+	notification.message = message;
+	notification.color = color;
+	notification.createdMs = timeGetTime();
+	notification.active = TRUE;
+
+	for (size_t i = 0; i < m_observerNotifications.size(); ++i)
+	{
+		if (!m_observerNotifications[i].active)
+		{
+			m_observerNotifications[i] = notification;
+			return;
+		}
+	}
+
+	if (m_observerNotifications.size() < MAX_OBSERVER_NOTIFICATIONS)
+	{
+		m_observerNotifications.push_back(notification);
+	}
+}
+
+void InGameUI::notifyGeneralPromotion( Player *player, ScienceType science )
+{
+	if (!player || !player->isPlayerActive() || player->isPlayerObserver())
+	{
+		return;
+	}
+	if (!TheGlobalData->m_observerNotificationSpecialPowerPurchase)
+	{
+		return;
+	}
+
+	UnicodeString scienceName;
+	UnicodeString description;
+	if (!TheScienceStore->getNameAndDescription(science, scienceName, description))
+	{
+		return;
+	}
+
+	UnicodeString message;
+	message.format(L"%ls purchased %ls", player->getPlayerDisplayName().str(), scienceName.str());
+	addObserverNotification(message, player->getPlayerColor());
+}
+
+void InGameUI::notifySpecialPowerUsed( Player *player, const SpecialPowerTemplate *powerTemplate )
+{
+	if (!player || !player->isPlayerActive() || player->isPlayerObserver() || !powerTemplate)
+	{
+		return;
+	}
+	if (!TheGlobalData->m_observerNotificationSpecialPowerUsage)
+	{
+		return;
+	}
+
+	const UnicodeString powerName = findSpecialPowerDisplayName(powerTemplate);
+	if (powerName.isEmpty())
+	{
+		return;
+	}
+
+	UnicodeString message;
+	message.format(L"%ls used %ls", player->getPlayerDisplayName().str(), powerName.str());
+	addObserverNotification(message, player->getPlayerColor());
+}
+
+void InGameUI::checkObserverMilestones()
+{
+	if (!TheGlobalData->m_observerNotificationMilestone)
+	{
+		return;
+	}
+
+	const UnsignedInt currentFrame = TheGameLogic->getFrame();
+	if (currentFrame < m_observerMilestoneCheckFrame + LOGICFRAMES_PER_SECOND)
+	{
+		return;
+	}
+	m_observerMilestoneCheckFrame = currentFrame;
+
+	// Modded maps can start with high rank or income, so the first seconds are ignored.
+	const Bool earlyGame = currentFrame < LOGICFRAMES_PER_SECOND * 10;
+
+	for (Int slotIndex = 0; slotIndex < MAX_SLOTS && slotIndex < MAX_PLAYER_COUNT; ++slotIndex)
+	{
+		Player *player = ThePlayerList->getPlayerFromSlotIndex(slotIndex);
+		if (!player || !player->isPlayerActive() || player->isPlayerObserver())
+		{
+			continue;
+		}
+
+		const UnicodeString name = player->getPlayerDisplayName();
+		const Color playerColor = player->getPlayerColor();
+		ObserverMilestone &milestone = m_observerMilestones[slotIndex];
+		UnicodeString message;
+
+		const Int rank = player->getRankLevel();
+		if (rank >= 3 && !milestone.reachedLevel3)
+		{
+			milestone.reachedLevel3 = TRUE;
+			if (!earlyGame)
+			{
+				message.format(L"%ls reached rank 3", name.str());
+				addObserverNotification(message, playerColor);
+			}
+		}
+		if (rank >= 5 && !milestone.reachedLevel5)
+		{
+			milestone.reachedLevel5 = TRUE;
+			if (!earlyGame)
+			{
+				message.format(L"%ls reached rank 5", name.str());
+				addObserverNotification(message, playerColor);
+			}
+		}
+
+		if (player->getMoney()->getCashPerMinute() >= 10000 && !milestone.reached10kCPM)
+		{
+			milestone.reached10kCPM = TRUE;
+			if (!earlyGame)
+			{
+				message.format(L"%ls reached 10k/min income", name.str());
+				addObserverNotification(message, playerColor);
+			}
+		}
+
+		const Energy *energy = player->getEnergy();
+		const Bool sideWithoutPower = player->getSide().startsWith("GLA");
+		if (sideWithoutPower && energy->getProduction() > 0 && !milestone.gotPower)
+		{
+			milestone.gotPower = TRUE;
+			message.format(L"%ls now has power", name.str());
+			addObserverNotification(message, playerColor);
+		}
+
+		if (!milestone.gotHunted && !sideWithoutPower)
+		{
+			Bool hasBuilder = FALSE;
+			for (Object *obj = TheGameLogic->getFirstObject(); obj && !hasBuilder; obj = obj->getNextObject())
+			{
+				if (obj->getControllingPlayer() != player || obj->isEffectivelyDead())
+				{
+					continue;
+				}
+				hasBuilder = obj->isKindOf(KINDOF_DOZER)
+					|| (!obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION) && obj->isKindOf(KINDOF_COMMANDCENTER));
+			}
+			if (!hasBuilder)
+			{
+				milestone.gotHunted = TRUE;
+				message.format(L"%ls got dozer hunted", name.str());
+				addObserverNotification(message, playerColor);
+			}
+		}
+	}
+}
+
+void InGameUI::drawObserverNotifications()
+{
+	if (m_observerNotifications.empty() || !m_observerNotificationString || m_observerNotificationPointSize <= 0)
+	{
+		return;
+	}
+
+	const GameFont *font = m_observerNotificationString->getFont();
+	const Int fontHeight = font ? font->height : m_observerNotificationPointSize;
+
+	Real scale = (Real)TheDisplay->getWidth() / 1920.0f;
+	scale = clamp(0.7f, scale, 2.0f);
+
+	const Int baseX = (Int)(NOTIFICATION_LEFT_MARGIN * scale);
+	const Int baseY = (Int)TheDisplay->getHeight() / 2 - (Int)(NOTIFICATION_VERTICAL_OFFSET * scale);
+	const Int padX = (Int)(NOTIFICATION_PADDING_X * scale);
+	const Int padY = (Int)(NOTIFICATION_PADDING_Y * scale);
+	const Int boxSpacing = (Int)(NOTIFICATION_BOX_SPACING * scale);
+	const Color bgColor = GameMakeColor(0, 0, 0, 90);
+	const Color borderColor = GameMakeColor(255, 255, 255, 90);
+	const Color shadowColor = GameMakeColor(0, 0, 0, 255);
+	const UnsignedInt nowMs = timeGetTime();
+
+	for (size_t slot = 0; slot < m_observerNotifications.size(); ++slot)
+	{
+		ObserverNotification &notification = m_observerNotifications[slot];
+		if (!notification.active)
+		{
+			continue;
+		}
+
+		const Real progress = computeNotificationProgress(nowMs - notification.createdMs);
+		if (progress >= 2.0f)
+		{
+			notification.active = FALSE;
+			continue;
+		}
+
+		const Real eased = easeNotificationProgress(progress);
+		m_observerNotificationString->setText(notification.message);
+		const Int bgW = m_observerNotificationString->getWidth() + padX * 2;
+		const Int bgH = fontHeight + padY * 2;
+		const Int slotY = baseY + (Int)slot * (bgH + boxSpacing);
+		const Real offscreen = (progress < 1.0f) ? (1.0f - eased) : eased;
+		const Int slideX = baseX - (Int)((bgW + baseX) * offscreen);
+
+		TheDisplay->drawFillRect(slideX, slotY, bgW, bgH, bgColor);
+		TheDisplay->drawOpenRect(slideX, slotY, bgW, bgH, 1.0f, borderColor);
+
+		UnsignedByte r, g, b, a;
+		GameGetColorComponents(notification.color, &r, &g, &b, &a);
+		r += (UnsignedByte)((255 - r) * NOTIFICATION_BRIGHTNESS_BOOST);
+		g += (UnsignedByte)((255 - g) * NOTIFICATION_BRIGHTNESS_BOOST);
+		b += (UnsignedByte)((255 - b) * NOTIFICATION_BRIGHTNESS_BOOST);
+		m_observerNotificationString->draw(slideX + padX, slotY + padY, GameMakeColor(r, g, b, 255), shadowColor);
+	}
+}
+#endif
 
 void InGameUI::refreshPlayerInfoListResources()
 {
@@ -6931,7 +7424,7 @@ void InGameUI::drawGameTime()
 	Int hours = gameSeconds / 60 / 60;
 	Int minutes = (gameSeconds / 60) % 60;
 	Int seconds = gameSeconds % 60;
-	Int frame = currentFrame % 30;
+	Int frame = currentFrame % LOGICFRAMES_PER_SECOND;
 
     UnicodeString gameTimeString;
     gameTimeString.format(L"%2.2d:%2.2d:%2.2d", hours, minutes, seconds);
@@ -6961,6 +7454,11 @@ void InGameUI::drawPlayerInfoList()
 	Int maxValueWidths[PlayerInfoList::LabelType_Count] = {0};
 	Color rowColors[MAX_PLAYER_COUNT] = {0};
 	Int nameValueWidth[MAX_PLAYER_COUNT] = {0};
+#if defined(GENERALS_ONLINE)
+	Bool lowPower[MAX_PLAYER_COUNT] = {0};
+	Int armyValueWidth[MAX_PLAYER_COUNT] = {0};
+	Int maxArmyValueWidth = 0;
+#endif
 	const Bool showMoneyPerMinute = TheGlobalData->m_showMoneyPerMinute;
 	Int column;
 
@@ -6981,7 +7479,19 @@ void InGameUI::drawPlayerInfoList()
 		const UnsignedInt xpValue = static_cast<UnsignedInt>(player->getSkillPoints());
 		const UnicodeString nameValue = player->getPlayerDisplayName();
 
+#if defined(GENERALS_ONLINE)
+		ScoreKeeper *scoreKeeper = player->getScoreKeeper();
+		const Energy *energy = player->getEnergy();
+		const UnsignedInt sciencePointsValue = static_cast<UnsignedInt>(max(0, player->getSciencePurchasePoints()));
+		const UnsignedInt killsValue = static_cast<UnsignedInt>(scoreKeeper->getTotalUnitsDestroyed());
+		const UnsignedInt lossesValue = static_cast<UnsignedInt>(scoreKeeper->getTotalUnitsLost());
+		const UnsignedInt powerValue = static_cast<UnsignedInt>(max(0, energy->getProduction() - energy->getConsumption()));
+		lowPower[row] = !energy->hasSufficientPower();
+
+		const UnsignedInt currentValues[] = {teamValue, moneyValue, moneyPerMinuteValue, rankValue, xpValue, sciencePointsValue, killsValue, lossesValue, powerValue};
+#else
 		const UnsignedInt currentValues[] = {teamValue, moneyValue, moneyPerMinuteValue, rankValue, xpValue};
+#endif
 		for (column = 0; column < ARRAY_SIZE(currentValues); ++column)
 		{
 			UnsignedInt &lastValue = m_playerInfoList.lastValues.values[column][row];
@@ -7007,6 +7517,18 @@ void InGameUI::drawPlayerInfoList()
 			m_playerInfoList.values[PlayerInfoList::ValueType_Name][row]->setText(nameValue);
 			m_playerInfoList.lastValues.name[row] = nameValue;
 		}
+#if defined(GENERALS_ONLINE)
+		if (m_playerInfoList.lastValues.army[row].isEmpty())
+		{
+			const PlayerTemplate *playerTemplate = player->getPlayerTemplate();
+			const UnicodeString armyValue = playerTemplate ? playerTemplate->getDisplayName() : UnicodeString::TheEmptyString;
+			m_playerInfoList.values[PlayerInfoList::ValueType_Army][row]->setText(armyValue);
+			m_playerInfoList.lastValues.army[row] = armyValue;
+		}
+		armyValueWidth[row] = m_playerInfoList.values[PlayerInfoList::ValueType_Army][row]->getWidth();
+		if (maxArmyValueWidth < armyValueWidth[row])
+			maxArmyValueWidth = armyValueWidth[row];
+#endif
 
 		for (column = 0; column < PlayerInfoList::LabelType_Count; ++column)
 		{
@@ -7032,6 +7554,11 @@ void InGameUI::drawPlayerInfoList()
 		labelX += labelWidths[column] + maxValueWidths[column] + columnGap;
 	}
 
+#if defined(GENERALS_ONLINE)
+	const Int armyX = labelX;
+	labelX += maxArmyValueWidth + columnGap;
+#endif
+
 	Int drawY = baseY - ((rowCount * lineH) / 2);
 	for (Int row = 0; row < rowCount; ++row)
 	{
@@ -7043,9 +7570,17 @@ void InGameUI::drawPlayerInfoList()
 				continue;
 
 			m_playerInfoList.labels[column]->draw(columnLabelX[column], drawY, m_playerInfoListLabelColor, m_playerInfoListDropColor);
+#if defined(GENERALS_ONLINE)
+			const Color valueColor = (column == PlayerInfoList::LabelType_Power && lowPower[row]) ? GameMakeColor(255, 64, 64, 255) : m_playerInfoListValueColor;
+			m_playerInfoList.values[column][row]->draw(columnLabelX[column] + labelWidths[column], drawY, valueColor, m_playerInfoListDropColor);
+#else
 			m_playerInfoList.values[column][row]->draw(columnLabelX[column] + labelWidths[column], drawY, m_playerInfoListValueColor, m_playerInfoListDropColor);
+#endif
 		}
 
+#if defined(GENERALS_ONLINE)
+		m_playerInfoList.values[PlayerInfoList::ValueType_Army][row]->draw(armyX, drawY, m_playerInfoListValueColor, m_playerInfoListDropColor);
+#endif
 		m_playerInfoList.values[PlayerInfoList::ValueType_Name][row]->draw(labelX, drawY, rowColors[row], m_playerInfoListDropColor);
 
 		drawY += lineH;

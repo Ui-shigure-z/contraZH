@@ -41,6 +41,7 @@
 #include "Common/DrawModule.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
+#include "Common/GameEngine.h"
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
@@ -64,8 +65,10 @@
 #include "GameLogic/Module/PhysicsUpdate.h"
 #include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/StealthUpdate.h"
+#include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/StickyBombUpdate.h"
 #include "GameLogic/Module/BattlePlanUpdate.h"
+#include "GameLogic/Module/LaserUpdate.h"
 #include "GameLogic/ScriptEngine.h"
 #include "GameLogic/Armor.h"
 #include "GameLogic/ArmorSet.h"
@@ -403,12 +406,79 @@ const Int MAX_ENABLED_MODULES								= 16;
 	s_animationTemplates = nullptr;
 }
 
-// TheSuperHackers @feature One shared string for the numerical health text, rebuilt whenever the
-// text changes. Unlike the command bar overlays there is no small fixed set of values to cache
-// per object, and many bars draw per frame, so it is rebuilt as often as it is reused. It stays
-// static purely to avoid allocating every call, and is returned to the manager before the manager
-// itself is torn down -- see Drawable::killStaticDisplayStrings.
-static DisplayString *s_healthString = nullptr;
+// TheSuperHackers @feature Numerical health text strings, pooled by text so units showing the same
+// value share one built sentence. A miss takes the least recently used slot, since every text change
+// rebuilds the sentence textures. Returned to the manager before the manager itself is torn down --
+// see Drawable::killStaticDisplayStrings.
+enum { HEALTH_STRING_COUNT = 32 };
+struct HealthString
+{
+	DisplayString *string;
+	UnsignedInt lastUsed;
+};
+static HealthString s_healthStrings[ HEALTH_STRING_COUNT ];
+static UnsignedInt s_healthStringClock = 0;
+
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+// The one string every debug overlay line is drawn with, made on first use by getOverlayString.
+static DisplayString *s_nameString = nullptr;
+#endif
+
+//-------------------------------------------------------------------------------------------------
+// Small on purpose: health text and the debug overlays can be on over every unit on screen at once.
+//-------------------------------------------------------------------------------------------------
+static DisplayString *newSmallDisplayString()
+{
+	DisplayString *str = TheDisplayStringManager->newDisplayString();
+	if( str == nullptr )
+	{
+		return nullptr;
+	}
+
+	Int pointSize = 6;
+	if( TheGlobalLanguageData )
+	{
+		pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
+	}
+	str->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
+	return str;
+}
+
+//-------------------------------------------------------------------------------------------------
+static DisplayString *getHealthString( const UnicodeString& text )
+{
+	HealthString *slot = &s_healthStrings[ 0 ];
+	for( Int i = 0; i < HEALTH_STRING_COUNT; ++i )
+	{
+		HealthString *entry = &s_healthStrings[ i ];
+		if( entry->string != nullptr && entry->string->getText() == text )
+		{
+			slot = entry;
+			break;
+		}
+		if( entry->string == nullptr || entry->lastUsed < slot->lastUsed )
+		{
+			slot = entry;
+		}
+		if( slot->string == nullptr )
+		{
+			break;
+		}
+	}
+
+	if( slot->string == nullptr )
+	{
+		slot->string = newSmallDisplayString();
+		if( slot->string == nullptr )
+		{
+			return nullptr;
+		}
+	}
+
+	slot->string->setText( text );
+	slot->lastUsed = ++s_healthStringClock;
+	return slot->string;
+}
 
 //-------------------------------------------------------------------------------------------------
 /** Return the shared display strings to the manager. Must run before TheDisplayStringManager is
@@ -417,10 +487,24 @@ static DisplayString *s_healthString = nullptr;
 //-------------------------------------------------------------------------------------------------
 /*static*/ void Drawable::killStaticDisplayStrings()
 {
-	if( s_healthString != nullptr && TheDisplayStringManager != nullptr )
-		TheDisplayStringManager->freeDisplayString( s_healthString );
+	for( Int i = 0; i < HEALTH_STRING_COUNT; ++i )
+	{
+		if( s_healthStrings[ i ].string != nullptr && TheDisplayStringManager != nullptr )
+		{
+			TheDisplayStringManager->freeDisplayString( s_healthStrings[ i ].string );
+		}
+		s_healthStrings[ i ].string = nullptr;
+		s_healthStrings[ i ].lastUsed = 0;
+	}
+	s_healthStringClock = 0;
 
-	s_healthString = nullptr;
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+	if( s_nameString != nullptr && TheDisplayStringManager != nullptr )
+	{
+		TheDisplayStringManager->freeDisplayString( s_nameString );
+	}
+	s_nameString = nullptr;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -511,6 +595,10 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 
 	m_locoInfo = nullptr;
 	m_physicsXform = nullptr;
+
+	m_drawnProgress = 1.0f;
+	m_drawnFrame = 0;
+	m_drawnValid = FALSE;
 
 	// sanity
 	if( TheGameClient == nullptr || thingTemplate == nullptr )
@@ -739,6 +827,8 @@ Bool Drawable::isVisible()
 	* interpolate between frames (e.g. terrain tread marks) don't stretch across the jump. */
 void Drawable::reactToTeleport()
 {
+	m_drawnValid = FALSE;
+
 	for (DrawModule** dm = getDrawModules(); *dm; ++dm)
 	{
 		(*dm)->reactToTeleport();
@@ -1156,7 +1246,7 @@ void Drawable::updateSelectionDecal( void )
 
 	for( DrawModule **dm = getDrawModules(); *dm; ++dm )
 	{
-		(*dm)->setSelectionDecal( wanted, radius );
+		(*dm)->setSelectionDecal( wanted, radius, GameMakeColor( 0, 255, 0, 255 ), TRUE );
 		break;	// first draw module only, so rings do not stack
 	}
 }
@@ -1314,7 +1404,7 @@ void Drawable::imitateStealthLook( Drawable& otherDraw )
 /** update is called once per frame */
 //-------------------------------------------------------------------------------------------------
 //DECLARE_PERF_TIMER(updateDrawable)
-void Drawable::updateDrawable()
+void Drawable::updateDrawable(Real timeScale)
 {
 	//USE_PERF_TIMER(updateDrawable)
 
@@ -1331,15 +1421,23 @@ void Drawable::updateDrawable()
 	{
 
 		// handle fading in or out
+		// TheSuperHackers @tweak bobtista 15/09/2026 Decouple Drawable fade timing from render updates.
 		if (m_fadeMode != FADING_NONE)
 		{
-			Real numer = (m_fadeMode == FADING_IN) ? (m_timeElapsedFade) : (m_timeToFade-m_timeElapsedFade);
+			m_timeElapsedFade += timeScale;
 
-			setDrawableOpacity(numer/(Real)m_timeToFade);
-			++m_timeElapsedFade;
-
-			if (m_timeElapsedFade > m_timeToFade)
+			Real opacity;
+			if (m_timeElapsedFade >= m_timeToFade)
+			{
+				opacity = m_fadeMode == FADING_IN ? 1.0f : 0.0f;
 				m_fadeMode = FADING_NONE;
+			}
+			else
+			{
+				Real numer = (m_fadeMode == FADING_IN) ? (m_timeElapsedFade) : (m_timeToFade-m_timeElapsedFade);
+				opacity = numer/(Real)m_timeToFade;
+			}
+			setDrawableOpacity(opacity);
 		}
 	}
 
@@ -1350,11 +1448,11 @@ void Drawable::updateDrawable()
 
 		if (*dm)
 		{
+			// TheSuperHackers @tweak bobtista 15/09/2026 Decouple decal opacity fade timing from render updates.
 			if (m_decalOpacityFadeRate != 0)
 			{
 				//LERP
-				(*dm)->setTerrainDecalOpacity(m_decalOpacity);
-				m_decalOpacity += m_decalOpacityFadeRate;
+				m_decalOpacity += m_decalOpacityFadeRate * timeScale;
 			}
 			//---------------
 
@@ -1368,6 +1466,10 @@ void Drawable::updateDrawable()
 			{
 				m_decalOpacity = 1.0f;
 				m_decalOpacityFadeRate = 0.0f;
+				(*dm)->setTerrainDecalOpacity(m_decalOpacity);
+			}
+			else if (m_decalOpacityFadeRate != 0)
+			{
 				(*dm)->setTerrainDecalOpacity(m_decalOpacity);
 			}
 
@@ -2862,7 +2964,7 @@ void Drawable::draw()
 #endif
 
 	// call the database defined draw action method
-	Matrix3D transformMtx = *getTransformMatrix();
+	Matrix3D transformMtx = *getDrawnTransformMatrix();
 	if (!isInstanceIdentity())
 	{
 #ifdef ALLOW_TEMPORARIES
@@ -2900,6 +3002,7 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 
 	Coord3D p;
 	obj->getHealthBoxPosition(p);
+	draw->addDrawnOffset(&p);
 	ICoord2D screenCenter;
 	if( !TheTacticalView->worldToScreen( &p, &screenCenter ) )
 		return FALSE;
@@ -2943,6 +3046,51 @@ static const Int MAX_OVERLAY_PARTICLE_LINES = 4;
 // headlights -- so this fits most models whole, and the overlay says how many were left out
 // rather than pretending the list is complete when it does not.
 static const Int MAX_OVERLAY_SUBOBJECT_LINES = 16;
+
+// A model label is a callout: its leader runs this far out and up from the model's centre.
+static const Int MODEL_LABEL_REACH_X = 44;
+static const Int MODEL_LABEL_REACH_Y = 22;
+
+// Pixels between the end of the leader and the text.
+static const Int MODEL_LABEL_GAP = 3;
+
+// A model this close to the middle of its object's models has no side of its own.
+static const Int MODEL_LABEL_SIDE_SLOP = 8;
+
+// Most models labelled on one object.
+static const Int MAX_OVERLAY_MODEL_LABELS = 16;
+
+// Model labels placed this render frame, so labels that would overlap push above each other.
+static const Int MAX_MODEL_OVERLAY_SLOTS = 256;
+static IRegion2D s_modelOverlaySlots[ MAX_MODEL_OVERLAY_SLOTS ];
+static Int s_modelOverlaySlotCount = 0;
+static UnsignedInt s_modelOverlayFrame = 0;
+
+// Most W3DLaserDraw module tags listed for one laser.
+static const Int MAX_OVERLAY_LASER_BLOCK_LINES = 4;
+
+// Laser label stacks placed this render frame, so beams that share a midpoint do not draw over each other.
+struct LaserOverlaySlot
+{
+	const ThingTemplate *tmpl;
+	IRegion2D rect;
+};
+static const Int MAX_LASER_OVERLAY_SLOTS = 64;
+static LaserOverlaySlot s_laserOverlaySlots[ MAX_LASER_OVERLAY_SLOTS ];
+static Int s_laserOverlaySlotCount = 0;
+static UnsignedInt s_laserOverlayFrame = 0;
+
+//-------------------------------------------------------------------------------------------------
+// The string shared by every debug overlay line; killStaticDisplayStrings returns it to the manager.
+//-------------------------------------------------------------------------------------------------
+static DisplayString *getOverlayString()
+{
+	if( s_nameString == nullptr )
+	{
+		s_nameString = newSmallDisplayString();
+	}
+	return s_nameString;
+}
 
 //-------------------------------------------------------------------------------------------------
 // TheSuperHackers @feature Draw one line of the debug name overlay, horizontally centred on the
@@ -3149,7 +3297,8 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 	const Bool wantCommandSet = TheInGameUI->isCommandSetOverlayOn();
 	const Bool wantWeaponSet = TheInGameUI->isWeaponSetOverlayOn();
 	const Bool wantArmorSet = TheInGameUI->isArmorSetOverlayOn();
-	if( !wantObjectName && !wantParticleNames && !wantCommandSet && !wantWeaponSet && !wantArmorSet )
+	const Bool wantModelNames = TheInGameUI->isModelNameOverlayOn();
+	if( !wantObjectName && !wantParticleNames && !wantCommandSet && !wantWeaponSet && !wantArmorSet && !wantModelNames )
 		return;
 
 	const Object *obj = getObject();
@@ -3173,6 +3322,7 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 
 		Coord3D world;
 		obj->getHealthBoxPosition( world );
+		addDrawnOffset( &world );
 		if( !TheTacticalView->worldToScreen( &world, &anchor ) )
 			return;
 	}
@@ -3180,19 +3330,9 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 	// One shared string for every drawable. The text differs per object so it is rebuilt on each
 	// use rather than cached; it stays static only to avoid allocating a display string per frame
 	// per object, which with the overlay on would be thousands of allocations a second.
-	static DisplayString *s_nameString = nullptr;
-	if( s_nameString == nullptr )
+	if( getOverlayString() == nullptr )
 	{
-		s_nameString = TheDisplayStringManager->newDisplayString();
-		if( s_nameString == nullptr )
-			return;
-
-		// Same size as the numerical health text: this can be on over every object on screen at
-		// once, so it has to stay small enough to read as an annotation.
-		Int pointSize = 6;
-		if( TheGlobalLanguageData )
-			pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-		s_nameString->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
+		return;
 	}
 
 	const Color textColor = GameMakeColor( 255, 255, 255, 255 );
@@ -3211,6 +3351,7 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 	const Color weaponSetColor = GameMakeColor( 225, 110, 110, 255 );
 	// Light blue for the armor line under the weapons, well clear of the red above it.
 	const Color armorSetColor = GameMakeColor( 130, 200, 255, 255 );
+	const Color modelNameColor = GameMakeColor( 90, 225, 195, 255 );
 
 	// Lines stack upward from just above the bar, so adding particle names never pushes the object
 	// name off its anchor.
@@ -3390,6 +3531,112 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 		}
 	}
 
+	// Each model gets a callout with a leader to one side instead of a line in the stack.
+	if( wantModelNames && TheTacticalView != nullptr )
+	{
+		const UnsignedInt renderFrame = WW3D::Get_Frame_Count();
+		if( renderFrame != s_modelOverlayFrame )
+		{
+			s_modelOverlayFrame = renderFrame;
+			s_modelOverlaySlotCount = 0;
+		}
+
+		AsciiString modelNames[ MAX_OVERLAY_MODEL_LABELS ];
+		ICoord2D modelPoints[ MAX_OVERLAY_MODEL_LABELS ];
+		Int modelCount = 0;
+		Int sumX = 0;
+
+		for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm && modelCount < MAX_OVERLAY_MODEL_LABELS; ++dm )
+		{
+			const ObjectDrawInterface *di = (*dm)->getObjectDrawInterface();
+			if( di == nullptr )
+			{
+				continue;
+			}
+
+			Coord3D center;
+			if( !di->clientOnly_getModelNameAndCenter( &modelNames[ modelCount ], &center ) )
+			{
+				continue;
+			}
+
+			if( !TheTacticalView->worldToScreen( &center, &modelPoints[ modelCount ] ) )
+			{
+				continue;
+			}
+
+			sumX += modelPoints[ modelCount ].x;
+			++modelCount;
+		}
+
+		const Int middleX = ( modelCount > 0 ) ? ( sumX / modelCount ) : 0;
+
+		for( Int m = 0; m < modelCount; ++m )
+		{
+			const ICoord2D &point = modelPoints[m];
+
+			// A label goes out on the side its model is on, so the leaders fan apart; models at the middle alternate.
+			Bool toLeft = ( ( m & 1 ) == 0 );
+			if( point.x < middleX - MODEL_LABEL_SIDE_SLOP )
+			{
+				toLeft = TRUE;
+			}
+			else if( point.x > middleX + MODEL_LABEL_SIDE_SLOP )
+			{
+				toLeft = FALSE;
+			}
+
+			UnicodeString line;
+			line.format( L"%hs", modelNames[m].str() );
+			s_nameString->setText( line );
+
+			Int width, height;
+			s_nameString->getSize( &width, &height );
+
+			const Int leaderEndX = toLeft ? ( point.x - MODEL_LABEL_REACH_X ) : ( point.x + MODEL_LABEL_REACH_X );
+
+			IRegion2D rect;
+			rect.lo.x = toLeft ? ( leaderEndX - MODEL_LABEL_GAP - width ) : ( leaderEndX + MODEL_LABEL_GAP );
+			rect.hi.x = rect.lo.x + width;
+			rect.lo.y = point.y - MODEL_LABEL_REACH_Y - ( height / 2 );
+			rect.hi.y = rect.lo.y + height;
+
+			// Each push clears one placed label for good, so a pass per slot settles it.
+			for( Int pass = 0; pass <= s_modelOverlaySlotCount; ++pass )
+			{
+				Bool moved = FALSE;
+				for( Int i = 0; i < s_modelOverlaySlotCount; ++i )
+				{
+					const IRegion2D &slot = s_modelOverlaySlots[i];
+					if( rect.lo.x >= slot.hi.x || rect.hi.x <= slot.lo.x ||
+							rect.lo.y >= slot.hi.y || rect.hi.y <= slot.lo.y )
+					{
+						continue;
+					}
+
+					const Int shift = rect.hi.y - slot.lo.y;
+					rect.lo.y -= shift;
+					rect.hi.y -= shift;
+					moved = TRUE;
+				}
+
+				if( !moved )
+				{
+					break;
+				}
+			}
+
+			if( s_modelOverlaySlotCount < MAX_MODEL_OVERLAY_SLOTS )
+			{
+				s_modelOverlaySlots[ s_modelOverlaySlotCount++ ] = rect;
+			}
+
+			// The leader ends level with the middle of the text, wherever the push left it.
+			TheDisplay->drawLine( point.x, point.y, leaderEndX, ( rect.lo.y + rect.hi.y ) / 2, 1.0f, modelNameColor );
+			s_nameString->draw( rect.lo.x, rect.lo.y, modelNameColor, dropColor );
+		}
+	}
+
 	// Emitted before the weapons, and so before the name and command set too: lines stack upward
 	// from the anchor, which puts the armor at the very bottom of the stack.
 	if( wantArmorSet )
@@ -3492,6 +3739,157 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 		}
 	}
 }
+
+//-------------------------------------------------------------------------------------------------
+// Draw the laser's template name and its W3DLaserDraw module tags at the middle of the beam.
+//-------------------------------------------------------------------------------------------------
+Bool Drawable::drawDebugLaserOverlay()
+{
+	if( TheInGameUI == nullptr || TheDisplayStringManager == nullptr || TheTacticalView == nullptr )
+	{
+		return FALSE;
+	}
+
+	const Bool wantLaserName = TheInGameUI->isLaserNameOverlayOn();
+	const Bool wantBeamBlock = TheInGameUI->isLaserBeamBlockOverlayOn();
+	if( !wantLaserName && !wantBeamBlock )
+	{
+		return FALSE;
+	}
+
+	// keyToName scans the whole name table, so only the lines drawn look their tags up.
+	NameKeyType blockKeys[ MAX_OVERLAY_LASER_BLOCK_LINES ];
+	Int blockCount = 0;
+	for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm && blockCount < MAX_OVERLAY_LASER_BLOCK_LINES; ++dm )
+	{
+		if( (*dm)->getLaserDrawInterface() != nullptr )
+		{
+			blockKeys[ blockCount++ ] = (*dm)->getModuleTagNameKey();
+		}
+	}
+
+	if( blockCount == 0 )
+	{
+		return FALSE;
+	}
+
+	// The laser object sits on its firer, so the midpoint keeps the labels off the firer's own.
+	Coord3D world = *getPosition();
+	static NameKeyType key_LaserUpdate = NAMEKEY( "LaserUpdate" );
+	LaserUpdate *update = (LaserUpdate*)findClientUpdateModule( key_LaserUpdate );
+	if( update != nullptr )
+	{
+		const Coord3D *start = update->getStartPos();
+		const Coord3D *end = update->getEndPos();
+		world.x = ( start->x + end->x ) * 0.5f;
+		world.y = ( start->y + end->y ) * 0.5f;
+		world.z = ( start->z + end->z ) * 0.5f;
+	}
+
+	ICoord2D anchor;
+	if( !TheTacticalView->worldToScreen( &world, &anchor ) )
+	{
+		return TRUE;
+	}
+
+	if( getOverlayString() == nullptr )
+	{
+		return TRUE;
+	}
+
+	const Color dropColor = GameMakeColor( 0, 0, 0, 255 );
+	const Color laserNameColor = GameMakeColor( 255, 130, 230, 255 );
+	const Color beamBlockColor = GameMakeColor( 190, 170, 255, 255 );
+	const ThingTemplate *tmpl = getTemplate();
+
+	// Bottom line first, since the stack grows upward; the name tops its blocks as in the INI.
+	UnicodeString lines[ MAX_OVERLAY_LASER_BLOCK_LINES + 1 ];
+	Color colors[ MAX_OVERLAY_LASER_BLOCK_LINES + 1 ];
+	Int lineCount = 0;
+	if( wantBeamBlock )
+	{
+		for( Int i = blockCount - 1; i >= 0; --i )
+		{
+			const AsciiString blockName = TheNameKeyGenerator->keyToName( blockKeys[i] );
+			lines[ lineCount ].format( L"%hs", blockName.isEmpty() ? "<no tag>" : blockName.str() );
+			colors[ lineCount++ ] = beamBlockColor;
+		}
+	}
+	if( wantLaserName )
+	{
+		lines[ lineCount ].format( L"%hs", tmpl ? tmpl->getName().str() : "<no template>" );
+		colors[ lineCount++ ] = laserNameColor;
+	}
+
+	Int stackWidth = 0;
+	Int stackHeight = 0;
+	for( Int i = 0; i < lineCount; ++i )
+	{
+		Int width, height;
+		s_nameString->setText( lines[i] );
+		s_nameString->getSize( &width, &height );
+		stackWidth = MAX( stackWidth, width );
+		stackHeight += height;
+	}
+
+	const UnsignedInt renderFrame = WW3D::Get_Frame_Count();
+	if( renderFrame != s_laserOverlayFrame )
+	{
+		s_laserOverlayFrame = renderFrame;
+		s_laserOverlaySlotCount = 0;
+	}
+
+	IRegion2D rect;
+	rect.lo.x = anchor.x - ( stackWidth / 2 );
+	rect.hi.x = rect.lo.x + stackWidth;
+	rect.hi.y = anchor.y;
+	rect.lo.y = anchor.y - stackHeight;
+
+	// Each push clears one placed stack for good, so a pass per slot settles it; a repeat of the same laser is skipped.
+	for( Int pass = 0; pass <= s_laserOverlaySlotCount; ++pass )
+	{
+		Bool moved = FALSE;
+		for( Int i = 0; i < s_laserOverlaySlotCount; ++i )
+		{
+			const LaserOverlaySlot &slot = s_laserOverlaySlots[i];
+			if( rect.lo.x >= slot.rect.hi.x || rect.hi.x <= slot.rect.lo.x ||
+					rect.lo.y >= slot.rect.hi.y || rect.hi.y <= slot.rect.lo.y )
+			{
+				continue;
+			}
+
+			if( slot.tmpl == tmpl )
+			{
+				return TRUE;
+			}
+
+			const Int shift = rect.hi.y - slot.rect.lo.y;
+			rect.lo.y -= shift;
+			rect.hi.y -= shift;
+			moved = TRUE;
+		}
+
+		if( !moved )
+		{
+			break;
+		}
+	}
+
+	if( s_laserOverlaySlotCount < MAX_LASER_OVERLAY_SLOTS )
+	{
+		s_laserOverlaySlots[ s_laserOverlaySlotCount ].tmpl = tmpl;
+		s_laserOverlaySlots[ s_laserOverlaySlotCount ].rect = rect;
+		++s_laserOverlaySlotCount;
+	}
+
+	Int lineY = rect.hi.y;
+	for( Int i = 0; i < lineCount; ++i )
+	{
+		drawOverlayLine( s_nameString, lines[i], anchor.x, lineY, colors[i], dropColor );
+	}
+
+	return TRUE;
+}
 #endif
 
 // ------------------------------------------------------------------------------------------------
@@ -3543,6 +3941,11 @@ void Drawable::drawIconUI()
 
 		Object *obj = getObject();
 
+#if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
+		// Before the bail below, since particle cannon beams are lasers with no object.
+		const Bool overlaidLaser = drawDebugLaserOverlay();
+#endif
+
 		// we only draw icons drawables with objects, so one bail here -------------------------
 		if ( ! obj )
 			return;
@@ -3551,7 +3954,11 @@ void Drawable::drawIconUI()
 		// TheSuperHackers @feature Debug name overlays. Drawn here, before the dead and
 		// KINDOF_IGNORED_IN_GUI bails below, so the names cover every drawable on screen -- props,
 		// rocks and wreckage included -- rather than only the things that get a health bar.
-		drawDebugNameOverlay( healthBarRegion );
+		// With a laser overlay on, lasers skip the name overlay, which would stack their names on the firer's.
+		if( !overlaidLaser )
+		{
+			drawDebugNameOverlay( healthBarRegion );
+		}
 #endif
 
 		//Icons that can be drawn on dead things
@@ -3591,6 +3998,7 @@ void Drawable::drawIconUI()
 
 		drawProgress( healthBarRegion );
 		drawProductionBar( healthBarRegion );
+		drawSupplyBar( healthBarRegion );
 	}
 }
 
@@ -3734,6 +4142,7 @@ void Drawable::drawAmmo( const IRegion2D *healthBarRegion )
 		pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
 		pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
 		pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+		addDrawnOffset(&pos);
 		if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
 			return;
 
@@ -3788,6 +4197,7 @@ void Drawable::drawAmmo( const IRegion2D *healthBarRegion )
 		pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
 		pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
 		pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+		addDrawnOffset(&pos);
 		if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
 			return;
 
@@ -3935,6 +4345,7 @@ Bool Drawable::getAmmoPipsScreenSpan( const IRegion2D *healthBarRegion, Int &top
 	pos.x += TheGlobalData->m_ammoPipWorldOffset.x;
 	pos.y += TheGlobalData->m_ammoPipWorldOffset.y;
 	pos.z += TheGlobalData->m_ammoPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+	addDrawnOffset(&pos);
 	if (!TheTacticalView->worldToScreen(&pos, &screenCenter))
 	{
 		return FALSE;
@@ -4029,6 +4440,73 @@ void Drawable::drawProductionBar( const IRegion2D *healthBarRegion )
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+void Drawable::drawSupplyBar( const IRegion2D *healthBarRegion )
+{
+	if (!healthBarRegion)
+	{
+		return;
+	}
+
+	const Object* obj = getObject();
+
+	const Bool alwaysVisible = TheGlobalData->m_healthBarDisplayMode == HealthBarDisplayMode_Always;
+
+	if (!(
+				TheGlobalData->m_showObjectHealth &&
+				(alwaysVisible || isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
+			))
+	{
+		return;
+	}
+
+	const AIUpdateInterface *ai = obj->getAI();
+	if (!ai)
+	{
+		return;
+	}
+
+	const SupplyTruckAIInterface *supply = ai->getSupplyTruckAIInterface();
+	if (!supply)
+	{
+		return;
+	}
+
+	Int boxes = supply->getNumberBoxes();
+	Int maxBoxes = supply->getMaxBoxes();
+
+	// Empty gatherers show nothing, and a type without MaxBoxes would divide by zero.
+	if (boxes <= 0 || maxBoxes <= 0)
+	{
+		return;
+	}
+
+	Real progress = (Real)boxes / (Real)maxBoxes;
+	if (progress > 1.0f)
+	{
+		progress = 1.0f;
+	}
+
+	Color color = GameMakeColor(0x01, 0xA6, 0xFF, 255);
+	Color outlineColor = GameMakeColor(0, 0, 0, 255);
+
+	Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
+	Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y) * 1.5f;
+	Real healthBoxOutlineSize = 1.0f;
+
+	// Shares the slot below the health bar with the production bar, which no gatherer has.
+	Real yOffset = 5;
+
+	TheDisplay->drawOpenRect(healthBarRegion->lo.x, healthBarRegion->lo.y + yOffset, healthBoxWidth, healthBoxHeight,
+		healthBoxOutlineSize, outlineColor);
+
+	TheDisplay->drawFillRect(healthBarRegion->lo.x + 1, healthBarRegion->lo.y + yOffset + 1,
+		(healthBoxWidth - 2) * progress, healthBoxHeight - 2,
+		color);
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 void Drawable::drawContained( const IRegion2D *healthBarRegion )
 {
 	const Object *obj = getObject();
@@ -4119,6 +4597,7 @@ void Drawable::drawContained( const IRegion2D *healthBarRegion )
 	pos.x += TheGlobalData->m_containerPipWorldOffset.x;
 	pos.y += TheGlobalData->m_containerPipWorldOffset.y;
 	pos.z += TheGlobalData->m_containerPipWorldOffset.z + obj->getGeometryInfo().getMaxHeightAbovePosition();
+	addDrawnOffset(&pos);
 	if( !TheTacticalView->worldToScreen( &pos, &screenCenter ) )
 		return;
 
@@ -4300,6 +4779,7 @@ void Drawable::drawUIText()
 		Coord3D p;
 		ICoord2D screenCenter;
 		obj->getHealthBoxPosition(p);
+		addDrawnOffset(&p);
 		if( ! TheTacticalView->worldToScreen( &p, &screenCenter ) )
 			return;
 
@@ -4965,6 +5445,7 @@ void Drawable::drawConstructPercent( const IRegion2D *healthBarRegion )
 	ICoord2D screen;
 	Coord3D pos;
 	getDrawableGeometryInfo().getCenterPosition(*getPosition(), pos);
+	addDrawnOffset(&pos);
 
 	// convert drawable center position to screen coords
 	TheTacticalView->worldToScreen( &pos, &screen );
@@ -4992,6 +5473,7 @@ void Drawable::drawCaption( const IRegion2D *healthBarRegion )
 	ICoord2D screen;
 	Coord3D pos;
 	getDrawableGeometryInfo().getCenterPosition(*getPosition(), pos);
+	addDrawnOffset(&pos);
 
 	// convert drawable center position to screen coords
 	TheTacticalView->worldToScreen( &pos, &screen );
@@ -5054,6 +5536,7 @@ void Drawable::drawVeterancy( const IRegion2D *healthBarRegion )
 	Coord3D p;
 	ICoord2D screenCenter;
 	obj->getHealthBoxPosition(p);
+	addDrawnOffset(&p);
 	if( !TheTacticalView->worldToScreen( &p, &screenCenter ) )
 		return;
 
@@ -5118,20 +5601,6 @@ void Drawable::drawNumericalHealth( const IRegion2D *healthBarRegion, Real healt
 	if( healthBarRegion == nullptr || TheDisplayStringManager == nullptr )
 		return;
 
-	if( s_healthString == nullptr )
-	{
-		s_healthString = TheDisplayStringManager->newDisplayString();
-		if( s_healthString == nullptr )
-			return;
-
-		// Small on purpose: in Always mode this is drawn over every unit on screen at once, so it
-		// has to annotate the bar rather than compete with it.
-		Int pointSize = 6;
-		if( TheGlobalLanguageData )
-			pointSize = TheGlobalLanguageData->adjustFontSize( pointSize );
-		s_healthString->setFont( TheFontLibrary->getFont( AsciiString( "Arial" ), pointSize, FALSE ) );
-	}
-
 	// Round rather than truncate, so a sliver of health left does not read as 0 next to a unit
 	// that is plainly still alive.
 	const Int shownHealth = REAL_TO_INT( health + 0.5f );
@@ -5139,10 +5608,12 @@ void Drawable::drawNumericalHealth( const IRegion2D *healthBarRegion, Real healt
 
 	UnicodeString text;
 	text.format( L"%d/%d", shownHealth, shownMax );
-	s_healthString->setText( text );
+	DisplayString *healthString = getHealthString( text );
+	if( healthString == nullptr )
+		return;
 
 	Int width, height;
-	s_healthString->getSize( &width, &height );
+	healthString->getSize( &width, &height );
 
 	// just past the right end of the bar, vertically centred on it
 	const Int healthBoxHeight = max( 3, healthBarRegion->hi.y - healthBarRegion->lo.y );
@@ -5151,7 +5622,7 @@ void Drawable::drawNumericalHealth( const IRegion2D *healthBarRegion, Real healt
 
 	// Black drop shadow rather than a backdrop plate: the number sits over the battlefield rather
 	// than over a cameo, so a filled box would be far more intrusive than the bar it annotates.
-	s_healthString->draw( textX, textY, color, GameMakeColor( 0, 0, 0, 255 ) );
+	healthString->draw( textX, textY, color, GameMakeColor( 0, 0, 0, 255 ) );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -5492,6 +5963,7 @@ DrawableID Drawable::getID() const
 void Drawable::friend_bindToObject( Object *obj ) ///< bind this drawable to an object ID
 {
 	m_object = obj;
+	m_drawnValid = FALSE;
 	if (getObject())
 	{
 		if (TheGlobalData->m_timeOfDay == TIME_OF_DAY_NIGHT)
@@ -5674,6 +6146,130 @@ const Matrix3D *Drawable::getTransformMatrix() const
 		return obj->getTransformMatrix();
 	else
 		return Thing::getTransformMatrix();
+}
+
+// CONTRA_INTERPOLATION=0 draws every model at its logic transform.
+static Bool Get_Interpolation_Allowed()
+{
+	const char *value = getenv("CONTRA_INTERPOLATION");
+	return (value == nullptr) || (atoi(value) != 0);
+}
+static const Bool InterpolationAllowed = Get_Interpolation_Allowed();
+
+// A move longer than this in one logic frame is a teleport, so the model snaps instead of sliding.
+static const Real MAX_DRAWN_STEP = 100.0f;
+
+//-------------------------------------------------------------------------------------------------
+static Bool isSameRotation( const Matrix3D& a, const Matrix3D& b )
+{
+	for (Int i = 0; i < 3; ++i)
+	{
+		if (a[i][0] != b[i][0] || a[i][1] != b[i][1] || a[i][2] != b[i][2])
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Blend the object's transforms from the last two logic frames; render only, logic never reads it. */
+//-------------------------------------------------------------------------------------------------
+void Drawable::updateDrawnTransform() const
+{
+	const Object *obj = getObject();
+	if (obj == nullptr || TheGameEngine == nullptr || !InterpolationAllowed || !TheGlobalData->m_smoothUnitMotion)
+	{
+		m_drawnValid = FALSE;
+		return;
+	}
+
+	const Matrix3D *logicMtx = obj->getTransformMatrix();
+	const UnsignedInt frame = TheGameLogic->getFrame();
+	Real progress = TheGameEngine->getLogicFrameProgress();
+
+	// Snap when new, after a teleport, or after skipping frames while hidden or off screen.
+	Bool snap = !m_drawnValid || (frame != m_drawnFrame && frame != m_drawnFrame + 1);
+
+	if (!snap && frame == m_drawnFrame + 1)
+	{
+		m_drawnPrevious = m_drawnCurrent;
+		m_drawnCurrent = *logicMtx;
+
+		const Vector3 step = m_drawnCurrent.Get_Translation() - m_drawnPrevious.Get_Translation();
+		snap = step.Length2() > MAX_DRAWN_STEP * MAX_DRAWN_STEP;
+	}
+	else if (!snap)
+	{
+		// A change within one logic frame was made outside a logic step, as scripts do in frozen time.
+		if (*logicMtx != m_drawnCurrent)
+		{
+			snap = TRUE;
+		}
+		else
+		{
+			// Progress only wraps with a new logic frame; a step that did not advance it, as in frozen time, holds.
+			progress = max(progress, m_drawnProgress);
+			if (progress == m_drawnProgress)
+			{
+				return;
+			}
+		}
+	}
+
+	if (snap)
+	{
+		m_drawnPrevious = *logicMtx;
+		m_drawnCurrent = *logicMtx;
+		m_drawnValid = TRUE;
+	}
+
+	m_drawnFrame = frame;
+	m_drawnProgress = progress;
+
+	if (progress >= 1.0f || m_drawnPrevious == m_drawnCurrent)
+	{
+		m_drawnBlended = m_drawnCurrent;
+	}
+	else if (isSameRotation(m_drawnPrevious, m_drawnCurrent))
+	{
+		Vector3 pos;
+		Vector3::Lerp(m_drawnPrevious.Get_Translation(), m_drawnCurrent.Get_Translation(), progress, &pos);
+		m_drawnBlended = m_drawnCurrent;
+		m_drawnBlended.Set_Translation(pos);
+	}
+	else
+	{
+		Matrix3D::Lerp(m_drawnPrevious, m_drawnCurrent, progress, m_drawnBlended);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+const Matrix3D *Drawable::getDrawnTransformMatrix() const
+{
+	updateDrawnTransform();
+	return m_drawnValid ? &m_drawnBlended : getTransformMatrix();
+}
+
+//-------------------------------------------------------------------------------------------------
+void Drawable::addDrawnOffset( Coord3D *pos ) const
+{
+	updateDrawnTransform();
+	if (m_drawnValid)
+	{
+		const Vector3 drawn = m_drawnBlended.Get_Translation();
+		const Vector3 logic = m_drawnCurrent.Get_Translation();
+		pos->x += drawn.X - logic.X;
+		pos->y += drawn.Y - logic.Y;
+		pos->z += drawn.Z - logic.Z;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+Real Drawable::getDrawnProgress() const
+{
+	updateDrawnTransform();
+	return m_drawnValid ? m_drawnProgress : 1.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -6136,6 +6732,7 @@ ClientUpdateModule* Drawable::findClientUpdateModule( NameKeyType key )
 			{
 				return *clientModules;
 			}
+			++clientModules;
 		}
 	}
 	return nullptr;
@@ -6288,6 +6885,7 @@ void Drawable::xferDrawableModules( Xfer *xfer )
 	* 8: TheSuperHackers @bugfix Removed m_prevTintStatus because loading its value is unnecessary and undesirable
 	* 9: jamming overlay intensity
 	* 10: frozen overlay intensity
+	* 11: TheSuperHackers @tweak m_timeElapsedFade is now serialized as Real instead of UnsignedInt
 	*/
 // ------------------------------------------------------------------------------------------------
 void Drawable::xfer( Xfer *xfer )
@@ -6299,7 +6897,7 @@ void Drawable::xfer( Xfer *xfer )
 #elif RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 7;
 #else
-	const XferVersion currentVersion = 10;
+	const XferVersion currentVersion = 11;
 #endif
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
@@ -6475,7 +7073,19 @@ void Drawable::xfer( Xfer *xfer )
 	xfer->xferUser( &m_fadeMode, sizeof( FadingMode ) );
 
 	// time elapsed fade
-	xfer->xferUnsignedInt( &m_timeElapsedFade );
+	if (version >= 11)
+	{
+		xfer->xferReal( &m_timeElapsedFade );
+	}
+	else
+	{
+		UnsignedInt timeElapsedFadeFrames = static_cast<UnsignedInt>(m_timeElapsedFade);
+		xfer->xferUnsignedInt( &timeElapsedFadeFrames );
+		if (xfer->getXferMode() == XFER_LOAD)
+		{
+			m_timeElapsedFade = static_cast<Real>(timeElapsedFadeFrames);
+		}
+	}
 
 	// time to fade
 	xfer->xferUnsignedInt( &m_timeToFade );
@@ -7022,7 +7632,7 @@ void TintEnvelope::crc( Xfer *xfer )
 /** Xfer Method
 	* Version Info;
 	* 1: Initial version
-	* 2: TheSuperHackers @tweak Serialize sustain counter as float instead of integer
+	* 2: TheSuperHackers @tweak Serialize sustain counter as double instead of integer
 	*/
 // ------------------------------------------------------------------------------------------------
 void TintEnvelope::xfer( Xfer *xfer )
@@ -7052,13 +7662,17 @@ void TintEnvelope::xfer( Xfer *xfer )
 	// sustain counter
 	if (version <= 1)
 	{
+		// TheSuperHackers @info bobtista 23/09/2026 The double counter can represent SUSTAIN_INDEFINITELY exactly.
 		UnsignedInt sustainCounter = (UnsignedInt)m_sustainCounter;
 		xfer->xferUnsignedInt( &sustainCounter );
-		m_sustainCounter = (Real)sustainCounter;
+		if( xfer->getXferMode() == XFER_LOAD )
+		{
+			m_sustainCounter = sustainCounter;
+		}
 	}
 	else
 	{
-		xfer->xferReal( &m_sustainCounter );
+		xfer->xferDouble( &m_sustainCounter );
 	}
 
 	// affect

@@ -35,7 +35,14 @@
 #include "Common/AsciiString.h"
 
 class WorldHeightMap;
-#define TILE_OFFSET 8
+
+// Bounds of GameData TerrainAtlasBorder, the texels copied around each texture in the terrain atlases.
+#define MIN_ATLAS_BORDER 4
+#define MAX_ATLAS_BORDER 32
+#define MAX_ATLAS_SLOTS (TEXTURE_WIDTH/(TILE_PIXEL_EXTENT+2*MIN_ATLAS_BORDER))
+
+// The blend edge texture keeps the original spacing, since nothing copies borders into it.
+#define EDGE_TILE_OFFSET 8
 /** ***********************************************************************
 **                             TerrainTextureClass
 ***************************************************************************/
@@ -56,6 +63,37 @@ public:
 public:
 	int update(WorldHeightMap *htMap); ///< Sets the pixels, and returns the actual height of the texture.
 	Bool updateFlat(WorldHeightMap *htMap, Int xCell, Int yCell, Int cellWidth, Int pixelsPerCell); ///< Sets the pixels.
+	void setLOD(Int LOD);
+};
+
+
+/** ***********************************************************************
+**                             TerrainNormalTextureClass
+***************************************************************************/
+/// The terrain's normal maps, laid out tile for tile like TerrainTextureClass. Each texel
+/// holds a tangent-space normal's x in luminance and y in alpha, and the shader rebuilds z.
+class TerrainNormalTextureClass : public TextureClass
+{
+	W3DMPO_CODE(TerrainNormalTextureClass)
+public:
+		/// Create texture for a height map, as tall as its TerrainTextureClass.
+		TerrainNormalTextureClass(int height);
+
+public:
+	Bool update(WorldHeightMap *htMap); ///< Sets the pixels, and returns false when the card lacks the format.
+	void setLOD(Int LOD);
+};
+
+/// The heights the terrain shaders blend textures by, laid out like TerrainTextureClass.
+class TerrainHeightTextureClass : public TextureClass
+{
+	W3DMPO_CODE(TerrainHeightTextureClass)
+public:
+		/// Create texture for a height map, as tall as its TerrainTextureClass.
+		TerrainHeightTextureClass(int height);
+
+public:
+	Bool update(WorldHeightMap *htMap); ///< Sets the pixels, and returns false when the card lacks the format.
 	void setLOD(Int LOD);
 };
 

@@ -85,7 +85,8 @@ public:
 	virtual void setTerrainDecalOpacity(Real o) {};
 	// TheSuperHackers @feature Selection ring decal, in its own slot so it does not evict the
 	// horde or chem suit decal while a unit is selected.
-	virtual void setSelectionDecal(Bool enable, Real radius) {};
+	// With footprint set, a renderer that can draws the object's collision shape instead of the ring.
+	virtual void setSelectionDecal(Bool enable, Real radius, Color color, Bool footprint = FALSE) {};
 
 	virtual void reactToTeleport() {};	///< object was instantly relocated (e.g. chronosphere) - break tread marks etc.
 
@@ -181,6 +182,8 @@ public:
 	// caller can tell that it saw only part of the list. Declared here rather than reaching for
 	// the render object directly, since Drawable lives in GameEngine and cannot see WW3D types.
 	virtual Int clientOnly_getSubObjectNames(AsciiString* names, Int maxNames) const = 0;
+	// The W3D model this module has loaded and the world centre of its bounds. FALSE when it has none.
+	virtual Bool clientOnly_getModelNameAndCenter(AsciiString* name, Coord3D* center) const = 0;
 #endif
 	/**
 		Find the bone(s) with the given name and return their positions and/or transforms in the given arrays.

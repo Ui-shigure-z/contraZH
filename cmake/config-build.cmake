@@ -11,6 +11,14 @@ option(RTS_BUILD_OPTION_VC6_FULL_DEBUG "Build VC6 with full debug info." OFF)
 option(RTS_BUILD_OPTION_FFMPEG "Enable FFmpeg support" OFF)
 option(RTS_BUILD_GENERALS_ONLINE "Build the Generals Online services stack for Zero Hour (replaces GameSpy online when ON)" OFF)
 
+set(RTS_D3D_BACKEND "D3D8" CACHE STRING "Direct3D backend to render with.")
+set_property(CACHE RTS_D3D_BACKEND PROPERTY STRINGS "D3D8" "D3D9")
+
+# Experimental: build WorldBuilder (Zero Hour) with an embedded Qt event loop that
+# coexists with MFC (Phase 1 of an incremental MFC -> Qt migration). OFF leaves the
+# normal MFC build completely unchanged. Requires a 32-bit Qt5 (-DCMAKE_PREFIX_PATH).
+option(RTS_ENABLE_WORLDBUILDER_QT "Build WorldBuilder with an embedded Qt event loop (experimental Phase 1 Qt migration)." OFF)
+
 if(NOT RTS_BUILD_ZEROHOUR AND NOT RTS_BUILD_GENERALS)
     set(RTS_BUILD_ZEROHOUR TRUE)
     message("You must select one project to build, building Zero Hour by default.")
@@ -23,6 +31,7 @@ add_feature_info(GeneralsStuff RTS_BUILD_GENERALS "Build Generals code")
 add_feature_info(ProfileBuild RTS_BUILD_OPTION_PROFILE "Building as a \"Profile\" build")
 add_feature_info(DebugBuild RTS_BUILD_OPTION_DEBUG "Building as a \"Debug\" build")
 add_feature_info(AddressSanitizer RTS_BUILD_OPTION_ASAN "Building with address sanitizer")
+add_feature_info(WorldBuilderQt RTS_ENABLE_WORLDBUILDER_QT "Building WorldBuilder with an embedded Qt event loop (experimental)")
 add_feature_info(Vc6FullDebug RTS_BUILD_OPTION_VC6_FULL_DEBUG "Building VC6 with full debug info")
 add_feature_info(FFmpegSupport RTS_BUILD_OPTION_FFMPEG "Building with FFmpeg support")
 add_feature_info(GeneralsOnline RTS_BUILD_GENERALS_ONLINE "Building the Generals Online network stack")

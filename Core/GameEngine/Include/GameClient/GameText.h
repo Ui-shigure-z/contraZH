@@ -85,6 +85,7 @@ class GameTextInterface : public SubsystemInterface
 		virtual AsciiStringVec& getStringsWithLabelPrefix(AsciiString label) = 0;
 
 		virtual void					initMapStringFile( const AsciiString& filename ) = 0;
+		virtual void					reloadMapStrings(const AsciiString& filename) = 0;
 
 #if __cplusplus < 201103L // TheSuperHackers @todo Remove function when abandoning VC6
 		inline UnicodeString FETCH_OR_SUBSTITUTE_FORMAT( const Char *label, const WideChar *substituteFormat, ... )

@@ -56,6 +56,7 @@
 #include "GameLogic/Module/SpawnBehavior.h"
 #include "GameLogic/Module/SpecialPowerModule.h"
 #include "GameLogic/Module/StealthUpdate.h"
+#include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/SpecialPowerUpdateModule.h"
 #include "GameLogic/ObjectIter.h"
 #include "GameLogic/PartitionManager.h"
@@ -215,7 +216,7 @@ Bool AIGroup::remove( Object *obj )
 {
 #if !RETAIL_COMPATIBLE_AIGROUP
 	// Defer deletion until the end of this function.
-	AIGroupPtr refThis = Create_Add_Ref(this);
+	AIGroupPtr refThis(this);
 #endif
 
 //	DEBUG_LOG(("***AIGROUP %x is removing Object %x (%s).", this, obj, obj->getTemplate()->getName().str()));
@@ -254,7 +255,7 @@ void AIGroup::removeAll()
 {
 #if !RETAIL_COMPATIBLE_AIGROUP
 	// Defer deletion until the end of this function.
-	AIGroupPtr refThis = Create_Add_Ref(this);
+	AIGroupPtr refThis(this);
 #endif
 
 	std::list<Object *> memberList;
@@ -2810,6 +2811,46 @@ void AIGroup::groupEvacuate( CommandSourceType cmdSource )
 }
 
 /**
+ * Empty its contents, supply gatherers among them resume gathering
+ */
+void AIGroup::groupEvacuateToWork( CommandSourceType cmdSource )
+{
+	std::list<Object *>::iterator i;
+	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
+	{
+		ContainModuleInterface *contain = (*i)->getContain();
+		if( contain == nullptr )
+		{
+			continue;
+		}
+
+		// A subdued or frozen container refuses to evacuate.
+		if( (*i)->isDisabledByType( DISABLED_SUBDUED ) || (*i)->isDisabledByType( DISABLED_FROZEN ) )
+		{
+			continue;
+		}
+
+		const ContainedItemsList *riders = contain->getContainedItemsList();
+		if( riders == nullptr )
+		{
+			continue;
+		}
+
+		for( ContainedItemsList::const_iterator it = riders->begin(); it != riders->end(); ++it )
+		{
+			AIUpdateInterface *riderAI = (*it)->getAIUpdateInterface();
+			SupplyTruckAIInterface *supplyTruckAI = riderAI ? riderAI->getSupplyTruckAIInterface() : nullptr;
+			if( supplyTruckAI )
+			{
+				supplyTruckAI->setForceWantingState( TRUE );
+			}
+		}
+	}
+
+	groupEvacuate( cmdSource );
+}
+
+/**
 	* Execute railed transport behavior
 	*/
 void AIGroup::groupExecuteRailedTransport( CommandSourceType cmdSource )
@@ -3195,7 +3236,7 @@ void AIGroup::groupSell( CommandSourceType cmdSource )
 {
 #if !RETAIL_COMPATIBLE_AIGROUP
 	// Defer deletion until the end of this function.
-	AIGroupPtr refThis = Create_Add_Ref(this);
+	AIGroupPtr refThis(this);
 #endif
 
 	std::list<Object *>::iterator i;

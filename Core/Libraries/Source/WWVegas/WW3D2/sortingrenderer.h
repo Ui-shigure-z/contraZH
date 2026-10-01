@@ -22,14 +22,41 @@
 
 class SortingNodeStruct;
 class SphereClass;
+class ShaderClass;
+struct VertexFormatXYZNDUV2;
+
+// Shades particle sprites in a pixel shader, around each of their draws.
+class SoftParticleHookClass
+{
+public:
+	enum
+	{
+		EFFECT_SOFT = 1,	// fade where the sprite nears the scene behind it
+		EFFECT_FLAME = 2,	// flicker and heat colouring
+		EFFECT_HAZE = 4,	// wobble the scene copy behind the sprite
+		EFFECT_ELECTRIC = 8,	// arcs, jitter and strobe
+		EFFECT_LASER = 16,	// hot core and travelling pulses, from the beam coordinates in the second uv set
+		EFFECT_BEAM = 32,	// a laser draw's beam or a streak, which fades only while shaded
+		EFFECT_CRYO = 64	// ice tint with teeth and frost bands on a beam, splinters and glints on a sprite
+	};
+
+	virtual ~SoftParticleHookClass() {}
+
+	// Called with the draw's render state applied. False leaves the draw fixed-function, and End uncalled.
+	// The data is whatever the inserter handed over with the effects, opaque to the renderer.
+	virtual bool Begin(const ShaderClass &shader, unsigned effects, const void *effectData) = 0;
+	virtual void End() = 0;
+};
 
 class SortingRendererClass
 {
 	static bool _EnableTriangleDraw;
 
 	static void Flush_Sorting_Pool();
-	static void Insert_To_Sorted_List(SortingNodeStruct* state);
+	static void Flush_Additive_Pool();
 	static void Insert_To_Sorting_Pool(SortingNodeStruct* state);
+	static const VertexFormatXYZNDUV2* Source_Vertices(const SortingNodeStruct* state);
+	static const unsigned short* Source_Indices(const SortingNodeStruct* state);
 
 public:
 	static void Insert_Triangles(
@@ -50,6 +77,14 @@ public:
 
 	static void SetMinVertexBufferSize( unsigned val );
 
+	// Rigid translucent meshes keep their own buffers and sort as whole objects.
+	static bool Sorts_Meshes_Per_Object();
+
 	static void _Enable_Triangle_Draw(bool enable) { _EnableTriangleDraw=enable; }
 	static bool _Is_Triangle_Draw_Enabled() { return _EnableTriangleDraw; }
+
+	// Triangles inserted while effects are set are drawn through the hook with those effects.
+	static void Set_Soft_Particle_Hook(SoftParticleHookClass *hook);
+	static SoftParticleHookClass *Peek_Soft_Particle_Hook();
+	static void Set_Insert_Effects(unsigned effects, const void *effectData);
 };

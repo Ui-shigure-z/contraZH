@@ -54,7 +54,6 @@ TunnelContain::TunnelContain( Thing *thing, const ModuleData* moduleData ) : Ope
 {
 	m_needToRunOnBuildComplete = true;
 	m_isCurrentlyRegistered = FALSE;
-	m_isAutoPopModelConditionSet = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -505,7 +504,6 @@ void TunnelContain::onCapture( Player *oldOwner, Player *newOwner )
 		{
 			DEBUG_ASSERTCRASH( oldTunnelTracker->getContainCount() == 0, ("You shouldn't force a capture of a Tunnel with people in it. Future ExitFromContainer scripts will fail."));
 			oldTunnelTracker->onTunnelDestroyed(getObject());
-			m_isAutoPopModelConditionSet = FALSE;
 		}
 
 		TunnelTracker *newTunnelTracker = newOwner->getTunnelSystem();
@@ -635,9 +633,6 @@ void TunnelContain::xfer( Xfer *xfer )
 
 	// Currently registered with owning player
 	xfer->xferBool( &m_isCurrentlyRegistered );
-
-	// ShigureUi 28/09/2026 newly built tunnel need this to set conditions later
-	xfer->xferBool(&m_isAutoPopModelConditionSet);
 
 }
 

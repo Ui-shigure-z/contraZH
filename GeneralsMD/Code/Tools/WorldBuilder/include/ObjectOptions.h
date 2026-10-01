@@ -48,10 +48,11 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(ObjectOptions)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
-	virtual void OnOK() override {return;};  ///< Modeless dialogs don't OK, so eat this for modeless.
-	virtual void OnCancel() override {return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void OnOK();
+	virtual void OnCancel(){return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+	virtual void OnShowWindow(BOOL bShow, UINT nStatus);
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -63,6 +64,11 @@ protected:
 	afx_msg void OnEditchangeOwningteam();
 	afx_msg void OnCloseupOwningteam();
 	afx_msg void OnSelchangeOwningteam();
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
+	afx_msg void OnPreviewAmbientSound();
+	afx_msg void OnPreviewBuildZone();
+	afx_msg void OnUseWaterHeight();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -73,15 +79,27 @@ protected:
 	static Int				m_currentObjectIndex;
 	static char				m_currentObjectName[NAME_MAX_LEN];
 	static AsciiString	m_curOwnerName;
+	static Bool				m_placeAllInCategory;
+	static Int					m_placeAllYSpacing;
+	CFont m_treeFont;
+
+	Bool m_isObjectOptsWindowOpen;
+	Bool m_bPreviewAmbient;
+	Bool m_bPreviewBuildZone;
+	Bool m_bUseWaterHeight;
 
 	CTreeCtrl					m_objectTreeView;
 	MapObject					*m_objectsList;
 	ObjectPreview			m_objectPreview;
+	Bool m_objectsListModified;
+	// HTREEITEM m_lastFoundItem;
 
 protected:
 	void addObject( MapObject *mapObject, const char *pPath,
 									Int objectNdx, HTREEITEM parent );
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
+	// HTREEITEM getNextItem(HTREEITEM hItem);
+	void ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem);
 	HTREEITEM findOrDont(const char *pLabel);
 	HTREEITEM _FindOrDont(const char* pLabel, HTREEITEM startPoint);
 	Bool setObjectTreeViewSelection(HTREEITEM parent, Int selection);
@@ -96,8 +114,27 @@ public:
 	static void selectObject(const MapObject* pObj);
 	static Real getCurObjectHeight();
 	static void update();
-	static AsciiString getCurGdfName();
-};
+	static AsciiString getCurGdfName(void);
+	static void reprocessObjectList();
+	// Place-all-in-category (Object Options checkbox): one click places every template
+	// in the current object's tree category (side + editor sorting) as one undoable grid.
+	static Bool isPlaceAllInCategory(void) {return m_placeAllInCategory;};
+	static void setPlaceAllInCategory(Bool on);
+	static Int getPlaceAllYSpacing(void) {return m_placeAllYSpacing;};
+	static void setPlaceAllYSpacing(Int spacing);
+	static MapObject *duplicateCategoryMapObjectsForPlace(const Coord3D* loc, Real angle);
+#ifdef RTS_HAS_QT
+	// Qt panel support (WBQtObjectBridge): let the Qt Object panel mirror the template
+	// list and drive the same selection statics the placement tools read. Defined in
+	// src/WBQtObjectBridge.cpp; member statics so they can reach the private state.
+	static MapObject *qtGetObjectListHead(void);
+	static void qtSetCurrentSelection(int listIndex, const char *name);
+	static int qtGetCurrentIndex(void);
+	static void qtSetOwnerTeamName(const char *teamName);
+	static const char *qtGetOwnerTeamName(void);
+	static CWnd *qtGetMainWnd(void);
+#endif
+}; 
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

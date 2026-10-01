@@ -135,6 +135,8 @@ public:
 	BuildTimerDisplayMode getBuildTimerDisplayMode() const;
 	CastMode getCastMode() const;
 	Bool getSelectionCircleEnabled() const;
+	// Options.ini: DefensesRangeCircle = Yes rings the attack range of an armed structure being placed
+	Bool getDefensesRangeCircleEnabled() const;
 	Bool getObjectDecalsEnabled() const;
 	// Options.ini: Bloom = Yes adds a glow around additive particles, BloomStrength (0..1) sets how bright
 	Bool getBloomEnabled() const;
@@ -142,6 +144,46 @@ public:
 	Bool getBloomDebugEnabled() const;
 	// Options.ini: LaserRef = Yes lights the ground along each laser beam
 	Bool getLaserRefEnabled() const;
+	// Options.ini: ShadowMap = Yes draws shadows from a sun shadow map instead of volumes and blobs
+	Bool getShadowMapEnabled() const;
+	// Options.ini: Specular = Yes adds a per-pixel sun highlight to vehicles and structures
+	Bool getSpecularEnabled() const;
+	// Options.ini: NormalMaps = Yes adds bump detail to the sun's light on vehicles, structures and terrain
+	Bool getNormalMapsEnabled() const;
+	// Options.ini: WaterReflections = Yes lets smooth water mirror the terrain, units and buildings
+	Bool getWaterReflectionsEnabled() const;
+	// Options.ini: SoftParticles = Yes fades smoke and fire where they meet the ground and buildings
+	Bool getSoftParticlesEnabled() const;
+	// Options.ini: FlameShaders = Yes makes flame weapon fire flicker and glow white-hot at its core
+	Bool getFlameShadersEnabled() const;
+	// Options.ini: ElectricShaders = Yes makes electric sparks and flares crackle with arcs
+	Bool getElectricShadersEnabled() const;
+	// Options.ini: LaserShaders = Yes gives laser beams a white-hot core and pulses running along them
+	Bool getLaserShadersEnabled() const;
+	// Options.ini: CryoShaders = Yes turns cryo beams, streaks and sprites to ice
+	Bool getCryoShadersEnabled() const;
+	// Options.ini: DynamicLights = Yes lets explosions, muzzle flashes and lasers light their surroundings
+	Bool getDynamicLightsEnabled() const;
+	// Options.ini: PixelLights = Yes draws those lights per pixel where the hardware allows
+	Bool getPixelLightsEnabled() const;
+	// Options.ini: AmbientOcclusion = Yes darkens creases and the ground where objects meet it
+	Bool getAmbientOcclusionEnabled() const;
+	// Options.ini: HeightBlend = Yes blends terrain textures by height where the hardware allows
+	Bool getHeightBlendEnabled() const;
+	// Options.ini: HQSky = Yes draws cloud shadows that drift softly and change shape where the hardware allows
+	Bool getHQSkyEnabled() const;
+	// Options.ini: VSync = Yes or No; without it, -1 keeps vsync on in fullscreen and off in a window
+	Int getVSyncMode() const;
+	// Options.ini: LowLatency = Yes keeps at most one frame queued ahead of the GPU
+	Bool getLowLatencyEnabled() const;
+	// Options.ini: SmoothUnitMotion = Yes draws models between logic frames when the frame rate is higher
+	Bool getSmoothUnitMotionEnabled() const;
+	// Options.ini: SpecularDebug = Yes tints what the specular pass covers and shows its highlight 8x in magenta
+	Bool getSpecularDebugEnabled() const;
+	// Options.ini: NormalMapDebug = Yes shows only the terrain's bump shading, on grey
+	Bool getNormalMapDebugEnabled() const;
+	// Options.ini: AmbientOcclusionDebug = Yes shows the occlusion alone, in grey
+	Bool getAmbientOcclusionDebugEnabled() const;
 	Bool getBorderlessWindowEnabled() const;
 	Bool getEasyMilitaryDragEnabled() const;
 	Bool getSmartPipsEnabled() const;
@@ -227,6 +269,12 @@ public:
 	Real getResolutionFontAdjustment();
 
 	Bool getShowMoneyPerMinute() const;
+#if defined(GENERALS_ONLINE)
+	Int getObserverNotificationFontSize() const;
+	Bool getObserverNotificationSpecialPowerUsage() const;
+	Bool getObserverNotificationSpecialPowerPurchase() const;
+	Bool getObserverNotificationMilestone() const;
+#endif
 
 	Bool getSmartSelectionEnabled() const;
 	Bool getSmartSelectionUseMouse() const;

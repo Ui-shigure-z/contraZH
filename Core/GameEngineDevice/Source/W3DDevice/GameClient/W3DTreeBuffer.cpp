@@ -87,7 +87,7 @@ enum
 #include "WW3D2/matinfo.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
-#include "d3dx8tex.h"
+#include "WW3D2/formconv.h"
 
 
 // If TEST_AND_BLEND is defined, it will do an alpha test and blend.  Otherwise just alpha test. jba. [5/30/2003]
@@ -135,7 +135,7 @@ int W3DTreeBuffer::W3DTreeTextureClass::update(W3DTreeBuffer *buffer)
 	IDirect3DSurface8 *surface_level;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0, &surface_level));
+	DX8_ErrorCode(DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Texture())->GetSurfaceLevel(0, &surface_level));
 	DX8_ErrorCode(surface_level->GetDesc(&surface_desc));
 
 	DX8_ErrorCode(surface_level->LockRect(&locked_rect, nullptr, 0));
@@ -189,7 +189,8 @@ int W3DTreeBuffer::W3DTreeTextureClass::update(W3DTreeBuffer *buffer)
 	}
 	DX8_ErrorCode(surface_level->UnlockRect());
 	surface_level->Release();
-	DX8_ErrorCode(D3DXFilterTexture(Peek_D3D_Texture(), nullptr, (UINT)0, D3DX_FILTER_BOX));
+	DX8_ErrorCode(Filter_Texture_Mipmaps(DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Texture())));
+	DX8Wrapper::_Upload_Lockable_Texture(Peek_D3D_Texture());
 	if (WW3D::Get_Texture_Reduction()) {
 		DX8_ErrorCode(Peek_D3D_Texture()->SetLOD((DWORD)WW3D::Get_Texture_Reduction()));
 	}
@@ -1055,11 +1056,11 @@ void W3DTreeBuffer::freeTreeBuffers()
 	}
 
 	if (m_dwTreePixelShader)
-		DX8Wrapper::_Get_D3D_Device8()->DeletePixelShader(m_dwTreePixelShader);
+		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwTreePixelShader);
 	m_dwTreePixelShader = 0;
 
 	if (m_dwTreeVertexShader)
-		DX8Wrapper::_Get_D3D_Device8()->DeleteVertexShader(m_dwTreeVertexShader);
+		DX8_DELETE_VERTEX_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_dwTreeVertexShader);
 	m_dwTreeVertexShader = 0;
 }
 
@@ -1473,11 +1474,17 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 
 	// TheSuperHackers @tweak The tree sway, topple and sink time steps are now decoupled from the render update.
 	const Real timeScale = TheFramePacer->getActualLogicTimeScaleOverFpsRatio();
+
+	// The water reflection draws the trees before the main view, which alone advances them.
+	const Bool mirror = ShaderClass::Is_Backface_Culling_Inverted();
 	Vector3 swayFactor[MAX_SWAY_TYPES];
 	Int i;
 	for (i=0; i<MAX_SWAY_TYPES; i++)
 	{
-		m_curSwayOffset[i] += m_curSwayStep[i] * timeScale;
+		if (!mirror)
+		{
+			m_curSwayOffset[i] += m_curSwayStep[i] * timeScale;
+		}
 		if (m_curSwayOffset[i] > NUM_SWAY_ENTRIES-1) {
 			m_curSwayOffset[i] -= NUM_SWAY_ENTRIES-1;
 		}
@@ -1499,13 +1506,13 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (m_treeTexture==nullptr) {
 		return;
 	}
-	if (m_updateAllKeys) {
+	if (m_updateAllKeys && !mirror) {
 		cull(camera);
 	}
 
 	Int curTree;
 	// Draw tree shadows.
-	if (m_shadow && TheW3DProjectedShadowManager && TheGlobalData->m_useShadowDecals) {
+	if (m_shadow && TheW3DProjectedShadowManager && TheGlobalData->m_useShadowDecals && !mirror) {
 		for (curTree=0; curTree<m_numTrees; curTree++) {
 			Int type = m_trees[curTree].treeType;
 			if (type<0) { // deleted.
@@ -1527,7 +1534,7 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	}
 
 	// Update pushed aside and toppling trees.
-	for (curTree=0; curTree<m_numTrees; curTree++) {
+	for (curTree=0; curTree<m_numTrees && !mirror; curTree++) {
 		Int type = m_trees[curTree].treeType;
 		if (type<0) { // deleted.
 			continue;
@@ -1647,24 +1654,24 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	DX8Wrapper::Apply_Render_State_Changes();
 
 	if (m_dwTreeVertexShader) {
-		D3DXMATRIX matProj, matView, matWorld;
+		D3DMATRIX matProj, matView, matWorld;
 		DX8Wrapper::_Get_DX8_Transform(D3DTS_WORLD, matWorld);
 		DX8Wrapper::_Get_DX8_Transform(D3DTS_VIEW, matView);
 		DX8Wrapper::_Get_DX8_Transform(D3DTS_PROJECTION, matProj);
-		D3DXMATRIX mat;
-		D3DXMatrixMultiply( &mat, &matView, &matProj );
-		D3DXMatrixMultiply( &mat, &matWorld, &mat );
-		D3DXMatrixTranspose( &mat, &mat );
+		D3DMATRIX mat;
+		mat = matView * matProj;
+		mat = matWorld * mat;
+		Transpose_D3DMATRIX(mat, mat);
 
 		// c4  - Composite World-View-Projection Matrix
-		DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  4, &mat,  4 );
+		DX8Wrapper::Set_Vertex_Shader_Constant(4, &mat, 4 );
 		Vector4 noSway(0,0,0,0);
-		DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  8, &noSway,  1 );
+		DX8Wrapper::Set_Vertex_Shader_Constant(8, &noSway, 1 );
 
 		// c8 - c8+MAX_SWAY_TYPES - the sway amount.
 		for	(i=0; i<MAX_SWAY_TYPES; i++) {
 			Vector4 sway4(swayFactor[i].X, swayFactor[i].Y, swayFactor[i].Z, 0);
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  9+i, &sway4,  1 );
+			DX8Wrapper::Set_Vertex_Shader_Constant(9+i, &sway4, 1 );
 		}
 
 		W3DShroud *shroud;
@@ -1678,16 +1685,16 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 			xoffset = -(float)shroud->getDrawOriginX() + width;
 			yoffset = -(float)shroud->getDrawOriginY() + height;
 			Vector4 offset(xoffset, yoffset, 0, 0);
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  32, &offset,  1 );
+			DX8Wrapper::Set_Vertex_Shader_Constant(32, &offset, 1 );
 			width = 1.0f/(width*shroud->getTextureWidth());
 			height = 1.0f/(height*shroud->getTextureHeight());
 			offset.Set(width, height, 1, 1);
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  33, &offset,  1 );
+			DX8Wrapper::Set_Vertex_Shader_Constant(33, &offset, 1 );
 
 		} else {
 			Vector4 offset(0,0,0,0);
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  32, &offset,  1 );
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShaderConstant(  33, &offset,  1 );
+			DX8Wrapper::Set_Vertex_Shader_Constant(32, &offset, 1 );
+			DX8Wrapper::Set_Vertex_Shader_Constant(33, &offset, 1 );
 		}
 
 		DX8Wrapper::Set_Vertex_Shader(m_dwTreeVertexShader);
@@ -1697,7 +1704,7 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		Real mulTwoX = 0.5f;
 		if(TheGlobalData && TheGlobalData->m_useOverbright)
 			mulTwoX = 1.0f;
-		DX8Wrapper::_Get_D3D_Device8()->SetPixelShaderConstant(1, D3DXVECTOR4(mulTwoX, mulTwoX, mulTwoX, mulTwoX), 1);
+		DX8Wrapper::_Get_D3D_Device8()->SetPixelShaderConstant(1, Vector4(mulTwoX, mulTwoX, mulTwoX, mulTwoX), 1);
 #endif
 
 	} else {
@@ -1715,7 +1722,7 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		// Render the waving grass
 		DX8Wrapper::Apply_Render_State_Changes();
 		if (m_dwTreeVertexShader) {
-			DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(m_dwTreeVertexShader);
+			DX8Wrapper::Set_Vertex_Shader(m_dwTreeVertexShader);
 			DX8Wrapper::_Get_D3D_Device8()->SetTextureStageState(0,  D3DTSS_TEXCOORDINDEX, 0);
 			DX8Wrapper::_Get_D3D_Device8()->SetTextureStageState(1,  D3DTSS_TEXCOORDINDEX, 1);
 			DX8Wrapper::_Get_D3D_Device8()->SetTextureStageState(1,  D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);

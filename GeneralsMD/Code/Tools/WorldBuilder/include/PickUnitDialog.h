@@ -21,6 +21,7 @@
 // PickUnitDialog.h : header file
 //
 
+#include "ObjectPreview.h"
 #include "Common/AsciiString.h"
 #include "Common/ThingSort.h"
 
@@ -43,6 +44,10 @@ protected:
 	MapObject		*m_objectsList;
 	Bool			m_allowable[ES_NUM_SORTING_TYPES];
 	Bool			m_factionOnly;
+
+	ObjectPreview			m_objectPreview;
+	Bool m_objectsListModified;
+	static PickUnitDialog* m_staticThis;
 
 // Construction
 public:
@@ -70,8 +75,15 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(PickUnitDialog)
-	virtual BOOL OnInitDialog() override;
+	virtual BOOL OnInitDialog();
+	// virtual void OnOK();
+	void ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem);
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
+
 	afx_msg void OnMove(int x, int y);
+	afx_msg void OnIgnore(); // For the bypass feature - Adriane [Deathscythe]
+	afx_msg void OnDestroy();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -81,7 +93,8 @@ public:
 	void SetAllowableType(EditorSortingType sort);
 	const ThingTemplate* getPickedThing();
 	void SetFactionOnly(Bool faction) {m_factionOnly = faction;}
-	void SetupAsPanel();
+	void SetupAsPanel(void);
+	static void ResetWindowPosition();
 };
 
 class ReplaceUnitDialog : public PickUnitDialog
@@ -95,8 +108,11 @@ protected:
 
 	// Generated message map functions
 	//{{AFX_MSG(ReplaceUnitDialog)
-	virtual BOOL OnInitDialog() override;
-	//}}AFX_MSG
+	virtual BOOL OnInitDialog();
+	// virtual void OnOK();
+	// void ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem);
+	// afx_msg void OnSearch();
+	// afx_msg void OnReset();
 	DECLARE_MESSAGE_MAP()
 
 private:

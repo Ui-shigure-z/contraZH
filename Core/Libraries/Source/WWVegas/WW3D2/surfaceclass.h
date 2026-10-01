@@ -41,7 +41,12 @@
 #include "WWLib/always.h"
 #include "ww3dformat.h"
 
+#if defined(BUILD_WITH_D3D9)
+#include "WW3D2/dx8compat.h"
+#else
 struct IDirect3DSurface8;
+struct IDirect3DBaseTexture8;
+#endif
 class Vector2i;
 class Vector3;
 
@@ -120,7 +125,8 @@ class SurfaceClass : public RefCountClass
 		unsigned char *CreateCopy(int *width,int *height,int*size,bool flip=false);
 
 			// For use by TextureClass:
-		IDirect3DSurface8 *Peek_D3D_Surface() { return D3DSurface; }
+		// Writes through the raw surface are uploaded when this object lets go of it
+		IDirect3DSurface8 *Peek_D3D_Surface() { RawAccess = true; return D3DSurface; }
 
 		// Attaching and detaching a surface pointer
 		void	Attach (IDirect3DSurface8 *surface);
@@ -143,10 +149,18 @@ class SurfaceClass : public RefCountClass
 
 		WW3DFormat Get_Surface_Format() const { return SurfaceFormat; }
 
+		bool Is_Valid() const { return D3DSurface != NULL; }
+
 	private:
+
+		void Upload();
 
 		// Direct3D surface object
 		IDirect3DSurface8 *D3DSurface;
+
+		// The texture whose lockable copy this surface belongs to, which writes must be uploaded to
+		IDirect3DBaseTexture8 *UploadTexture;
+		bool RawAccess;
 
 		WW3DFormat SurfaceFormat;
 	friend class TextureClass;

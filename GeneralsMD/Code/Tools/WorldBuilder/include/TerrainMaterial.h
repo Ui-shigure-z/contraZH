@@ -45,15 +45,15 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(TerrainMaterial)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
-	virtual void OnOK() override {return;};  ///< Modeless dialogs don't OK, so eat this for modeless.
-	virtual void OnCancel() override {return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void OnOK();
+	virtual void OnCancel(){return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
 	//}}AFX_VIRTUAL
 
 // Implementation
 protected:
-	enum {MIN_TILE_SIZE=2, MAX_TILE_SIZE = 100};
+	enum {MIN_TILE_SIZE=2, MAX_TILE_SIZE = 100, MIN_Z_HEIGHT=-50, MAX_Z_HEIGHT=100};
 	// Generated message map functions
 	//{{AFX_MSG(TerrainMaterial)
 	virtual BOOL OnInitDialog() override;
@@ -62,6 +62,33 @@ protected:
 	afx_msg void OnImpassable();
 	afx_msg void OnPassableCheck();
 	afx_msg void OnPassable();
+	afx_msg void OnCopySelect();
+	afx_msg void OnCopyApply();
+	afx_msg void OnCopyMode();
+	afx_msg void OnCopyModeTerrain();
+	afx_msg void OnRaiseOnly();
+
+	afx_msg void OnTogglePaintMode();
+	afx_msg void OnPaintModeCombo();
+
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
+	
+	afx_msg void OnSetFavorite();
+	afx_msg void OnDeleteFavorite();
+	afx_msg void OnRotate0();
+	afx_msg void OnRotate90();
+	afx_msg void OnRotate180();
+	afx_msg void OnRotate270();
+	afx_msg void OnImportFavoritesFromMapFolder();
+
+	afx_msg void OnToggleMirror();
+	afx_msg void OnToggleMirrorX();
+	afx_msg void OnToggleMirrorY();
+	afx_msg void OnToggleMirrorXY();
+
+	afx_msg void OnToggleNoMixing();
+
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -69,20 +96,41 @@ protected:
 protected:
 	static TerrainMaterial	*m_staticThis;
 	Bool										m_updating;
+	Bool m_suppressWidthEditSave;
+	CString m_lastTool;
 	static Int							m_currentFgTexture;
 	static Int							m_currentBgTexture;
 	CTreeCtrl								m_terrainTreeView;
+	CTreeCtrl m_favTreeView;
+	CFont m_treeFont;
 	TerrainSwatches					m_terrainSwatches;
 	WBPopupSliderButton			m_widthPopup;
+	WBPopupSliderButton			m_heightPopup;
 	Int											m_currentWidth;
+	Int											m_currentHeight;
 
 	static Bool m_paintingPathingInfo;	 // If true, we are painting passable/impassable.  If false, normal texture painting.
 	static Bool m_paintingPassable;
 
+	static Bool m_raiseOnly;
+	static Bool m_copyTextureMode;
+	static Bool m_copyTerrainMode;
+	static Bool m_onCopySelectMode;
+	static Bool m_onCopyApplyMode;
+	static Int m_copyRotation; 
+
+	static Bool m_patternPaintMode;
+	static Int m_paintMode;
+
+	CString m_lastLoadedMapPath;
+
 protected:
 	void addTerrain(char *pPath, Int terrainNdx, HTREEITEM parent);
+	void ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem);
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
-	void updateLabel();
+	void updateLabel(void);
+	void SaveFavoritesToMapFolder();
+	void copyMode();
 
 public:
 	static Int getFgTexClass() {return m_currentFgTexture;}
@@ -91,12 +139,63 @@ public:
 	static void setFgTexClass(Int texClass);
 	static void setBgTexClass(Int texClass);
 	static void updateTextures(WorldHeightMapEdit *pMap);
-	static void updateTextureSelection();
-	static void setToolOptions(Bool singleCell);
+	static void updateTextureSelection(void);
+	static void setToolOptions(Bool singleCell, Bool floodfill = false);
 	static void setWidth(Int width);
+	static void setHeight(Int height);
 
 	static Bool isPaintingPathingInfo() {return m_paintingPathingInfo;}
 	static Bool isPaintingPassable() {return m_paintingPassable;}
+
+	static Bool isCopyTerrainMode(void) {return m_copyTerrainMode;}
+	static Bool isCopyTextureMode(void) {return m_copyTextureMode;}
+	static Bool isRaiseOnly(void) { return m_raiseOnly; }
+
+	static Bool isCopySelectMode(void) {return m_onCopySelectMode;}
+	static Bool isCopyApplyMode(void) {return m_onCopyApplyMode;}
+	static Int getCopyRotation(void) {return m_copyRotation;}
+
+	static Bool isTogglePaintMode(void) {return m_patternPaintMode;}
+	static Int getPaintMode(void) {return m_paintMode;}
+
+	static Int  getPaintDensity();    // returns 0-100 for mode 3
+	static void setPaintDensity(Int d);
+	// static void ReloadFavorites();
+
+#ifdef RTS_HAS_QT
+	// Qt Terrain Material panel support (WBQtTerrainMaterialBridge.cpp). These reach the
+	// favorites tree + width/height edits owned by the (hidden OFF-fallback) MFC dialog, and
+	// let the Qt panel refresh itself when the texture list is rebuilt. Guarded so the OFF
+	// build is byte-for-byte unchanged.
+public:
+	static void qtRefreshPanel(void);           ///< called from updateTextures to reseed the Qt tree
+	static void qtRefreshSelection(void);       ///< light push: fg pick changed outside the Qt panel (eyedropper)
+	static void qtRefreshToolState(void);       ///< light push: enable-state/controls only, no tree rebuild (setToolOptions)
+	static int  qtIsSingleCell(void);           ///< 1 = single-tile tool (multi-only controls off)
+	static int  qtGetWidthEdit(void);           ///< read the IDC_SIZE_EDIT box the tools follow
+	static void qtSetWidthEdit(int width);      ///< write it through the same setWidth path
+	static int  qtGetHeightEdit(void);          ///< read the IDC_Z_EDIT box
+	static void qtSetHeightEdit(int height);    ///< write it through the same setHeight path
+	static int  qtGetFavoriteCount(void);
+	static bool qtGetFavorite(int index, char *nameOut, int cap, int *texClassOut);
+	static bool qtAddFavorite(int texClass, const char *label);  ///< false if it already exists
+	static void qtDeleteFavorite(int index);
+	static int  qtImportFavorites(void);        ///< returns the new favorite count
+	// Paint / copy / pathing setters: set the tool statics directly (same effect the MFC On*
+	// handlers have on the flags the tools read), so the Qt front-end need not touch the hidden
+	// dialog controls.
+	static void qtSetPaintingPathing(Bool on);
+	static void qtSetPassable(Bool passable);
+	static void qtSetPatternPaint(Bool on);
+	static void qtSetPaintMode(Int mode);
+	static void qtSetCopyTextureMode(Bool on);
+	static void qtSetCopyTerrainMode(Bool on);
+	static void qtSetRaiseOnly(Bool on);
+	static void qtSetCopySelectMode(void);
+	static void qtSetCopyApplyMode(void);
+	static void qtSetCopyRotation(Int degrees);
+#endif
+
 
 public:
 	Bool setTerrainTreeViewSelection(HTREEITEM parent, Int selection);

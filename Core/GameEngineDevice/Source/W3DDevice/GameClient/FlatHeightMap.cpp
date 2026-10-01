@@ -56,7 +56,6 @@
 #include <WW3D2/coltest.h>
 #include <WW3D2/rinfo.h>
 #include <WW3D2/camera.h>
-#include <d3dx8core.h>
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
 
@@ -78,6 +77,7 @@
 #include "W3DDevice/GameClient/W3DWaypointBuffer.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
@@ -461,11 +461,15 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 	W3DShaderManager::ShaderTypes st;
 	const Bool doCloud = useCloud();
 
-	if (doCloud)
+	if (doCloud && !ShaderClass::Is_Backface_Culling_Inverted())
 	{
 		// TheSuperHackers @tweak Updates the cloud movement before applying it to the world.
-		// Is now decoupled from logic step.
+		// Is now decoupled from logic step. The water reflection pass renders the terrain again.
 		W3DShaderManager::updateCloud();
+		if (TheW3DSkyClouds)
+		{
+			TheW3DSkyClouds->update(rinfo, *this);
+		}
 	}
 
 	Matrix3D tm(Transform);
@@ -487,6 +491,9 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 #endif
 
 	DX8Wrapper::Set_Light_Environment(rinfo.light_environment);
+
+	// Flat terrain does not glint, and the maps a 3D terrain frame left may belong to an unloaded map.
+	W3DShaderManager::setTerrainGlintMaps(nullptr, Vector4(0.0f, 0.0f, 0.0f, 0.0f), nullptr, 1.0f, 1.0f);
 
 	// Force shaders to update.
 	m_stageTwoTexture->restore();
@@ -534,7 +541,7 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 	}
 
  	W3DShaderManager::setTexture(1,nullptr);	// Set by the tile later. [3/31/2003]
- 	W3DShaderManager::setTexture(2,m_stageTwoTexture);	//cloud
+ 	W3DShaderManager::setTexture(2,cloudMapTexture());	//cloud
  	W3DShaderManager::setTexture(3,m_stageThreeTexture);//noise
 	//Disable writes to destination alpha channel (if there is one)
 	if (DX8Wrapper::getBackBufferFormat() == WW3D_FORMAT_A8R8G8B8) {
@@ -563,6 +570,8 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 					disableTex = TRUE; // doing cloud/noise
 				}
 				if (!tile->isCulled()) {
+					Int pixelLights[W3DShaderManager::MAX_PIXEL_LIGHTS];
+					W3DShaderManager::setDrawPixelLights(pixelLights, W3DShaderManager::pickPixelLights(tile->getBounds(), pixelLights));
 					tile->drawVisiblePolys(rinfo, disableTex);
 					if (i*CELLS_PER_TILE<xCoordMin) {
 						xCoordMin = i*CELLS_PER_TILE;
@@ -599,7 +608,7 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		if (Scene) {
 			RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 			RefRenderObjListIterator pDynamicLightsIterator(pMyScene->getDynamicLights());
-			m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?m_stageTwoTexture:nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
+			m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?cloudMapTexture():nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
 				m_disableTextures,xCoordMin-m_map->getBorderSizeInline(), xCoordMax-m_map->getBorderSizeInline(), yCoordMin-m_map->getBorderSizeInline(), yCoordMax-m_map->getBorderSizeInline(), &pDynamicLightsIterator);
 		}
 	}
@@ -617,7 +626,7 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 	ShaderClass::Invalidate();
 	DX8Wrapper::Apply_Render_State_Changes();
 
-	m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, m_stageTwoTexture);
+	m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, cloudMapTexture());
 
 	if (TheTerrainTracksRenderObjClassSystem)
 		TheTerrainTracksRenderObjClassSystem->flush();

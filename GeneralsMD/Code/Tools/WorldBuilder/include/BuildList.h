@@ -73,6 +73,8 @@ protected:
 	afx_msg void OnChangeZOffset();
 	afx_msg void OnChangeAngle();
 	afx_msg void OnExport();
+	afx_msg void OnImport();
+	afx_msg void OnForcedShowObjects();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -84,6 +86,7 @@ protected:
 	WBPopupSliderButton m_angleSlider;
 	Real				m_angle;
 	Real				m_height;
+	Bool                m_forcedShowObjects;
 
 	static BuildList	*m_staticThis;
 	static Bool			m_updating;
@@ -97,9 +100,68 @@ public:
 	static void update() {if (m_staticThis) m_staticThis->loadSides();};
 	static void setSelectedBuildList(BuildListInfo *pInfo);
 
-	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial) override;
-	virtual void PopSliderChanged(const long sliderID, long theVal) override;
-	virtual void PopSliderFinished(const long sliderID, long theVal) override;
+#ifdef RTS_HAS_QT
+	// Qt front-end support (WBQtBuildListBridge). The MFC BuildList stays created + hidden
+	// (m_staticThis, so the tool's addBuilding/setSelectedBuildList/update reach it); the Qt
+	// panel reads state + drives commands through these. Defined in BuildList.cpp.
+	static int  qtGetSideCount(void);
+	static int  qtGetSideName(int i, char *out, int cap);
+	static int  qtGetCurSide(void);
+	static void qtSetCurSide(int i);
+	static int  qtGetBuildCount(void);
+	static int  qtGetBuildName(int i, char *out, int cap);
+	// 1 when entry i names a template TheThingFactory can't resolve (the map still records the
+	// name, but nothing will be built). Drives the panel's "missing" styling.
+	static int  qtGetBuildMissing(int i);
+	// 1 when ANY side's build list holds an unresolvable entry, i.e. the fix button has work.
+	static int  qtHasMissingBuildings(void);
+	// Replace every unresolvable build-list entry, across all sides, with its closest existing
+	// template by name match, filling the shared replace report. Position/angle/rebuilds and the
+	// rest of each entry are preserved -- only the template name changes. Returns the number of
+	// distinct missing names found (0 == nothing to do, no report).
+	static int  qtReplaceMissingBuildings(void);
+	// Rewrite every build-list entry naming `from` to `to`; returns the entries changed. Used by
+	// the report when a guess is corrected.
+	static int  qtReplaceBuildingName(const char *from, const char *to);
+	// Re-point ONE entry (side `side`, index `idx`) at template `to`, leaving other entries that
+	// name the same building alone. Position, angle, rebuilds and flags are preserved.
+	// Returns 1 when the entry changed, 0 otherwise.
+	static int  qtReplaceBuildingAt(int side, int idx, const char *to);
+	static int  qtGetCurBuild(void);
+	static void qtSetCurBuild(int i);
+	// As qtSetCurBuild, but without running OnSelchangeBuildList (which pushes a full panel
+	// refresh). Use when only re-pointing the "current" building before writing an attribute --
+	// the refresh would overwrite the edit-in-progress with the stored value.
+	static void qtSetCurBuildNoRefresh(int i);
+	/// Centres the 3D view on the current entry's building.
+	static void qtGoToCurBuild(void);
+	// Current building's attributes.
+	static int    qtHasCurBuild(void);
+	static double qtGetAngle(void);
+	static double qtGetZ(void);
+	static int    qtGetAlreadyBuilt(void);
+	static int    qtGetRebuilds(void);	// -1 == unlimited
+	static void   qtSetAngle(double deg);
+	static void   qtSetZ(double z);
+	static void   qtSetAlreadyBuilt(int on);
+	static void   qtSetRebuilds(int nr);	// -1 == unlimited
+	// Power Used meter: 0..100 (== (1-energyUsed)*100, cached from updateCurSide).
+	static int  qtGetPowerPercent(void);
+	// Commands.
+	static void qtMoveUp(void);
+	static void qtMoveDown(void);
+	static void qtAddBuilding(void);
+	static void qtDeleteBuilding(void);
+	static void qtExport(void);
+	static void qtImport(void);
+	static void qtEditProps(void);	// == OnDblclkBuildList (BaseBuildProps)
+	static int  qtGetForcedShow(void);
+	static void qtSetForcedShow(int on);
+#endif
+
+	virtual void GetPopSliderInfo(const long sliderID, long *pMin, long *pMax, long *pLineSize, long *pInitial);
+	virtual void PopSliderChanged(const long sliderID, long theVal);
+	virtual void PopSliderFinished(const long sliderID, long theVal);
 
 };
 

@@ -7,7 +7,9 @@ GameNetworkingSockets ICE P2P transport, lobbies/matchmaking/stats).
 
 ## Provenance
 
-- Ported from GO commit: `d7f75517dd76c3a4e3de75e988f328a6877621c5` (2026-08-24)
+- Ported from GO commit: `d7f75517dd76c3a4e3de75e988f328a6877621c5` (2026-08-24);
+  re-synced to `9c1121bd5` (2026-09) including the 60 Hz simulation and engine-feel changes
+  listed under "Decisions made during the port"
 - GO's merge base with TheSuperHackers: `e760b3695` (2026-07-26)
 - contraZH's merge base with TheSuperHackers at port time: `5943d3856` (== tsh HEAD)
 - Future re-syncs: `git fetch go && git diff -w <old-go-sha>..<new-go-sha> -- <ported
@@ -15,9 +17,9 @@ GameNetworkingSockets ICE P2P transport, lobbies/matchmaking/stats).
 
 ## Port decisions
 
-1. Online system only. GO's engine-feel fork (widescreen, 60 Hz sim, frame pacing,
-   renderer/particle/memory changes) and its unguarded gameplay/balance edits are NOT
-   ported.
+1. Online system plus GO's engine-feel fork (60 Hz sim, frame pacing, widescreen,
+   observer overlay, crash guards, stats exporter). GO's unguarded gameplay/balance
+   edits, the community patch BIG and the GameMemory relocation are NOT ported.
 2. GameSpy stays. Everything is gated behind the CMake option
    `RTS_BUILD_GENERALS_ONLINE` (default OFF). The OFF build must stay byte-identical in
    behavior; every in-place edit to a shared file must sit inside
@@ -46,10 +48,78 @@ GameNetworkingSockets ICE P2P transport, lobbies/matchmaking/stats).
 
 ## Decisions made during the port (deviations from upstream GO)
 
-- **30 Hz client**: `GENERALS_ONLINE_HIGH_FPS_SERVER` is commented out (the 60 Hz
-  simulation is part of GO's engine-feel fork, not ported). Client id is
-  `gen_online_30hz`; `GENERALS_ONLINE_HIGH_FPS_LIMIT` resolves to 30. All
-  `GENERALS_ONLINE_HIGH_FPS_*` / `_RUN_FAST` hunks in shared files were dropped.
+- **60 Hz client**: the simulation runs at 60 Hz like the official client (client id
+  `gen_online_60hz`, `GENERALS_ONLINE_HIGH_FPS_LIMIT` 60). The switch
+  `GENERALS_ONLINE_HIGH_FPS_SERVER` is defined by `GeneralsMD/Code/CMakeLists.txt` next to
+  `GENERALS_ONLINE`, not by NextGenMP_defines.h, because `WWSyncPerSecond` lives in
+  WWLib's `WWCommon.h` and that static library cannot include GO headers. `GameCommon.h`
+  includes NextGenMP_defines.h under `GENERALS_ONLINE` so every engine TU sees the
+  HIGH_FPS macros (upstream gets the same effect from its PCH). Deviations from GO's
+  60 Hz code:
+  - `GameLogic::getFrameLegacy()` / `HasLegacyFrameAdvanced()` are derived from `m_frame`
+    and the frame multiplier instead of two stored counters with a hardcoded `% 2`; nothing
+    new is zeroed or xfer'd. The unused `getFrameLegacyLast()` is not ported.
+  - `GameClient`'s wall-clock legacy counter uses `std::chrono::steady_clock` and a
+    `MSEC_PER_SECOND / BaseFps` tick instead of `utc_clock` and a literal 33.
+  - The FramePacer render floor and `FrameMetrics::init()` seeds are guarded on
+    `HIGH_FPS_SERVER` and use `LOGICFRAMES_PER_SECOND`; GO guarded the floor on plain
+    `GENERALS_ONLINE`. `htree.cpp`'s static_assert accepts 30 or 60 without a GO include.
+  - `Weapon.cpp` takes only the `delayToUse` clamp. GO's GattlingBuilding and QuadCannon
+    name-matched rate hacks are ZH balance and are not taken.
+  - `EMPUpdate.cpp` keeps `GameClientRandomValue` for the particle delay (GO switched to
+    the logic RNG inside the 60 Hz guard; particle setup is client-side).
+  - `ScriptEngine.cpp`: `adjustTimer` converts seconds with `BaseFps` like `setTimer`;
+    GO only changed `setTimer`, which would have made "add 1 second" add 2 seconds.
+  - `InGameUI.cpp` message fade: the fade amount is scaled by the frame multiplier and
+    starts at the timeout. GO multiplied the timeout, which is 0 (integer math) at both
+    rates, so its hunk changed nothing.
+  - Not ported: GameLOD auto quality degrade (uncalled in go/main), the commented-out
+    `seglinerenderer.cpp` block, `GENERALS_ONLINE_RUN_FAST` (dead in both trees).
+  - Replays: GO has no rate tag. `replayMatchesGameVersion` already compares the exe CRC,
+    which differs between any two builds, so a 30 Hz replay is refused by the existing
+    check; no extra guard was needed.
+  - Known upstream quirk left as is: `FRAME_GROUPING_CAP` is a `static int` in a header,
+    so `NGMPGame.cpp`'s service-config write never reaches `Network.cpp`'s copy. The
+    official client has the same behaviour, so parity wins over the fix.
+- **Render cap policy**: GO's settings.json FPS limit and camera scroll speed govern an
+  online match only. `NGMPGame::applyMatchRenderSettings()` snapshots Contra's values on
+  first use and `restoreRenderSettings()` puts them back; `GameEngine::update()` calls one
+  or the other every frame depending on whether a match is running, and the destructor
+  restores too. GO applied its cap in the shell as well and set the Bool `m_useFpsLimit`
+  from an integer FPS value; both are fixed here.
+- **Observer overlay**: GO's `drawObserverStats` duplicates TSH's `drawPlayerInfoList`,
+  so the TSH table is extended (SP, K, L, P columns, army name, red power value when
+  short) instead. The notification feed is new. The army name comes from the player
+  template, not GO's ZH side-string table, and GO's power-use table of ZH superweapon
+  names is replaced by the command button label of the power. Milestones poll once a
+  second from `update()` only while the observer bar is on, not from the draw path.
+  The `GameWindowTransitionSpeedMultiplier` 1.0 to 2.5 default change that sits in the
+  same OptionPreferences diff is not taken. GO's Shift+arrow font hotkeys are not taken;
+  the font sizes are Options.ini keys.
+- **Keyboard auto repeat dedupe** is guarded on `GENERALS_ONLINE` rather than taken
+  unguarded, and GO's `KEY_REPEAT_DELAY_MSEC - KEY_REPEAT_INTERVAL_MSEC` sign flip is not
+  taken.
+- **StatsExporter/StatsUploader** are ported whole but every hunk outside the two new
+  files is guarded on `GENERALS_ONLINE` (upstream is unguarded). GO's Player.cpp hook hunk
+  also added `m_scoreKeeper.addMoneySpent(...)` for units, a scoring change; not taken.
+  `-disableCommunityDataPatch` and the community patch BIG loader are not taken.
+- **Widescreen**: the scaling divisors (ControlBarResizer, W3DHorizontalSlider, military
+  subtitle) and the aspect-corrected camera height are in, under
+  `GENERALS_ONLINE_WIDESCREEN`. GO's observer zoom clamp in `setHeightAboveGround` (max
+  height forced to 500 or 1000) is not taken; the fork's lobby camera limit applies.
+  GO ships no .wnd files in git; the 1280x720 layouts come from the official installer's
+  `GeneralsOnlineGameData\`, which `winCreateFromScript` already prefers when ON. That
+  preference also shadows the fork's script-patched `OptionsMenu.wnd`
+  (`build/add_*_wnd.py`, 800x600 coordinates). Contra copies of those layouts at 1280x720
+  are still to be made.
+- **Crash guards taken unguarded** (pure null and bounds checks, comments trimmed):
+  surfaceclass, render2dsentence, W3DTerrainTracks, W3DTreeBuffer, BaseHeightMap,
+  W3DMouse (thread stopped before assets are freed, mutex held across the TheMouse check),
+  FFmpegFile, FFmpegVideoPlayer, PopupReplay, ControlBar beacon template.
+- **Not taken from the post-audit drift**: `GetConnectionType` to
+  `GetDetailedConnectionStatus` (the vendored GNS carries GO's `GetConnectionType` vtable
+  entry; the rename only matters for stock GNS), the `bittype.h` `uint32` typedef, and the
+  FetchContent build migration.
 - **Texture filtering kept**: `GENERALS_ONLINE_DISABLE_TEXTURE_FILTERING_AND_AA` is
   commented out and the W3DDisplay hunk that forces MSAA off was not taken - this fork
   has its own TextureFilter/AnisotropyLevel feature.
@@ -75,11 +145,8 @@ GameNetworkingSockets ICE P2P transport, lobbies/matchmaking/stats).
   TU via CMake PCH, which transitively provides `NextGenMP_defines.h`. This port keeps
   contraZH's PCH setup, so `NextGenMP_defines.h` is included explicitly where needed
   (GeneralsOnline_Settings.h, NGMPGame.h, ConnectionManager.h).
-- **Deferred to the UI phases**: `SetLookAtPlayer` signature change
-  (PersistentStorageDefs.h - would break the unported WOL menus when ON),
-  `GameSpyOpenOverlay` buddy bypass, StatsExporter/StatsUploader plus their
-  CommandLine (-exportStats/-statsUrl/-disableCommunityDataPatch), GameMain validation
-  and GlobalData fields.
+- **Deferred**: `GameSpyOpenOverlay` buddy bypass. (`SetLookAtPlayer` and the
+  StatsExporter pipeline have since been ported.)
 - Log-only hunks (NetworkLog conversions of commented DEBUG_LOGs), `isspace/isdigit`
   cast fixes, `nullptr`->`NULL` reverts, and GO's dead `#else` branches were not taken.
 
@@ -158,12 +225,10 @@ x86 `zlib1.dll` is correct for the game.
 - **InGameChat gate adapted, not adopted**: an active NGMP game additionally allows
   the chat window; upstream GO allowed it ONLY then, which would have broken LAN chat
   and this fork's singleplayer chat-command window.
-- **Skipped in the UI phases**: OptionsMenu hunks (observer-overlay font needs GO's
-  InGameUI, texture-filter guard is inert here), SkirmishGameOptionsMenu's team-colored
-  start positions (unguarded, and drops a bounds check), PopupReplay's null-check,
-  Diplomacy's GO_REVEAL_TEAMS block (macro never defined), and the **StatsExporter /
-  StatsUploader replay-analytics pipeline** (its hooks live in Player.cpp/Object.cpp
-  gameplay code; server-side stats are already covered by OnlineServices_StatsInterface).
+- **Skipped in the UI phases**: OptionsMenu hunks other than the observer font round
+  trip (texture-filter guard is inert here, IP masking, GameSpy checks),
+  SkirmishGameOptionsMenu's team-colored start positions (unguarded, and drops a bounds
+  check), and Diplomacy's GO_REVEAL_TEAMS block (macro never defined).
 
 ## Fixes
 
@@ -335,9 +400,14 @@ StackDump.cpp (3-2, Sentry-adjacent), WWLib/Except.cpp (75-2, Sentry crash handl
 only under GENERALS_ONLINE_SENTRY if ever), Core/GameEngine/CMakeLists.txt (5-10 —
 re-implement by hand, never apply).
 
-### B — skip (engine-feel fork)
+### B — engine-feel fork (mostly ported in the 60 Hz phase, see the decisions above)
 
-GameMemory relocation (all GameMemory*/MemoryInit moves, Generals+MD), FramePacer,
+Still skipped: GameMemory relocation, Intro (GO logo), dx8wrapper (windowed fullscreen,
+d3d8 hook loader), texture filtering/AA off, GameLOD auto degrade, Except.cpp/Sentry,
+MilesAudioManager and W3DVolumetricShadow (reformat only), W3DControlBar and
+ControlBarPopupDescription (TSH reverts), the observer zoom clamp in W3DView.
+
+Original list: GameMemory relocation (all GameMemory*/MemoryInit moves, Generals+MD), FramePacer,
 FrameRateLimit, GameLOD.{h,cpp}, GameDefines.h, GameCommon.h, ReplaySimulation,
 Intro.{h,cpp}, LoadScreen, CommandXlat, MetaEvent, Keyboard, W3DMouse, W3DView,
 dx8wrapper, surfaceclass, render2dsentence, seglinerenderer, W3DVolumetricShadow,

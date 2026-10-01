@@ -35,9 +35,17 @@
 #include "CUndoable.h"
 #include "wbview3d.h"
 
+#include "Common/DataChunk.h"
+#include "Common/FileSystem.h"
+#ifdef RTS_HAS_QT
+#include "qt/panels/WBQtMiscModalsBridge.h"
+#endif
+
 static Int thePrevCurTeam = 0;
 
 static const char* NEUTRAL_NAME_STR = "(neutral)";
+static const Int K_LOCAL_TEAMS_VERSION_1 = 1;
+
 
 /////////////////////////////////////////////////////////////////////////////
 // CTeamsDialog dialog
@@ -72,6 +80,12 @@ BEGIN_MESSAGE_MAP(CTeamsDialog, CDialog)
 	ON_BN_CLICKED(IDC_SelectTeamMembers, OnSelectTeamMembers)
 	ON_BN_CLICKED(IDC_MOVEDOWNTEAM, OnMoveDownTeam)
 	ON_BN_CLICKED(IDC_MOVEUPTEAM, OnMoveUpTeam)
+	ON_BN_CLICKED(IDC_EXPAND_SHRINK_TEAM, OnExpandOrShrink)
+
+	ON_BN_CLICKED(IDC_EXPORT_TEAMS, OnExportTeams)
+	ON_BN_CLICKED(IDC_IMPORT_TEAMS, OnImportTeams)
+
+	ON_WM_SIZING()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -188,7 +202,81 @@ void CTeamsDialog::updateUI(Int whatToRebuild)
 	--m_updating;
 }
 
-BOOL CTeamsDialog::OnInitDialog()
+void CTeamsDialog::OnExpandOrShrink()
+{
+    const int expandBy = 200;
+    const int maxHeight = 800;
+    const int minHeight = 400;
+
+    CRect wndRect;
+    GetWindowRect(&wndRect);
+    ScreenToClient(&wndRect);
+
+    CWnd* pTeamsList = GetDlgItem(IDC_TEAMS_LIST);
+    CRect teamsRect;
+    pTeamsList->GetWindowRect(&teamsRect);
+    ScreenToClient(&teamsRect);
+
+    CWnd* pPlayerList = GetDlgItem(IDC_PLAYER_LIST);
+    CRect playerRect;
+    pPlayerList->GetWindowRect(&playerRect);
+    ScreenToClient(&playerRect);
+
+    int oldHeight = wndRect.Height();
+    int newHeight;
+
+    if (!m_expanded)
+    {
+        newHeight = min(oldHeight + expandBy, maxHeight);
+        m_expanded = TRUE;
+        GetDlgItem(IDC_EXPAND_SHRINK_TEAM)->SetWindowText("Shrink Window");
+    }
+    else
+    {
+        newHeight = max(oldHeight - expandBy, minHeight);
+        m_expanded = FALSE;
+        GetDlgItem(IDC_EXPAND_SHRINK_TEAM)->SetWindowText("Expand Window");
+    }
+
+
+    // Resize window
+    SetWindowPos(NULL, 0, 0, wndRect.Width(), newHeight, SWP_NOMOVE | SWP_NOZORDER);
+
+    // Compute spacing between list bottom and window bottom
+    int bottomMarginTeams = oldHeight - teamsRect.bottom;
+    int newTeamsBottom = newHeight - bottomMarginTeams;
+    int newTeamsHeight = newTeamsBottom - teamsRect.top;
+
+    int bottomMarginPlayers = oldHeight - playerRect.bottom;
+    int newPlayersBottom = newHeight - bottomMarginPlayers;
+    int newPlayersHeight = newPlayersBottom - playerRect.top;
+
+    // Resize both lists
+    pTeamsList->SetWindowPos(NULL, teamsRect.left, teamsRect.top, teamsRect.Width(), newTeamsHeight, SWP_NOZORDER);
+    pPlayerList->SetWindowPos(NULL, playerRect.left, playerRect.top, playerRect.Width(), newPlayersHeight, SWP_NOZORDER);
+}
+
+// void CTeamsDialog::OnSizing(UINT fwSide, LPRECT pRect)
+// {
+//     RECT rcOriginal;
+//     GetWindowRect(&rcOriginal);
+    
+//     switch (fwSide)
+//     {
+//         case WMSZ_LEFT:
+//         case WMSZ_RIGHT:
+//         case WMSZ_TOPLEFT:
+//         case WMSZ_BOTTOMLEFT:
+//         case WMSZ_TOPRIGHT:
+//         case WMSZ_BOTTOMRIGHT:
+//             // Prevent horizontal resizing by resetting left and right
+//             pRect->left = rcOriginal.left;
+//             pRect->right = rcOriginal.right;
+//             break;
+//     }
+// }
+
+BOOL CTeamsDialog::OnInitDialog() 
 {
 	CRect rect;
 
@@ -198,13 +286,15 @@ BOOL CTeamsDialog::OnInitDialog()
 	m_updating = 0;
 	m_sides = *TheSidesList;
 	m_curTeam = thePrevCurTeam;
+	m_expanded = TRUE;
 
 	CListCtrl *pList = (CListCtrl *)GetDlgItem(IDC_TEAMS_LIST);
-	pList->InsertColumn(0, "Team Name", LVCFMT_LEFT, 150, 0);
-	pList->InsertColumn(1, "Origin", LVCFMT_LEFT, 150, 1);
-	pList->InsertColumn(2, "Priority", LVCFMT_LEFT, 50, 2);
-	pList->InsertColumn(3, "Script", LVCFMT_LEFT, 150, 3);
-	pList->InsertColumn(4, "Trigger", LVCFMT_LEFT, 150, 4);
+	pList->InsertColumn(0, "Team Name", LVCFMT_LEFT, 200, 0);
+	pList->InsertColumn(1, "Script", LVCFMT_LEFT, 200, 2);
+	pList->InsertColumn(2, "Trigger", LVCFMT_LEFT, 200, 3);
+	pList->InsertColumn(3, "Priority", LVCFMT_LEFT, 50, 1);
+	pList->InsertColumn(4, "Origin", LVCFMT_LEFT, 50, 4);
+	pList->InsertColumn(5, "Index", LVCFMT_LEFT, 50, 5); // required to hold our proper indexes - Adriane [Deathscythe]
 
 
 	CListBox *players = (CListBox*)GetDlgItem(IDC_PLAYER_LIST);
@@ -223,6 +313,13 @@ BOOL CTeamsDialog::OnInitDialog()
 
 void CTeamsDialog::OnOK()
 {
+    // Save current selection
+    std::vector<Coord3D> selectedPositions;
+    for (MapObject* pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
+        if (pObj->isSelected())
+            selectedPositions.push_back(*pObj->getLocation());
+    }
+
 	Bool modified = m_sides.validateSides();
 	(void)modified;
 	DEBUG_ASSERTLOG(!modified,("had to clean up sides in CTeamsDialog::OnOK"));
@@ -233,6 +330,18 @@ void CTeamsDialog::OnOK()
 	REF_PTR_RELEASE(pUndo); // belongs to pDoc now.
 
 	thePrevCurTeam = m_curTeam;
+
+    // Restore selection
+    for (MapObject* pObjb = MapObject::getFirstMapObject(); pObjb; pObjb = pObjb->getNext()) {
+        pObjb->setSelected(false);
+
+        for (std::vector<Coord3D>::size_type i = 0; i < selectedPositions.size(); ++i) {
+            if (*pObjb->getLocation() == selectedPositions[i]) {
+                pObjb->setSelected(true);
+                break; // no need to check the rest
+            }
+        }
+    }
 
 	CDialog::OnOK();
 }
@@ -309,25 +418,72 @@ void CTeamsDialog::OnEditTemplate()
 	TeamGeneric generic;
 	generic.setTeamDict(m_sides.getTeamInfo(m_curTeam)->getDict());
 
-	TeamObjectProperties object(m_sides.getTeamInfo(m_curTeam)->getDict());
+	// Unused and useless
+	// TeamObjectProperties object(m_sides.getTeamInfo(m_curTeam)->getDict());
+
+	// editDialog.AddPage(&reinforcements);
+	// editDialog.AddPage(&identity);
+	// // editDialog.AddPage(&reinforcements);
+	// editDialog.AddPage(&behavior);
+	// editDialog.AddPage(&generic);
+	// // editDialog.AddPage(&object);
+	// editDialog.SetActivePage(&identity); 
 
 	editDialog.AddPage(&identity);
 	editDialog.AddPage(&reinforcements);
 	editDialog.AddPage(&behavior);
 	editDialog.AddPage(&generic);
-	editDialog.AddPage(&object);
+	// editDialog.AddPage(&object);
+	// editDialog.SetActivePage(&identity); 
 
 	if (IDOK == editDialog.DoModal()) {
 	}
 	updateUI(REBUILD_ALL);
 }
 
-void CTeamsDialog::UpdateTeamsList()
+// Center the selected item vertically in the list -- this works but feels janky (Adriane)
+// void CenterItemInListCtrl(CListCtrl* pList, int index)
+// {
+// 	if (!pList || index < 0)
+// 		return;
+
+// 	CRect itemRect;
+// 	if (!pList->GetItemRect(index, &itemRect, LVIR_BOUNDS))
+// 		return;
+
+// 	CRect clientRect;
+// 	pList->GetClientRect(&clientRect);
+
+// 	int itemHeight = itemRect.Height();
+// 	if (itemHeight <= 0)
+// 		return;
+
+// 	// Get top visible item
+// 	int topIndex = pList->GetTopIndex();
+// 	int visibleCount = pList->GetCountPerPage();
+
+// 	// Desired top index to center the target item
+// 	int targetTopIndex = max(index - visibleCount / 2, 0);
+
+// 	// Scroll by the delta
+// 	int delta = targetTopIndex - topIndex;
+// 	if (delta != 0)
+// 	{
+// 		CSize scrollAmount(0, delta * itemHeight);
+// 		pList->Scroll(scrollAmount);
+// 	}
+// }
+
+void CTeamsDialog::UpdateTeamsList() 
 {
 	CListCtrl *pList = (CListCtrl *)GetDlgItem(IDC_TEAMS_LIST);
-	pList->DeleteAllItems();
+	
+	pList->SetRedraw(FALSE);  // Stop redrawing
+	pList->DeleteAllItems();  // Clear items
+
 	CListBox *players = (CListBox*)GetDlgItem(IDC_PLAYER_LIST);
 
+	Int selectedListIndex = -1;
 	Int which = players->GetCurSel();
 	if (which < 0)
 		return;
@@ -350,28 +506,43 @@ void CTeamsDialog::UpdateTeamsList()
 			AsciiString trigger = ti->getDict()->getAsciiString(TheKey_teamProductionCondition, &exists);
 
 			pList->InsertItem(LVIF_TEXT, inserted, teamName.str(), 0, 0, 0, 0);
-			pList->SetItemText(inserted, 1, waypoint.str());
-			pList->SetItemText(inserted, 2, pri);
-			pList->SetItemText(inserted, 3, script.str());
-			pList->SetItemText(inserted, 4, trigger.str());
+			
+			pList->SetItemText(inserted, 1, script.str());
+			pList->SetItemText(inserted, 2, trigger.str());
+			pList->SetItemText(inserted, 3, pri);
+			pList->SetItemText(inserted, 4, waypoint.str());
+
+			CString indexStr;
+			indexStr.Format(TEXT("%d"), i); 
+			pList->SetItemText(inserted, 5, indexStr);
 
 			pList->SetItemData(inserted, i);
 			if (m_curTeam == i) {
 				selected = true;
+				selectedListIndex = inserted;
 				pList->SetItemState(inserted, LVIS_SELECTED, LVIS_SELECTED);
 				pList->EnsureVisible(inserted, false);
 			}
 			inserted++;
 		}
 	}
+
+	pList->SetRedraw(TRUE);   // Enable redrawing
+	pList->Invalidate();      // Force a redraw
+
 	if (!selected) {
 		m_curTeam = -1;
 		if (inserted > 0) {
 			m_curTeam = pList->GetItemData(0);
 			pList->SetItemState(0, LVIS_SELECTED, LVIS_SELECTED);
 			pList->EnsureVisible(0, false);
-		}
+			selectedListIndex = 0;
+		} 
 	}
+
+	// if (selectedListIndex >= 0) {
+	// 	CenterItemInListCtrl(pList, selectedListIndex);
+	// }
 }
 
 void CTeamsDialog::OnSelchangePlayerList()
@@ -432,8 +603,8 @@ void CTeamsDialog::OnCopyteam()
 void CTeamsDialog::OnSelectTeamMembers()
 {
 	Int count = 0;
-	Dict d = *m_sides.getTeamInfo(m_curTeam)->getDict();
-	AsciiString teamName = d.getAsciiString(TheKey_teamName);
+	// Caball009's fix for selecting neutral team members
+	AsciiString teamName = (m_curTeam == -1) ? "team" : m_sides.getTeamInfo(m_curTeam)->getDict()->getAsciiString(TheKey_teamName);
 	Coord3D pos;
 	MapObject *pObj;
 	for (pObj=MapObject::getFirstMapObject(); pObj; pObj=pObj->getNext()) {
@@ -459,124 +630,103 @@ void CTeamsDialog::OnSelectTeamMembers()
 	::AfxMessageBox(info, MB_OK);
 }
 
-/** This function moves a team up the list in the teams list dialog */
-void CTeamsDialog::OnMoveUpTeam()
+int CTeamsDialog::findPrevTeamIndex(int curIndex)
 {
-	// don't move up if already at top of list
-	if (m_curTeam <= 1)
-		return;
+    CListCtrl* pList = (CListCtrl*)GetDlgItem(IDC_TEAMS_LIST);
+    int totalTeams = pList->GetItemCount();
 
-	Dict temp, current;
-	int startRemove;
-	int totalTeams = m_sides.getNumTeams();
+    for (int i = 1; i < totalTeams; i++)  // Start from 1 to avoid out-of-bounds
+    {
+        CString indexStr = pList->GetItemText(i, 5);  // Column 1 holds the actual index
+        int actualIndex = _ttoi(indexStr);
 
-	// iterates through all modified entries in the teams list
-	for (int i=m_curTeam-1; i<totalTeams; i++)
-	{
+        if (actualIndex == curIndex) 
+        {
+            // Get the previous team's index (could be 2-3 indices apart)
+            CString prevIndexStr = pList->GetItemText(i - 1, 5);
+            return _ttoi(prevIndexStr);
+        }
+    }
+    return -1;  // No valid previous team found
+}
 
-		/* saves the one right above the selected team, then deletes it
-		 from the list */
-		if (i == (m_curTeam-1)) {
-			temp = *m_sides.getTeamInfo(i)->getDict();
-			m_sides.removeTeam(i);
-			startRemove = i;
-		}
 
-		/* saves the selected item, deletes from the list, then adds it
-		 to the bottom of the list -- then adds the saved "temp" item
-		 to the bottom of the list */
-		else if (i == m_curTeam) {
-			current = *m_sides.getTeamInfo(startRemove)->getDict();
-			m_sides.removeTeam(startRemove);
-			m_sides.addTeam(&current);
-			m_sides.addTeam(&temp);
-		}
 
-		/* saves each following item, deletes from the list, and then
-		 adds it to the bottom of the list */
-		else if (i > m_curTeam) {
-			current = *m_sides.getTeamInfo(startRemove)->getDict();
-			m_sides.removeTeam(startRemove);
-			m_sides.addTeam(&current);
-		}
-	}
+/**
+ * Adriane [Deathscythe]
+ * Refactored by chatGPT and seemed to work -- nice vibe coding eh..
+ */
+/** This function moves a team up the list in the teams list dialog */
+void CTeamsDialog::OnMoveUpTeam() 
+{
+    // Don't move up if already at the top
+    if (m_curTeam <= 0)
+        return;
 
-	// modify cursor
-	m_curTeam--;
+    // Find the actual previous team index in the UI order
+    int prevIndex = findPrevTeamIndex(m_curTeam);
+    if (prevIndex == -1 || prevIndex < 0) 
+        return;  // No valid previous team to swap with
 
-	// rebuild user interface to reflect changes
-/*
-	LVITEM *pItem = nullptr;
-	CListCtrl* pList = (CListCtrl*) GetDlgItem(IDC_TEAMS_LIST);
-	Bool result = pList->GetItem(pItem);
-	pList->DeleteItem(m_curTeam);
-	pList->InsertItem(pItem);
-	for (i=0; i<m_sides.getNumTeams(); i++)
-		pList->Update(i);
-	pList->SetItemState(m_curTeam, LVIS_SELECTED, LVIS_SELECTED);
-*/
-	updateUI(REBUILD_ALL);
+    // Swap the selected team with the previous team
+    Dict* currentTeam = m_sides.getTeamInfo(m_curTeam)->getDict();
+    Dict* prevTeam = m_sides.getTeamInfo(prevIndex)->getDict();
+    std::swap(*currentTeam, *prevTeam);
+
+    // Move cursor to new position
+    m_curTeam = prevIndex;
+
+    // Update UI
+    updateUI(REBUILD_ALL);
 }
 
 /// This function moves a team down the list in the teams list dialog
 void CTeamsDialog::OnMoveDownTeam()
 {
-	// don't move down if already at bottom of list
-	if (m_curTeam >= m_sides.getNumTeams()-1)
+	// Don't move down if already at the bottom
+	if (m_curTeam >= m_sides.getNumTeams() - 1)
 		return;
 
-	Dict temp, current;
-	int startRemove;
-	int totalTeams = m_sides.getNumTeams();
+	// Find the actual next team's index based on the UI list
+	int nextIndex = findNextTeamIndex(m_curTeam);
+	if (nextIndex == -1 || nextIndex >= m_sides.getNumTeams()) 
+		return;  // No valid next team to swap with
 
-	// iterates through all modified entries in the teams list
-	for (int i=m_curTeam; i<totalTeams; i++)
-	{
+	// Swap the selected team with the next team
+	Dict* currentTeam = m_sides.getTeamInfo(m_curTeam)->getDict();
+	Dict* nextTeam = m_sides.getTeamInfo(nextIndex)->getDict();
+	std::swap(*currentTeam, *nextTeam);
 
-		/* saves the  selected team, then deletes it
-		 from the list */
-		if (i == m_curTeam) {
-			temp = *m_sides.getTeamInfo(i)->getDict();
-			m_sides.removeTeam(i);
-			startRemove = i;
-		}
+	// Move cursor to new position
+	m_curTeam = nextIndex;
 
-		/* saves the one right after the selected item, deletes it from the list,
-		 then adds it to the bottom of the list -- then adds the saved "temp" item
-		 to the bottom of the list */
-		else if (i == (m_curTeam+1)) {
-			current = *m_sides.getTeamInfo(startRemove)->getDict();
-			m_sides.removeTeam(startRemove);
-			m_sides.addTeam(&current);
-			m_sides.addTeam(&temp);
-		}
-
-		/* saves each following item, deletes from the list, and then
-		 adds it to the bottom of the list */
-		else if (i > m_curTeam+1) {
-			current = *m_sides.getTeamInfo(startRemove)->getDict();
-			m_sides.removeTeam(startRemove);
-			m_sides.addTeam(&current);
-		}
-	}
-
-	// modify cursor
-	m_curTeam++;
-
-	// rebuild user interface to reflect changes
-/*	LVITEM *pItem = nullptr;
-	CListCtrl* pList = (CListCtrl*) GetDlgItem(IDC_TEAMS_LIST);
-	Bool result = pList->GetItem(pItem);
-	pList->DeleteItem(m_curTeam);
-	pList->InsertItem(pItem);
-	for (i=0; i<m_sides.getNumTeams(); i++)
-		pList->Update(i);
-	pList->SetItemState(m_curTeam, LVIS_SELECTED, LVIS_SELECTED);
-*/
+	// Update UI
 	updateUI(REBUILD_ALL);
 }
 
-void CTeamsDialog::validateTeamOwners()
+// Helper function to find the next team's actual index in the UI
+int CTeamsDialog::findNextTeamIndex(int curIndex)
+{
+	CListCtrl* pList = (CListCtrl*)GetDlgItem(IDC_TEAMS_LIST);
+	int totalTeams = pList->GetItemCount();
+
+	for (int i = 0; i < totalTeams; i++) 
+	{
+		CString indexStr = pList->GetItemText(i, 5);  // Column 1 holds the actual index
+		int actualIndex = _ttoi(indexStr);
+
+		if (actualIndex == curIndex && i + 1 < totalTeams) 
+		{
+			// Get the next team's index from the UI list
+			CString nextIndexStr = pList->GetItemText(i + 1, 5);
+			return _ttoi(nextIndexStr);
+		}
+	}
+	return -1;  // No valid next team found
+}
+
+
+void CTeamsDialog::validateTeamOwners( void )
 {
 	Int numTeams = m_sides.getNumTeams();
 	for (Int i = 0; i < numTeams; ++i) {
@@ -633,6 +783,16 @@ Bool CTeamsDialog::isValidTeamOwner( AsciiString ownerName )
 
 void CTeamsDialog::doCorrectTeamOwnerDialog( TeamsInfo *ti )
 {
+#ifdef RTS_HAS_QT
+	{
+		char qtOwner[256];
+		if (WBQtFixTeamOwner_Run(ti, &m_sides, ::AfxGetMainWnd()->GetSafeHwnd(), qtOwner, sizeof(qtOwner)) != 0)
+		{
+			ti->getDict()->setAsciiString(TheKey_teamOwner, AsciiString(qtOwner));
+		}
+		return;
+	}
+#endif
 	CFixTeamOwnerDialog fix(ti, &m_sides);
 	if (fix.DoModal() == IDOK) {
 		if (fix.pickedValidTeam()) {
@@ -641,3 +801,244 @@ void CTeamsDialog::doCorrectTeamOwnerDialog( TeamsInfo *ti )
 	}
 }
 
+// This shit is copied directly from the script dialog cpp
+class LocalMFCFileOutputStream : public OutputStream
+{
+protected:
+	CFile *m_file;
+public:
+	LocalMFCFileOutputStream(CFile *pFile):m_file(pFile) {};
+	virtual Int write(const void *pData, Int numBytes) {
+		Int numBytesWritten = 0;
+		try {
+			m_file->Write(pData, numBytes);
+			numBytesWritten = numBytes;
+		} catch(std::exception&)  {
+			DEBUG_CRASH(("threw exception in LocalMFCFileOutputStream"));
+		}
+		return(numBytesWritten);
+	};
+};
+
+
+void CTeamsDialog::OnExportTeams()
+{
+    // Get the selected player
+    CListBox *players = (CListBox*)GetDlgItem(IDC_PLAYER_LIST);
+    Int selectedPlayer = players->GetCurSel();
+    
+    if (selectedPlayer < 1) {
+        AfxMessageBox("Please select a valid player first!", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    AsciiString selectedPlayerName = playerNameForUI(m_sides, selectedPlayer);
+    
+    CFileDialog dlg(FALSE, ".teams", "exportedteams.teams",
+        OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+        "Team Export (*.teams)|*.teams||");
+
+    if (dlg.DoModal() == IDCANCEL)
+        return;
+
+    CString path = dlg.GetPathName();
+
+    try {
+        CFile f(path,
+            CFile::modeCreate | CFile::modeWrite |
+            CFile::shareDenyWrite | CFile::typeBinary);
+
+        LocalMFCFileOutputStream stream(&f);
+        DataChunkOutput out(&stream);
+
+		DEBUG_LOG(("ExportTeams: opening ScriptTeams chunk\n"));
+        // Open the main chunk
+        out.openDataChunk("ScriptTeams", K_LOCAL_TEAMS_VERSION_1);
+
+        // Count and export only teams belonging to selected player
+        int exportedCount = 0;
+
+        for (int i = 0; i < m_sides.getNumTeams(); i++)
+        {
+            TeamsInfo* ti = m_sides.getTeamInfo(i);
+            if (!ti) continue;
+
+			// Skip default teams
+			if (m_sides.isPlayerDefaultTeam(ti))
+				continue;
+
+            Dict* d = ti->getDict();
+            if (!d) continue;
+
+			DEBUG_LOG(("ExportTeams: writing team dict '%s'\n",
+				d->getAsciiString(TheKey_teamName).str()));
+            // Only export teams that belong to the selected player
+            AsciiString teamOwner = d->getAsciiString(TheKey_teamOwner);
+            if (teamOwner == selectedPlayerName.str()) {
+                out.writeDict(*d);
+                exportedCount++;
+            }
+        }
+
+        out.closeDataChunk();
+        // f.Close(); // Do not close explicitly, will be closed in destructor
+
+        if (exportedCount == 0) {
+            AfxMessageBox("No teams found for the selected player!", MB_OK | MB_ICONWARNING);
+        } else {
+            CString msg;
+            msg.Format("Successfully exported %d team(s) from player '%s' to:\n%s", 
+                exportedCount, selectedPlayerName.str(), path);
+            AfxMessageBox(msg, MB_OK | MB_ICONINFORMATION);
+        }
+
+    } catch(...) {
+        AfxMessageBox("Error writing team export file!", MB_OK | MB_ICONERROR);
+        DEBUG_CRASH(("Exception in OnExportTeams"));
+    }
+}
+
+void CTeamsDialog::OnImportTeams()
+{
+
+	CListBox *players = (CListBox*)GetDlgItem(IDC_PLAYER_LIST);
+	Int selectedPlayer = players->GetCurSel();
+
+	if (selectedPlayer < 1) {
+		AfxMessageBox("Please select a valid player first!", MB_OK | MB_ICONWARNING);
+		return;
+	}
+
+	AsciiString selectedPlayerName = playerNameForUI(m_sides, selectedPlayer);
+
+	m_importTargetPlayer = selectedPlayerName;
+
+    CFileDialog dlg(TRUE, ".teams", NULL, 
+        OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
+        "Team Export (*.teams)|*.teams||");
+
+    if (dlg.DoModal() == IDCANCEL)
+        return;
+
+    CString path = dlg.GetPathName();
+
+    try {
+        CachedFileInputStream in;
+        if (!in.open(AsciiString(path))) {
+            AfxMessageBox("Could not open team file!", MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        DataChunkInput reader(&in);
+
+        // Register the parser - note we pass 'this' as userData
+        reader.registerParser(
+            AsciiString("ScriptTeams"), 
+            AsciiString::TheEmptyString, 
+            ParseTeamsDataChunk
+        );
+
+        // Parse the file
+        if (!reader.parse(this)) {
+            AfxMessageBox("Error parsing team export file!\nFile may be corrupt or incompatible.", 
+                MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        // Validate all team owners after import
+        validateTeamOwners();
+
+        // Update UI to show imported teams
+        updateUI(REBUILD_ALL);
+
+        AfxMessageBox("Teams imported successfully!", MB_OK | MB_ICONINFORMATION);
+
+    } catch(...) {
+        AfxMessageBox("Exception occurred while importing teams!", MB_OK | MB_ICONERROR);
+        DEBUG_CRASH(("Exception in OnImportTeams"));
+    }
+}
+
+AsciiString MakeUniqueTeamName(
+    SidesList &sidesList,
+    const AsciiString &baseName)
+{
+    // If unused, return as-is
+    if (!sidesList.findTeamInfo(baseName) &&
+        !sidesList.findSideInfo(baseName))
+    {
+        return baseName;
+    }
+
+    Int index = 1;
+    AsciiString candidate;
+
+    do {
+        char buf[256];
+        sprintf(buf, "%s_%d", baseName.str(), index);
+        candidate = AsciiString(buf);
+        index++;
+    }
+    while (
+        sidesList.findTeamInfo(candidate) ||
+        sidesList.findSideInfo(candidate)
+    );
+
+    return candidate;
+}
+
+Bool CTeamsDialog::ParseTeamsDataChunk(
+    DataChunkInput &file,
+    DataChunkInfo *info,
+    void *userData)
+{
+    CTeamsDialog *pThis = (CTeamsDialog *)userData;
+    if (!pThis) return false;
+
+    const AsciiString &targetPlayer = pThis->m_importTargetPlayer;
+
+    while (!file.atEndOfChunk()) {
+        Dict teamDict = file.readDict();
+
+        // Replace owner unconditionally
+        teamDict.setAsciiString(TheKey_teamOwner, targetPlayer);
+
+        AsciiString teamName = teamDict.getAsciiString(TheKey_teamName);
+
+        // Skip duplicates
+        // if (pThis->m_sides.findTeamInfo(teamName)) {
+        //     DEBUG_LOG(("Skipping duplicate team %s\n", teamName.str()));
+        //     continue;
+        // }
+
+
+		// Skip default teams
+		// TeamsInfo tempInfo(&teamDict);
+		// if (pThis->m_sides.isPlayerDefaultTeam(&tempInfo)) {
+		// 	DEBUG_LOG(("Skipping default team '%s' on import\n",
+		// 		teamDict.getAsciiString(TheKey_teamName).str()));
+		// 	continue;
+		// }
+
+		// Ensure unique name
+		AsciiString uniqueName = MakeUniqueTeamName(
+			pThis->m_sides,
+			teamName
+		);
+
+		if (uniqueName != teamName) {
+			DEBUG_LOG((
+				"Renaming imported team %s -> %s\n",
+				teamName.str(),
+				uniqueName.str()
+			));
+			teamDict.setAsciiString(TheKey_teamName, uniqueName);
+		}
+
+
+
+        pThis->m_sides.addTeam(&teamDict);
+    }
+
+    return true;
+}

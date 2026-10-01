@@ -60,6 +60,11 @@
 #include "W3DDevice/GameClient/FlatHeightMap.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DBloom.h"
+#include "W3DDevice/GameClient/W3DSoftParticles.h"
+#include "W3DDevice/GameClient/W3DShockwave.h"
+#include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
+#include "W3DDevice/GameClient/W3DLaserGlow.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "WW3D2/light.h"
 #include "WW3D2/rendobj.h"
@@ -205,6 +210,20 @@ W3DTerrainVisual::~W3DTerrainVisual()
 	delete TheW3DBloom;
 	TheW3DBloom = nullptr;
 
+	delete TheW3DSoftParticles;
+	TheW3DSoftParticles = nullptr;
+
+	delete TheW3DShockwaves;
+	TheW3DShockwaves = nullptr;
+
+	delete TheW3DAmbientOcclusion;
+	TheW3DAmbientOcclusion = nullptr;
+	delete TheW3DSkyClouds;
+	TheW3DSkyClouds = nullptr;
+
+	delete TheW3DLaserGlow;
+	TheW3DLaserGlow = nullptr;
+
 	REF_PTR_RELEASE( m_waterRenderObject );
 	TheWaterRenderObj=nullptr;
 	REF_PTR_RELEASE( m_terrainRenderObject );
@@ -248,6 +267,11 @@ void W3DTerrainVisual::init()
 		TheSmudgeManager->init();
 
 		TheW3DBloom = NEW W3DBloom;
+		TheW3DSoftParticles = NEW W3DSoftParticles;
+		TheW3DShockwaves = NEW W3DShockwaveManager;
+		TheW3DAmbientOcclusion = NEW W3DAmbientOcclusion;
+		TheW3DSkyClouds = NEW W3DSkyClouds;
+		TheW3DLaserGlow = NEW W3DLaserGlow;
 
 #ifdef DO_UNIT_TIMINGS
 #pragma MESSAGE("********************* WARNING- Doing UNIT TIMINGS. ")
@@ -648,27 +672,39 @@ Bool W3DTerrainVisual::load( AsciiString filename )
 		pMapObj = pMapObj->getNext();
 	}
 
-
-	RefRenderObjListIterator *it = W3DDisplay::m_3DScene ? W3DDisplay::m_3DScene->createLightsIterator() : nullptr;
 	// apply the heightmap to the terrain render object
+	if (W3DDisplay::m_3DScene != nullptr)
+	{
+		RefRenderObjListClass* lightlist = W3DDisplay::m_3DScene->getLightList();
+		RefRenderObjListIterator it(lightlist);
 
 #ifdef DO_SEISMIC_SIMULATIONS
-	m_terrainRenderObject->initHeightData( m_clientHeightMap->getDrawWidth(),
-																				 m_clientHeightMap->getDrawHeight(),
-																				 m_clientHeightMap,
-																				 it);
+		m_terrainRenderObject->initHeightData(m_clientHeightMap->getDrawWidth(),
+			m_clientHeightMap->getDrawHeight(),
+			m_clientHeightMap,
+			&it);
 #else
-	m_terrainRenderObject->initHeightData( m_logicHeightMap->getDrawWidth(),
-																				 m_logicHeightMap->getDrawHeight(),
-																				 m_logicHeightMap,
-																				 it);
+		m_terrainRenderObject->initHeightData(m_logicHeightMap->getDrawWidth(),
+			m_logicHeightMap->getDrawHeight(),
+			m_logicHeightMap,
+			&it);
 #endif
-
-
-	if (it) {
-	 W3DDisplay::m_3DScene->destroyLightsIterator(it);
-	 it = nullptr;
 	}
+	else
+	{
+#ifdef DO_SEISMIC_SIMULATIONS
+		m_terrainRenderObject->initHeightData(m_clientHeightMap->getDrawWidth(),
+			m_clientHeightMap->getDrawHeight(),
+			m_clientHeightMap,
+			nullptr);
+#else
+		m_terrainRenderObject->initHeightData(m_logicHeightMap->getDrawWidth(),
+			m_logicHeightMap->getDrawHeight(),
+			m_logicHeightMap,
+			nullptr);
+#endif
+	}
+
 	// add our terrain render object to the scene
 	if (W3DDisplay::m_3DScene != nullptr)
 		W3DDisplay::m_3DScene->Add_Render_Object( m_terrainRenderObject );
@@ -946,6 +982,8 @@ void W3DTerrainVisual::setRawMapHeight(const ICoord2D *gridPos, Int height)
 		{
 			m_logicHeightMap->setRawHeight(x, y, height);
 			m_terrainRenderObject->staticLightingChanged(); // OOH! this could benefit from the new Seismic update code
+			if (TheWaterRenderObj)
+				TheWaterRenderObj->markHeightTextureDirty();
 
 
 #ifdef DO_SEISMIC_SIMULATIONS

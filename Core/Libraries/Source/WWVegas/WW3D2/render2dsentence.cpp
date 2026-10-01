@@ -40,6 +40,7 @@
 #include "WWDebug/wwprofile.h"
 #include "WWDebug/wwmemlog.h"
 #include "dx8wrapper.h"
+#include "statistics.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -359,6 +360,7 @@ Render2DSentenceClass::Build_Textures ()
 		//	Create the new texture
 		//
 		TextureClass *new_texture = W3DNEW TextureClass (desc.Width, desc.Width, WW3D_FORMAT_A4R4G4B4, MIP_LEVELS_1);
+		Debug_Statistics::Record_Text_Texture ();
 		SurfaceClass *texture_surface = new_texture->Get_Surface_Level ();
 
 		new_texture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
@@ -677,6 +679,13 @@ Render2DSentenceClass::Allocate_New_Surface (const WCHAR *text, bool justCalcExt
 		//
 		CurSurface = NEW_REF (SurfaceClass, (CurrTextureSize, CurrTextureSize, WW3D_FORMAT_A4R4G4B4));
 		WWASSERT (CurSurface != nullptr);
+
+		if (CurSurface != NULL && !CurSurface->Is_Valid()) {
+			REF_PTR_RELEASE(CurSurface);
+			CurSurface = NULL;
+			return;
+		}
+
 		CurSurface->Add_Ref ();
 
 		//

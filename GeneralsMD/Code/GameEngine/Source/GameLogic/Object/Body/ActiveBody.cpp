@@ -174,6 +174,7 @@ ActiveBody::ActiveBody( Thing *thing, const ModuleData* moduleData ) :
 	m_particleSystems(nullptr),
 	m_currentSubdualDamage(0),
 	m_currentJammingDamage(0),
+	m_isJammed(FALSE),
 	m_jammingSetUnselectable(FALSE),
 	m_currentFrozenDamage(0),
 	m_indestructible(false),
@@ -576,18 +577,19 @@ void ActiveBody::attemptDamage( DamageInfo *damageInfo )
 
 	if( IsSubdualJammingDamage(damageInfo->in.m_damageType) )
 	{
-		if( !canBeJammed() )
+		// a unit that can no longer be jammed must still be able to heal off a jam it already has
+		if( !canBeJammed() && amount >= 0.0f )
 			return;
 
-		Bool wasJammed = isJammed();
+		Bool wasJammed = m_isJammed;
 		internalAddJammingDamage(amount);
-		Bool nowJammed = m_maxHealth <= m_currentJammingDamage;
+		m_isJammed = m_maxHealth <= m_currentJammingDamage;
 		alreadyHandled = TRUE;
 		allowModifier = FALSE;
 
-		if( wasJammed != nowJammed )
+		if( wasJammed != m_isJammed )
 		{
-			onJammingChange(nowJammed);
+			onJammingChange(m_isJammed);
 		}
 
 		getObject()->notifyJammingDamage(amount);
@@ -1544,7 +1546,7 @@ Bool ActiveBody::canBeJammed() const
 //-------------------------------------------------------------------------------------------------
 Bool ActiveBody::isJammed() const
 {
-	return m_maxHealth <= m_currentJammingDamage;
+	return m_isJammed;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1577,6 +1579,12 @@ void ActiveBody::onJammingChange( Bool isNowJammed )
 		if( m_jammingSetUnselectable )
 		{
 			me->setStatus(MAKE_OBJECT_STATUS_MASK(OBJECT_STATUS_UNSELECTABLE));
+		}
+
+		// the status alone only blocks a new click, so drop the jammed unit out of the selection too
+		if( me->getDrawable() )
+		{
+			TheInGameUI->deselectDrawable( me->getDrawable() );
 		}
 
 		ContainModuleInterface *contain = me->getContain();
@@ -2070,7 +2078,7 @@ void ActiveBody::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 3;
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2185,6 +2193,15 @@ void ActiveBody::xfer( Xfer *xfer )
 	if( version >= 3 )
 	{
 		xfer->xferReal( &m_currentFrozenDamage );
+	}
+
+	if( version >= 4 )
+	{
+		xfer->xferBool( &m_isJammed );
+	}
+	else if( xfer->getXferMode() == XFER_LOAD )
+	{
+		m_isJammed = m_maxHealth <= m_currentJammingDamage;
 	}
 
 }

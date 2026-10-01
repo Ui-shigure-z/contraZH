@@ -73,9 +73,8 @@ void showNotificationBox(AsciiString nick, UnicodeString message, bool bPlaySoun
 #define GENERALS_ONLINE_MIN_LOBBY_CAMERA_ZOOM 210
 #define GENERALS_ONLINE_MAX_LOBBY_CAMERA_ZOOM 1000
 
-// contraZH port: the 60 Hz simulation belongs to GO's engine-feel fork, which is not
-// ported. This build is a 30 Hz client (client id "gen_online_30hz").
-//#define GENERALS_ONLINE_HIGH_FPS_SERVER 1
+// contraZH port: GENERALS_ONLINE_HIGH_FPS_SERVER comes from GeneralsMD/Code/CMakeLists.txt
+// so WWLib (built without GO headers) sees the same switch.
 
 #if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
 #define GENERALS_ONLINE_CLIENT_ID "gen_online_60hz"

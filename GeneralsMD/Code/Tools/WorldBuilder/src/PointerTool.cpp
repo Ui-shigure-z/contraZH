@@ -35,6 +35,25 @@
 #include "GameLogic/PolygonTrigger.h"
 #include "wbview3d.h"
 #include "ObjectTool.h"
+#include "ToastDialog.h"
+#include "WBTutorialPrompts.h"
+#ifdef RTS_HAS_QT
+#include "qt/WBQtToast.h"
+#endif
+#include "DrawObject.h"
+#include "MinimapDialog.h"	// notifySelectionChanged() updates the selection halos (self-gated)
+
+
+CString PointerTool::m_lastPointerInfo = _T("");
+Bool PointerTool::m_isMouseDown = false;
+Bool PointerTool::m_dragSelect = false;
+Bool PointerTool::m_dragDeselect = false;
+Bool PointerTool::m_pointerIsActive = false;
+Bool PointerTool::m_rotateObjectsWithGroup = true;
+Bool PointerTool::m_useFarthestObjectPivot = true;
+Bool PointerTool::m_groupRotateOptionsLoaded = false;
+
+static Bool g_PointerToolTip = false;
 
 //
 // Static helper functions
@@ -82,6 +101,92 @@ static void helper_pickAllWaypointsInPath( Int sourceID, CWorldBuilderDoc *pDoc,
 	}
 }
 
+
+
+//
+// Collect all connected road points starting from any road point.
+// Similar idea to the waypoint recursive spider, but uses next/prev logic.
+//
+static void selectAllConnectedRoadPoints(MapObject* startObj, Bool select)
+{
+	std::list<MapObject*> roadSegs;
+	std::list<MapObject*> connectedSegs;
+	for (MapObject* pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext()) 
+	{
+		if (pMapObj->getFlag(FLAG_ROAD_POINT1)) 
+		{
+			if (pMapObj->isSelected() || pMapObj->getNext() && pMapObj->getNext()->isSelected()) 
+			{
+				connectedSegs.push_back(pMapObj);
+			}
+			else 
+			{
+				roadSegs.push_back(pMapObj);
+			}
+		}
+	}
+	Bool changed = true;
+	while (changed) 
+	{
+		changed = false;
+		for (std::list<MapObject*>::iterator it = roadSegs.begin(); it != roadSegs.end(); ++it)
+		{
+			MapObject* o = *it;
+			const Coord3D *oLoc = o->getLocation();
+			const Coord3D *onLoc = o->getNext()->getLocation();
+			for (std::list<MapObject*>::iterator connected = connectedSegs.begin(); connected != connectedSegs.end(); ++connected)
+			{
+				MapObject* p = *connected;
+				const Coord3D *pLoc = p->getLocation();
+				const Coord3D *pnLoc = p->getNext()->getLocation();
+
+				Real dx1 = oLoc->x - pLoc->x;
+				Real dy1 = oLoc->y - pLoc->y;
+				dx1 = abs(dx1);
+				dy1 = abs(dy1);
+				Real qd1 = max(dx1, dy1);
+				//Real dist1 = sqrt(dx1*dx1+dy1*dy1);
+
+				Real dx2 = oLoc->x - pnLoc->x;
+				Real dy2 = oLoc->y - pnLoc->y;
+				dx2 = abs(dx2);
+				dy2 = abs(dy2);
+				Real qd2 = max(dx2, dy2);
+				//Real dist2 = sqrt(dx2*dx2+dy2*dy2);
+
+				Real dx3 = onLoc->x - pLoc->x;
+				Real dy3 = onLoc->y - pLoc->y;
+				dx3 = abs(dx3);
+				dy3 = abs(dy3);
+				Real qd3 = max(dx3, dy3);
+				//Real dist3 = sqrt(dx3*dx3+dy3*dy3);
+
+				Real dx4 = onLoc->x - pnLoc->x;
+				Real dy4 = onLoc->y - pnLoc->y;
+				dx4 = abs(dx4);
+				dy4 = abs(dy4);
+				Real qd4 = max(dx4, dy4);
+				//Real dist4 = sqrt(dx4*dx4+dy4*dy4);
+
+				if (qd1 < MAP_XY_FACTOR/100 || qd2 < MAP_XY_FACTOR/100 || qd3 < MAP_XY_FACTOR/100 || qd4 < MAP_XY_FACTOR/100) {
+					connectedSegs.push_back(o);
+					roadSegs.erase(it);
+					changed = true;
+					break;
+				}
+			}
+		}
+	}
+
+	for (std::list<MapObject*>::iterator connected = connectedSegs.begin(); connected != connectedSegs.end(); ++connected)
+	{
+		MapObject* p = *connected;
+		if (p) {
+			p->setSelected(true);
+			p->getNext()->setSelected(true);
+		}
+	}
+}
 //
 // PointerTool class.
 //
@@ -110,13 +215,19 @@ PointerTool::~PointerTool()
 	}
 }
 
+
+/**
+ * Adriane [Deathscythe]
+ * Edited the panel logic so it only shows the Map Objects panel when an object is clicked;
+ * otherwise, it hides the panel to save screen space.
+ */
 /// See if a single obj is selected that has properties.
 void PointerTool::checkForPropertiesPanel()
 {
 	MapObject *theMapObj = WaypointOptions::getSingleSelectedWaypoint();
 	PolygonTrigger *theTrigger = WaypointOptions::getSingleSelectedPolygon();
-	MapObject *theLightObj = LightOptions::getSingleSelectedLight();
-	MapObject *theObj = MapObjectProps::getSingleSelectedMapObject();
+	MapObject *theLightObj = LightOptions::getSingleSelectedLight(); 
+	MapObject *theObj = MapObjectProps::getSingleSelectedObject(); 
 	if (theMapObj) {
 		CMainFrame::GetMainFrame()->showOptionsDialog(IDD_WAYPOINT_OPTIONS);
 		WaypointOptions::update();
@@ -134,14 +245,20 @@ void PointerTool::checkForPropertiesPanel()
 	} else if (RoadOptions::selectionIsRoadsOnly()) {
 		CMainFrame::GetMainFrame()->showOptionsDialog(IDD_ROAD_OPTIONS);
 		RoadOptions::updateSelection();
-	} else {
+	} else if (theObj) {
 		CMainFrame::GetMainFrame()->showOptionsDialog(IDD_MAPOBJECT_PROPS);
 		MapObjectProps::update();
-		if (theObj) {
-			ObjectOptions::selectObject(theObj);
-		}
+		ObjectOptions::selectObject(theObj);
+	} else {
+		CMainFrame::GetMainFrame()->showOptionsDialog(IDD_NO_OPTIONS);
+		// Nothing relevant selected -- hide the current options panel
+		// if (CMainFrame::GetMainFrame()->m_curOptions) {
+		//     CMainFrame::GetMainFrame()->m_curOptions->ShowWindow(SW_HIDE);
+		//     CMainFrame::GetMainFrame()->m_curOptions = NULL;
+		// }
 	}
 }
+
 
 /// Clear the selection..
 void PointerTool::clearSelection() ///< Clears the selected objects selected flags.
@@ -173,6 +290,7 @@ void PointerTool::activate()
 	Tool::activate();
 	m_mouseUpRotate = false;
 	m_mouseUpMove = false;
+	m_pointerIsActive = true;
 	checkForPropertiesPanel();
 	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
 	if (pDoc==nullptr) return;
@@ -183,7 +301,10 @@ void PointerTool::activate()
 /// deactivate.
 void PointerTool::deactivate()
 {
-	m_curObject = nullptr;
+	m_curObject = NULL;
+	m_pointerIsActive = false;
+	m_dragSelect = false;
+	m_dragDeselect = false;
 	PolygonTool::deactivate();
 }
 
@@ -210,16 +331,40 @@ Bool PointerTool::allowPick(MapObject* pMapObj, WbView* pView)
 	EditorSortingType sort = ES_NONE;
 	if (!pMapObj) {
 		return false;
-	}
+	} 
+
 	const ThingTemplate *tt = pMapObj->getThingTemplate();
 	if (tt && tt->getEditorSorting() == ES_AUDIO) {
 		if (pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_AUDIO) {
 			return true;
 		}
 	}
+	
+	// Early reject roads if showRoads = false
+	if (pMapObj->getFlag(FLAG_ROAD_FLAGS) && !pView->getShowRoads()) {
+		return false;
+	}
+
+	// Early reject if models are hidden or object is invisible
 	if ((tt && !pView->getShowModels()) || (pMapObj->getFlags() & FLAG_DONT_RENDER)) {
 		return false;
 	}
+
+	// === Adriane [ Deathscythe ] NEW LOGIC: reject bridge points depending on constraint ===
+	if (pView->GetPickConstraint() != ES_NONE && pView->GetPickConstraint() != ES_ROAD) {
+		if (pMapObj->getFlag(FLAG_BRIDGE_POINT1) || pMapObj->getFlag(FLAG_BRIDGE_POINT2)) {
+			return false;
+		}
+	}
+
+	// === Adriane [ Deathscythe ] NEW LOGIC: reject Scorchmarks ===
+	if (pView->GetPickConstraint() != ES_NONE && pView->GetPickConstraint() != ES_DEBRIS) {
+		if (pMapObj->isScorch()) {
+			return false;
+		}
+	}
+
+	// Apply pick constraint type checks
 	if (pView->GetPickConstraint() != ES_NONE) {
 		if (tt) {
 			if (!pView->getShowModels()) {
@@ -231,13 +376,18 @@ Bool PointerTool::allowPick(MapObject* pMapObj, WbView* pView)
 				sort = ES_WAYPOINT;
 			}
 			if (pMapObj->getFlag(FLAG_ROAD_FLAGS)) {
-				sort = ES_ROAD;
+				if(!pView->getShowRoads()){
+					return false;
+				} else {
+					sort = ES_ROAD;
+				}
 			}
 		}
 		if (sort != ES_NONE && sort != pView->GetPickConstraint()) {
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -258,6 +408,9 @@ void PointerTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 	m_dragSelect = false;
 	Bool shiftKey = (0x8000 & ::GetAsyncKeyState(VK_SHIFT))!=0;
 	Bool ctrlKey = (0x8000 & ::GetAsyncKeyState(VK_CONTROL))!=0;
+	// Shift+Ctrl+drag on empty space removes the boxed objects from the selection.  Latch it
+	// here so the mode can't change if the keys come up part way through the drag.
+	m_dragDeselect = (shiftKey && ctrlKey);
 
 	m_doPolyTool = false;
 	if (pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_WAYPOINT) {
@@ -299,7 +452,7 @@ void PointerTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 		if (!allowPick(pObj, pView)) {
 			continue;
 		}
-		Bool picked = (pView->picked(pObj, cpt) != PICK_NONE);
+		Bool picked = (pView->picked(pObj, cpt, ctrlKey) != PICK_NONE);
 		if (picked) {
 			loc = *pObj->getLocation();
 			Real dx = m_downPt3d.x-loc.x;
@@ -335,12 +488,16 @@ void PointerTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 			if (ctrlKey && pClosestPicked->isWaypoint()) {
 				pickAllWaypointsInPath(pClosestPicked->getWaypointID(), true);
 			}
+			if (ctrlKey && (pClosestPicked->getFlags() & FLAG_ROAD_FLAGS))
+			{
+				selectAllConnectedRoadPoints(pClosestPicked, true);
+			}
 
 		}
 	}
 
 	// Grab both ends of a road.
-	if (pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_ROAD) {
+	if ((pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_ROAD) && pView->getShowRoads()) {
 		if (!shiftKey && pClosestPicked && (pClosestPicked->getFlags()&FLAG_ROAD_FLAGS) ) {
 			for (pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
 				if (pObj->getFlags()&FLAG_ROAD_FLAGS) {
@@ -358,9 +515,29 @@ void PointerTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 
 	if (anySelected) {
 		if (m_curObject) {
-			// See if we are picking on the arrow.
-			if (pView->picked(m_curObject, cpt) == PICK_ARROW) {
+			// See if we are picking on the arrow. 
+			if (pView->picked(m_curObject, cpt, ctrlKey) == PICK_ARROW) {
 				m_rotating = true;
+
+				if(!g_PointerToolTip && WBQtObject_GetTutorialPrompts()){
+#ifdef RTS_HAS_QT
+					if (WBQtToast_Show("Hold Ctrl to rotate as a group.\nSee Edit tab for rotation options.", 20000, 1))
+					{
+						g_PointerToolTip = true;
+					}
+					else
+					{
+#endif
+					CToastDialog* pToast = new CToastDialog(
+					_T("Hold Ctrl to rotate as a group.\nSee Edit tab for rotation options."),
+					20000, true);
+					pToast->Create(CToastDialog::IDD);
+					pToast->ShowWindow(SW_SHOWNOACTIVATE);
+					g_PointerToolTip = true;
+#ifdef RTS_HAS_QT
+					}
+#endif
+				}
 			}
 		}	else {
 			pObj = MapObject::getFirstMapObject();
@@ -375,125 +552,295 @@ void PointerTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorl
 		if (m_curObject) {
 			// adjust the starting point so if we are snapping, the object snaps as well.
 			loc = *m_curObject->getLocation();
+			float angleDeg = m_curObject->getAngle() * (180.0f / 3.14159265f);
 			Coord3D snapLoc = loc;
 			pView->snapPoint(&snapLoc);
 			m_downPt3d.x += (loc.x-snapLoc.x);
 			m_downPt3d.y += (loc.y-snapLoc.y);
+
+			CString text;
+			text.Format(_T("X: %.2f\nY: %.2f\nAngle: %.2f"), loc.x, loc.y, angleDeg);
+			m_lastPointerInfo = text;
+
 		}
 	}	else {
 		m_dragSelect = true;
 	}
+
+	m_isMouseDown = true;
+
 }
 
-/// Left button move code.
-void PointerTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
-{
-	Coord3D cpt;
-	pView->viewToDocCoords(viewPt, &cpt, false);
-	if (m == TRACK_NONE) {
-		// See if the cursor is over an object.
-		MapObject *pObj = MapObject::getFirstMapObject();
-		m_mouseUpRotate = false;
-		m_mouseUpMove = false;
-		while (pObj) {
-			if (allowPick(pObj, pView)) {
-				TPickedStatus stat = pView->picked(pObj, cpt);
-				if (stat==PICK_ARROW) {
-					m_mouseUpRotate = true;
-					break;
-				}
-				if (stat==PICK_CENTER) {
-					m_mouseUpMove = true;
-					break;
-				}
-			}
-			pObj = pObj->getNext();
-		}
-		if (!m_mouseUpRotate) {
-			pObj = pView->picked3dObjectInView(viewPt);
-			if (allowPick(pObj, pView)) {
-				m_mouseUpMove = true;
-			}
-		}
-		if (pView->isPolygonTriggerVisible() && pickPolygon(cpt, viewPt, pView)) {
-			if (pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_WAYPOINT) {
-				m_mouseUpMove = true;
-				m_mouseUpRotate = false;
-			}
-		}
-		return;	// setCursor will use the value of m_mouseUpRotate.  jba.
+bool m_groupRotationInit = false;
+float m_startGroupAngle = 0.0f;
+
+std::map<MapObject*, Coord3D> m_originalPositions;
+std::map<MapObject*, Real> m_originalAngles;
+std::vector<MapObject*> m_tempDeselectedRoads;
+void PointerTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) {
+    Coord3D cpt;
+    pView->viewToDocCoords(viewPt, &cpt, false);
+    Bool ctrlKey = (0x8000 & ::GetAsyncKeyState(VK_CONTROL)) != 0;
+	// Group-rotate options are cached statics; load them once (the menu handlers keep them
+	// current via setGroupRotateOptions()). This used to re-read the registry every move.
+	if (!m_groupRotateOptionsLoaded) {
+		m_rotateObjectsWithGroup = ::AfxGetApp()->GetProfileInt("MainFrame", "ToggleObjectRotationWithGroup", 1) != 0;
+		m_useFarthestObjectPivot = ::AfxGetApp()->GetProfileInt("MainFrame", "TogglePivotFarthest", 1) != 0;
+		m_groupRotateOptionsLoaded = true;
 	}
 
-	if (m != TRACK_L) return;
-	if (m_doPolyTool) {
-		PolygonTool::mouseMoved(m, viewPt, pView, pDoc);
-		return;
-	}
+	// ::MessageBeep(MB_OK); // BEEP BOOP
+    if (m == TRACK_NONE) {
+        MapObject *pObj = MapObject::getFirstMapObject();
+        m_mouseUpRotate = false;
+        m_mouseUpMove = false;
+        while (pObj) {
+			DrawObject::setForceDrawArrow(ctrlKey);
 
-	if (m_dragSelect) {
-		CRect box;
-		box.left = viewPt.x;
-		box.bottom = viewPt.y;
-		box.top = m_downPt2d.y;
-		box.right = m_downPt2d.x;
-		box.NormalizeRect();
-		pView->doRectFeedback(true, box);
+            if (allowPick(pObj, pView)) {
+                TPickedStatus stat = pView->picked(pObj, cpt, ctrlKey);
+                if (stat == PICK_ARROW) { m_mouseUpRotate = true; break; }
+                if (stat == PICK_CENTER) { m_mouseUpMove = true; break; }
+            }
+            pObj = pObj->getNext();
+        }
+        if (!m_mouseUpRotate) {
+            pObj = pView->picked3dObjectInView(viewPt);
+            if (allowPick(pObj, pView)) m_mouseUpMove = true;
+        }
+        if (pView->isPolygonTriggerVisible() && pickPolygon(cpt, viewPt, pView)) {
+            if (pView->GetPickConstraint() == ES_NONE || pView->GetPickConstraint() == ES_WAYPOINT) {
+                m_mouseUpMove = true;
+                m_mouseUpRotate = false;
+            }
+        }
+
+		// Call this ridiculously expensive redraw function every time the mouse moves
+		// Greatly smooths the framerate when just moving the mouse around, with or without any selection
+		// At the cost of your GPU usage 
 		pView->Invalidate();
-		return;
-	}
+		pDoc->updateAllViews();
+        return;
+    }
 
-	if (m_curObject == nullptr) {
-		return;
-	}
-	pView->viewToDocCoords(viewPt, &cpt, !m_rotating);
-	if (!m_moving) {
-		// always use view coords (not doc coords) for hysteresis
-		Int dx = viewPt.x-m_downPt2d.x;
-		Int dy = viewPt.y-m_downPt2d.y;
-		if (abs(dx)>HYSTERESIS || abs(dy)>HYSTERESIS) {
-			m_moving = true;
-			m_modifyUndoable = new ModifyObjectUndoable(pDoc);
-		}
-	}
-	if (!m_moving || !m_modifyUndoable) return;
+    if (m != TRACK_L) return;
 
-	MapObject *curMapObj = MapObject::getFirstMapObject();
-	while (curMapObj) {
-		if (curMapObj->isSelected()) {
-			//pDoc->invalObject(curMapObj);			// invaling in all views can be too slow.
-			pView->invalObjectInView(curMapObj);
-		}
-		curMapObj = curMapObj->getNext();
-	}
+    if (m_doPolyTool) {
+        PolygonTool::mouseMoved(m, viewPt, pView, pDoc);
+        return;
+    }
 
-	if (m_rotating) {
-		Coord3D center = *m_curObject->getLocation();
-		m_modifyUndoable->RotateTo(ObjectTool::calcAngle(center, cpt, pView));
-	} else {
-		pView->snapPoint(&cpt);
-		Real xOffset = (cpt.x-m_downPt3d.x);
-		Real yOffset = (cpt.y-m_downPt3d.y);
-		m_modifyUndoable->SetOffset(xOffset, yOffset);
-	}
+    if (m_dragSelect) {
+        CRect box;
+        box.left = viewPt.x;
+        box.bottom = viewPt.y;
+        box.top = m_downPt2d.y;
+        box.right = m_downPt2d.x;
+        box.NormalizeRect();
+        pView->doRectFeedback(true, box, m_dragDeselect);
+        pView->Invalidate();
+		pDoc->updateAllViews();
+        return;
+    }
 
-	curMapObj = MapObject::getFirstMapObject();
-	while (curMapObj) {
-		if (curMapObj->isSelected()) {
-			//pDoc->invalObject(curMapObj);			// invaling in all views can be too slow.
-			pView->invalObjectInView(curMapObj);
-		}
-		curMapObj = curMapObj->getNext();
-	}
+    if (m_curObject == NULL) return;
+    pView->viewToDocCoords(viewPt, &cpt, !m_rotating);
 
-	pDoc->updateAllViews();
+    if (!m_moving) {
+        Int dx = viewPt.x - m_downPt2d.x;
+        Int dy = viewPt.y - m_downPt2d.y;
+        if (abs(dx) > HYSTERESIS || abs(dy) > HYSTERESIS) {
+            m_moving = true;
+            m_modifyUndoable = new ModifyObjectUndoable(pDoc);
 
+            // Calculate group pivot when starting movement in group rotate mode
+            if (m_rotating && ctrlKey) {
+                Coord3D pivot = {0, 0, 0};
+
+                if (m_useFarthestObjectPivot) {
+                    // --- Farthest pivot mode ---
+                    float maxDistSq = -1.0f;
+                    MapObject *farthestObj = NULL;
+                    MapObject *obj = MapObject::getFirstMapObject();
+                    while (obj) {
+                        if (obj->isSelected()) {
+                            Coord3D loc = *obj->getLocation();
+                            float dx = loc.x - m_downPt3d.x;
+                            float dy = loc.y - m_downPt3d.y;
+                            float distSq = dx * dx + dy * dy;
+                            if (distSq > maxDistSq) {
+                                maxDistSq = distSq;
+                                farthestObj = obj;
+                            }
+                        }
+                        obj = obj->getNext();
+                    }
+                    if (farthestObj) {
+                        pivot = *farthestObj->getLocation();
+                    }
+                } else {
+                    // --- Default average pivot mode ---
+                    int count = 0;
+                    MapObject *obj = MapObject::getFirstMapObject();
+                    while (obj) {
+                        if (obj->isSelected()) {
+                            pivot.x += obj->getLocation()->x;
+                            pivot.y += obj->getLocation()->y;
+                            pivot.z += obj->getLocation()->z;
+                            count++;
+                        }
+                        obj = obj->getNext();
+                    }
+                    if (count > 0) {
+                        pivot.x /= count;
+                        pivot.y /= count;
+                        pivot.z /= count;
+                    }
+                }
+
+                m_groupPivot = pivot;
+                m_groupRotationInit = false;
+            }
+        }
+    }
+    if (!m_moving || !m_modifyUndoable) return;
+
+    MapObject *curMapObj = MapObject::getFirstMapObject();
+    while (curMapObj) {
+        if (curMapObj->isSelected()) {
+            pView->invalObjectInView(curMapObj);
+        }
+        curMapObj = curMapObj->getNext();
+    }
+
+    CString text;
+    if (m_rotating) {
+        if (ctrlKey) {
+            // --- FIXED GROUP ROTATION MODE ---
+            Coord3D pivot = m_groupPivot;
+
+            // On first move, store initial angle & original positions
+			if (!m_groupRotationInit) {
+				pView->snapPoint(&cpt);
+				if (pView->isLockedAngle()) {
+					m_startGroupAngle = ObjectTool::calcAngleSnapped(pivot, cpt, pView);
+				} else {
+					m_startGroupAngle = ObjectTool::calcAngle(pivot, cpt, pView);
+				}
+
+				m_originalPositions.clear();
+				m_originalAngles.clear();
+				MapObject* obj = MapObject::getFirstMapObject();
+				while (obj) {
+					if (obj->isSelected()) {
+						m_originalPositions[obj] = *obj->getLocation();
+						m_originalAngles[obj] = obj->getAngle();
+					}
+					obj = obj->getNext();
+				}
+				m_groupRotationInit = true;
+			}
+
+            // Calculate delta rotation
+            pView->snapPoint(&cpt);
+            float currentAngle = pView->isLockedAngle()
+                ? ObjectTool::calcAngleSnapped(pivot, cpt, pView)
+                : ObjectTool::calcAngle(pivot, cpt, pView);
+            float deltaAngle = currentAngle - m_startGroupAngle;
+
+            // Rotate all selected objects from original positions
+            MapObject* obj = MapObject::getFirstMapObject();
+            while (obj) {
+                if (obj->isSelected()) {
+                    Coord3D origLoc = m_originalPositions[obj];
+                    float relX = origLoc.x - pivot.x;
+                    float relY = origLoc.y - pivot.y;
+                    float newX = relX * cos(deltaAngle) - relY * sin(deltaAngle);
+                    float newY = relX * sin(deltaAngle) + relY * cos(deltaAngle);
+                    origLoc.x = pivot.x + newX;
+                    origLoc.y = pivot.y + newY;
+                    obj->setLocation(&origLoc);
+
+                    // Rotate the object itself if toggle is on
+                    if (m_rotateObjectsWithGroup) {
+                        obj->setAngle(m_originalAngles[obj] + deltaAngle);
+                    }
+                }
+                obj = obj->getNext();
+            }
+
+            // UI angle display
+            float angleDeg = pView->isLockedAngle()
+                ? ObjectTool::getAngleDegreesSnapped15(pivot, cpt, pView)
+                : ObjectTool::getAngleDegrees360(pivot, cpt, pView);
+            text.Format(_T("Group Angle: %.2f"), angleDeg);
+            m_lastPointerInfo = text;
+        } else {
+            // --- NORMAL ROTATION ---
+			// // Deselect roads temporarily
+			// m_tempDeselectedRoads.clear();
+			// MapObject* obj = MapObject::getFirstMapObject();
+			// while (obj) {
+			// 	if (obj->isSelected() && obj->getFlag(FLAG_ROAD_FLAGS)) {
+			// 		obj->setSelected(false);
+			// 		m_tempDeselectedRoads.push_back(obj);
+			// 	}
+			// 	obj = obj->getNext();
+			// }
+			
+            Coord3D center = *m_curObject->getLocation();
+            float angleDeg;
+            pView->snapPoint(&cpt);
+            if (pView->isLockedAngle()) {
+                m_modifyUndoable->RotateTo(ObjectTool::calcAngleSnapped(center, cpt, pView));
+                angleDeg = ObjectTool::getAngleDegreesSnapped15(center, cpt, pView);
+            } else {
+                m_modifyUndoable->RotateTo(ObjectTool::calcAngle(center, cpt, pView));
+                angleDeg = ObjectTool::getAngleDegrees360(center, cpt, pView);
+            }
+            text.Format(_T("Angle: %.2f"), angleDeg);
+            m_lastPointerInfo = text;
+        }
+    } else {
+        // --- MOVEMENT ---
+        pView->snapPoint(&cpt);
+        Real xOffset = (cpt.x - m_downPt3d.x);
+        Real yOffset = (cpt.y - m_downPt3d.y);
+        m_modifyUndoable->SetOffset(xOffset, yOffset);
+        Coord3D center = *m_curObject->getLocation();
+		float angleDeg = m_curObject->getAngle() * (180.0f / 3.14159265f);
+        text.Format(_T("X: %.2f\nY: %.2f\nAngle: %.2f"), center.x, center.y, angleDeg);
+        m_lastPointerInfo = text;
+    }
+
+    curMapObj = MapObject::getFirstMapObject();
+    while (curMapObj) {
+        if (curMapObj->isSelected()) {
+            pView->invalObjectInView(curMapObj);
+        }
+        curMapObj = curMapObj->getNext();
+    }
+
+
+	pView->Invalidate();  
+    pDoc->updateAllViews();
 }
 
-
-/** Execute the tool on mouse up - if modifying, do the modify,
+/** Execute the tool on mouse up - if modifying, do the modify, 
 else update the selection. */
 void PointerTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
+
+	// if (!m_tempDeselectedRoads.empty()) {
+	// 	for (std::vector<MapObject*>::iterator it = m_tempDeselectedRoads.begin();
+	// 		it != m_tempDeselectedRoads.end();
+	// 		++it)
+	// 	{
+	// 		(*it)->setSelected(true);
+	// 	}
+	// 	m_tempDeselectedRoads.clear();
+	// }
+
 	if (m != TRACK_L) return;
 
 	if (m_doPolyTool) {
@@ -530,12 +877,20 @@ void PointerTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 			}
 			Bool picked;
 			Coord3D loc = *pObj->getLocation();
+			// Test where the ICON is, which is on the ground (see DrawObject::Render). Keeping the
+			// object's own Z offset here would project a raised object high above its icon, so a
+			// box drawn around the icon you can see would not select it.
+			// docToViewCoords adds the terrain height itself, so zero is ground level.
+			loc.z = 0.0f;
 			CPoint viewPt;
 			if (pView->docToViewCoords(loc, &viewPt)){
 				picked = (viewPt.x>=box.left && viewPt.x<=box.right && viewPt.y>=box.top && viewPt.y<=box.bottom) ;
 				if (picked) {
-					if ((0x8000 && ::GetAsyncKeyState(VK_SHIFT))) {
-						pObj->setSelected(!pObj->isSelected());
+					// Shift+Ctrl+drag subtracts from the selection; every other drag box adds to it.
+					// Toggling on plain Shift was tried and removed -- its a bit annoying so we use
+					// true always (Adriane[Deathscythe]).
+					if (m_dragDeselect) {
+						pObj->setSelected(false);
 					}	else {
 						pObj->setSelected(true);
 					}
@@ -545,6 +900,15 @@ void PointerTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 		}
 
 	}
+
+	m_isMouseDown = false;
+
+	// A click may have changed the selection set; update the minimap's selection halos.
+	// This is fully self-gating: it does nothing unless the minimap is VISIBLE, the
+	// selection overlay is on, and the selection actually changed -- so when the minimap
+	// is hidden (or the overlay off) this is an O(1) no-op and never touches the 3D redraw.
+	MinimapDialog::notifySelectionChanged();
+
 	checkForPropertiesPanel();
 }
 

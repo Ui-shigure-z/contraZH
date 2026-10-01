@@ -34,6 +34,7 @@
 #pragma once
 
 #include "WW3D2/texture.h"
+#include "WWMath/vector4.h"
 enum FilterTypes CPP_11(: Int);
 enum FilterModes CPP_11(: Int);
 enum CustomScenePassModes CPP_11(: Int);
@@ -43,6 +44,8 @@ enum CpuType CPP_11(: Int);
 enum GraphicsVenderID CPP_11(: Int);
 
 class TextureClass;	///forward reference
+class MaterialPassClass;	///forward reference
+class AABoxClass;	///forward reference
 /** System for managing complex rendering settings which are either not handled by
 	WW3D2 or need custom paths depending on the video card.  This system will determine
 	the proper shader given video card limitations and also allow the app to query the
@@ -71,6 +74,10 @@ public:
 		ST_FLAT_TERRAIN_BASE_NOISE2,	//shader to apply base texture and cloud/noise 2.
 		ST_FLAT_TERRAIN_BASE_NOISE12,//shader to apply base texture and both cloud/noise
 		ST_FLAT_SHROUD_TEXTURE,		//shader to apply shroud texture projection.
+		ST_SHADOW_DEPTH,		//shader to write caster depth into the shadow map.
+		ST_SHADOW_MULTIPLY,		//second pass multiplying the shadow map into drawn geometry.
+		ST_SPECULAR,			//second pass adding a per-pixel sun highlight to drawn geometry.
+		ST_POINT_LIGHTS,		//second pass adding dynamic point lights to geometry lit without them.
 		ST_MAX
 	};
 
@@ -87,6 +94,12 @@ public:
 	static Int setShader(ShaderTypes shader, Int pass);	///<enable specific shader pass.
 	static Int setShroudTex(Int stage);	///<Set shroud in a texture stage.
 	static void resetShader(ShaderTypes shader);	///<make sure W3D2 gets restored to normal
+	/// The shader texture slot the terrain's normal atlas goes in.
+	enum { TERRAIN_NORMAL_TEXTURE = 4 };
+	/// The shader texture slot the terrain's height atlas goes in, or null for the legacy blend.
+	enum { TERRAIN_HEIGHT_TEXTURE = 5 };
+	/// ST_SHADOW_MULTIPLY pass that also multiplies in the cloud map, for receivers without their own clouds.
+	enum { SHADOW_MULTIPLY_PASS_CLOUDS = 1 };
 	///Specify all textures (up to 8) which can be accessed by the shaders.
 	static void setTexture(Int stage,TextureClass* texture) {m_Textures[stage]=texture;}
 	///Return current texture available to shaders.
@@ -95,6 +108,88 @@ public:
 	static ShaderTypes getCurrentShader() {return m_currentShader;}
 	/// Loads a .vso file and creates a vertex shader for it
 	static HRESULT LoadAndCreateD3DShader(const char* strFilePath, const DWORD* pDeclaration, DWORD Usage, Bool ShaderType, DWORD* pHandle);
+
+	/// Sets the sun the specular pass lights with, once a frame. toSun is in world space.
+	/// debug tints what the pass covers and shows the highlight 8x in magenta.
+	static void setSpecularLight(const Vector3 &toSun, const Vector3 &color, Real intensity, Real power, Bool debug);
+	/// Sets the bump detail the specular pass shades, once a frame. height is the rise, in world
+	/// units, of full brightness on textures without a normal map, and 0 leaves them flat.
+	static void setSurfaceBumps(Bool enabled, const Vector3 &ambient, Real height, Real normalMapStrength);
+	/// Sets how brightly the specular pass adds _emi glow masks, once a frame. 0 turns them off.
+	static void setEmissive(Real intensity);
+
+	/// A dynamic point light the shaders add per pixel, in world space.
+	struct PixelLight
+	{
+		Vector3 position;
+		Real innerRadius;	///< full strength inside this
+		Real outerRadius;	///< nothing past this
+		Vector3 diffuse;
+		Real ambientScale;	///< ambient colour as a fraction of the diffuse
+		Bool terrainOnly;	///< lights the ground and nothing standing on it
+	};
+	/// Each ground draw takes up to eight lights, four under standing water, and each mesh up to eight, as their registers allow.
+	enum { MAX_PIXEL_LIGHTS = 8, SEABED_PIXEL_LIGHTS = 3, MAX_UNIT_PIXEL_LIGHTS = 8, MAX_PIXEL_LIGHT_CANDIDATES = 64 };
+	/// Sets the lights that may be drawn per pixel this frame, most important first. Draws name theirs by index.
+	static void setPixelLights(const PixelLight *lights, Int count);
+	static Int getPixelLightCount();
+	static const PixelLight &getPixelLight(Int index);
+	/// Lights the draws that follow with the given lights, up to eight, under the terrain, road, flat terrain
+	/// or point light shader in use. Null indices take the first count, the ones nearest the middle of the view.
+	static void setDrawPixelLights(const Int *indices, Int count);
+	/// The registers the terrain's seabed hex tiling reads, as terrainshadow.hlsl lays them out.
+	enum { SEABED_CONSTANTS = 5 };
+	/// Sets, once a frame, the atlas slot lookup, standing water mask, painted stochastic terrain and
+	/// SEABED_CONSTANTS registers the terrain's seabed hex tiling reads, or turns it off with nulls.
+	static void setTerrainSeabed(TextureClass *classMap, TextureClass *waterMask, TextureClass *painted, const Vector4 *constants);
+	/// Whether the terrain can hex-tile its textures under standing water.
+	static Bool supportsTerrainSeabed();
+	/// Lights a terrain draw as setDrawPixelLights does, through the seabed shaders when it has standing water.
+	static void setDrawTerrain(const Int *indices, Int count, Bool seabed);
+	/// The first lights, nearest the middle of the view, that reach the box, as many as one ground draw takes.
+	static Int pickPixelLights(const AABoxClass &box, Int *lights);
+	/// Whether any surface draws point lights per pixel, so the scene has to pick them.
+	static Bool supportsPixelLights();
+	/// Whether the terrain draws point lights per pixel, so lights handed over must leave its vertex lighting.
+	static Bool supportsTerrainPixelLights();
+	/// Whether the specular pass draws point lights per pixel, so its meshes must go without fixed-function ones.
+	static Bool supportsUnitPixelLights();
+	/// Sets whether the terrain shaders read the normal atlas in TERRAIN_NORMAL_TEXTURE, and how strongly.
+	/// debug shows only the bump's shading, on grey.
+	static void setTerrainBumps(Bool enabled, Real strength, Bool debug);
+	/// Whether the terrain shaders will read the normal atlas, so the terrain should build and hand it over.
+	static Bool wantsTerrainNormalAtlas();
+	/// Sets the sun's glint on the ground, once a frame. gloss sharpens it, and albedo is how far it
+	/// follows the ground's brightness, from 0 not at all to 1 fully. An intensity of 0 turns it off.
+	static void setTerrainGlint(Bool enabled, Real intensity, Real gloss, Real albedo);
+	/// Whether the terrain and road shaders will glint, so the terrain should hand over its normals.
+	static Bool wantsTerrainGlint();
+	/// The gloss of terrain textures without their own.
+	static Real getTerrainGlintGloss();
+	/// Sets, once a frame, the glint's normals with their world xy mapping and getTerrainGlintMap's materials and scales, or turns it off with null.
+	static void setTerrainGlintMaps(TextureClass *normals, const Vector4 &mapping, TextureClass *materials, Real strengthScale, Real glossScale);
+	/// Sets a terrain stage's filters from the player's anisotropy or the mod's settings, whose mip is linear with bilinearMipLinear.
+	static void setTerrainTextureFilter(Int stage, Bool bilinearMipLinear);
+	/// Whether the terrain shaders can blend by height, so the terrain should hand over its height atlas.
+	static Bool supportsTerrainHeightBlend();
+	/// Sets whether road shader draws are blend tiles, which blend by the heights in TERRAIN_HEIGHT_TEXTURE.
+	static void setRoadHeightBlend(Bool blendTiles);
+	/// How many terrain draws used the normal atlas since the last call.
+	static Int takeTerrainBumpCount();
+	/// How many mesh draws the specular pass ran on, and how many polygon groups of those it
+	/// bumped from brightness or from a normal map, or lit with a glow mask, since the last call.
+	static void takeSpecularCounts(Int &meshes, Int &derived, Int &normalMapped, Int &emissive);
+	/// The pass objects push for a per-pixel sun highlight, bumps and glow, or null when all are off or unsupported.
+	static MaterialPassClass *getSpecularPass();
+	/// The same pass for one object this frame, also adding the given lights. lightsOnly leaves out the
+	/// highlight, bumps and glow, and gives null without lights.
+	static MaterialPassClass *getSpecularPass(const Int *lights, Int lightCount, Bool lightsOnly);
+	/// The pass every specular pass above shares its vertex processing with, or null when it is unsupported.
+	static const MaterialPassClass *getSpecularPassKey();
+	/// Whether the device runs ps_2_a shaders, which have gradients and 512 instruction slots.
+	static Bool supportsPixelShader2a();
+	/// The <name>_nrm.dds beside a texture, or null when there is none. Not reference counted.
+	static TextureClass *findNormalMap(TextureClass *texture);
 
 	static Bool testMinimumRequirements(ChipsetType *videoChipType, CpuType *cpuType, Int *cpuFreq, MemValueType *numRAM, Real *intBenchIndex, Real *floatBenchIndex, Real *memBenchIndex);
 	static StaticGameLODLevel getGPUPerformanceIndex();
@@ -110,6 +205,12 @@ public:
 	static void startRenderToTexture(); ///< Sets render target to texture.
 	static IDirect3DTexture8 * endRenderToTexture(); ///< Ends render to texture, & returns texture.
 	static IDirect3DTexture8 * getRenderTexture();	///< returns last used render target texture
+	/// Copies the bound render target into copy, resolving multisampling and recreating copy when the target changes shape.
+	static Bool copyRenderTarget(IDirect3DTexture8 *&copy);
+	/// Scale in xy and offset in zw from clip space to the texel centres of a width by height copy of the render target.
+	static Vector4 getClipToTargetMapping(Real width, Real height);
+	/// Draws a quad over the viewport through identity transforms, its uv mapped from clip space by clipToTarget.
+	static void drawClipQuad(const Vector4 &clipToTarget);
 	static Bool isRenderingToTexture() {return m_renderingToTexture; }
 	static void drawViewport(Int color);	///<draws 2 triangles covering the current tactical viewport
 

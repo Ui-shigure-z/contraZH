@@ -37,7 +37,9 @@ FramePacer::FramePacer()
 
 	m_maxFPS = BaseFps;
 	m_logicTimeScaleFPS = LOGICFRAMES_PER_SECOND;
+	m_defaultGameSpeed = BaseFps;
 	m_updateTime = 1.0f / (Real)BaseFps; // initialized to something to avoid division by zero on first use
+	m_logicFramePhase = 1.0f;
 	m_enableFpsLimit = FALSE;
 	m_enableLogicTimeScale = FALSE;
 	m_isTimeFrozen = FALSE;
@@ -52,21 +54,45 @@ FramePacer::~FramePacer()
 
 void FramePacer::update()
 {
-	// TheSuperHackers @bugfix xezon 05/08/2025 Re-implements the frame rate limiter
-	// with higher resolution counters to cap the frame rate more accurately to the desired limit.
-	const UnsignedInt maxFps = getActualFramesPerSecondLimit();// allowFpsLimit ? getFramesPerSecondLimit() : RenderFpsPreset::UncappedFpsValue;
+	// Uses a high resolution counter to cap the frame rate more accurately to the desired limit than retail did.
+	const UnsignedInt maxFps = getActualFramesPerSecondLimit();
 	m_updateTime = m_frameRateLimit.wait(maxFps);
+
+	if (TheGameLogic != nullptr)
+	{
+		// Set or advance the logic frame phase by the render step that the next update will draw.
+		// It is capped at a whole logic frame, because the render steps in between can add up to more than one.
+		// Consumers are expected to interpolate towards the next logic frame and not extrapolate past it.
+		const Real timeScale = getActualLogicTimeScaleOverFpsRatio();
+
+		if (TheGameLogic->hasUpdated())
+		{
+			m_logicFramePhase = timeScale;
+		}
+		else
+		{
+			m_logicFramePhase = min(1.0f, m_logicFramePhase + timeScale);
+		}
+	}
 }
 
 void FramePacer::reset()
 {
 	m_frameRateLimit.reset();
 	m_updateTime = 1.0f / (Real)getActualFramesPerSecondLimit();
+	m_logicFramePhase = 1.0f;
 }
 
 void FramePacer::setFramesPerSecondLimit( Int fps )
 {
 	DEBUG_LOG(("FramePacer::setFramesPerSecondLimit() - setting max fps to %d (TheGlobalData->m_useFpsLimit == %d)", fps, TheGlobalData->m_useFpsLimit));
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	// The render rate must never drop below the logic rate.
+	if (fps < LOGICFRAMES_PER_SECOND)
+	{
+		fps = LOGICFRAMES_PER_SECOND;
+	}
+#endif
 	m_maxFPS = fps;
 }
 
@@ -188,7 +214,10 @@ Int FramePacer::getActualLogicTimeScaleFps(LogicTimeQueryFlags flags) const
 		return TheNetwork->getFrameRate();
 	}
 
-	if (isLogicTimeScaleEnabled())
+	// Scripted fast time uncaps the render and expects the logic to follow it.
+	const Bool timeFast = TheTacticalView != nullptr && (TheTacticalView->getTimeMultiplier() > 1 || TheScriptEngine->isTimeFast());
+
+	if (isLogicTimeScaleEnabled() && !timeFast)
 	{
 		return getLogicTimeScaleFps();
 	}
@@ -204,8 +233,7 @@ Real FramePacer::getActualLogicTimeScaleRatio(LogicTimeQueryFlags flags) const
 
 Real FramePacer::getActualLogicTimeScaleOverFpsRatio(LogicTimeQueryFlags flags) const
 {
-	// TheSuperHackers @info Clamps ratio to min 1, because the logic
-	// frame rate is currently capped by the render frame rate.
+	// Clamps ratio to min 1, because the logic frame rate is currently capped by the render frame rate.
 	return min(1.0f, (Real)getActualLogicTimeScaleFps(flags) / getUpdateFps());
 }
 
@@ -217,4 +245,36 @@ Real FramePacer::getLogicTimeStepSeconds(LogicTimeQueryFlags flags) const
 Real FramePacer::getLogicTimeStepMilliseconds(LogicTimeQueryFlags flags) const
 {
 	return MSEC_PER_LOGICFRAME_REAL * getActualLogicTimeScaleOverFpsRatio(flags);
+}
+
+Real FramePacer::getLogicFramePhase() const
+{
+	return m_logicFramePhase;
+}
+
+void FramePacer::setDefaultGameSpeed( Int speed )
+{
+	m_defaultGameSpeed = speed;
+	setGameSpeed(speed);
+}
+
+void FramePacer::setGameSpeed( Int speed )
+{
+	if (speed <= 0)
+	{
+		speed = m_defaultGameSpeed;
+	}
+
+	enableLogicTimeScale(TRUE);
+	setLogicTimeScaleFps(speed * LOGICFRAMES_PER_SECOND / BaseFps);
+	setFramesPerSecondLimit(max(speed, TheGlobalData->m_framesPerSecondLimit));
+}
+
+Int FramePacer::getGameSpeed() const
+{
+	if (isLogicTimeScaleEnabled())
+	{
+		return getLogicTimeScaleFps() * BaseFps / LOGICFRAMES_PER_SECOND;
+	}
+	return getFramesPerSecondLimit();
 }

@@ -17,7 +17,7 @@
 */
 
 // W3DBloom.cpp ////////////////////////////////////////////////////////////////////////////////
-// Bloom post effect for additive particles, built from DX8 render targets and fixed function quads
+// Bloom post effect for additive particles, built from render targets and screen quads
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Lib/BaseType.h"
@@ -35,6 +35,8 @@
 #include "WW3D2/rinfo.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/vertmaterial.h"
+#include "WW3D2/dx8caps.h"
+#include "W3DDevice/GameClient/W3DShaderManager.h"
 
 W3DBloom *TheW3DBloom = nullptr;
 
@@ -96,8 +98,11 @@ W3DBloom::W3DBloom()
 		m_targetSurface[i] = nullptr;
 	}
 	m_quadIndices = nullptr;
+	m_sampledSurface = nullptr;
+	m_sampleType = 0;
 	m_defaultTarget = nullptr;
 	m_defaultDepth = nullptr;
+	m_blurShader = 0;
 	m_disabled = false;
 }
 
@@ -113,7 +118,7 @@ void W3DBloom::ReleaseResources()
 	m_disabled = false;
 }
 
-Bool W3DBloom::acquireTargets(Int width, Int height, WW3DFormat format)
+Bool W3DBloom::acquireTargets(Int width, Int height, WW3DFormat format, Int sampleType, UnsignedInt sampleQuality)
 {
 	for (Int i = 0; i < TARGET_COUNT; ++i)
 	{
@@ -137,6 +142,24 @@ Bool W3DBloom::acquireTargets(Int width, Int height, WW3DFormat format)
 		REF_PTR_RELEASE(surface);
 	}
 
+#if defined(BUILD_WITH_D3D9)
+	// a multisampled scene depth buffer only pairs with a multisampled target
+	if (sampleType != D3DMULTISAMPLE_NONE &&
+		FAILED(DX8Wrapper::_Get_D3D_Device8()->CreateRenderTarget(width, height, WW3DFormat_To_D3DFormat(format),
+			(D3DMULTISAMPLE_TYPE)sampleType, sampleQuality, FALSE, &m_sampledSurface, nullptr)))
+	{
+		releaseTargets();
+		return false;
+	}
+	m_sampleType = sampleType;
+
+	if (DX8Wrapper::Get_Current_Caps()->Get_Pixel_Shader_Major_Version() >= 2 &&
+		FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\bloomblur.pso", nullptr, 0, false, &m_blurShader)))
+	{
+		m_blurShader = 0;
+	}
+#endif
+
 	// quad k uses vertices k*4 to k*4+3, so every pass indexes the same buffer
 	m_quadIndices = NEW_REF(DX8IndexBufferClass, (BLOOM_MAX_TAPS * 6));
 	{
@@ -159,6 +182,17 @@ Bool W3DBloom::acquireTargets(Int width, Int height, WW3DFormat format)
 
 void W3DBloom::releaseTargets()
 {
+	if (m_blurShader != 0)
+	{
+		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), m_blurShader);
+		m_blurShader = 0;
+	}
+	if (m_sampledSurface)
+	{
+		m_sampledSurface->Release();
+		m_sampledSurface = nullptr;
+	}
+	m_sampleType = 0;
 	REF_PTR_RELEASE(m_quadIndices);
 	for (Int i = 0; i < TARGET_COUNT; ++i)
 	{
@@ -185,10 +219,10 @@ void W3DBloom::releaseDefaults()
 	}
 }
 
-// every target borrows the screen's depth buffer, which DX8 allows because none is larger than it
+// every target borrows the screen's depth buffer, which DX8 allows because none is larger; a multisampled one fits none
 Bool W3DBloom::setTarget(Int target)
 {
-	return SUCCEEDED(DX8Wrapper::_Get_D3D_Device8()->SetRenderTarget(m_targetSurface[target], m_defaultDepth));
+	return SUCCEEDED(DX8Wrapper::Set_DX8_Render_Target_Surfaces(m_targetSurface[target], m_sampledSurface ? nullptr : m_defaultDepth));
 }
 
 Bool W3DBloom::begin(RenderInfoClass &rinfo, Bool anythingToDraw)
@@ -210,7 +244,7 @@ Bool W3DBloom::begin(RenderInfoClass &rinfo, Bool anythingToDraw)
 	}
 
 	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
-	if (FAILED(device->GetRenderTarget(&m_defaultTarget)) || FAILED(device->GetDepthStencilSurface(&m_defaultDepth)))
+	if (FAILED(device->GetRenderTarget(DX8_SWAPCHAIN &m_defaultTarget)) || FAILED(device->GetDepthStencilSurface(&m_defaultDepth)))
 	{
 		releaseDefaults();
 		return false;
@@ -221,25 +255,39 @@ Bool W3DBloom::begin(RenderInfoClass &rinfo, Bool anythingToDraw)
 	m_defaultTarget->GetDesc(&targetDesc);
 	m_defaultDepth->GetDesc(&depthDesc);
 
+#if defined(BUILD_WITH_D3D9)
+	// the targets follow the scene's multisampling, which its depth buffer has to share
+	const UnsignedInt sampleQuality = (UnsignedInt)targetDesc.MultiSampleQuality;
+	if (targetDesc.MultiSampleType != depthDesc.MultiSampleType)
+#else
+	const UnsignedInt sampleQuality = 0;
+
 	// DX8 cannot redirect a multisampled scene into a texture
 	if (targetDesc.MultiSampleType != D3DMULTISAMPLE_NONE || depthDesc.MultiSampleType != D3DMULTISAMPLE_NONE)
+#endif
 	{
 		releaseDefaults();
 		return false;
 	}
 
 	TextureClass *full = m_target[TARGET_FULL];
-	if (full == nullptr || (Int)targetDesc.Width != full->Get_Width() || (Int)targetDesc.Height != full->Get_Height())
+	if (full == nullptr || (Int)targetDesc.Width != full->Get_Width() || (Int)targetDesc.Height != full->Get_Height() ||
+		(Int)targetDesc.MultiSampleType != m_sampleType)
 	{
 		releaseTargets();
-		if (!acquireTargets(targetDesc.Width, targetDesc.Height, D3DFormat_To_WW3DFormat(targetDesc.Format)))
+		if (!acquireTargets(targetDesc.Width, targetDesc.Height, D3DFormat_To_WW3DFormat(targetDesc.Format),
+			(Int)targetDesc.MultiSampleType, sampleQuality))
 		{
 			releaseDefaults();
+			m_disabled = true;
 			return false;
 		}
 	}
 
-	if (!setTarget(TARGET_FULL))
+	const Bool bound = m_sampledSurface
+		? SUCCEEDED(DX8Wrapper::Set_DX8_Render_Target_Surfaces(m_sampledSurface, m_defaultDepth))
+		: setTarget(TARGET_FULL);
+	if (!bound)
 	{
 		releaseTargets();
 		releaseDefaults();
@@ -257,6 +305,16 @@ void W3DBloom::end(RenderInfoClass &rinfo)
 {
 	// additive meshes join the particles in the bloom target
 	TheDX8MeshRenderer.Flush_Bloom();
+
+#if defined(BUILD_WITH_D3D9)
+	if (m_sampledSurface)
+	{
+		DX8CALL(StretchRect(m_sampledSurface, nullptr, m_targetSurface[TARGET_FULL], nullptr, D3DTEXF_NONE));
+	}
+#endif
+
+	// the passes below may run with no depth buffer bound
+	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
 
 	// the quads are already in clip space
 	Matrix4x4 identity(true);
@@ -286,7 +344,7 @@ void W3DBloom::end(RenderInfoClass &rinfo)
 			FALSE);
 	}
 
-	DX8Wrapper::_Get_D3D_Device8()->SetRenderTarget(m_defaultTarget, m_defaultDepth);
+	DX8Wrapper::Set_DX8_Render_Target_Surfaces(m_defaultTarget, m_defaultDepth);
 
 	if (drawn)
 	{
@@ -316,6 +374,7 @@ void W3DBloom::end(RenderInfoClass &rinfo)
 		drawTaps(m_target[TARGET_BLUR + (BLOOM_BLUR_PASSES & 1)], &composite, 1, debug ? m_copyShader : m_addShader);
 	}
 
+	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, TRUE);
 	DX8Wrapper::Set_Texture(0, nullptr);
 	DX8Wrapper::Set_Index_Buffer(nullptr, 0);
 	rinfo.Camera.Apply();
@@ -375,8 +434,37 @@ Bool W3DBloom::blurPass(TextureClass *source, Int target, Real offsetU, Real off
 		}
 	}
 
-	drawTaps(source, taps, count, m_copyShader);
+	if (m_blurShader != 0)
+	{
+		drawShaderTaps(source, taps, count);
+	}
+	else
+	{
+		drawTaps(source, taps, count, m_copyShader);
+	}
 	return true;
+}
+
+// one quad whose pixel shader sums the taps, so the target is written once at full precision
+void W3DBloom::drawShaderTaps(TextureClass *source, const Tap *taps, Int count)
+{
+	Vector4 constants[BLOOM_MAX_TAPS];
+	for (Int i = 0; i < BLOOM_MAX_TAPS; ++i)
+	{
+		constants[i] = (i < count) ? Vector4(taps[i].u0, taps[i].v0, taps[i].brightness, 0.0f) : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+
+	Tap quad;
+	quad.u0 = 0.0f;
+	quad.v0 = 0.0f;
+	quad.u1 = 1.0f;
+	quad.v1 = 1.0f;
+	quad.brightness = 1.0f;
+
+	DX8Wrapper::Set_Pixel_Shader_Constant(0, constants, BLOOM_MAX_TAPS);
+	DX8Wrapper::Set_Pixel_Shader(m_blurShader);
+	drawTaps(source, &quad, 1, m_copyShader);
+	DX8Wrapper::Set_Pixel_Shader(0);
 }
 
 // every quad of a pass shares one vertex lock; the quads fill the viewport in clip space, so no half

@@ -55,7 +55,56 @@ public:
 protected:
 	TOpenMapInfo *m_pInfo;
 	void populateMapListbox( Bool systemMaps );
+	void OnSearchMap();
+	void OnResetSearch();
 	Bool m_usingSystemDir;
+    CStringArray m_fullMapList;   // original unfiltered list
+
+	// --- Packed Maps (.big archive) support ---
+	enum PackedMode { PM_OFF = 0, PM_LIST_BIGS, PM_LIST_MAPS_IN_BIG };
+	PackedMode   m_packedMode;
+	CString      m_currentBig;            ///< path of the .big currently being browsed (PM_LIST_MAPS_IN_BIG)
+	CStringArray m_packedMapPaths;        ///< in-archive .map paths, parallel to the listbox entries
+	void populatePackedBigList();         ///< scan cwd for *.big, list them
+	void populatePackedMapList( const CString &bigPath ); ///< open a .big, list the maps inside
+	Bool extractPackedMap( const CString &bigPath, const CString &archiveMapPath, CString &outMapPath ); ///< extract a map folder to temp; outMapPath = extracted .map
+#ifdef RTS_HAS_QT
+// Qt seam (Tier 3d): the Qt Open Map dialog drives THIS dialog created hidden -- the
+// system/user/packed-.big population, search filter and the OnOK resolution/extraction
+// are reused verbatim. Definitions live in src/WBQtMapFileBridge.cpp.
+public:
+	static OpenMap *qtOpen(void);
+	static void qtClose(void);
+	static OpenMap *qtInstance(void);
+	int  qtListCount(void);
+	void qtListItem(int i, char *buf, int cap);
+	// Preview thumbnail bytes (<name>.tga next to the .map) for row i -- read from disk
+	// in the system/user modes, or straight out of the current .big in packed mode.
+	// Returns the byte count, or 0 (no preview / buffer too small).
+	int  qtItemPreviewData(int i, unsigned char *buf, int cap);
+	// Shared bits of the pick/preview paths: the system-vs-user map file path policy,
+	// and the packed display-name -> archive-internal .map path resolve.
+	CString qtMapFilePath(const CString &name, const char *ext);
+	CString qtResolveArchiveMapPath(const CString &selName);
+	int  qtListCurSel(void);
+	int  qtOkEnabled(void);
+	int  qtGetMode(void);
+	void qtSetMode(int mode);
+	void qtSearch(const char *text);
+	// NewSearch live filter: the same filter with the no-match beep suppressed (a beep on
+	// every keystroke that doesn't match yet is jarring). Called per keystroke.
+	void qtSearchLive(const char *text);
+	void qtResetSearch(void);
+	int  qtPick(int row);
+	int  qtBrowsePick(void);
+	// De-bridged (windowless) fills -- branch qt-debridge. The dialog window is never
+	// Create()d; the view model (rows/selection/ok state) lives in WBQtMapFileBridge.cpp
+	// and these replicate the populate* handlers' enumeration minus the listbox.
+	void qtMPopulateMain(Bool systemMaps);
+	void qtMPopulateBigs(void);
+	void qtMPopulateMapsInBig(const CString &bigPath);
+#endif
+
 protected:
 
 	// Generated message map functions
@@ -63,8 +112,9 @@ protected:
 	afx_msg void OnBrowse();
 	afx_msg void OnSystemMaps();
 	afx_msg void OnUserMaps();
-	virtual void OnOK() override;
-	virtual BOOL OnInitDialog() override;
+	afx_msg void OnPackedMaps();
+	virtual void OnOK();
+	virtual BOOL OnInitDialog();
 	afx_msg void OnDblclkOpenList();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()

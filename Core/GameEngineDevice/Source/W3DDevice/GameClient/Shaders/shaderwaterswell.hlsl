@@ -1,0 +1,125 @@
+// Lifts standing water's vertices by a tiling height texture, ahead of the ps_3_0 water shader.
+//
+// The water draws in world space, so the fixed-function vertex format comes straight in. Two
+// layers of the height texture, at different scales and drifting apart, keep the swell from
+// visibly repeating. The pixel shader reads the same layers for the slope and the crests.
+//
+// RADIAL draws square levels centred under the camera instead, each with twice the cells of the
+// one inside it and snapped to its own world lattice, so vertices never slide across the swell.
+// Near a level's edge the odd vertices fold onto the coarser lattice, and the water texture
+// coordinates and colour are made here.
+//
+// FLAT passes flat water and rivers through unlifted, as ps_3_0 needs a vertex shader beside it.
+//
+// Every build hands the pixel shader the water's openness, 0 at the shore and 1 far enough out to
+// count as open sea, from each map cell's distance to dry ground. Enclosed water swells less.
+
+sampler2D SwellMap : register(s0);   // vertex texture sampler 0
+sampler2D GroundMap : register(s1);  // terrain heights as high and low bytes, vertex texture sampler 1
+
+float4 ClipX        : register(c0);   // world to clip space, one output component each
+float4 ClipY        : register(c1);
+float4 ClipZ        : register(c2);
+float4 ClipW        : register(c3);
+float4 Swell        : register(c4);   // x = world to texcoord scale, y = height, zw = drift
+float4 SwellSample  : register(c5);   // y = mip level
+float4 SwellChannel : register(c6);   // picks the channel holding height
+sampler2D OpenMap : register(s2);    // each map cell's distance to dry ground, vertex texture sampler 2
+float4 GroundMapping : register(c13); // world xy to ground texcoords: xy scale, zw offset
+float4 GroundDecode  : register(c14); // xy = high and low byte weights, z = 1 when the ground is bound
+float4 OpenParams    : register(c15); // x = stored distance to openness, y = 1 to read the distance, z = openness otherwise, w = swell kept in enclosed water
+
+#if RADIAL
+float4 Level        : register(c7);   // xy = this level's lattice origin, z = water level, w = cell size
+float4 Wobble       : register(c8);   // x = texcoords per world unit, yz = wobble size, w = wobble phase
+float4 WobbleRate   : register(c9);   // x = wobble cycles per world unit
+float4 WaterColor   : register(c10);
+float4 Fold         : register(c11);  // x = distance from the eye where folding starts, y = 1 / its width, z = log2 of texels per cell
+float4 Eye          : register(c12);  // xy = camera position
+
+struct VsIn
+{
+    float3 Position : POSITION;   // xy = cell index within the level
+};
+#else
+struct VsIn
+{
+    float3 Position : POSITION;
+    float4 Diffuse  : COLOR0;
+    float2 BaseUV   : TEXCOORD0;
+    float2 EdgeUV   : TEXCOORD1;
+};
+#endif
+
+struct VsOut
+{
+    float4 Position   : POSITION;
+    float4 Diffuse    : COLOR0;
+    float2 BaseUV     : TEXCOORD0;
+    float2 EdgeUV     : TEXCOORD1;
+    float3 WorldPos   : TEXCOORD2;
+    float Openness    : TEXCOORD3;
+};
+
+float Layer(float2 uv, float mip)
+{
+    return dot(tex2Dlod(SwellMap, float4(uv, 0.0f, mip)), SwellChannel) * 2.0f - 1.0f;
+}
+
+float Height(float2 world, float mip)
+{
+    float2 uv = world * Swell.x;
+    return (0.65f * Layer(uv + Swell.zw, mip) + 0.35f * Layer(uv * 1.7f - Swell.wz * 1.3f, mip + 0.77f)) * Swell.y;
+}
+
+float Openness(float2 world)
+{
+    float stored = tex2Dlod(OpenMap, float4(world * GroundMapping.xy + GroundMapping.zw, 0.0f, 0.0f)).r;
+    return lerp(OpenParams.z, saturate(stored * OpenParams.x), OpenParams.y);
+}
+
+// Waves reach full height in water twice their height deep and flatten towards the shore.
+float Shoal(float2 world, float level)
+{
+    float ground = dot(tex2Dlod(GroundMap, float4(world * GroundMapping.xy + GroundMapping.zw, 0.0f, 0.0f)).rg, GroundDecode.xy);
+    return lerp(1.0f, saturate((level - ground) / max(2.0f * Swell.y, 0.001f)), GroundDecode.z);
+}
+
+VsOut main(VsIn input)
+{
+#if RADIAL
+    float2 grid = input.Position.xy;
+    float2 at = Level.xy + grid * Level.w;
+    float2 away = abs(at - Eye.xy);
+    float fold = saturate((max(away.x, away.y) - Fold.x) * Fold.y);
+    at -= frac(grid * 0.5f) * 2.0f * Level.w * fold;
+    float mip = max(Fold.z + fold, 0.0f);
+    float level = Level.z;
+#else
+    float2 at = input.Position.xy;
+    float mip = SwellSample.y;
+    float level = input.Position.z;
+#endif
+    float open = Openness(at);
+#if FLAT
+    float4 world = float4(input.Position, 1.0f);
+#else
+    float4 world = float4(at, level + Height(at, mip) * Shoal(at, level) * lerp(OpenParams.w, 1.0f, open), 1.0f);
+#endif
+
+    VsOut output;
+    output.Position = float4(dot(world, ClipX), dot(world, ClipY), dot(world, ClipZ), dot(world, ClipW));
+#if RADIAL
+    // The same texture coordinates drawTrapezoidWater gives each vertex.
+    output.Diffuse = WaterColor;
+    output.BaseUV = at * Wobble.x + Wobble.yz * sin(Wobble.w + at * WobbleRate.x);
+    output.EdgeUV = float2(0.0f, 0.0f);
+#else
+    output.Diffuse = input.Diffuse;
+    output.BaseUV = input.BaseUV;
+    output.EdgeUV = input.EdgeUV;
+#endif
+    output.WorldPos = world.xyz;
+    output.Openness = open;
+    return output;
+}

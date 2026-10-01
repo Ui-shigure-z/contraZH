@@ -44,8 +44,7 @@
 #include <assert.h>
 
 #include "WWLib/win.h"
-#include <d3d8types.h>
-#include <d3dx8math.h>
+#include "WW3D2/dx8compat.h"
 
 /***********************************************************************************************
  * Matrix4x4::Multiply -- Multiply two Matrix4x4's together                                        *
@@ -226,13 +225,6 @@ void To_D3DMATRIX(_D3DMATRIX& dxm, const Matrix4x4& m)
 _D3DMATRIX To_D3DMATRIX(const Matrix4x4& m)
 {
 	_D3DMATRIX dxm;
-	To_D3DMATRIX(dxm, m);
-	return dxm;
-}
-
-D3DXMATRIX To_D3DXMATRIX(const Matrix4x4& m)
-{
-	D3DXMATRIX dxm;
 	To_D3DMATRIX(dxm, m);
 	return dxm;
 }

@@ -57,6 +57,8 @@ class W3DProjectedShadowManager	: public ProjectedShadowManager
 		void shutdown();			///<free all assets prior to shutdown of entire game.
 		void prepareShadows();
 		Int	 renderShadows(RenderInfoClass & rinfo);	///<iterate over each object and render its shadow onto affected objects.
+		///submit every visible caster to the mesh renderer for the shadow map depth pass.
+		Int renderShadowMapCasters(RenderInfoClass & rinfo);
 		Int	 renderDecals(RenderInfoClass & rinfo, Bool aboveWaterPass);	///<draw the decal list subset for the given water pass (below before water, above after).
 		void ReleaseResources(void);	///<release device dependent D3D resources.
 		Bool ReAcquireResources(void);	///<allocate device dependent D3D resources.
@@ -73,9 +75,10 @@ class W3DProjectedShadowManager	: public ProjectedShadowManager
 		void updateRenderTargetTextures();	///<render into any textures that need updating.
 		void queueDecal(W3DProjectedShadow *shadow);	///<add shadow decal to render list - decal conforms to terrain.
 		void queueSimpleDecal(W3DProjectedShadow *shadow);	///< add shadow decal to render list - decal floats on terrain.
-		void flushDecals(W3DShadowTexture *texture, ShadowType type);	///<empty queue by rendering all decals with given texture
+		void flushDecals(W3DShadowTexture *texture, ShadowType type, const W3DProjectedShadow *footprint = nullptr);	///<empty queue by rendering all decals with given texture, or one footprint with its shader
 
 	private:
+		void applyFootprintShader(const W3DProjectedShadow *shadow);	///<bind the footprint pixel shader with this decal's shape.
 		Int renderProjectedTerrainShadow(W3DProjectedShadow *shadow, AABoxClass &box);	///<render shadow on map terrain.
 		void updateShadowNumbers(ShadowType shadowType, Int addNum);
 
@@ -133,5 +136,12 @@ class W3DProjectedShadow	: public Shadow
 		Real	m_decalOffsetU;		/// texture coordinate offset so not centered at object origin.
 		Real	m_decalOffsetV;		/// texture coordinate offset so not centered at object origin.
 		Int		m_flags;			/// custom rendering flags
+		Bool	m_replacedByShadowMap;	/// a real shadow, drawn by the shadow map instead while it is active
+		Bool	m_isFootprint;		/// drawn by the footprint pixel shader instead of its texture
+		Bool	m_footprintRing;	/// a ring whose radius is m_footprintTip, instead of a hexagon
+		Bool	m_footprintSideways;	/// the hexagon's points lie along the object's y axis instead of x
+		Real	m_footprintHalfWidth;	/// half distance between the hexagon's two flat sides
+		Real	m_footprintShoulder;	/// distance along the pointed axis to where the flat sides end
+		Real	m_footprintTip;		/// distance along the pointed axis to the points
 		virtual void release() override	{TheW3DProjectedShadowManager->removeShadow(this);}	///<release shadow from manager
 };

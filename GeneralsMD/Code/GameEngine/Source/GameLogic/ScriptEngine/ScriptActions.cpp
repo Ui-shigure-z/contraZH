@@ -2137,6 +2137,7 @@ void ScriptActions::doTeamHuntWithCommandButton(const AsciiString& teamName, con
 			case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
 			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
 			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
@@ -7144,6 +7145,12 @@ void ScriptActions::executeAction( ScriptAction *pAction )
 			doSetStoppingDistance(pAction->getParameter(0)->getString(), pAction->getParameter(1)->getReal());
 			return;
 		case ScriptAction::SET_FPS_LIMIT:
+			// With the logic time scale on, the limit is the game speed, as when logic stepped once per drawn frame.
+			if (TheFramePacer->isLogicTimeScaleEnabled())
+			{
+				TheFramePacer->setGameSpeed(pAction->getParameter(0)->getInt());
+				return;
+			}
 			if (!pAction->getParameter(0)->getInt())
 			{
 				TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);

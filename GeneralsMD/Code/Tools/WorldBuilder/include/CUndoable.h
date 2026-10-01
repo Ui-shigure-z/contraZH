@@ -122,6 +122,7 @@ public:
 	void RotateTo(CWorldBuilderDoc *pDoc, Real angle);
 	void SetThingTemplate(CWorldBuilderDoc *pDoc, const ThingTemplate* thing);
 	void SetName(CWorldBuilderDoc *pDoc, AsciiString name);
+	void SetRoadType(CWorldBuilderDoc *pDoc, AsciiString newRoadType);
 
 public:
 	MapObject				 *m_objectToModify;
@@ -157,6 +158,7 @@ public:
 		void RotateTo(Real angle);
 		void SetThingTemplate(const ThingTemplate* thing);
 		void SetName(AsciiString name);
+		void SetRoadType(AsciiString newRoadType);
 };
 
 ///                            ModifyFlagsUndoable
@@ -271,6 +273,39 @@ public:
 		virtual void Do() override;
 		virtual void Undo() override;
 };
+
+class AddBoundaryUndoable : public Undoable
+{
+protected:
+	CWorldBuilderDoc *m_pDoc;  ///< Not ref counted.  This undoable should be in a list attached to the doc anyway. 
+	ICoord2D				 *m_boundaryToAdd;
+	Bool						m_addedToList;
+
+public:
+		AddBoundaryUndoable(CWorldBuilderDoc *pDoc, ICoord2D *pBoundaryToAdd);
+public:
+		// destructor. 
+		~AddBoundaryUndoable(void);
+		virtual void Do(void);
+		virtual void Undo(void);
+};
+
+/*************************************************************************
+**                   RemoveAllExtraBoundariesUndoable
+***************************************************************************/
+// class RemoveAllExtraBoundariesUndoable : public Undoable
+// {
+// protected:
+//     CWorldBuilderDoc *m_pDoc;          ///< Not ref counted.
+//     std::vector<ICoord2D> m_oldBoundaries;
+
+// public:
+//     RemoveAllExtraBoundariesUndoable(CWorldBuilderDoc *pDoc);
+//     virtual ~RemoveAllExtraBoundariesUndoable(void);
+
+//     virtual void Do(void);
+//     virtual void Undo(void);
+// };
 
 ///                            AddPolygonUndoable
 /** An undoable that actually undoes something.  Adds a polygon. */

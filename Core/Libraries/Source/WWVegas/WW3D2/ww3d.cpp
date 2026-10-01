@@ -266,7 +266,7 @@ void WW3D::Set_NPatches_Level(unsigned level)
 WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 {
 	assert(IsInitted == false);
-	WWDEBUG_SAY(("WW3D::Init hwnd = %p",hwnd));
+	RENDER_LOG(("WW3D::Init hwnd = %p",hwnd));
 	_Hwnd = (HWND)hwnd;
 	Lite = lite;
 
@@ -274,11 +274,11 @@ WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 	** Initialize d3d, this also enumerates the available devices and resolutions.
 	*/
 	Init_D3D_To_WW3_Conversion();
-	WWDEBUG_SAY(("Init DX8Wrapper"));
+	RENDER_LOG(("Init DX8Wrapper"));
 	if (!DX8Wrapper::Init(_Hwnd, lite)) {
 		return(WW3D_ERROR_INITIALIZATION_FAILED);
 	}
-	WWDEBUG_SAY(("Allocate Debug Resources"));
+	RENDER_LOG(("Allocate Debug Resources"));
 	Allocate_Debug_Resources();
 
 	MAYBE_UNUSED MMRESULT r=timeBeginPeriod(1);
@@ -289,7 +289,7 @@ WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 	** Initialize the dazzle system
 	*/
 	if (!lite) {
-		WWDEBUG_SAY(("Init Dazzles"));
+		RENDER_LOG(("Init Dazzles"));
 		FileClass * dazzle_ini_file = _TheFileFactory->Get_File(DAZZLE_INI_FILENAME);
 		if (dazzle_ini_file) {
 			INIClass dazzle_ini(*dazzle_ini_file);
@@ -311,7 +311,7 @@ WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 		AnimatedSoundMgrClass::Initialize ();
 		IsInitted = true;
 	}
-	WWDEBUG_SAY(("WW3D Init completed"));
+	RENDER_LOG(("WW3D Init completed"));
 	return WW3D_ERROR_OK;
 }
 
@@ -820,7 +820,7 @@ WW3DErrorType WW3D::Begin_Render(bool clear,bool clearz,const Vector3 & color, f
         // Check if the device needs to be reset
         if( D3DERR_DEVICENOTRESET == hr )
         {
-            WWDEBUG_SAY(("WW3D::Begin_Render is resetting the device."));
+            RENDER_LOG(("WW3D::Begin_Render is resetting the device."));
             DX8Wrapper::Reset_Device();
         }
 
@@ -1238,6 +1238,21 @@ long WW3D::Get_Ext_Swap_Interval()
 	return DX8Wrapper::Get_Swap_Interval();
 }
 
+void WW3D::Set_VSync_Mode(int mode)
+{
+	DX8Wrapper::Set_VSync_Mode(mode);
+}
+
+bool WW3D::Is_VSync_On()
+{
+	return DX8Wrapper::Is_VSync_On();
+}
+
+void WW3D::Set_Low_Latency(bool on)
+{
+	DX8Wrapper::Set_Low_Latency(on);
+}
+
 
 /***********************************************************************************************
  * WW3D::Set_Collision_Box_Display_Mask -- control rendering of collision boxes                *
@@ -1350,7 +1365,7 @@ void WW3D::Make_Screen_Shot( const char * filename_base , const float gamma, con
 		}
 	}
 
-	WWDEBUG_SAY(( "Creating Screen Shot %s", filename ));
+	RENDER_LOG(( "Creating Screen Shot %s", filename ));
 
 	// make the gamma look up table
 	int i;
@@ -1531,7 +1546,7 @@ void WW3D::Start_Movie_Capture( const char * filename_base, float frame_rate )
 
 	Movie = W3DNEW FrameGrabClass( filename_base, FrameGrabClass::AVI, width, height, depth, frame_rate);
 
-	WWDEBUG_SAY(( "Starting Movie %s", filename_base ));
+	RENDER_LOG(( "Starting Movie %s", filename_base ));
 #endif
 }
 
@@ -1553,7 +1568,7 @@ void WW3D::Stop_Movie_Capture()
 #ifdef _WIN32
 	if (IsCapturing) {
 		IsCapturing = false;
-		WWDEBUG_SAY(( "Stopping Movie" ));
+		RENDER_LOG(( "Stopping Movie" ));
 
 		WWASSERT( Movie != nullptr);
 		delete Movie;
@@ -1711,7 +1726,7 @@ void WW3D::Update_Movie_Capture()
 #ifdef _WIN32
 	WWASSERT( IsCapturing);
 	WWPROFILE("WW3D::Update_Movie_Capture");
-	WWDEBUG_SAY(( "Updating"));
+	RENDER_LOG(( "Updating"));
 
 	// TheSuperHackers @bugfix xezon 21/05/2025 Get the back buffer and create a copy of the surface.
 	// Originally this code took the front buffer and tried to lock it. This does not work when the

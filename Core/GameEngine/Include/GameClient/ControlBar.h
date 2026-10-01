@@ -36,6 +36,7 @@
 #include "Common/Science.h"
 #include "GameClient/Color.h"
 #include "GameClient/GameWindow.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
 class Drawable;
@@ -252,6 +253,7 @@ enum GUICommandType CPP_11(: Int)
 	GUI_COMMAND_TOGGLE_DEPLOY,						///< toggle a DeployStyleAIUpdate object between deployed and packed
 	GUI_COMMAND_TOGGLE_FIRE_WEAPON,				///< fire a weapon, or stop firing it if it is already firing
 	GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP,		///< tunnel with this toggle on will automatically evac units and becomes not enterable 
+	GUI_COMMAND_EVACUATE_TO_WORK,					///< dump all our contents, supply gatherers among them resume gathering
 	// add more commands here, don't forget to update the string command list below too ...
 
 	GUI_COMMAND_NUM_COMMANDS
@@ -311,6 +313,7 @@ static const char *const TheGuiCommandNames[] =
 	"TOGGLE_DEPLOY",
 	"TOGGLE_FIRE_WEAPON",
 	"TOGGLE_TUNNEL_AUTO_POP",
+	"EVACUATE_TO_WORK",
 
 	nullptr
 };
@@ -986,6 +989,7 @@ protected:
 	void refreshCommandGroupButtons();
 	Bool isCommandGroupRowShown() const;
 
+	static const Image* calculateVeterancyOverlayForLevel( VeterancyLevel level );
 	static const Image* calculateVeterancyOverlayForThing( const ThingTemplate *thingTemplate );
 	static const Image* calculateVeterancyOverlayForObject( const Object *obj );
 
@@ -999,6 +1003,7 @@ protected:
 
 	void setUpDownImages();
 		// methods for flashing cameos
+
 public:
 	void setFlash( Bool b ) { m_flash = b; }
 
@@ -1026,6 +1031,22 @@ protected:
 	Real m_displayedConstructPercent;							///< construct percent last displayed to user
 	UnsignedInt m_displayedOCLTimerSeconds;				///< OCL Timer seconds remaining last displayed to user
 	UnsignedInt m_displayedQueueCount;						///< queue count last displayed to user
+
+	// A summed count hides a gain at one producer that a loss at another cancels, so the
+	// multi select queue tracks each producer's head and count instead.
+	struct QueueSignature
+	{
+		Object *producer;
+		ProductionID head;										///< first entry, PRODUCTIONID_INVALID when the queue is empty
+		UnsignedInt count;
+
+		Bool operator!=( const QueueSignature &other ) const
+		{
+			return producer != other.producer || head != other.head || count != other.count;
+		}
+	};
+	std::vector<QueueSignature> m_displayedQueueSignature;	///< multi select queue state last displayed to user
+
 	UnsignedInt m_lastRecordedInventoryCount;			///< last known UI state of an inventory count
 
 	GameWindow *m_rightHUDWindow;									///< window of the right HUD display
@@ -1060,6 +1081,7 @@ protected:
 	GameWindow *m_smartSelectionButtons[ MAX_SMART_SELECTION_BUTTONS ];
 	ICoord2D m_smartSelectionButtonSize;
 	Int m_smartSelectionActive;																///< cameo whose command set the bar shows, or -1 for the common set
+	std::vector<ObjectID> m_sentFocusGroup;										///< focus group last sent to the logic side, to skip an unchanged resend
 	Int m_smartSelectionLastClickSlot;												///< cameo of the last left click, for double click detection
 	UnsignedInt m_smartSelectionLastClickTime;
 
@@ -1153,6 +1175,35 @@ private:
 	void setCommandBarBorder( GameWindow *button, CommandButtonMappedBorderType type);
 public:
 	void updateCommandBarBorderColors(Color build, Color action, Color upgrade, Color system );
+
+protected:
+	
+	//ShigureUi 20/09/2026 cache of build unit/upgrade command to avoid sending wrong MSG
+	struct BuildQueueCacheNode
+	{
+		ProductionType m_type;														///< production type
+		ProductionID m_productionID;
+		union
+		{
+			const ThingTemplate* m_objectToProduce;					///< what we're going to produce
+			const UpgradeTemplate* m_upgradeToResearch;			///< what upgrade we're researching
+		};
+
+		BuildQueueCacheNode()
+		{
+			m_type = PRODUCTION_INVALID;
+			m_productionID = PRODUCTIONID_INVALID;
+		}
+	};
+
+	std::multimap<ObjectID, BuildQueueCacheNode> m_multiSelectQueueCache;
+	Real calcEstimatedProductionFinishedTime(Object* obj);
+	UnsignedInt calcBuildQueueRoomLeft(Object* obj, const ThingTemplate* thing, const UpgradeTemplate* upgrade);
+	UnsignedInt calcBuildLimitLeft(Player* player, const ThingTemplate* thing);
+
+public:
+	void removeUnitFromBuildQueueCache(ObjectID objID, ProductionID productionID);
+	void removeUpgradeFromBuildQueueCache(ObjectID objID, const UpgradeTemplate *upgrade);
 
 private:
 

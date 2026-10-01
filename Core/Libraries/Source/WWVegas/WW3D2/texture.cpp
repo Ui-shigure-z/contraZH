@@ -41,8 +41,7 @@
 
 #include "texture.h"
 
-#include <d3d8.h>
-#include <d3dx8core.h>
+#include "dx8compat.h"
 #include "dx8wrapper.h"
 #include "WWLib/TARGA.h"
 #include <WWLib/nstrdup.h>
@@ -103,7 +102,11 @@ TextureBaseClass::TextureBaseClass
 	Dirty(false),
 	TextureLoadTask(nullptr),
 	ThumbnailLoadTask(nullptr),
-	HSVShift(0.0f,0.0f,0.0f)
+	HSVShift(0.0f,0.0f,0.0f),
+	NormalMap(nullptr),
+	NormalMapChecked(false),
+	EmissiveMap(nullptr),
+	EmissiveMapChecked(false)
 {
 }
 
@@ -119,6 +122,9 @@ TextureBaseClass::~TextureBaseClass()
 	delete ThumbnailLoadTask;
 	ThumbnailLoadTask=nullptr;
 
+	REF_PTR_RELEASE(NormalMap);
+	REF_PTR_RELEASE(EmissiveMap);
+
 	if (D3DTexture)
 	{
 		D3DTexture->Release();
@@ -126,6 +132,18 @@ TextureBaseClass::~TextureBaseClass()
 	}
 
 	DX8TextureManagerClass::Remove(this);
+}
+
+void TextureBaseClass::Set_Normal_Map(TextureClass *normal_map)
+{
+	REF_PTR_SET(NormalMap, normal_map);
+	NormalMapChecked = true;
+}
+
+void TextureBaseClass::Set_Emissive_Map(TextureClass *emissive_map)
+{
+	REF_PTR_SET(EmissiveMap, emissive_map);
+	EmissiveMapChecked = true;
 }
 
 
@@ -979,10 +997,18 @@ SurfaceClass *TextureClass::Get_Surface_Level(unsigned int level)
 		return nullptr;
 	}
 
+	// Surfaces are for CPU access, so they come from the lockable copy
+	IDirect3DTexture8 *lockable = DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Texture());
 	IDirect3DSurface8 *d3d_surface = nullptr;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
+	DX8_ErrorCode(lockable->GetSurfaceLevel(level, &d3d_surface));
 	SurfaceClass *surface = new SurfaceClass(d3d_surface);
 	d3d_surface->Release();
+
+	if (lockable != Peek_D3D_Texture())
+	{
+		surface->UploadTexture = Peek_D3D_Texture();
+		surface->UploadTexture->AddRef();
+	}
 
 	return surface;
 }
@@ -1029,7 +1055,7 @@ unsigned TextureClass::Get_Texture_Memory_Usage() const
 	{
 		D3DSURFACE_DESC desc;
 		DX8_ErrorCode(Peek_D3D_Texture()->GetLevelDesc(i,&desc));
-		size+=desc.Size;
+		size+=Surface_Size(desc);
 	}
 	return size;
 }
@@ -1321,7 +1347,7 @@ unsigned ZTextureClass::Get_Texture_Memory_Usage() const
 	{
 		D3DSURFACE_DESC desc;
 		DX8_ErrorCode(Peek_D3D_Texture()->GetLevelDesc(i,&desc));
-		size+=desc.Size;
+		size+=Surface_Size(desc);
 	}
 	return size;
 }

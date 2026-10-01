@@ -1228,7 +1228,7 @@ void renderStenciledPlayerColor( UnsignedInt color, UnsignedInt stencilRef, Bool
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	m_pDev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	DX8_SET_FVF(m_pDev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
 
 	// Set stencil states
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILENABLE, TRUE );
@@ -1595,29 +1595,6 @@ void RTS3DScene::flushTranslucentObjects(RenderInfoClass & rinfo)
 	//function gets called right after we flush regular render objects.
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENT,DX8Wrapper::Convert_Color(this->Get_Ambient_Light(),0.0f));
 }
-
-//=============================================================================
-// RTS3DScene::createLightsIterator
-//=============================================================================
-/** Returns an iterator of the lights in the scene. */
-//=============================================================================
-RefRenderObjListIterator * RTS3DScene::createLightsIterator()
-{
-	RefRenderObjListIterator * it = NEW RefRenderObjListIterator(&LightList);	// poolify
-	return it;
-}
-
-
-//=============================================================================
-// RTS3DScene::destroyLightsIterator
-//=============================================================================
-/** Destroys the iterator returned by createLightsIterator. */
-//=============================================================================
-void RTS3DScene::destroyLightsIterator(RefRenderObjListIterator * it)
-{
-	delete it;
-}
-
 
 //=============================================================================
 // RTS3DScene::addDynamicLight

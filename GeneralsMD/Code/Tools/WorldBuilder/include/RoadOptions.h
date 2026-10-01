@@ -48,10 +48,10 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(RoadOptions)
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX) override;    // DDX/DDV support
-	virtual void OnOK() override {return;};  ///< Modeless dialogs don't OK, so eat this for modeless.
-	virtual void OnCancel() override {return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
-	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) override;
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual void OnOK();  ///< Modeless dialogs don't OK, so eat this for modeless.
+	virtual void OnCancel(){return;}; ///< Modeless dialogs don't close on ESC, so eat this for modeless.
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -65,6 +65,10 @@ protected:
 	afx_msg void OnBroadCurve();
 	afx_msg void OnJoin();
 	afx_msg void OnApplyRoad();
+	afx_msg void OnEditSnapPoint();
+
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
@@ -80,8 +84,11 @@ protected:
 	static Bool				m_tightCurve;
 	static Bool				m_doJoin;
 	CTreeCtrl					m_roadTreeView;
+	CFont m_treeFont;
+
 
 protected:
+	void ExpandAllItems(CTreeCtrl& treeCtrl, HTREEITEM hItem);
 	void addRoad(char *pPath, Int objectNdx, HTREEITEM parent);
 	HTREEITEM findOrAdd(HTREEITEM parent, const char *pLabel);
 	Bool findAndSelect(HTREEITEM parent, AsciiString label);
@@ -91,15 +98,30 @@ protected:
 	void SelectConnected();
 
 public:
-	static AsciiString getCurRoadName() {return m_currentRoadName;}
-	static Bool isBridge() {return (m_currentRoadIndex >= m_numberOfRoads);}
-	static Bool isAngled() {return m_angleCorners;}
-	static Bool isTightCurve() {return m_tightCurve;}
-	static Bool isJoin() {return m_doJoin;}
-	static void updateSelection();
-	static Bool selectionIsRoadsOnly();
-	void applyToSelection();
-};
+	static AsciiString getCurRoadName(void) {return m_currentRoadName;}
+	static Bool isBridge(void) {return (m_currentRoadIndex >= m_numberOfRoads);}
+	static Bool isAngled(void) {return m_angleCorners;}
+	static Bool isTightCurve(void) {return m_tightCurve;}
+	static Bool isJoin(void) {return m_doJoin;}
+	static void updateSelection(void);
+	static Bool selectionIsRoadsOnly(void);
+	void applyToSelection(void);
+#ifdef RTS_HAS_QT
+	// Qt panel support (WBQtRoadBridge): let the Qt Road panel mirror the road/bridge list
+	// (from TheTerrainRoads), drive the selection statics (m_currentRoadIndex /
+	// m_currentRoadName), and fire the same command handlers RoadTool + the apply path read.
+	// Defined in src/WBQtRoadBridge.cpp; member statics so they can reach the private state.
+	static int qtGetCurrentIndex(void);
+	static void qtSelectIndex(int index, const char *name);
+	static int qtGetCurrentName(char *nameOut, int cap);
+	static int qtGetCornerType(void);
+	static void qtSetCornerType(int cornerType);
+	static int qtGetJoin(void);
+	static void qtSetJoin(int on);
+	static void qtApplyRoadType(void);
+	static void qtGetSelectionState(int *cornerTypeOut, int *joinOut, int *mixedOut, char *roadNameOut, int cap);
+#endif
+}; 
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

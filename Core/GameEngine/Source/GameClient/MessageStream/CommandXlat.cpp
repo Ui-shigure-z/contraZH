@@ -3662,6 +3662,9 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				}
 
 				ToggleControlBar();
+#if defined(GENERALS_ONLINE)
+				TheInGameUI->toggleObserverOverlay();
+#endif
 			}
 			disp = DESTROY_MESSAGE;
 			break;
@@ -4204,6 +4207,45 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			break;
 		}
 
+		// Toggle the model name overlay, one callout per draw module, pointing at that module's model.
+		case GameMessage::MSG_CHEAT_SHOW_MODEL_NAMES:
+		{
+			TheInGameUI->toggleModelNameOverlay();
+
+			TheInGameUI->messageNoFormat( TheInGameUI->isModelNameOverlayOn()
+				? TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugModelNameOverlayOn", L"Model Names are ON")
+				: TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugModelNameOverlayOff", L"Model Names are OFF") );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Toggle the laser name overlay, drawn at the middle of each beam.
+		case GameMessage::MSG_CHEAT_SHOW_LASER_NAME:
+		{
+			TheInGameUI->toggleLaserNameOverlay();
+
+			TheInGameUI->messageNoFormat( TheInGameUI->isLaserNameOverlayOn()
+				? TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserNameOverlayOn", L"Laser Names are ON")
+				: TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserNameOverlayOff", L"Laser Names are OFF") );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Toggle the laser beam block overlay, stacked under the laser name.
+		case GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK:
+		{
+			TheInGameUI->toggleLaserBeamBlockOverlay();
+
+			TheInGameUI->messageNoFormat( TheInGameUI->isLaserBeamBlockOverlayOn()
+				? TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserBeamBlockOverlayOn", L"Laser Beam Blocks are ON")
+				: TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugLaserBeamBlockOverlayOff", L"Laser Beam Blocks are OFF") );
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
 		// Cycle the camera cheat: default -> free camera -> chase the selected object -> default.
 		// Purely a view change on this client, like the overlays above, so it carries no
 		// multiplayer guard. The selection is resolved here and handed to the view so the view
@@ -4295,6 +4337,22 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				default:
 					TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugTerrainNormal", L"Terrain: Normal") );
 					break;
+			}
+
+			disp = DESTROY_MESSAGE;
+			break;
+		}
+
+		// Toggle back face culling for everything drawn on this client.
+		case GameMessage::MSG_CHEAT_TOGGLE_FACE_CULLING:
+		{
+			if (TheDisplay->toggleFaceCulling())
+			{
+				TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugFaceCullingOn", L"Face Culling: On") );
+			}
+			else
+			{
+				TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugFaceCullingOff", L"Face Culling: Off (Double Sided)") );
 			}
 
 			disp = DESTROY_MESSAGE;
@@ -5319,22 +5377,8 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			TimeOfDay tod = TimeOfDay((Int) TheGlobalData->m_timeOfDay + 1);
 			if (tod < TIME_OF_DAY_FIRST || tod >= TIME_OF_DAY_COUNT)
 				tod = TIME_OF_DAY_FIRST;
-			if (TheWritableGlobalData->setTimeOfDay(tod))
+			if (TheGameClient->switchTimeOfDay(tod))
 			{
-				TheGameClient->setTimeOfDay(TheGlobalData->m_timeOfDay);
-				if (TheGlobalData->m_forceModelsToFollowTimeOfDay)
-				{
-					for (Object *obj = TheGameLogic->getFirstObject(); obj; obj = obj->getNextObject())
-					{
-						Drawable* d = obj->getDrawable();
-						if (d)
-						{
-							// this just forces a refresh.
-							ModelConditionFlags empty;
-							d->clearAndSetModelConditionFlags(empty, empty);
-						}
-					}
-				}
 				TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:DebugTimeOfDay", L"Time of Day set to %hs", TimeOfDayNames[tod]) );
 			}
 			disp = DESTROY_MESSAGE;

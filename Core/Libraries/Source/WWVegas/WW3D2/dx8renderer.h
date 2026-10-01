@@ -87,6 +87,8 @@ class DX8TextureCategoryClass : public MultiListObjectClass
 	static bool											m_gForceMultiply;  // Forces opaque materials to use the multiply blend - pseudo transparent effect.  jba.
 
 	void									Render_Task(PolyRenderTaskClass * prt, VertexMaterialClass * vmaterial, const ShaderClass & theShader, ShaderClass theAlphaShader, bool replay);
+	bool									Allows_Instancing() const;
+	void									Render_Instanced_Groups(VertexMaterialClass * vmaterial);
 
 public:
 
@@ -100,6 +102,7 @@ public:
 	void									Clear_Render_List();
 
 	bool									Is_Additive() const;
+	bool									Is_Emissive_Glow() const;
 	void									Render_Bloom();
 	void									Clear_Bloom_List();
 
@@ -170,6 +173,8 @@ protected:
 	bool Any_Delayed_Passes_To_Render()	{ return AnyDelayedPassesToRender; }
 
 	void Render_Procedural_Material_Passes();
+	void Render_Instanced_Material_Passes();
+	void Render_Material_Pass_Window();
 
 	DX8TextureCategoryClass* Find_Matching_Texture_Category(
 		TextureClass* texture,
@@ -299,18 +304,53 @@ public:
 	virtual void Add_Delayed_Visible_Material_Pass(MaterialPassClass * pass, MeshClass * mesh) override { Add_Visible_Material_Pass(pass,mesh); }
 	virtual void Render_Delayed_Procedural_Material_Passes() override { }
 
+	// Drops a model's place in the skinned vertex buffer when it leaves the rendering system.
+	static void Forget_Skinned_Model(MeshModelClass* mmc);
+
 private:
 
 	void Reset();
 	void clearVisibleSkinList();
 
+	// Skins that the vertex shader can deform draw first from the skinned vertex buffer, and leave
+	// the visible list so the CPU deforms only the rest.
+	bool Wants_Skinned_Vertices(MeshModelClass* mmc) const;
+	void Add_Skinned_Vertices(MeshModelClass* mmc);
+	void Release_Skinned_Vertices();
+	bool Allows_Skinning(MeshClass * mesh, const MeshClass * const * pass_meshes, int pass_mesh_count);
+	void Render_Skinned_Meshes();
+	void Render_Skinned_Material_Passes();
+
 	unsigned int								VisibleVertexCount;
 	MeshClass *									VisibleSkinHead;
 	MeshClass *									VisibleSkinTail;
 
+	VertexBufferClass *						SkinnedVertexBuffer;
+	int											UsedSkinnedVertices;
+
 };
 
 
+
+// Per-frame draw counts that measure how many draws hardware instancing could merge.
+struct DX8InstancingStatsStruct
+{
+	enum { SCENE_MAIN, SCENE_SHADOW_DEPTH, SCENE_COUNT };
+	enum { SIZE_CLASSES = 4, MAX_PASSES = 8 };
+
+	struct SceneStruct
+	{
+		int	RigidDraws;
+		int	EligibleDraws[SIZE_CLASSES];	// grouped by how many share a polygon renderer: 1, 2-3, 4-15, 16+
+		int	InstancedCalls;
+		int	InstancedMeshes;
+	};
+
+	SceneStruct						Scenes[SCENE_COUNT];
+	const MaterialPassClass *	Passes[MAX_PASSES];
+	int								PassDraws[MAX_PASSES];
+	int								OtherPassDraws;
+};
 
 /**
 ** DX8MeshRendererClass
@@ -334,10 +374,21 @@ public:
 	// While capture is on, Flush keeps every additive draw so Flush_Bloom can draw it again into the bloom target.
 	static void				Enable_Bloom_Capture(bool enable) { bloom_capture=enable; }
 	static bool				Is_Bloom_Capture_Enabled() { return bloom_capture; }
+	// How brightly _emi glow masks replay into the bloom target, 0 for not at all.
+	static void				Set_Bloom_Emissive_Intensity(float intensity) { bloom_emissive_intensity=intensity; }
+	static float			Get_Bloom_Emissive_Intensity() { return bloom_emissive_intensity; }
 	void						Add_Bloom_Category(DX8TextureCategoryClass* category);
 	void						Flush_Bloom();
 	void						Clear_Bloom_Lists();
 	bool						Has_Bloom_Tasks() const { return bloom_categories.Count() > 0; }
+
+	static void				Set_Stats_Scene(int scene) { stats_scene=scene; }
+	static int				Get_Stats_Scene() { return stats_scene; }
+	static void				Record_Rigid_Draw() { instancing_stats.Scenes[stats_scene].RigidDraws++; }
+	static void				Record_Eligible_Group(int draws);
+	static void				Record_Instanced_Group(int draws);
+	static void				Record_Material_Pass(const MaterialPassClass* pass, int draws);
+	static void				Take_Instancing_Stats(DX8InstancingStatsStruct& stats);
 
 	void						Log_Statistics_String(bool only_visible);
 	static void				Request_Log_Statistics();
@@ -365,6 +416,9 @@ protected:
 	FVFCategoryList *									texture_category_container_list_skin;
 	SimpleDynVecClass<DX8TextureCategoryClass *>	bloom_categories;		// categories holding kept additive tasks
 	static bool											bloom_capture;
+	static float										bloom_emissive_intensity;
+	static int											stats_scene;
+	static DX8InstancingStatsStruct				instancing_stats;
 
 	DecalMeshClass *									visible_decal_meshes;
 

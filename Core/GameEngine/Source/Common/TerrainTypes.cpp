@@ -46,6 +46,8 @@ const FieldParse TerrainType::m_terrainTypeFieldParseTable[] =
 	{ "BlendEdges", INI::parseBool,							nullptr,		offsetof( TerrainType, m_blendEdgeTexture ) },
 	{ "Class",			INI::parseIndexList,				terrainTypeNames, offsetof( TerrainType, m_class ) },
 	{ "RestrictConstruction", INI::parseBool,		nullptr,		offsetof( TerrainType, m_restrictConstruction ) },
+	{ "GlintStrength", INI::parseReal,					nullptr,		offsetof( TerrainType, m_glintStrength ) },
+	{ "GlintGloss", INI::parseReal,							nullptr,		offsetof( TerrainType, m_glintGloss ) },
 
 	{ nullptr,					nullptr,												nullptr,		0 },
 
@@ -61,6 +63,8 @@ TerrainType::TerrainType()
 	m_blendEdgeTexture = FALSE;
 	m_class = TERRAIN_NONE;
 	m_restrictConstruction = FALSE;
+	m_glintStrength = 1.0f;
+	m_glintGloss = 0.0f;
 	m_next = nullptr;
 
 }

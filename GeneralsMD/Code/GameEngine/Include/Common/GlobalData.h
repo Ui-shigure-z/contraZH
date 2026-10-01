@@ -134,6 +134,7 @@ public:
 	Bool setTimeOfDay( TimeOfDay tod );		///< Use this function to set the Time of day;
 
 	static void parseGameDataDefinition( INI* ini );
+	static void reloadEditedIni();		///< picks up render tuning keys from GameData.ini saved while the game runs, in cheat builds
 	void parseCustomDefinition();
 
 	//-----------------------------------------------------------------------------------------------
@@ -202,6 +203,8 @@ public:
 	Int m_castMode;
 	// TheSuperHackers @feature Draw a green hexagon under selected objects.
 	Bool m_selectionCircleEnabled;
+	// TheSuperHackers @feature Ring the attack range of an armed structure while it is being placed.
+	Bool m_defensesRangeCircle;
 	// TheSuperHackers @feature Draw the decals objects ask for with DisplayDecal.
 	Bool m_objectDecalsEnabled;
 	// TheSuperHackers @feature Keep ammo and passenger pips on screen when there is something
@@ -242,6 +245,80 @@ public:
 	Bool m_useCloudPlane;
 	Bool m_useShadowVolumes;
 	Bool m_useShadowDecals;
+	Real m_shadowMapMinSunElevation;	///< GameData ShadowMapMinSunElevation: lowest sun, in degrees, the shadow map uses
+	Bool m_shadowsAlwaysOn;	///< GameData ShadowsAlwaysOn: objects without a Shadow still cast into the shadow map
+	Real m_unitSpecularIntensity;	///< GameData UnitSpecularIntensity: brightness of the sun highlight on vehicles and structures, 0 for none
+	Real m_unitSpecularPower;		///< GameData UnitSpecularPower: tightness of that highlight, higher is smaller and sharper
+	Real m_unitBumpHeight;			///< GameData UnitBumpHeight: rise, in world units, of full brightness on textures without a normal map, 0 for flat
+	Real m_unitNormalMapStrength;	///< GameData UnitNormalMapStrength: scales the tilt of authored _nrm normal maps
+	Real m_terrainNormalMapStrength;	///< GameData TerrainNormalMapStrength: scales the tilt of terrain _nrm normal maps
+	Real m_terrainGlintIntensity;	///< GameData TerrainGlintIntensity: brightness of the sun's glint on the ground, 0 for none
+	Real m_terrainGlintGloss;		///< GameData TerrainGlintGloss: tightness of that glint, higher is smaller and sharper
+	Real m_terrainGlintAlbedo;		///< GameData TerrainGlintAlbedo: how far the glint follows the ground's brightness, 0 not at all to 1 fully
+	Real m_unitEmissiveIntensity;		///< GameData UnitEmissiveIntensity: brightness of _emi glow masks on vehicles and structures by day, 0 for none
+	Real m_unitEmissiveNightIntensity;	///< GameData UnitEmissiveNightIntensity: the same at night
+	Real m_softParticleDistance;		///< GameData SoftParticleDistance: how far in front of a surface a particle starts to fade, 0 for hard edges
+	Real m_flameWarp;					///< GameData FlameWarp and the keys below: flame shading and heat haze defaults, see FlameShaderTuning
+	Real m_flameHeat;
+	Real m_flameFlicker;
+	Real m_flameBreakup;
+	Real m_flameNoiseSize;
+	Real m_flameRise;
+	Real m_hazeBend;
+	Real m_hazeSize;
+	Real m_hazeLift;
+	Real m_hazeNoiseSize;
+	Real m_hazeRise;
+	Real m_hazeMask;
+	std::vector<AsciiString> m_electricParticleTextures;	///< GameData ElectricParticleTextures: particle textures that get the electric shader when their system is Auto
+	Real m_electricArcs;				///< GameData ElectricArcs and the keys below: electric shader settings
+	Real m_electricArcSharpness;
+	Real m_electricNoiseSize;
+	Real m_electricJitter;
+	Real m_electricFlicker;
+	Real m_electricRate;
+	Real m_electricParticleScale;		///< GameData ElectricParticleScale: how much larger or smaller electric-shaded particles draw, 1 unchanged
+	std::vector<AsciiString> m_laserParticleTextures;	///< GameData LaserParticleTextures: streak textures that get the laser shader when their system is Auto
+	Real m_laserCore;					///< GameData LaserCore and the keys below: laser shader settings
+	Real m_laserCoreWidth;
+	Real m_laserShimmer;
+	Real m_laserPulse;
+	Real m_laserPulseSize;
+	Real m_laserPulseSpeed;
+	Bool m_laserDebug;					///< GameData LaserDebug: shaded beams darken the scene instead of lighting it, to show the shader's shape
+	std::vector<AsciiString> m_cryoParticleTextures;	///< GameData CryoParticleTextures: particle textures that get the cryo shader when their system is Auto
+	RGBColor m_cryoTint;				///< GameData CryoTint and the keys below: cryo shader settings
+	Real m_cryoTintStrength;
+	Real m_cryoCore;
+	Real m_cryoCoreWidth;
+	Real m_cryoFrost;
+	Real m_cryoFrostSize;
+	Real m_cryoFrostSpeed;
+	Real m_cryoShards;
+	Real m_cryoShardSize;
+	Real m_cryoGlints;
+	Real m_cryoGlintSize;
+	Real m_cryoGlintRate;
+	Real m_cryoParticleScale;			///< GameData CryoParticleScale: how much larger or smaller cryo-shaded particles draw, 1 unchanged
+	Real m_ambientOcclusionRadius;		///< GameData AmbientOcclusionRadius: how far, in world units, geometry darkens what is near it
+	Real m_ambientOcclusionStrength;	///< GameData AmbientOcclusionStrength: how dark the occlusion gets, 0 for none
+	Real m_groundNoiseStrength;			///< GameData GroundNoiseStrength and the keys below: the noise that stands in for the light map, see W3DGroundNoise
+	Real m_groundNoiseSize;
+	Real m_groundNoiseTint;
+	Real m_groundNoiseBrightness;
+	Real m_terrainHeightBlendStrength;	///< GameData TerrainHeightBlendStrength: how far the taller texture pushes into the other's side of a blend
+	Real m_terrainHeightBlendSharpness;	///< GameData TerrainHeightBlendSharpness: how narrow the blend's edge is, 1 as wide as the legacy blend
+	Int m_terrainAtlasBorder;			///< GameData TerrainAtlasBorder: texels copied around each texture in the terrain atlas
+	Real m_skyCloudSize;				///< GameData SkyCloudSize and the keys below: the HQ sky's cloud shadows, see W3DSkyClouds
+	Real m_skyCloudCoverage;
+	Real m_skyCloudSoftness;
+	Real m_skyCloudShadowStrength;
+	RGBColor m_skyCloudShadowTint;
+	Real m_skyCloudWindSpeed;
+	Real m_skyCloudWindAngle;
+	Real m_skyCloudChurn;
+	Real m_skyCloudBillow;
+	Real m_skyCloudDetail;
 	Int  m_textureReductionFactor;	//how much to cut texture resolution: 2 is half, 3 is quarter, etc.
 	Bool m_enableBehindBuildingMarkers;
 	Real m_waterPositionX;
@@ -455,6 +532,10 @@ public:
 
 	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
 	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
+#if defined(GENERALS_ONLINE)
+	Bool m_exportStats; ///< Write game stats JSON next to each simulated replay
+	AsciiString m_statsUrl; ///< If not empty, POST the compressed stats JSON here
+#endif
 
 	Int m_maxParticleCount;						///< maximum number of particles that can exist
 	Int m_maxFieldParticleCount;			///< maximum number of field-type particles that can exist (roughly)
@@ -525,6 +606,14 @@ public:
 	// TheSuperHackers @feature L3-M 21/08/2025 toggle the money per minute display, false shows only the original current money
 	Bool m_showMoneyPerMinute;
 	Bool m_allowMoneyPerMinuteForPlayer;
+
+#if defined(GENERALS_ONLINE)
+	// Observer notification feed; a font size of zero disables it
+	Int m_observerNotificationFontSize;
+	Bool m_observerNotificationSpecialPowerUsage;
+	Bool m_observerNotificationSpecialPowerPurchase;
+	Bool m_observerNotificationMilestone;
+#endif
 
 	// TheSuperHackers @feature bobtista 28/06/2026 user-configurable speed multiplier for game window transitions
 	Real m_gameWindowTransitionSpeedMultiplier;
@@ -612,9 +701,33 @@ public:
   Real m_bloomStrength;           ///< Options.ini BloomStrength: glow brightness, 0 to 1
   Bool m_bloomDebug;              ///< Options.ini BloomDebug: show the glow buffer instead of the scene
   Bool m_laserRef;                ///< Options.ini LaserRef: lasers light the ground along the beam
+  Bool m_useShadowMap;            ///< Options.ini ShadowMap: shadows come from a sun shadow map where the hardware allows
+  Bool m_useSpecular;             ///< Options.ini Specular: per-pixel sun highlight on vehicles and structures, and the sun's glint on the ground, where the hardware allows
+  Bool m_useNormalMaps;           ///< Options.ini NormalMaps: bump detail in the sun's light on vehicles, structures and terrain where the hardware allows
+  Bool m_waterReflections;        ///< Options.ini WaterReflections: smooth water mirrors the terrain, units and buildings
+  Bool m_useSoftParticles;        ///< Options.ini SoftParticles: smoke and fire fade where they meet the ground and buildings
+  Bool m_useFlameShaders;         ///< Options.ini FlameShaders: flame weapon fire flickers and glows white-hot at its core
+  Bool m_useElectricShaders;      ///< Options.ini ElectricShaders: electric sparks and flares crackle with arcs
+  Bool m_useLaserShaders;         ///< Options.ini LaserShaders: laser beams get a white-hot core and pulses running along them
+  Bool m_useCryoShaders;          ///< Options.ini CryoShaders: cryo beams, streaks and sprites turn to ice
+  Bool m_useDynamicLights;        ///< Options.ini DynamicLights: explosions, muzzle flashes and lasers light their surroundings
+  Bool m_usePixelLights;          ///< Options.ini PixelLights: those lights are drawn per pixel where the hardware allows
+  Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
+  Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
+  Bool m_useHQSky;                ///< Options.ini HQSky: cloud shadows drift softly and change shape where the hardware allows
+  Int m_vsync;                    ///< Options.ini VSync: 1 on, 0 off, -1 on in fullscreen and off in a window
+  Bool m_lowLatency;              ///< Options.ini LowLatency: at most one frame queued ahead of the GPU
+  Bool m_smoothUnitMotion;        ///< Options.ini SmoothUnitMotion: models draw between logic frames above the logic rate
+  Bool m_specularDebug;           ///< Options.ini SpecularDebug: show what the specular pass covers and its highlight in magenta
+  Bool m_normalMapDebug;          ///< Options.ini NormalMapDebug: show only the terrain's bump shading, on grey
+  Bool m_ambientOcclusionDebug;   ///< Options.ini AmbientOcclusionDebug: show only the occlusion, in grey
   Color m_laserGlowColor;         ///< GameData LaserGroundGlowColor: black takes the beam color
-  Real m_laserGlowRadius;         ///< GameData LaserGroundGlowRadius: 0 uses twice the outer beam width
   Real m_laserGlowIntensity;      ///< GameData LaserGroundGlowIntensity: how strongly the color is added
+  Real m_laserGlowRadius;         ///< GameData LaserGroundGlowRadius: how far the light reaches from the beam, 0 derives it from the beam width
+  Real m_laserGlowFalloff;        ///< GameData LaserGroundGlowFalloff: power the light fades by with distance, Direct3D 9 only
+  Real m_laserGlowWrap;           ///< GameData LaserGroundGlowWrap: how much ground facing away from the beam still lights, Direct3D 9 only
+  Bool m_laserGlowDebug;          ///< GameData LaserGroundGlowDebug: the glow darkens the ground instead of lighting it, Direct3D 9 only
+  Bool m_laserGlowOverlap;        ///< GameData LaserGroundGlowOverlap: overlapping glows combine in one pass instead of compounding, Direct3D 9 only
 
 #if defined(RTS_DEBUG) || ENABLE_CONFIGURABLE_SHROUD
 	Bool m_shroudOn;

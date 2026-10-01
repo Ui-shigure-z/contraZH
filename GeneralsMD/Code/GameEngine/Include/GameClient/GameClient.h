@@ -132,11 +132,17 @@ public:
 	virtual void destroyDrawable( Drawable *draw );											///< Destroy the given drawable
 
 	virtual void setTimeOfDay( TimeOfDay tod );													///< Tell all the drawables what time of day it is now
+	Bool switchTimeOfDay( TimeOfDay tod );															///< Change the time of day of the running game and refresh everything that depends on it
 
 	virtual void selectDrawablesInGroup( Int group );									///< select all drawables belong to the specifies group
 	virtual void assignSelectedDrawablesToGroup( Int group );						///< assign all selected drawables to the specified group
 	//---------------------------------------------------------------------------------------
 	virtual UnsignedInt getFrame() { return m_frame; }						///< Returns the current simulation frame number
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// The legacy frame ticks at 30 Hz on the wall clock so client effects keep their retail cadence.
+	UnsignedInt getFrameLegacy() const { return m_frameLegacy; }
+	Bool HasLegacyFrameAdvanced() const { return m_frameLegacy != m_frameLegacyLast; }
+#endif
 
 	//---------------------------------------------------------------------------
 	virtual void setTeamColor( Int red, Int green, Int blue ) = 0;  ///< @todo superhack for demo, remove!!!
@@ -168,6 +174,12 @@ protected:
 
 	// @todo Should there be a separate GameClient frame counter?
 	UnsignedInt m_frame;																				///< Simulation frame number from server
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	UnsignedInt m_frameLegacy;
+	UnsignedInt m_frameLegacyLast;
+	Int64 m_legacyFrameEndLastMs;
+	Int64 m_legacyFrameMsAccrued;
+#endif
 
 	Drawable *m_drawableList;																		///< All of the drawables in the world
 //	DrawablePtrHash m_drawableHash;															///< Used for DrawableID lookups

@@ -72,19 +72,24 @@ void WaterTool::deactivate()
 
 static Bool doIt = false;
 
-/// Shows the no options panel.
-void WaterTool::activate()
+void WaterTool::activate() 
 {
 	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_WATER_OPTIONS);
-	m_water_isActive = true;
-	PointerTool::clearSelection();
-	DrawObject::setDoBrushFeedback(false);
-	m_poly_isActive = false;
-	m_poly_isAdding = false;
-	m_poly_mouseUpMove = false;
-	m_poly_mouseUpPlus = false;
-	m_currentZ = WaterOptions::getHeight();
-	doIt = true;
+	/**
+	 * Adriane [Deathscythe]
+	 * Bug fix 101 -- If theres a selected polygon then dont clear selection, just like on the area tool
+	 */ 
+	if(!m_poly_curSelectedPolygon){
+		m_water_isActive = true;
+		PointerTool::clearSelection();
+		DrawObject::setDoBrushFeedback(false);
+		m_poly_isActive = false;
+		m_poly_isAdding = false;
+		m_poly_mouseUpMove = false;
+		m_poly_mouseUpPlus = false;
+		m_currentZ = WaterOptions::getHeight();
+		doIt = true;
+	}
 }
 
 
@@ -175,6 +180,7 @@ void WaterTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 		iDocPt.z = 0;
 		m_poly_moveUndoable->SetOffset(iDocPt);
 		pView->Invalidate();
+		pDoc->updateAllViews();
 		return;
 	}
 	if (m_poly_dragPointNdx >= 0 && m_poly_curSelectedPolygon) {
@@ -184,6 +190,7 @@ void WaterTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 		iDocPt.z = m_currentZ;
 		m_poly_curSelectedPolygon->setPoint(iDocPt, m_poly_dragPointNdx);
 		pView->Invalidate();
+		pDoc->updateAllViews();
 	}
 }
 

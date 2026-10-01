@@ -465,9 +465,13 @@ public:
 		MSG_CHEAT_SHOW_COMMAND_SET,			///< TheSuperHackers @feature show the CommandSet each object uses
 		MSG_CHEAT_SHOW_WEAPON_SET,			///< TheSuperHackers @feature show the WeaponSet flags each object has
 		MSG_CHEAT_SHOW_ARMOR_SET,			///< TheSuperHackers @feature show the Armor each object uses
+		MSG_CHEAT_SHOW_LASER_NAME,			///< show the template name of each laser beam
+		MSG_CHEAT_SHOW_LASER_BEAM_BLOCK,	///< show the W3DLaserDraw module tags of each laser beam
 		MSG_CHEAT_CYCLE_CAMERA_MODE,		///< cycle default camera -> free camera -> chase selected object
 		MSG_CHEAT_CYCLE_SKYBOX,				///< cycle the skybox through the preset texture sets
 		MSG_CHEAT_CYCLE_TERRAIN_MODE,		///< cycle the terrain: normal -> hidden on black -> hidden on green
+		MSG_CHEAT_TOGGLE_FACE_CULLING,		///< toggle back face culling, drawing every face double sided when off
+		MSG_CHEAT_SHOW_MODEL_NAMES,			///< show the W3D model each draw module has loaded
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 
@@ -647,6 +651,7 @@ public:
 		MSG_TOGGLE_FIRE_WEAPON,											///< (weapon slot, max shots) start the selected group firing a weapon, or stop it
 		MSG_UPDATE_FOCUSED_GROUP,										///< update and tell every player that we have smart selection focus on this group
 		MSG_DO_REVERSE_MOVETO_HINT,									///< (location) If clicked, a reverse move would be ordered
+		MSG_EVACUATE_TO_WORK,												///< Dump out all of OUR contained objects, supply gatherers among them resume gathering
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 

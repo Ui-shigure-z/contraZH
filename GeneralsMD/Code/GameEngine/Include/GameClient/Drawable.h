@@ -235,7 +235,7 @@ private:
 	Vector3							m_decayRate;			///< step amount to make tint turn off slow or fast
 	Vector3							m_peakColor;			///< um, the peak color, what color we are headed toward during attack
 	Vector3							m_currentColor;		///< um, the current color, how we are colored, now
-	Real								m_sustainCounter;
+	double							m_sustainCounter;
 	Byte								m_envState;				///< a randomly switchable SUSTAIN state, release is compliment
 	Bool								m_affect;         ///< set TRUE if this has any effect (has a non 0,0,0 color).
 };
@@ -439,9 +439,12 @@ public:
 	void setInstanceScale(Real value) { m_instanceScale = value;}	///< set scale that will be applied to instance matrix before rendering.
 
 	const Matrix3D *getTransformMatrix() const;	///< return the world transform
+	const Matrix3D *getDrawnTransformMatrix() const;	///< world transform the model is drawn at this render frame, between the last two logic frames
+	void addDrawnOffset( Coord3D *pos ) const;	///< move a point anchored to the logic transform to where the model is drawn
+	Real getDrawnProgress() const;	///< blend factor between the last two logic frames, 1 when the drawable is not interpolated
 
 	void draw();													///< render the drawable to the given view
-	void updateDrawable();														///< update the drawable
+	void updateDrawable(Real timeScale);														///< update the drawable
 
 	void drawIconUI();													///< draw "icon"(s) needed on drawable (health bars, veterency, etc)
 
@@ -694,6 +697,7 @@ protected:
 
 	virtual void reactToTransformChange(const Matrix3D* oldMtx, const Coord3D* oldPos, Real oldAngle) override;
 	void updateHiddenStatus();
+	void updateDrawnTransform() const;
 
 	void replaceModelConditionStateInDrawable();
 
@@ -741,7 +745,7 @@ private:
 		FADING_OUT
 	};
 	FadingMode		m_fadeMode;
-	UnsignedInt		m_timeElapsedFade;			///< for how many frames have i been fading
+	Real			m_timeElapsedFade;			///< for how many logic frames - incl. fractional ones - have i been fading
 	UnsignedInt		m_timeToFade;						///< how slowly am I fading
 
 	UnsignedInt		m_shroudClearFrame;						///< Last frame the local player saw this drawable "OBJECTSHROUD_CLEAR"
@@ -761,6 +765,13 @@ private:
 
 	Matrix3D m_instance;				///< The instance matrix that holds the initial/default position & orientation
 	Real m_instanceScale;				///< the uniform scale factor applied to the instance matrix before it is sent to W3D.
+
+	mutable Matrix3D m_drawnPrevious;	///< logic transform one logic frame before m_drawnFrame
+	mutable Matrix3D m_drawnCurrent;	///< logic transform at m_drawnFrame
+	mutable Matrix3D m_drawnBlended;	///< transform the model is drawn at this render frame
+	mutable Real m_drawnProgress;			///< blend factor m_drawnBlended was made with
+	mutable UnsignedInt m_drawnFrame;	///< logic frame m_drawnCurrent belongs to
+	mutable Bool m_drawnValid;				///< false until the history is known, or after a snap
 
 	DrawableInfo				m_drawableInfo;		///< structure pointed to by W3D render objects so they know which drawable they belong to.
 
@@ -827,6 +838,8 @@ private:
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 	// TheSuperHackers @feature Debug object and particle name overlays (Ctrl+[ and Ctrl+]).
 	void drawDebugNameOverlay( const IRegion2D *healthBarRegion );
+	// Laser name and beam block overlays (Ctrl+, and Ctrl+.). Returns TRUE for a laser while either is on.
+	Bool drawDebugLaserOverlay();
 	// Fold this frame's findings into the remembered list, refreshing anything already there.
 	void rememberParticleNames( const AsciiString *names, const AsciiString *fxNames, Int count,
 																UnsignedInt nowFrame );
@@ -840,6 +853,7 @@ private:
 	//new:
 	void drawProgress(const IRegion2D* healthBarRegion);							///< draw progress bar (shield, deploy, teleport, etc.)
 	void drawProductionBar( const IRegion2D* healthBarRegion );			///< draw progress of the head of the production queue
+	void drawSupplyBar( const IRegion2D* healthBarRegion );					///< draw carried supply boxes over capacity
 	Bool getAmmoPipsScreenSpan( const IRegion2D* healthBarRegion, Int &top, Int &bottom ) const;	///< vertical span drawAmmo occupies
 
 	void drawEmoticon( const IRegion2D* healthBarRegion );

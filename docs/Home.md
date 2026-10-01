@@ -15,6 +15,10 @@ Changes specific to this fork are on [contraZH Changes](contraZH-Changes.md).
 ## This fork
 
 * [contraZH Changes](contraZH-Changes.md) - Options.ini settings, new command buttons, debug overlays and cheat hotkeys
+* [Direct3D 9 Features](dx9feat.md) - shadow mapping, specular, normal and glow maps, per-pixel lights, soft particles, shockwaves
+* [Water](Water.md) - shader water options, `Water.ini` parameters and textures
+* [Electric & Laser Shading](Electric-&-Laser-Shading.md) - pictured electric, laser and laser ground glow keys
+* [WorldBuilder Qt](WorldBuilder-Qt.md) - the Qt map editor, its D3D9 effects, script and INI tools, map generator and MCP server
 
 ## Upstream reference
 

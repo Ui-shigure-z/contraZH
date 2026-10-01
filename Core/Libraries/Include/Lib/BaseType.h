@@ -32,6 +32,10 @@
 #include "Lib/BaseTypeCore.h"
 #include "Lib/trig.h"
 
+#if __cplusplus >= 201103L
+#include <type_traits>
+#endif
+
 //-----------------------------------------------------------------------------
 typedef wchar_t WideChar;  ///< multi-byte character representations
 
@@ -830,6 +834,126 @@ struct RGBColor
 		red = ((c >> 16) & 0xff) / 255.0f;
 		green = ((c >>  8) & 0xff) / 255.0f;
 		blue = ((c >>  0) & 0xff) / 255.0f;
+	}
+
+	RGBColor& operator+=(const RGBColor& c)
+	{
+		red += c.red;
+		green += c.green;
+		blue += c.blue;
+		return *this;
+	}
+
+	RGBColor& operator-=(const RGBColor& c)
+	{
+		red -= c.red;
+		green -= c.green;
+		blue -= c.blue;
+		return *this;
+	}
+
+	RGBColor& operator*=(const RGBColor& c)
+	{
+		red *= c.red;
+		green *= c.green;
+		blue *= c.blue;
+		return *this;
+	}
+
+	RGBColor& operator/=(const RGBColor& c)
+	{
+		red /= c.red;
+		green /= c.green;
+		blue /= c.blue;
+		return *this;
+	}
+
+	RGBColor operator+(const RGBColor& c) const
+	{
+		RGBColor res = *this;
+		res += c;
+		return res;
+	}
+
+	RGBColor operator-(const RGBColor& c) const
+	{
+		RGBColor res = *this;
+		res -= c;
+		return res;
+	}
+
+	RGBColor operator*(const RGBColor& c) const
+	{
+		RGBColor res = *this;
+		res *= c;
+		return res;
+	}
+
+	RGBColor operator/(const RGBColor& c) const
+	{
+		RGBColor res = *this;
+		res /= c;
+		return res;
+	}
+
+	RGBColor& operator+=(Real s)
+	{
+		red += s;
+		green += s;
+		blue += s;
+		return *this;
+	}
+
+	RGBColor& operator-=(Real s)
+	{
+		red -= s;
+		green -= s;
+		blue -= s;
+		return *this;
+	}
+
+	RGBColor& operator*=(Real s)
+	{
+		red *= s;
+		green *= s;
+		blue *= s;
+		return *this;
+	}
+
+	RGBColor& operator/=(Real s)
+	{
+		red /= s;
+		green /= s;
+		blue /= s;
+		return *this;
+	}
+
+	RGBColor operator+(Real s) const
+	{
+		RGBColor res = *this;
+		res += s;
+		return res;
+	}
+
+	RGBColor operator-(Real s) const
+	{
+		RGBColor res = *this;
+		res -= s;
+		return res;
+	}
+
+	RGBColor operator*(Real s) const
+	{
+		RGBColor res = *this;
+		res *= s;
+		return res;
+	}
+
+	RGBColor operator/(Real s) const
+	{
+		RGBColor res = *this;
+		res /= s;
+		return res;
 	}
 
 };

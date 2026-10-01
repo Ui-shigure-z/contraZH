@@ -30,7 +30,11 @@
 #include "Lib/BaseType.h"
 
 // TheSuperHackers @build xezon 24/03/2025 Prevent afxwin.h from loading d3d9types.h, colliding with our own DirectX library.
+// On the D3D9 backend the engine itself includes d3d9.h, so the real d3d9types.h must load;
+// pre-defining its guard there would leave every D3D9 type undeclared.
+#if !defined(BUILD_WITH_D3D9)
 #define _d3d9TYPES_H_
+#endif
 
 #include <afxwin.h>         // MFC core and standard components
 #include <afxext.h>         // MFC extensions

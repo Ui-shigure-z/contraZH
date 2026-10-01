@@ -40,9 +40,20 @@ protected:
 	Coord3D m_downPt3d;
 	MapObject *m_curObject;
 
+	// Group-rotate options (Pointer Rotation Options menu). Cached statics: these used to
+	// be re-read from the registry on every mouseMoved (thousands of reads/session). Loaded
+	// once on first use and refreshed by the menu handlers via setGroupRotateOptions().
+	static Bool m_rotateObjectsWithGroup;
+	static Bool m_useFarthestObjectPivot;
+	static Bool m_groupRotateOptionsLoaded;
+	Coord3D m_groupPivot;
 	Bool m_moving; ///< True if we are drag moving an object.
 	Bool m_rotating; ///< True if we are rotating an object.
-	Bool m_dragSelect; ///< True if we are drag selecting.
+	static Bool m_dragSelect; ///< True if we are drag selecting.
+	/// True if the drag box removes objects from the selection (Shift+Ctrl+drag) rather than
+	/// adding to it.  Latched on mouseDown so releasing the keys mid-drag can't change the
+	/// meaning of the box the user is already looking at.
+	static Bool m_dragDeselect;
 
 	Bool m_doPolyTool; ///< True if we are using the polygon tool to modify a polygon triggter.
 
@@ -53,6 +64,9 @@ protected:
 	Bool m_mouseUpMove;///< True if we are over the "move" hotspot.
 	HCURSOR m_moveCursor;
 
+	static Bool m_isMouseDown;
+	static CString m_lastPointerInfo;
+	static Bool m_pointerIsActive;
 protected:
 	void checkForPropertiesPanel();
 
@@ -73,4 +87,19 @@ public:
 public:
 	static void clearSelection(); ///< Clears the selected objects selected flags.
 	static Bool allowPick(MapObject* pMapObj, WbView* pView);
+	static CString getLastPointerInfoString(void) { return m_lastPointerInfo; }
+	static void setLastPointerInfoString(const CString& info) { m_lastPointerInfo = info; }
+	static Bool isMouseDown(void) { return m_isMouseDown; }
+	static Bool isDragSelecting(void) { return m_dragSelect; }
+	static Bool isDragDeselecting(void) { return m_dragDeselect; }
+	static Bool isActive(void) {return m_pointerIsActive; }
+
+	/// Update the cached group-rotate options when the menu toggles change, so mouseMoved
+	/// doesn't have to re-read them from the registry on every move.
+	static void setGroupRotateOptions(Bool rotateWithGroup, Bool pivotFarthest)
+	{
+		m_rotateObjectsWithGroup = rotateWithGroup;
+		m_useFarthestObjectPivot = pivotFarthest;
+		m_groupRotateOptionsLoaded = true;
+	}
 };

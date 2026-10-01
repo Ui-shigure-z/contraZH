@@ -57,6 +57,8 @@ protected:
 	virtual BOOL OnInitDialog() override;
 	afx_msg void OnChangeWidthEdit();
 	afx_msg void OnChangeCheckRuler();
+	afx_msg void OnChangeUseMeters();
+	afx_msg void OnChangeShowGrid();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 

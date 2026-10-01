@@ -27,7 +27,11 @@
 class TextureClass;
 class RenderInfoClass;
 class DX8IndexBufferClass;
+#if defined(BUILD_WITH_D3D9)
+#include "WW3D2/dx8compat.h"
+#else
 struct IDirect3DSurface8;
+#endif
 struct VertexFormatXYZNDUV2;
 
 // Adds a soft glow around additive particles and additive meshes. The caller draws the particles a
@@ -56,22 +60,26 @@ private:
 		Real brightness;
 	};
 
-	Bool acquireTargets(Int width, Int height, WW3DFormat format);
+	Bool acquireTargets(Int width, Int height, WW3DFormat format, Int sampleType, UnsignedInt sampleQuality);
 	void releaseTargets();
 	void releaseDefaults();
 	Bool setTarget(Int target);
 	Bool blurPass(TextureClass *source, Int target, Real offsetU, Real offsetV, Bool shrink);
 	void drawTaps(TextureClass *source, const Tap *taps, Int count, const ShaderClass &firstShader);
+	void drawShaderTaps(TextureClass *source, const Tap *taps, Int count);
 
 	// the full sized target that receives the additive draws, then two reduced ones to ping-pong the blur through
 	enum { TARGET_FULL = 0, TARGET_BLUR = 1, TARGET_COUNT = 3 };
 	TextureClass *m_target[TARGET_COUNT];
 	IDirect3DSurface8 *m_targetSurface[TARGET_COUNT];	///< held so binding a target allocates nothing
+	IDirect3DSurface8 *m_sampledSurface;	///< takes the additive draws when the scene is multisampled, then resolves into the full target
+	Int m_sampleType;										///< the scene's multisample type the targets were made for
 	DX8IndexBufferClass *m_quadIndices;	///< the same two triangles for every quad a pass can draw
 	IDirect3DSurface8 *m_defaultTarget;	///< the back buffer, held only between begin and end
 	IDirect3DSurface8 *m_defaultDepth;
 	ShaderClass m_addShader;						///< adds the source onto the target
 	ShaderClass m_copyShader;						///< replaces the target, so a pass needs no clear
+	DWORD m_blurShader;									///< sums a pass's taps in one quad; zero draws a quad per tap
 	Bool m_disabled;										///< the device refused the target; stays set until ReleaseResources
 };
 

@@ -4,6 +4,7 @@
 !.gitignore
 !.gitattributes
 !.github
+!.mcp.json
 !.gitmodules
 
 *.user
@@ -30,6 +31,8 @@ CPackSourceConfig.cmake
 *.sln
 *.vcxproj*
 *.vcproj
+*.aps
+RCa*
 .cproject
 .project
 *~
@@ -63,6 +66,9 @@ cmake-build-*/
 .ninja_deps
 .ninja_log
 build.ninja
+CLAUDE.md
+errorCOMPILE.txt
+aqtinstall.log
 
 ## Python
 __pycache__/

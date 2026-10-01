@@ -25,6 +25,7 @@
 #include "MainFrm.h"
 #include "DrawObject.h"
 #include "WorldBuilderDoc.h"
+#include "WHeightMapEdit.h"
 #include "Common/MapObject.h"
 
 #include "Tool.h"
@@ -49,15 +50,40 @@ Tool::~Tool()
 }
 
 
-/// Shows the "no options"  options panel.
-void Tool::activate()
+/// Shows the "no options" options panel. -- NO, we won’t
+void Tool::activate() 
 {
-	CMainFrame::GetMainFrame()->showOptionsDialog(IDD_NO_OPTIONS);
-	DrawObject::setDoBrushFeedback(false);
+    /**  
+	 * Adriane [Deathscythe]
+	 * Removed this default dialog -- this is the problematic code that forces a reload of the tool menu
+     * Every time we perform an action in the WorldBuilder view, it replaces the current tool menu, then loads the actual one,
+     * which results the OCD inducing flashbang load on the tool menus. 
+	 * This part is only supposed to initialize the dialog but we dont actually need to.
+	 *
+	 * CMainFrame::GetMainFrame()->showOptionsDialog(IDD_NO_OPTIONS);
+	 */
+
+    DrawObject::setDoBrushFeedback(false);
 }
 
 
-void Tool::setCursor()
+/// Undo the on-screen preview of an abandoned stroke.
+/** While a stroke is in progress the terrain tools push their edit copy into the
+views via updateHeightMap, but the document itself only changes at mouseUp.  When
+the stroke is dropped instead of committed, push the document's real height map
+back so the display doesn't keep showing an edit that no longer exists anywhere -
+otherwise the ghost of the stroke lingers until the next full rebuild, and saving
+the map would silently lose what's on screen. */
+void Tool::revertAbandonedPreview(void)
+{
+	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
+	if (pDoc && pDoc->GetHeightMap()) {
+		IRegion2D range = {0, 0, 0, 0};
+		pDoc->updateHeightMap(pDoc->GetHeightMap(), false, range);
+	}
+}
+
+void Tool::setCursor(void) 
 {
 		if (m_cursor == nullptr) {
 			m_cursor = AfxGetApp()->LoadCursor(MAKEINTRESOURCE(m_cursorID));

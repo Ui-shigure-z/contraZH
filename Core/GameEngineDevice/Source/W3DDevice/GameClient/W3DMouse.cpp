@@ -75,8 +75,14 @@ void MouseThreadClass::Thread_Function()
 	while (running)
 	{
 		isThread=TRUE;
-		if (TheMouse)
-			TheMouse->draw();
+		{
+			// Holding the mutex across the check and the call keeps TheMouse alive for draw().
+			CriticalSectionClass::LockClass m(mutex);
+			if (TheMouse)
+			{
+				TheMouse->draw();
+			}
+		}
 		isThread=FALSE;
 		Switch_Thread();
 	}
@@ -108,6 +114,9 @@ W3DMouse::W3DMouse()
 
 W3DMouse::~W3DMouse()
 {
+	// Stop the thread before freeing the assets it may be drawing with.
+	thread.Stop();
+
 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
 	if (m_pDev)
@@ -118,9 +127,6 @@ W3DMouse::~W3DMouse()
 
 	freeD3DAssets();
 	freeW3DAssets();
-
-	thread.Stop();
-
 }
 
 void W3DMouse::initPolygonAssets()

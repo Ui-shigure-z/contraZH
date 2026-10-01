@@ -58,7 +58,29 @@ class RampTool : public Tool
 		virtual void mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
 		virtual void mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc) override;
 
+		static void toggleMirror() { m_enableMirror = !m_enableMirror; }
+		static void toggleMirrorX() { m_mirrorX = !m_mirrorX; }
+		static void toggleMirrorY() { m_mirrorY = !m_mirrorY; }
+		static void toggleMirrorXY() { m_mirrorDiag = !m_mirrorDiag; }
+
+		static Bool getEnableMirror(void) { return m_enableMirror; }
+		static Bool getMirrorX(void) { return m_mirrorX; }
+		static Bool getMirrorY(void) { return m_mirrorY; }
+		static Bool getMirrorXY(void) { return m_mirrorDiag; }
+
+
 	protected:
+
+		static Bool m_enableMirror;
+		static Bool m_mirrorX;   // left/right
+		static Bool m_mirrorY;   // top/bottom
+		static Bool m_mirrorDiag; // diagonal only (XY corner)
+
 		void drawFeedback(Coord3D* endPoint);
 		void applyRamp(CWorldBuilderDoc* pDoc);
+
+		void applyRampStroke(CWorldBuilderDoc*   pDoc,
+					WorldHeightMapEdit* worldHeightDup,
+					const Coord3D&      start,
+					const Coord3D&      end);
 };

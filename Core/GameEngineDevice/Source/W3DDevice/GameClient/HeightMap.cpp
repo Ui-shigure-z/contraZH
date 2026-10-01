@@ -57,7 +57,6 @@
 #include <WW3D2/coltest.h>
 #include <WW3D2/rinfo.h>
 #include <WW3D2/camera.h>
-#include <d3dx8core.h>
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
 
@@ -80,6 +79,7 @@
 #include "W3DDevice/GameClient/W3DWaypointBuffer.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
@@ -104,6 +104,16 @@ HeightMapRenderObjClass *TheHeightMap = nullptr;
 	ShaderClass::ALPHATEST_DISABLE, ShaderClass::CULL_MODE_ENABLE, ShaderClass::DETAILCOLOR_SCALE, ShaderClass::DETAILALPHA_DISABLE) )
 
 static ShaderClass detailOpaqueShader(SC_DETAIL_BLEND);
+
+// The heights the terrain shaders blend its textures by, or null for the legacy blend.
+static TextureClass *Height_Blend_Texture(WorldHeightMap *map)
+{
+	if (map == nullptr || !TheGlobalData->m_useHeightBlend || !W3DShaderManager::supportsTerrainHeightBlend())
+	{
+		return nullptr;
+	}
+	return map->getTerrainHeightTexture();
+}
 
 #define DEFAULT_MAX_FRAME_EXTRABLEND_TILES		256	//default number of terrain tiles rendered per call (must fit in one VB)
 #define DEFAULT_MAX_MAP_EXTRABLEND_TILES		2048	//default size of array allocated to hold all map extra blend tiles.
@@ -137,6 +147,9 @@ void HeightMapRenderObjClass::freeIndexVertexBuffers()
 	m_vertexBufferBackup = nullptr;
 
 	m_numVertexBufferTiles = 0;
+	m_tilePixelLights.clear();
+	m_tilePixelLightCounts.clear();
+	m_tileSeabed.clear();
 }
 
 //=============================================================================
@@ -191,8 +204,8 @@ UnsignedInt HeightMapRenderObjClass::doTheDynamicLight(VERTEX_FORMAT *vb, VERTEX
 	Int k;
 	for (k=0; k<numLights; k++) {
 		W3DDynamicLight *pLight = pLights[k];
-		if (!pLight->isEnabled()) {
-			continue; // he is turned off.
+		if (!pLight->isEnabled() || pLight->m_pixelLit) {
+			continue; // he is turned off, or the terrain shader draws him.
 		}
 		Vector3 lightDirection(vbMirror->x, vbMirror->y, vbMirror->z);
 		Real factor = 1.0f;
@@ -294,6 +307,252 @@ Int HeightMapRenderObjClass::getYWithOrigin(Int y)
 	if (y < 0) { DEBUG_CRASH(("Y out of range.")); y = 0; }
 	if (y >= yMax) { DEBUG_CRASH(("Y out of range.")); y = yMax; }
 	return y;
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::getTileColumn
+//=============================================================================
+/** The inverse of getXWithOrigin, divided down to the VB tile. */
+//=============================================================================
+Int HeightMapRenderObjClass::getTileColumn(Int x)
+{
+	const Int xMax = m_x-1;
+	x += m_originX;
+	if (x >= xMax)
+	{
+		x -= xMax;
+	}
+	return x / VERTEX_BUFFER_TILE_LENGTH;
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::getTileRow
+//=============================================================================
+/** The inverse of getYWithOrigin, divided down to the VB tile. */
+//=============================================================================
+Int HeightMapRenderObjClass::getTileRow(Int y)
+{
+	const Int yMax = m_y-1;
+	y += m_originY;
+	if (y >= yMax)
+	{
+		y -= yMax;
+	}
+	return y / VERTEX_BUFFER_TILE_LENGTH;
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::assignPixelLights
+//=============================================================================
+/** A light leaves the vertex lighting only when every VB tile it reaches has a slot left. */
+//=============================================================================
+void HeightMapRenderObjClass::assignPixelLights(RefRenderObjListIterator &lights)
+{
+	const Int slots = W3DShaderManager::MAX_PIXEL_LIGHTS;
+	m_tilePixelLightCounts.assign(m_numVertexBufferTiles, 0);
+	m_tilePixelLights.resize(m_numVertexBufferTiles * slots);
+
+	W3DDynamicLight *byIndex[W3DShaderManager::MAX_PIXEL_LIGHT_CANDIDATES];
+	const Bool enabled = W3DShaderManager::supportsTerrainPixelLights() && m_numVertexBufferTiles > 0;
+	const Int count = enabled ? W3DShaderManager::getPixelLightCount() : 0;
+	for (Int index = 0; index < count; index++)
+	{
+		byIndex[index] = nullptr;
+	}
+	for (lights.First(); !lights.Is_Done(); lights.Next())
+	{
+		W3DDynamicLight *pLight = (W3DDynamicLight*)lights.Peek_Obj();
+		pLight->m_pixelLit = false;
+		const Int index = pLight->getPixelIndex();
+		if (index >= 0 && index < count && pLight->m_enabled)
+		{
+			byIndex[index] = pLight;
+		}
+	}
+
+	const Int xCoordMin = m_map->getDrawOrgX() - m_map->getBorderSizeInline();
+	const Int yCoordMin = m_map->getDrawOrgY() - m_map->getBorderSizeInline();
+	static std::vector<Bool> columns;
+	static std::vector<Bool> rows;
+	for (Int index = 0; index < count; index++)
+	{
+		W3DDynamicLight *pLight = byIndex[index];
+		if (pLight == nullptr)
+		{
+			continue;
+		}
+
+		// The cells the light reaches, bounded as the vertex lighting bounds them, within the drawn area.
+		const W3DShaderManager::PixelLight &light = W3DShaderManager::getPixelLight(index);
+		const Int x0 = max((Int)((light.position.X - light.outerRadius)/MAP_XY_FACTOR) - xCoordMin, 0);
+		const Int x1 = min((Int)((light.position.X + light.outerRadius)/MAP_XY_FACTOR + 1.0f) - xCoordMin, m_x-1);
+		const Int y0 = max((Int)((light.position.Y - light.outerRadius)/MAP_XY_FACTOR) - yCoordMin, 0);
+		const Int y1 = min((Int)((light.position.Y + light.outerRadius)/MAP_XY_FACTOR + 1.0f) - yCoordMin, m_y-1);
+		if (x0 >= x1 || y0 >= y1)
+		{
+			continue;
+		}
+
+		// The tiles holding those cells, which wrap around as the terrain slides.
+		columns.assign(m_numVBTilesX, FALSE);
+		rows.assign(m_numVBTilesY, FALSE);
+		for (Int x = x0; x < x1; x++)
+		{
+			columns[getTileColumn(x)] = TRUE;
+		}
+		for (Int y = y0; y < y1; y++)
+		{
+			rows[getTileRow(y)] = TRUE;
+		}
+
+		Bool room = TRUE;
+		for (Int j = 0; j < m_numVBTilesY && room; j++)
+		{
+			for (Int i = 0; i < m_numVBTilesX; i++)
+			{
+				const Int tile = j*m_numVBTilesX+i;
+				const Int limit = m_tileSeabed[tile] ? (Int)W3DShaderManager::SEABED_PIXEL_LIGHTS : slots;
+				if (rows[j] && columns[i] && m_tilePixelLightCounts[tile] >= limit)
+				{
+					room = FALSE;
+					break;
+				}
+			}
+		}
+		if (!room)
+		{
+			continue;
+		}
+
+		for (Int j = 0; j < m_numVBTilesY; j++)
+		{
+			for (Int i = 0; i < m_numVBTilesX; i++)
+			{
+				if (rows[j] && columns[i])
+				{
+					const Int tile = j*m_numVBTilesX+i;
+					m_tilePixelLights[tile*slots + m_tilePixelLightCounts[tile]++] = index;
+				}
+			}
+		}
+		pLight->m_pixelLit = true;
+	}
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::setTilePixelLights
+//=============================================================================
+void HeightMapRenderObjClass::setTilePixelLights(Int tile)
+{
+	if (tile < (Int)m_tilePixelLightCounts.size())
+	{
+		// The mirror draws flat terrain, so it leaves the seabed out.
+		const Bool seabed = m_tileSeabed[tile] && !ShaderClass::Is_Backface_Culling_Inverted();
+		W3DShaderManager::setDrawTerrain(&m_tilePixelLights[tile * W3DShaderManager::MAX_PIXEL_LIGHTS], m_tilePixelLightCounts[tile], seabed);
+	}
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::prepareSeabed
+//=============================================================================
+/** Hands the terrain shader the atlas slot lookup, the standing water mask, the painted
+stochastic terrain and the constants its seabed variants read, and marks the VB tiles
+holding standing water or paint. Only those draw through the seabed variants, which pay
+for the hex cells on every pixel. */
+//=============================================================================
+void HeightMapRenderObjClass::prepareSeabed()
+{
+	m_tileSeabed.assign(m_numVertexBufferTiles, FALSE);
+
+	Vector4 constants[W3DShaderManager::SEABED_CONSTANTS];
+	TextureClass *mask = nullptr;
+	TextureClass *painted = nullptr;
+	if (W3DShaderManager::supportsTerrainSeabed() && m_numVertexBufferTiles > 0)
+	{
+		if (TheWaterRenderObj != nullptr)
+		{
+			mask = TheWaterRenderObj->getSeabedMask(constants[3], constants[2]);
+		}
+		painted = m_map->getStochasticTexture(WaterRenderObjClass::getStochasticHex().Y);
+	}
+
+	// Without standing water the paint stands in for the mask, whose layout it shares and whose alpha it leaves empty.
+	const Bool water = (mask != nullptr);
+	if (!water && painted != nullptr && m_map->hasStochastic())
+	{
+		SurfaceClass::SurfaceDescription desc;
+		painted->Get_Level_Description(desc);
+		const Real border = (Real)m_map->getBorderSizeInline() + 0.5f;
+		constants[3].Set(1.0f / (MAP_XY_FACTOR * desc.Width), 1.0f / (MAP_XY_FACTOR * desc.Height), border / desc.Width, border / desc.Height);
+		constants[2] = WaterRenderObjClass::getStochasticHex();
+		mask = painted;
+	}
+	TextureClass *classMap = (mask != nullptr && painted != nullptr) ? m_map->getTerrainClassMap() : nullptr;
+	if (classMap == nullptr)
+	{
+		W3DShaderManager::setTerrainSeabed(nullptr, nullptr, nullptr, nullptr);
+		return;
+	}
+
+	// As terrainshadow.hlsl's SeabedAtlas and SeabedWorld: a cell covers half a tile, counted from the border's first point.
+	const Real atlasHeight = (Real)m_map->getTerrainTexHeight();
+	const Real texelsPerCell = TILE_PIXEL_EXTENT / 2;
+	const Real fadeDepth = TheWaterTransparency->m_transparentWaterDepth;
+	const Real atlasBorder = (Real)m_map->getAtlasBorder();
+	const Real atlasSlot = TILE_PIXEL_EXTENT + 2.0f * atlasBorder;
+	constants[0].Set((Real)TEXTURE_WIDTH, atlasHeight, 1.0f / TEXTURE_WIDTH, 1.0f / atlasHeight);
+	constants[1].Set(texelsPerCell / MAP_XY_FACTOR, texelsPerCell * m_map->getBorderSizeInline(),
+		(fadeDepth > 0.0f) ? 1.0f / fadeDepth : 10000.0f, 0.0f);
+	constants[4].Set(1.0f / (atlasSlot * CLASS_MAP_SLOTS), -atlasBorder / (atlasSlot * CLASS_MAP_SLOTS), 255.0f * atlasSlot, atlasBorder);
+
+	// The shader reads the mask from hex lattice units, which it works out for the cells anyway.
+	constants[3].X /= constants[2].X;
+	constants[3].Y /= constants[2].X;
+	W3DShaderManager::setTerrainSeabed(classMap, mask, painted, constants);
+
+	const Int xOrigin = m_map->getDrawOrgX();
+	const Int yOrigin = m_map->getDrawOrgY();
+	const Bool paint = m_map->hasStochastic();
+	for (Int y = 0; y < m_y-1; y++)
+	{
+		for (Int x = 0; x < m_x-1; x++)
+		{
+			Bool seabed = water && TheWaterRenderObj->isSeabedPoint(xOrigin + x, yOrigin + y);
+
+			// Paint sits on the cell's corners and fades across it, so any painted corner draws the cell.
+			for (Int corner = 0; corner < 4 && !seabed && paint; corner++)
+			{
+				UnsignedByte strength, seed, rate;
+				m_map->getStochastic(xOrigin + x + (corner & 1), yOrigin + y + (corner >> 1), strength, seed, rate);
+				seabed = (strength != 0);
+			}
+			if (seabed)
+			{
+				m_tileSeabed[getTileRow(y)*m_numVBTilesX + getTileColumn(x)] = TRUE;
+			}
+		}
+	}
+}
+
+//=============================================================================
+// HeightMapRenderObjClass::prepareGlint
+//=============================================================================
+/** Hands the ground shaders the glint's normals from the water's height texture, and the terrain shaders each texture's glint. */
+//=============================================================================
+void HeightMapRenderObjClass::prepareGlint()
+{
+	Vector4 mapping(0.0f, 0.0f, 0.0f, 0.0f);
+	Vector4 decode;
+	TextureClass *normals = nullptr;
+	TextureClass *materials = nullptr;
+	Real strengthScale = 1.0f;
+	Real glossScale = 1.0f;
+	if (TheWaterRenderObj != nullptr && W3DShaderManager::wantsTerrainGlint())
+	{
+		normals = TheWaterRenderObj->getTerrainHeightTexture(mapping, decode);
+		materials = m_map->getTerrainGlintMap(W3DShaderManager::getTerrainGlintGloss(), strengthScale, glossScale);
+	}
+	W3DShaderManager::setTerrainGlintMaps(normals, mapping, materials, strengthScale, glossScale);
 }
 
 //=============================================================================
@@ -1375,6 +1634,10 @@ void HeightMapRenderObjClass::On_Frame_Update()
 	}
 #endif
 
+	prepareSeabed();
+	prepareGlint();
+	assignPixelLights(pDynamicLightsIterator);
+
 	Int numDynaLights=0;
 	W3DDynamicLight *enabledLights[MAX_ENABLED_DYNAMIC_LIGHTS];
 
@@ -1420,6 +1683,11 @@ void HeightMapRenderObjClass::On_Frame_Update()
 			} else {
 				pLight->m_processMe = false;
 			}
+			// A light the vertices do not hold and will not take needs no update.
+			if (!pLight->m_bakedLastFrame && (pLight->m_pixelLit || !pLight->m_enabled)) {
+				pLight->m_processMe = false;
+			}
+			pLight->m_bakedLastFrame = pLight->m_processMe && pLight->m_enabled && !pLight->m_pixelLit;
 			if (pLight->m_processMe) {
 				enabledLights[numDynaLights] = pLight;
 				numDynaLights++;
@@ -1642,6 +1910,12 @@ void HeightMapRenderObjClass::updateCenter(CameraClass *camera, const Vector3 *c
 	}
 	if (m_vertexBufferTiles ==nullptr)
 		return;		//did not initialize resources yet.
+
+	// A live GameData reload can change the atlas border, which moves every tile in the atlases.
+	if (m_map->refreshAtlasBorder())
+	{
+		scheduleFullUpdate();
+	}
 
 	BaseHeightMapRenderObjClass::updateCenter(camera, cameraPivot, pLightsIterator);
 
@@ -1880,11 +2154,15 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 	W3DShaderManager::ShaderTypes st;
 	const Bool doCloud = useCloud();
 
-	if (doCloud)
+	if (doCloud && !ShaderClass::Is_Backface_Culling_Inverted())
 	{
 		// TheSuperHackers @tweak Updates the cloud movement before applying it to the world.
-		// Is now decoupled from logic step.
+		// Is now decoupled from logic step. The water reflection pass renders the terrain again.
 		W3DShaderManager::updateCloud();
+		if (TheW3DSkyClouds)
+		{
+			TheW3DSkyClouds->update(rinfo, *this);
+		}
 	}
 
 	Matrix3D tm(Transform);
@@ -2009,8 +2287,12 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
  		//Specify all textures that this shader may need.
  		W3DShaderManager::setTexture(0,m_stageZeroTexture);
  		W3DShaderManager::setTexture(1,m_stageZeroTexture);
- 		W3DShaderManager::setTexture(2,m_stageTwoTexture);	//cloud
+ 		W3DShaderManager::setTexture(2,cloudMapTexture());	//cloud
  		W3DShaderManager::setTexture(3,m_stageThreeTexture);//noise
+ 		// The reflection pass mirrors the view, and its terrain stays flat. The atlas is built only once a shader can read it.
+ 		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_NORMAL_TEXTURE,
+ 			(ShaderClass::Is_Backface_Culling_Inverted() || !W3DShaderManager::wantsTerrainNormalAtlas()) ? nullptr : m_map->getTerrainNormalTexture());
+		W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
 		//Disable writes to destination alpha channel (if there is one)
 		if (DX8Wrapper::getBackBufferFormat() == WW3D_FORMAT_A8R8G8B8)
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_GREEN|D3DCOLORWRITEENABLE_RED);
@@ -2044,14 +2326,12 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 				if (m_xformedVertexBuffer) {
 					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
 					DX8Wrapper::Apply_Render_State_Changes();
-					DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
-						0,
-						m_xformedVertexBuffer[j*m_numVBTilesX+i],
-						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-					DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+					DX8Wrapper::Set_DX8_Stream_Source(0, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0, FVFInfoClass(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2).Get_FVF_Size());
+					DX8_SET_FVF(DX8Wrapper::_Get_D3D_Device8(), D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
 				}
 #endif
 				if (Is_Hidden() == 0) {
+					setTilePixelLights(j*m_numVBTilesX+i);
 					DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
 				}
 
@@ -2085,7 +2365,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			if (Scene) {
 				RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 				RefRenderObjListIterator pDynamicLightsIterator(pMyScene->getDynamicLights());
-				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?m_stageTwoTexture:nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
+				m_roadBuffer->drawRoads(&rinfo.Camera, doCloud?cloudMapTexture():nullptr, TheGlobalData->m_useLightMap?m_stageThreeTexture:nullptr,
 					m_disableTextures,xCoordMin-m_map->getBorderSizeInline(), xCoordMax-m_map->getBorderSizeInline(), yCoordMin-m_map->getBorderSizeInline(), yCoordMax-m_map->getBorderSizeInline(), &pDynamicLightsIterator);
 			}
 		}
@@ -2105,7 +2385,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		ShaderClass::Invalidate();
 		DX8Wrapper::Apply_Render_State_Changes();
 
-		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?m_stageTwoTexture:nullptr);
+		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?cloudMapTexture():nullptr);
 
 		if (TheTerrainTracksRenderObjClassSystem)
 			TheTerrainTracksRenderObjClassSystem->flush();
@@ -2126,7 +2406,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		DX8Wrapper::Apply_Render_State_Changes();
 	}
 	else
-			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, m_stageTwoTexture);
+			m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, cloudMapTexture());
 
   if ( m_waypointBuffer )
 	  m_waypointBuffer->drawWaypoints(rinfo);
@@ -2234,6 +2514,17 @@ void HeightMapRenderObjClass::renderLightingModifierOverlay(void)
 	ShaderClass::Invalidate();
 }
 
+// The shadow map's depth pass overrides the rest of the state, so an opaque shader is
+// enough to mark the terrain as a solid caster.
+void HeightMapRenderObjClass::renderShadowMapCaster()
+{
+	DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
+	DX8Wrapper::Set_Material(m_vertexMaterialClass);
+	DX8Wrapper::Set_Texture(0,nullptr);
+	DX8Wrapper::Set_Texture(1,nullptr);
+	renderTerrainPass(nullptr);
+}
+
 ///Performs additional terrain rendering pass, blending in the black shroud texture.
 void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 {
@@ -2257,11 +2548,8 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 			if (m_xformedVertexBuffer) {
 				// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
 				DX8Wrapper::Apply_Render_State_Changes();
-				DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
-					0,
-					m_xformedVertexBuffer[j*m_numVBTilesX+i],
-					D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-				DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+				DX8Wrapper::Set_DX8_Stream_Source(0, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0, FVFInfoClass(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2).Get_FVF_Size());
+				DX8_SET_FVF(DX8Wrapper::_Get_D3D_Device8(), D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
 			}
 #endif
 			if (Is_Hidden() == 0) {
@@ -2293,6 +2581,17 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 
 	DynamicVBAccessClass vb_access(BUFFER_TYPE_DYNAMIC_DX8,DX8_FVF_XYZNDUV2,maxBlendTiles*4);
 	DynamicIBAccessClass ib_access(BUFFER_TYPE_DYNAMIC_DX8,maxBlendTiles*6);
+
+	// Indices go in by the VB tile underneath, so each tile's share draws with that tile's lights.
+	static std::vector< std::vector<UnsignedShort> > tileIndices;
+	static std::vector<Int> tileFirstIndex;
+	const Int tileCount = max(m_numVertexBufferTiles, 1);
+	tileIndices.resize(tileCount);
+	tileFirstIndex.assign(tileCount + 1, 0);
+	for (Int tile=0; tile<tileCount; tile++)
+	{
+		tileIndices[tile].clear();
+	}
 	{
 
 		DynamicVBAccessClass::WriteLockClass lock(&vb_access);
@@ -2331,6 +2630,8 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 			{	//this tile is inside visible region and has 3rd blend layer.
 
 				Int idx = x+y*xExtent;
+				const Int tile = (m_numVertexBufferTiles > 0) ? getTileRow(y-drawStartY)*m_numVBTilesX + getTileColumn(x-drawStartX) : 0;
+				std::vector<UnsignedShort> &indices = tileIndices[tile];
 
 				Real p0=data[idx]*MAP_HEIGHT_SCALE;
 				Real p1=data[idx+1]*MAP_HEIGHT_SCALE;
@@ -2393,26 +2694,36 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 
 				if (flipState)
 				{
-					ib[0]=1+vertexCount;
-					ib[1]=3+vertexCount;
-					ib[2]=0+vertexCount;
-					ib[3]=1+vertexCount;
-					ib[4]=2+vertexCount;
-					ib[5]=3+vertexCount;
+					indices.push_back(1+vertexCount);
+					indices.push_back(3+vertexCount);
+					indices.push_back(0+vertexCount);
+					indices.push_back(1+vertexCount);
+					indices.push_back(2+vertexCount);
+					indices.push_back(3+vertexCount);
 				}
 				else
 				{
-					ib[0]=0+vertexCount;
-					ib[1]=2+vertexCount;
-					ib[2]=3+vertexCount;
-					ib[3]=0+vertexCount;
-					ib[4]=1+vertexCount;
-					ib[5]=2+vertexCount;
+					indices.push_back(0+vertexCount);
+					indices.push_back(2+vertexCount);
+					indices.push_back(3+vertexCount);
+					indices.push_back(0+vertexCount);
+					indices.push_back(1+vertexCount);
+					indices.push_back(2+vertexCount);
 				}
-				ib += 6;
 				vertexCount +=4;
 				indexCount +=6;
 			}
+		}
+
+		for (Int tile=0; tile<tileCount; tile++)
+		{
+			const std::vector<UnsignedShort> &indices = tileIndices[tile];
+			if (!indices.empty())
+			{
+				memcpy(ib, &indices[0], indices.size() * sizeof(UnsignedShort));
+			}
+			ib += indices.size();
+			tileFirstIndex[tile+1] = tileFirstIndex[tile] + (Int)indices.size();
 		}
 	}
 
@@ -2446,8 +2757,10 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 		else
 		{
 			W3DShaderManager::setTexture(0,m_stageOneTexture);
-			W3DShaderManager::setTexture(1,m_stageTwoTexture);	//cloud
+			W3DShaderManager::setTexture(1,cloudMapTexture());	//cloud
 			W3DShaderManager::setTexture(2,m_stageThreeTexture);	//noise/lightmap
+			W3DShaderManager::setTexture(W3DShaderManager::TERRAIN_HEIGHT_TEXTURE, Height_Blend_Texture(m_map));
+			W3DShaderManager::setRoadHeightBlend(TRUE);
 
 			W3DShaderManager::ShaderTypes st = W3DShaderManager::ST_ROAD_BASE;
 
@@ -2472,11 +2785,21 @@ void HeightMapRenderObjClass::renderExtraBlendTiles()
 			{
 				W3DShaderManager::setShader(st, pass);
 				if (Is_Hidden() == 0) {
-					DX8Wrapper::Draw_Triangles(	0,indexCount/3, 0,	vertexCount);	//draw a quad, 2 triangles, 4 verts
+					for (Int tile=0; tile<tileCount; tile++)
+					{
+						const Int tileIndexCount = tileFirstIndex[tile+1] - tileFirstIndex[tile];
+						if (tileIndexCount == 0)
+						{
+							continue;
+						}
+						setTilePixelLights(tile);
+						DX8Wrapper::Draw_Triangles(	tileFirstIndex[tile],tileIndexCount/3, 0,	vertexCount);	//draw a quad, 2 triangles, 4 verts
+					}
 					m_numVisibleExtraBlendTiles += indexCount/6;
 				}
 			}
 			W3DShaderManager::resetShader(st);
+			W3DShaderManager::setRoadHeightBlend(FALSE);
 		}
   }
 }

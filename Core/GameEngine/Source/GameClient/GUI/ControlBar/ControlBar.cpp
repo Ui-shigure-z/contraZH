@@ -1022,6 +1022,7 @@ ControlBar::ControlBar()
 	m_displayedConstructPercent = -1.0f;
 	m_displayedOCLTimerSeconds = 0;
 	m_displayedQueueCount = 0;
+	m_displayedQueueSignature.clear();
 	resetBuildQueueData();
 	resetContainData();
 	m_lastRecordedInventoryCount = 0;
@@ -1399,6 +1400,8 @@ void ControlBar::reset()
 {
 	hideSpecialPowerShortcut();
 	resetSmartSelection();
+	// the logic side focus goes with the old game, so the next one starts from no cache
+	m_sentFocusGroup.clear();
 	// do not destroy the rally drawables, they get destroyed with everything else during a reset
 	m_rallyPointDrawableIDs.clear();
 	if(m_radarAttackGlowWindow)
@@ -1480,6 +1483,8 @@ void ControlBar::reset()
 
 	m_lastFlashedAtPointValue = -1;
 	m_genStarFlash = TRUE;
+
+	m_multiSelectQueueCache.clear();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2031,7 +2036,8 @@ void ControlBar::evaluateContextUI()
 				switchToContext( CB_CONTEXT_COMMAND, drawToEvaluateFor );
 
 			}
-			else if (obj->getControllingPlayer()->getPlayerTemplate()->getBeaconTemplate().compare(obj->getTemplate()->getName()) == 0)
+			else if (obj->getControllingPlayer()->getPlayerTemplate()
+				&& obj->getControllingPlayer()->getPlayerTemplate()->getBeaconTemplate().compare(obj->getTemplate()->getName()) == 0)
 			{
 				switchToContext( CB_CONTEXT_BEACON, drawToEvaluateFor );
 			}
@@ -3844,6 +3850,7 @@ void ControlBar::updateSpecialPowerShortcut()
 	}
 	else if( !hasValidShortcutButton
 					 && !m_specialPowerShortcutParent->winIsHidden()
+					 && m_animateWindowManagerForGenShortcuts
 					 && m_animateWindowManagerForGenShortcuts->isFinished() )
 	{
 		animateSpecialPowerShortcut(FALSE);

@@ -124,6 +124,9 @@ void MeshMoldTool::mouseUp(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 /// Track the mouse.
 void MeshMoldTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldBuilderDoc *pDoc)
 {
+
+	pView->Invalidate();  
+	pDoc->updateAllViews();
 	if (m != TRACK_L) {
 		return;
 	}

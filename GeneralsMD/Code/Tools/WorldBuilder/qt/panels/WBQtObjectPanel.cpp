@@ -1,0 +1,494 @@
+// WBQtObjectPanel.cpp -- see WBQtObjectPanel.h.
+#include "WBQtObjectPanel.h"
+#include "ui_WBQtObjectPanel.h"
+#include "WBQtComboStyle.h"
+#include "WBQtPanelBridge.h"
+#include "WBQtPreviewImage.h"
+#include "WBQtTreeStyle.h"
+
+#include <QApplication>
+#include <QBrush>
+#include <QCheckBox>
+#include <QClipboard>
+#include <QColor>
+#include <QComboBox>
+#include <QIcon>
+#include <QImage>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPainter>
+#include <QPixmap>
+#include <QSpinBox>
+#include <QToolButton>
+#include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
+
+WBQtObjectPanel *WBQtObjectPanel::s_instance = NULL;
+
+// The list index a tree leaf represents is stored in this item-data role (>=0 for leaves,
+// absent/-1 for grouping nodes).
+static const int kListIndexRole = Qt::UserRole + 1;
+
+// Tint for a template the loaded map.ini redefined -- the same orange the map.ini editor uses
+// for a name it can't match, since both mean "look at this", not "this is broken".
+static const QColor kMapIniOverrideColor(220, 140, 40);
+// Templates the map.ini INVENTED. A mid green, not a pure one: it has to stay readable on the
+// light theme's white tree AND the dark theme's near-black, like the orange above.
+static const QColor kMapIniInventedColor(60, 170, 90);
+
+// Draw the little "copy" glyph (two offset outlined rectangles) for the name-copy button.
+// Painted rather than shipped as an asset because the Qt side carries no icon resources at all,
+// and QStyle has no standard copy icon that renders consistently across styles. Stroked in the
+// supplied text colour so it follows whichever theme is active.
+static QIcon makeCopyIcon(const QColor &ink)
+{
+	const int px = 16;
+	QPixmap pm(px, px);
+	pm.fill(Qt::transparent);
+
+	QPainter p(&pm);
+	p.setRenderHint(QPainter::Antialiasing, true);
+	QPen pen(ink);
+	pen.setWidthF(1.2);
+	p.setPen(pen);
+	p.setBrush(Qt::NoBrush);
+	// back sheet (up-right), then the front sheet overlapping it (down-left). Kept inside
+	// 1.5..14.5 so the 1.2px stroke can't clip against the pixmap edge.
+	p.drawRect(QRectF(5.5, 1.5, 8.0, 8.0));
+	p.drawRect(QRectF(2.5, 6.5, 8.0, 8.0));
+	p.end();
+
+	return QIcon(pm);
+}
+
+WBQtObjectPanel::WBQtObjectPanel(QWidget *owner)
+	: QWidget(owner, Qt::Tool),
+	  m_ui(new Ui::WBQtObjectPanel),
+	  m_updating(false)
+{
+	// The static widget tree lives in WBQtObjectPanel.ui; bind the members the
+	// logic below uses, then wire what Designer can't express.
+	m_ui->setupUi(this);
+
+	m_search = m_ui->search;
+	m_tree = m_ui->tree;
+	m_nameLabel = m_ui->nameLabel;
+	m_copyNameBtn = m_ui->copyNameBtn;
+	m_preview = m_ui->preview;
+
+	// Palette text colour, so the glyph tracks the active theme.
+	m_copyNameBtn->setIcon(makeCopyIcon(palette().color(QPalette::WindowText)));
+	m_copyNameBtn->setEnabled(false);	// nothing selected yet
+	m_team = m_ui->team;
+	m_height = m_ui->height;
+	m_placeAll = m_ui->placeAll;
+	m_placeAllYSpacing = m_ui->placeAllYSpacing;
+	m_previewSound = m_ui->previewSound;
+	m_previewBuildZone = m_ui->previewBuildZone;
+	m_useWaterHeight = m_ui->useWaterHeight;
+
+	// MFC's combos are WS_VSCROLL: give every drop-down here a scrolling popup.
+	WBQtComboStyle::applyPopupScrollRecursive(this);
+
+	WBQtTreeStyle::applyTreeLines(m_tree);
+
+	m_height->setValue(WBQtObject_GetHeight());
+
+	// Seed everything under the guard so nothing echoes back while we populate.
+	m_updating = true;
+	rebuildTree(QString());
+	m_previewSound->setChecked(WBQtObject_GetPreviewSound() != 0);
+	m_previewBuildZone->setChecked(WBQtObject_GetPreviewBuildZone() != 0);
+	m_useWaterHeight->setChecked(WBQtObject_GetUseWaterHeight() != 0);
+	m_placeAll->setChecked(WBQtObject_GetPlaceAll() != 0);
+	m_placeAllYSpacing->setValue(WBQtObject_GetPlaceAllYSpacing());
+	refreshTeamCombo();
+	m_updating = false;
+
+	connect(m_tree, SIGNAL(itemSelectionChanged()), this, SLOT(onTreeSelectionChanged()));
+	connect(m_team, SIGNAL(currentIndexChanged(int)), this, SLOT(onTeamChanged(int)));
+	connect(m_height, SIGNAL(valueChanged(int)), this, SLOT(onHeightChanged(int)));
+	connect(m_copyNameBtn, SIGNAL(clicked()), this, SLOT(onCopyName()));
+	connect(m_ui->searchBtn, SIGNAL(clicked()), this, SLOT(onSearch()));
+	connect(m_ui->resetBtn, SIGNAL(clicked()), this, SLOT(onReset()));
+	connect(m_search, SIGNAL(returnPressed()), this, SLOT(onSearch()));
+	if (WBQtConfig_GetNewSearch() != 0)
+	{
+		// NewSearch: filter live as the user types (the Search button still works).
+		connect(m_search, SIGNAL(textChanged(QString)), this, SLOT(onSearch()));
+	}
+	connect(m_previewSound, SIGNAL(clicked()), this, SLOT(onPreviewSoundToggled()));
+	connect(m_previewBuildZone, SIGNAL(clicked()), this, SLOT(onPreviewBuildZoneToggled()));
+	connect(m_useWaterHeight, SIGNAL(clicked()), this, SLOT(onUseWaterHeightToggled()));
+	connect(m_placeAll, SIGNAL(clicked()), this, SLOT(onPlaceAllToggled()));
+	connect(m_placeAllYSpacing, SIGNAL(valueChanged(int)), this, SLOT(onPlaceAllYSpacingChanged(int)));
+
+	s_instance = this;
+}
+
+WBQtObjectPanel::~WBQtObjectPanel()
+{
+	if (s_instance == this)
+	{
+		s_instance = NULL;
+	}
+	delete m_ui;
+}
+
+QTreeWidgetItem *WBQtObjectPanel::findOrAddChild(QTreeWidgetItem *parent, const QString &label)
+{
+	// Grouping nodes are matched by their text; parent == NULL means a top-level node.
+	if (parent == NULL)
+	{
+		for (int i = 0; i < m_tree->topLevelItemCount(); ++i)
+		{
+			QTreeWidgetItem *child = m_tree->topLevelItem(i);
+			if (child->data(0, kListIndexRole).toInt() < 0 && child->text(0) == label)
+			{
+				return child;
+			}
+		}
+		QTreeWidgetItem *node = new QTreeWidgetItem(m_tree);
+		node->setText(0, label);
+		node->setData(0, kListIndexRole, -1);
+		return node;
+	}
+
+	for (int i = 0; i < parent->childCount(); ++i)
+	{
+		QTreeWidgetItem *child = parent->child(i);
+		if (child->data(0, kListIndexRole).toInt() < 0 && child->text(0) == label)
+		{
+			return child;
+		}
+	}
+	QTreeWidgetItem *node = new QTreeWidgetItem(parent);
+	node->setText(0, label);
+	node->setData(0, kListIndexRole, -1);
+	return node;
+}
+
+void WBQtObjectPanel::rebuildTree(const QString &filter)
+{
+	m_tree->clear();
+
+	const int cap = 256;
+	char preBuf[cap];
+	char sideBuf[cap];
+	char sortBuf[cap];
+	char leafBuf[cap];
+	char nameBuf[cap];
+
+	int count = WBQtObject_GetCount();
+	QString lowered = filter.toLower();
+	bool expandAll = !lowered.isEmpty();
+
+	for (int i = 0; i < count; ++i)
+	{
+		if (!WBQtObject_GetEntry(i, preBuf, sideBuf, sortBuf, leafBuf, cap))
+		{
+			continue;
+		}
+
+		if (!lowered.isEmpty())
+		{
+			// Search matches against the full (unique) name, like the MFC OnSearch.
+			if (!WBQtObject_GetFullName(i, nameBuf, cap))
+			{
+				continue;
+			}
+			QString full = QString::fromLatin1(nameBuf).toLower();
+			if (!full.contains(lowered))
+			{
+				continue;
+			}
+		}
+
+		// Optional pre-side bucket (ES_TEST -> top-level "TEST"), then side, mirroring the MFC
+		// addObject() tier order: [pre-side] / side / sorting / leaf.
+		QTreeWidgetItem *parent = NULL;
+		QString pre = QString::fromLatin1(preBuf);
+		if (!pre.isEmpty())
+		{
+			parent = findOrAddChild(NULL, pre);
+		}
+		parent = findOrAddChild(parent, QString::fromLatin1(sideBuf));
+		QString sorting = QString::fromLatin1(sortBuf);
+		if (!sorting.isEmpty())
+		{
+			parent = findOrAddChild(parent, sorting);
+		}
+
+		QTreeWidgetItem *leaf = new QTreeWidgetItem(parent);
+		leaf->setText(0, QString::fromLatin1(leafBuf));
+		leaf->setData(0, kListIndexRole, i);
+
+		// Flag templates the loaded map.ini touched, so it's obvious at a glance which objects
+		// are not the stock ones. Two distinct states, two colours: green for one map.ini
+		// INVENTED (no such object without it), orange for one it merely redefined. Invented is
+		// checked first -- it is the stronger statement, and the override test can't be true for
+		// a template that has no base to override anyway. Information, not an error.
+		if (WBQtObject_IsMapIniInvented(i) != 0)
+		{
+			leaf->setForeground(0, QBrush(kMapIniInventedColor));
+			leaf->setToolTip(0, tr("Added by the loaded map.ini (does not exist without it)"));
+		}
+		else if (WBQtObject_IsMapIniOverridden(i) != 0)
+		{
+			leaf->setForeground(0, QBrush(kMapIniOverrideColor));
+			leaf->setToolTip(0, tr("Redefined by the loaded map.ini"));
+		}
+	}
+
+	m_tree->sortItems(0, Qt::AscendingOrder);
+	if (expandAll)
+	{
+		m_tree->expandAll();
+	}
+}
+
+// The first placeable descendant of a grouping node, in display order (the tree is
+// kept sorted).  NULL when the branch holds no objects (an empty search filter node).
+static QTreeWidgetItem *firstLeafUnder(QTreeWidgetItem *item)
+{
+	if (item->data(0, kListIndexRole).toInt() >= 0)
+	{
+		return item;
+	}
+	for (int i = 0; i < item->childCount(); ++i)
+	{
+		QTreeWidgetItem *leaf = firstLeafUnder(item->child(i));
+		if (leaf != NULL)
+		{
+			return leaf;
+		}
+	}
+	return NULL;
+}
+
+void WBQtObjectPanel::onTreeSelectionChanged()
+{
+	if (m_updating)
+	{
+		return;
+	}
+	QList<QTreeWidgetItem*> sel = m_tree->selectedItems();
+	if (sel.isEmpty())
+	{
+		return;
+	}
+	QTreeWidgetItem *picked = sel.first();
+	int listIndex = picked->data(0, kListIndexRole).toInt();
+	if (listIndex < 0)
+	{
+		// A grouping node.  Keep it selected in the tree, but drive the backend with
+		// the category's first object so placement works from a header pick too --
+		// notably "Place all objects in category", which anchors on the current
+		// object's side + sorting and used to require drilling down to a leaf first.
+		QTreeWidgetItem *leaf = firstLeafUnder(picked);
+		if (leaf == NULL)
+		{
+			return;
+		}
+		picked = leaf;
+		listIndex = leaf->data(0, kListIndexRole).toInt();
+	}
+
+	WBQtObject_SelectIndex(listIndex);
+	m_nameLabel->setText(picked->text(0));
+	m_copyNameBtn->setEnabled(true);
+
+	m_updating = true;
+	refreshTeamCombo();
+	m_updating = false;
+	refreshPreview();
+
+	// == ObjectOptions' selection block: play the template's ambient sound when the toggle is
+	// on (the MFC gate was window-open, always false in the Qt build, so it never ran here).
+	WBQtObject_PreviewAmbient();
+}
+
+void WBQtObjectPanel::refreshTeamCombo()
+{
+	// Caller has set m_updating (combo repopulation must not fire onTeamChanged).
+	m_team->clear();
+	const int cap = 256;
+	char nameBuf[cap];
+	int teams = WBQtObject_GetTeamCount();
+	for (int i = 0; i < teams; ++i)
+	{
+		if (WBQtObject_GetTeamName(i, nameBuf, cap))
+		{
+			m_team->addItem(QString::fromLatin1(nameBuf));
+		}
+		else
+		{
+			m_team->addItem(QString());
+		}
+	}
+	// The ctor styled this combo while it was still empty, so the popup bound was computed
+	// from an estimated row height. Re-apply now that there are rows to measure -- and make
+	// it type-to-search, since a busy map's team list is far too long to eyeball.
+	WBQtComboStyle::applySearchable(m_team);
+
+	int def = WBQtObject_GetDefaultTeamForCurrent();
+	if (def >= 0 && def < m_team->count())
+	{
+		m_team->setCurrentIndex(def);
+		WBQtObject_SetTeam(def);
+	}
+}
+
+void WBQtObjectPanel::refreshPreview()
+{
+	int w = 128, h = 128;
+	WBQtObject_GetPreviewSize(&w, &h);
+	QByteArray bgr(w * h * 3, 0);
+	if (WBQtObject_RenderPreview(reinterpret_cast<unsigned char*>(bgr.data()), bgr.size()))
+	{
+		// Flip + convert + the MFC ObjectPreview center-quarter zoom (shared helper).
+		QImage img = WBQtPreviewImage::fromBridgeBgr(
+			reinterpret_cast<const unsigned char*>(bgr.constData()), w, h);
+		m_preview->setPixmap(WBQtPreviewImage::toLabelPixmap(img, m_preview->size()));
+	}
+	else
+	{
+		m_preview->setText("(no preview)");
+	}
+}
+
+void WBQtObjectPanel::onTeamChanged(int index)
+{
+	if (m_updating)
+	{
+		return;
+	}
+	WBQtObject_SetTeam(index);
+}
+
+void WBQtObjectPanel::onHeightChanged(int v)
+{
+	if (m_updating)
+	{
+		return;
+	}
+	WBQtObject_SetHeight(v);
+}
+
+void WBQtObjectPanel::onCopyName()
+{
+	// Copy the FULL unique name rather than the label text: the tree leaf is only the last path
+	// element, but what's useful on the clipboard is the name you'd paste into a map.ini or a
+	// script -- which is what WBQtObject_GetFullName returns.
+	QList<QTreeWidgetItem*> sel = m_tree->selectedItems();
+	if (sel.isEmpty())
+	{
+		return;
+	}
+	int listIndex = sel.first()->data(0, kListIndexRole).toInt();
+	if (listIndex < 0)
+	{
+		return;
+	}
+	const int cap = 256;
+	char nameBuf[cap];
+	if (WBQtObject_GetFullName(listIndex, nameBuf, cap))
+	{
+		QApplication::clipboard()->setText(QString::fromLatin1(nameBuf));
+	}
+}
+
+void WBQtObjectPanel::onSearch()
+{
+	QString text = m_search->text().trimmed();
+	m_updating = true;
+	rebuildTree(text);
+	m_updating = false;
+}
+
+void WBQtObjectPanel::onReset()
+{
+	m_search->clear();
+	m_updating = true;
+	rebuildTree(QString());
+	m_updating = false;
+}
+
+void WBQtObjectPanel::onPreviewSoundToggled()
+{
+	WBQtObject_SetPreviewSound(m_previewSound->isChecked() ? 1 : 0);
+}
+
+void WBQtObjectPanel::onPreviewBuildZoneToggled()
+{
+	WBQtObject_SetPreviewBuildZone(m_previewBuildZone->isChecked() ? 1 : 0);
+}
+
+void WBQtObjectPanel::onUseWaterHeightToggled()
+{
+	WBQtObject_SetUseWaterHeight(m_useWaterHeight->isChecked() ? 1 : 0);
+}
+
+void WBQtObjectPanel::onPlaceAllToggled()
+{
+	WBQtObject_SetPlaceAll(m_placeAll->isChecked() ? 1 : 0);
+}
+
+void WBQtObjectPanel::onPlaceAllYSpacingChanged(int v)
+{
+	if (m_updating)
+	{
+		return;
+	}
+	WBQtObject_SetPlaceAllYSpacing(v);
+}
+
+void WBQtObjectPanel::pushFromSelection()
+{
+	// WB changed the selection; re-seed the label/team/preview from the current object.
+	m_updating = true;
+	refreshTeamCombo();
+	m_height->setValue(WBQtObject_GetHeight());
+	m_updating = false;
+	refreshPreview();
+}
+
+void WBQtObjectPanel::selectListIndex(int listIndex)
+{
+	if (listIndex < 0)
+	{
+		return;
+	}
+	// Find the leaf whose stored index matches and select it (without re-driving the tool).
+	m_updating = true;
+	for (QTreeWidgetItemIterator it(m_tree); *it; ++it)
+	{
+		if ((*it)->data(0, kListIndexRole).toInt() == listIndex)
+		{
+			m_tree->setCurrentItem(*it);
+			m_nameLabel->setText((*it)->text(0));
+			m_copyNameBtn->setEnabled(true);
+			break;
+		}
+	}
+	refreshTeamCombo();
+	m_updating = false;
+	refreshPreview();
+}
+
+// --- Forward push functions (MFC selection -> widget), the Qt-side of WBQtPanelBridge.h --
+extern "C" void WBQtObject_PushFromSelection(void)
+{
+	if (WBQtObjectPanel::instance() != NULL)
+	{
+		WBQtObjectPanel::instance()->pushFromSelection();
+	}
+}
+
+extern "C" void WBQtObject_PushSelectIndex(int listIndex)
+{
+	if (WBQtObjectPanel::instance() != NULL)
+	{
+		WBQtObjectPanel::instance()->selectListIndex(listIndex);
+	}
+}

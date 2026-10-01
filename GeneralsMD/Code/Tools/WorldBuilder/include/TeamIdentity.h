@@ -16,6 +16,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#define UNIT_LOAD_TIMER 1001
+
 #pragma once
 
 // TeamIdentity.h : header file
@@ -50,8 +52,10 @@ public:
 protected:
 	Dict		*m_teamDict;
 	SidesList	*m_sides;
+	int 		unitLoadIndex; // Tracks which unit is being loaded
 protected:
-	void loadUnitsInfo(int idcMinUnit, NameKeyType keyMinUnit,
+	void LoadAllUnitsInfo();
+	void loadUnitsInfo(int idcMinUnit, NameKeyType keyMinUnit, 
 								int idcMaxUnit, NameKeyType keyMaxUnit,
 								int idcUnitType, NameKeyType keyUnitType);
 	void OnUnitTypeButton(Int idcUnitType);
@@ -88,6 +92,7 @@ protected:
 	afx_msg void OnKillfocusTeamName();
 	afx_msg void OnSelendokTeamowner();
 	afx_msg void OnChangeTeamBuildFrames();
+	afx_msg void OnTimer(UINT nIDEvent);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

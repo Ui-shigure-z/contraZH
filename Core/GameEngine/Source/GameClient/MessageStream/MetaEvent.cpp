@@ -229,9 +229,13 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "CHEAT_SHOW_COMMAND_SET",									  GameMessage::MSG_CHEAT_SHOW_COMMAND_SET },
 	{ "CHEAT_SHOW_WEAPON_SET",									  GameMessage::MSG_CHEAT_SHOW_WEAPON_SET },
 	{ "CHEAT_SHOW_ARMOR_SET",									  GameMessage::MSG_CHEAT_SHOW_ARMOR_SET },
+	{ "CHEAT_SHOW_LASER_NAME",									  GameMessage::MSG_CHEAT_SHOW_LASER_NAME },
+	{ "CHEAT_SHOW_LASER_BEAM_BLOCK",							  GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK },
 	{ "CHEAT_CYCLE_CAMERA_MODE",							  GameMessage::MSG_CHEAT_CYCLE_CAMERA_MODE },
 	{ "CHEAT_CYCLE_SKYBOX",									  GameMessage::MSG_CHEAT_CYCLE_SKYBOX },
 	{ "CHEAT_CYCLE_TERRAIN_MODE",							  GameMessage::MSG_CHEAT_CYCLE_TERRAIN_MODE },
+	{ "CHEAT_TOGGLE_FACE_CULLING",							  GameMessage::MSG_CHEAT_TOGGLE_FACE_CULLING },
+	{ "CHEAT_SHOW_MODEL_NAMES",									  GameMessage::MSG_CHEAT_SHOW_MODEL_NAMES },
 	{ "CHEAT_ADD_CASH",									          GameMessage::MSG_CHEAT_ADD_CASH },
 	{ "CHEAT_GIVE_ALL_SCIENCES",					        GameMessage::MSG_CHEAT_GIVE_ALL_SCIENCES },
   { "CHEAT_GIVE_SCIENCEPURCHASEPOINTS",        	GameMessage::MSG_CHEAT_GIVE_SCIENCEPURCHASEPOINTS },
@@ -1011,13 +1015,45 @@ void MetaMap::generateMetaMap()
 		}
 	}
 	{
-		// TheSuperHackers @feature Show the Armor an object currently uses. Ctrl+/ continues the run
-		// of punctuation keys the other overlays took, and is likewise unbound in the engine defaults,
-		// in Contra's CommandMap.ini and in the demo map.
+		// TheSuperHackers @feature Show the Armor an object currently uses. Ctrl+- is unbound in the
+		// engine defaults and in the demo map.
 		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_ARMOR_SET);
 		if (map->m_key == MK_NONE)
 		{
+			map->m_key = MK_MINUS;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Show the W3D model each draw module has loaded.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_MODEL_NAMES);
+		if (map->m_key == MK_NONE)
+		{
 			map->m_key = MK_SLASH;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Ctrl+, is free in Contra's CommandMap.ini; RTS_DEBUG builds give it to DEMO_BEGIN_ADJUST_DEFAULTPITCH below instead.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_LASER_NAME);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_COMMA;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Show the W3DLaserDraw module tags of each laser beam.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_SHOW_LASER_BEAM_BLOCK);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_PERIOD;
 			map->m_transition = DOWN;
 			map->m_modState = CTRL;
 			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
@@ -1057,6 +1093,18 @@ void MetaMap::generateMetaMap()
 		if (map->m_key == MK_NONE)
 		{
 			map->m_key = MK_END;
+			map->m_transition = DOWN;
+			map->m_modState = CTRL;
+			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);
+		}
+	}
+	{
+		// Toggle back face culling. Contra's CommandMap.ini also binds Ctrl+F1 to SAVE_VIEW1, and the
+		// meta translator fires every matching record, so this press saves camera bookmark 1 too.
+		MetaMapRec *map = TheMetaMap->getMetaMapRec(GameMessage::MSG_CHEAT_TOGGLE_FACE_CULLING);
+		if (map->m_key == MK_NONE)
+		{
+			map->m_key = MK_F1;
 			map->m_transition = DOWN;
 			map->m_modState = CTRL;
 			map->m_usableIn = (CommandUsableInType)(COMMANDUSABLE_GAME | COMMANDUSABLE_OBSERVER);

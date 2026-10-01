@@ -19,10 +19,11 @@
 // TheSuperHackers @feature Smart selection (Options.ini: SmartSelection). A row of small
 // cameos above the command bar. A mixed selection gets one cameo per type with a count; a
 // selection of one type gets one cameo per object. A cameo for a single object shows its health
-// bar. Left click and Tab focus a cameo: the whole group stays selected, but the bar shows the
+// bar. Left click and Tab focus a cameo, so the whole group stays selected but the bar shows the
 // command set of that cameo's type, or of its one object, instead of the group's common subset.
-// Right click drops the cameo's units from the selection, double click (or Ctrl+Shift click
-// with SmartSelectionUseMouse = No) keeps only them.
+// Right click clears the focus on the focused cameo, and drops the cameo's units from the
+// selection on any other. Double click (or Ctrl+Shift click with SmartSelectionUseMouse = No)
+// keeps only them.
 //
 // The row is built in code rather than from ControlBar.wnd, which ships in the game data.
 // The container is a top level window because the hit test only descends into a top level
@@ -223,6 +224,11 @@ void ControlBar::resetSmartSelection()
 	m_smartSelectionGroups.clear();
 	m_smartSelectionActive = -1;
 	updateFocusGroup();
+	// the row hides without a refresh pass, so the rank overlays are cleared here
+	for( Int i = 0; i < MAX_SMART_SELECTION_BUTTONS; i++ )
+	{
+		GadgetButtonDrawOverlayImage( m_smartSelectionButtons[ i ], nullptr );
+	}
 	if( m_smartSelectionParent && !m_smartSelectionParent->winIsHidden() )
 	{
 		m_smartSelectionParent->winHide( TRUE );
@@ -463,10 +469,46 @@ void ControlBar::updateSmartSelection()
 	m_smartSelectionParent->winSetPosition( commandPos.x, rowY );
 	m_smartSelectionParent->winHide( FALSE );
 
+	// a cameo for a type wears the best rank among its members, so one pass over the selection
+	// feeds every cameo, and a rank gained under an unchanged selection still lands
+	VeterancyLevel bestLevel[ MAX_SMART_SELECTION_BUTTONS ];
+	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
+	{
+		bestLevel[ g ] = LEVEL_INVALID;
+	}
+	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
+	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
+	{
+		Object *obj = getSmartSelectionObject( *it );
+		if( obj == nullptr )
+		{
+			continue;
+		}
+		const VeterancyLevel level = obj->getVeterancyLevel();
+		for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
+		{
+			const SmartSelectionGroup &group = m_smartSelectionGroups[ g ];
+			const Bool inGroup = group.objectID != INVALID_ID ? obj->getID() == group.objectID : obj->getTemplate()->getReskinRoot() == group.thingTemplate;
+			if( inGroup && ( bestLevel[ g ] == LEVEL_INVALID || level > bestLevel[ g ] ) )
+			{
+				bestLevel[ g ] = level;
+			}
+		}
+	}
+
 	// the bars are one shot on the button, so a lone member's health and clip go on every frame
 	for( size_t g = 0; g < m_smartSelectionGroups.size(); g++ )
 	{
-		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID || m_smartSelectionButtons[ g ] == nullptr )
+		GameWindow *button = m_smartSelectionButtons[ g ];
+		if( button == nullptr )
+		{
+			continue;
+		}
+
+		// the overlay stays on the button until replaced, so an unranked cameo clears it
+		GadgetButtonDrawOverlayImage( button, calculateVeterancyOverlayForLevel( bestLevel[ g ] ) );
+
+		if( m_smartSelectionGroups[ g ].objectID == INVALID_ID )
 		{
 			continue;
 		}
@@ -478,12 +520,12 @@ void ControlBar::updateSmartSelection()
 		const BodyModuleInterface *body = obj->getBodyModule();
 		if( body->getMaxHealth() > 0.0f )
 		{
-			GadgetButtonDrawHealthBar( m_smartSelectionButtons[ g ], body->getHealth() / body->getMaxHealth() );
+			GadgetButtonDrawHealthBar( button, body->getHealth() / body->getMaxHealth() );
 		}
 		Int clipSize, ammoInClip;
 		if( obj->getAmmoPipShowingInfo( clipSize, ammoInClip ) )
 		{
-			GadgetButtonDrawAmmoBar( m_smartSelectionButtons[ g ], ammoInClip, clipSize );
+			GadgetButtonDrawAmmoBar( button, ammoInClip, clipSize );
 		}
 	}
 }
@@ -504,6 +546,7 @@ void ControlBar::refreshSmartSelectionButtons()
 		}
 		if( (size_t)i >= groupCount )
 		{
+			GadgetButtonDrawOverlayImage( button, nullptr );
 			button->winHide( TRUE );
 			continue;
 		}
@@ -537,7 +580,14 @@ void ControlBar::processSmartSelectionClick( GameWindow *button, Bool rightClick
 
 	if( rightClick )
 	{
-		smartSelectionRemove( groupIndex, FALSE );
+		if (isIndexSmartSelectionFocused(groupIndex))
+		{
+			smartSelectionFocus( -1 );
+		}
+		else
+		{
+			smartSelectionRemove( groupIndex, FALSE );
+		}
 		return;
 	}
 
@@ -563,7 +613,7 @@ void ControlBar::processSmartSelectionClick( GameWindow *button, Bool rightClick
 	}
 	else
 	{
-		smartSelectionFocus( isIndexSmartSelectionFocused( groupIndex ) ? -1 : groupIndex );
+		smartSelectionFocus( groupIndex );
 	}
 }
 
@@ -686,37 +736,42 @@ void ControlBar::updateFocusGroup()
 
 	TheInGameUI->placeBuildAvailable(nullptr, nullptr);
 
-	if (m_smartSelectionActive == -1)
-	{
-		TheMessageStream->appendMessage(GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-		return;
-	}
+	// Every shape of the focus lands in this list, and an empty one clears the logic side.
+	// Returning without a message would leave it holding the previous focus, which then
+	// filters the next command.
+	std::vector<ObjectID> focusGroup;
 
 	// the bar is that object's own, so anything out of it goes to that object alone
 	const ObjectID focusObject = getSmartSelectionFocusObject();
+	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
 
 	if( focusObject != INVALID_ID )
 	{
-		GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-		msg->appendObjectIDArgument( focusObject );
-		return;
+		focusGroup.push_back( focusObject );
 	}
-
-	const ThingTemplate *focus = getSmartSelectionFocusTemplate();
-	if( focus == nullptr || m_currContext != CB_CONTEXT_MULTI_SELECT )
+	else if( focus )
 	{
-		return;
-	}
-
-	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP);
-	const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
-	for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
-	{
-		Object *obj = ( *it )->getObject();
-		if( obj && obj->getTemplate()->getReskinRoot() == focus )
+		const DrawableList *selected = TheInGameUI->getAllSelectedDrawables();
+		for( DrawableListCIt it = selected->begin(); it != selected->end(); ++it )
 		{
-			msg->appendObjectIDArgument( obj->getID() );
+			Object *obj = ( *it )->getObject();
+			if( obj && obj->getTemplate()->getReskinRoot() == focus )
+			{
+				focusGroup.push_back( obj->getID() );
+			}
 		}
 	}
-	
+
+	// the message is networked, and the callers run far more often than the focus changes
+	if( focusGroup == m_sentFocusGroup )
+	{
+		return;
+	}
+	m_sentFocusGroup.swap( focusGroup );
+
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_UPDATE_FOCUSED_GROUP );
+	for( size_t i = 0; i < m_sentFocusGroup.size(); i++ )
+	{
+		msg->appendObjectIDArgument( m_sentFocusGroup[ i ] );
+	}
 }

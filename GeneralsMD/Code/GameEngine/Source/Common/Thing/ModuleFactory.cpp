@@ -206,6 +206,7 @@
 #include "GameLogic/Module/SupplyCenterProductionExitUpdate.h"
 #include "GameLogic/Module/SupplyTruckAIUpdate.h"
 #include "GameLogic/Module/SupplyWarehouseDockUpdate.h"
+#include "GameLogic/Module/TimeOfDayOverrideUpdate.h"
 #include "GameLogic/Module/ToppleUpdate.h"
 #include "GameLogic/Module/TornadoUpdate.h"
 #include "GameLogic/Module/TransportAIUpdate.h"
@@ -536,6 +537,7 @@ void ModuleFactory::init()
 	addModule( BoneFXUpdate );
 	addModule( RadarUpdate );
 	addModule( AnimationSteeringUpdate );
+	addModule( TimeOfDayOverrideUpdate );
 	addModule( TransportAIUpdate );
 	addModule( WanderAIUpdate );
 	addModule( TeleporterAIUpdate );

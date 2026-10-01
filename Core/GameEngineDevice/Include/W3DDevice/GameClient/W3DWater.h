@@ -49,6 +49,7 @@
 #define CV_PATCH_SCALE_OFFSET 10
 
 class PolygonTrigger;
+class WorldHeightMap;
 class WaterTracksRenderSystem;
 class Xfer;
 /// Custom render object that draws mirrors, water, and skies.
@@ -123,6 +124,21 @@ public:
 	inline Bool worldToGridSpace(Real worldX, Real worldY, Real &gridX, Real &gridY);	///<convert from world coordinates to grid's local coordinate system.
 
 	void replaceSkyboxTexture(const AsciiString& oldTexName, const AsciiString& newTextName);
+
+	void markHeightTextureDirty() { m_heightTextureDirty = TRUE; }	///< terrain heights changed under the shader water
+	/// The terrain heights as high and low bytes in red and green, and the vertex normal's x and y in blue and
+	/// alpha, brought up to date, or null. mapping takes world xy to its texture coordinates as xy scale and
+	/// zw offset, and decode weighs the two bytes into a height.
+	TextureClass *getTerrainHeightTexture(Vector4 &mapping, Vector4 &decode);
+	/// The standing water mask brought up to date for the terrain under it, or null while the seabed's hex
+	/// tiling is off. mapping takes world xy to its texture coordinates, and hex holds the hex cells' spacing,
+	/// weight exponent, shift and turn as the water shaders take them.
+	TextureClass *getSeabedMask(Vector4 &mapping, Vector4 &hex);
+	/// Whether a height map point lies in flat standing water, as of the last getSeabedMask.
+	Bool isSeabedPoint(Int x, Int y) const;
+	/// The hex cells as getSeabedMask gives them, for painted stochastic terrain, which keeps its cells with the water's tiling off.
+	static Vector4 getStochasticHex();
+	void renderPlanarReflection(CameraClass *cam);	///< mirrors the scene in the water under the view, before the views draw
 
 protected:
 	DX8IndexBufferClass			*m_indexBuffer;	///<indices defining quad
@@ -239,6 +255,7 @@ protected:
 	void drawRiverWater(PolygonTrigger *pTrig);
 	void drawTrapezoidWater(Vector3 points[4]);
 	void loadSetting ( Setting *skySetting, TimeOfDay timeOfDay );	///<init sky/water settings from GDF
+	void reloadEditedIni();	///< picks up Water.ini saved while the game runs, in cheat builds
 	void renderSky();	///<draw the sky layer (clouds, stars, etc.)
 	void testCurvedWater();	///<draw the sky layer (clouds, stars, etc.)
 	void renderSkyBody(Matrix3D *mat);	///<draw the sky body (sun, moon, etc.)
@@ -252,6 +269,86 @@ protected:
 	void setupFlatWaterShader();
 	void setupJbaWaterShader();
 	void cleanupJbaWaterShader();
+
+	// Per-pixel water over a copy of the scene, on D3D9 with ps_2_a.
+	// Indexed by whether the shadow map packs its depth into colour.
+	DWORD m_shaderWaterPixelShader[2];
+	DWORD m_shaderRiverPixelShader[2];
+	TextureClass *m_heightTexture;		///< terrain heights as high and low bytes, then the normal's x and y
+	TextureClass *m_normalTexture;		///< tiling wave slopes
+	TextureClass *m_foamTexture;		///< tiling foam web
+	IDirect3DTexture8 *m_refractionTexture;	///< the scene behind the water
+	Bool m_heightTextureDirty;
+	const WorldHeightMap *m_heightTextureMap;	///< map the height texture was built from
+	Bool m_shaderWaterActive;			///< the water being drawn uses the shader path
+	UnsignedInt m_refractionFrame;		///< frame the scene was last copied in
+	CameraClass *m_renderCamera;		///< camera of the Render call in progress
+	DWORD m_shaderWaterSwellVertexShader;	///< lifts standing water by a height texture
+	DWORD m_shaderWaterSwellPixelShader[2];
+	Bool m_shaderWaterSwellActive;		///< the standing water being drawn has vertex waves
+	TextureClass *m_swellTexture;		///< <water texture>_hgt.dds, or null
+	TextureClass *m_swellSource;		///< water texture m_swellTexture was looked up for
+	TextureClass *m_foamFile;			///< <water texture>_foam.dds or WaterFoam.dds, or null
+	TextureClass *m_foamSource;			///< water texture m_foamFile was looked up for
+	IDirect3DTexture8 *m_reflectionTexture;	///< the scene mirrored in the water plane, alpha 1 where anything drew
+	IDirect3DSurface8 *m_reflectionDepth;
+	CameraClass *m_reflectionCamera;
+	const CameraClass *m_reflectionSource;	///< camera the reflection mirrors, null when there is none
+	UnsignedInt m_reflectionFrame;		///< frame the reflection was rendered in
+	Real m_reflectionPlaneZ;
+	DX8VertexBufferClass *m_radialVertices;	///< square lattice of cell indices, drawn once per camera-centred level
+	DX8IndexBufferClass *m_radialIndices[5];	///< the whole lattice, then four rings with the middle left out at each offset
+	Int m_radialVertexCount;
+	Int m_radialFullTriangles;
+	Int m_radialRingTriangles;
+	DWORD m_shaderWaterRadialVertexShader;	///< lays the levels under the camera and lifts them by the swell
+	DWORD m_shaderWaterRadialPixelShader[2];
+	DWORD m_shaderWaterFlatVertexShader;	///< passes flat water and rivers unlifted to the ps_3_0 shaders
+	DWORD m_shaderWaterRichPixelShader[2];
+	DWORD m_shaderRiverRichPixelShader[2];
+	Bool m_shaderWaterRichActive;		///< flat water and rivers use the ps_3_0 shaders
+	TextureClass *m_waterMaskTexture;	///< flat standing water per map cell, coverage in alpha and level in red and green
+	UnsignedInt m_waterMaskSignature;	///< hash of the water polygons the mask was built from
+	const WorldHeightMap *m_waterMaskMap;
+	UnsignedByte *m_waterMaskCells;		///< the mask's coverage kept on the CPU, 1 per standing water point
+	UnsignedInt *m_waterCells;			///< the mask's water before growing, flat water as the texture stores it and 1 for other water
+	TextureClass *m_openWaterTexture;	///< each map cell's distance to dry ground, in cells
+	UnsignedInt m_openWaterSignature;	///< mask signature the distances were measured from
+	const WorldHeightMap *m_openWaterMap;
+	UnsignedInt m_openWaterHeightVersion;	///< height texture version the distances were measured on
+	UnsignedInt m_heightTextureVersion;	///< counts rebuilds of the height texture
+	Bool m_vertexTextureFetch;			///< vertex shaders can read A8R8G8B8 textures
+	Int m_waterMaskCellsWidth;
+	Int m_waterMaskCellsHeight;
+	Bool m_drawingRadial;				///< the standing water being drawn is the camera-centred grid
+	Real m_radialPlaneZ;
+	Int64 m_iniTimestamp;				///< Water.ini's last write time, 0 until first seen
+	UnsignedInt m_iniCheckTime;			///< when Water.ini was last looked at, in ms
+	Real m_animationPendingStep;		///< water movement held back by WaterAnimationFps
+	Real m_animationPendingTime;		///< seconds since the water last moved under WaterAnimationFps
+
+	Bool useShaderWater() const;
+	Bool isWaterVisible(PolygonTrigger *pTrig) const;
+	Bool isWaterVisible(PolygonTrigger *pTrig, CameraClass *camera) const;
+	Bool pickReflectionPlane(CameraClass *camera, Real &planeZ) const;
+	Bool ensureReflectionTargets(UnsignedInt width, UnsignedInt height);
+	void drawReflectionCoverage(UnsignedInt width, UnsignedInt height);
+	Int standingWaterDiffuse() const;
+	Bool buildRadialGrid();
+	void updateWaterMask();
+	TextureClass *updateOpenWater();
+	void setupOpenWater(Bool river);
+	void drawRadialWater(Real planeZ);
+	void createNormalTexture();
+	void createFoamTexture();
+	void updateHeightTexture();
+	void grabRefraction();
+	void setupShaderWater(Bool river);
+	void setupSwell(const D3DMATRIX &clip);
+	TextureClass *findSwellTexture();
+	TextureClass *findFoamTexture();
+	TextureClass *peekSkyboxFace(Int face);
+	void cleanupShaderWater();
 
 	//Methods used for GeForce3 specific water
 	HRESULT generateIndexBuffer(int sizeX, int sizeY);	///<Generate static index buufer

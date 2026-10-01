@@ -86,7 +86,6 @@
 #include "rinfo.h"
 #include "camera.h"
 #include "dx8fvf.h"
-#include "d3dx8math.h"
 #include "sortingrenderer.h"
 
 // Upgraded to DX8 2/2/01 HY
@@ -173,6 +172,8 @@ PointGroupClass::PointGroupClass() :
 {
 	// TheSuperHackers @feature off unless the caller asks for it
 	GroundMorph = false;
+	Effects = 0;
+	EffectData = nullptr;
 }
 
 /**************************************************************************
@@ -957,6 +958,16 @@ void PointGroupClass::Render(RenderInfoClass &rinfo)
 	                  WW3D::Is_Sorting_Enabled() &&
 	                  !Get_Flag(DISABLE_SORTING);
 
+	// Camera-facing blended sprites fade where they near the scene behind them. Opaque and alpha-tested ones stay crisp.
+	SoftParticleHookClass *soft_hook = SortingRendererClass::Peek_Soft_Particle_Hook();
+	unsigned effects = 0;
+	if (soft_hook != nullptr && Texture != nullptr &&
+	    Shader.Get_Alpha_Test() == ShaderClass::ALPHATEST_DISABLE &&
+	    Shader.Get_Dst_Blend_Func() != ShaderClass::DSTBLEND_ZERO)
+	{
+		effects = Effects | (Billboard ? SoftParticleHookClass::EFFECT_SOFT : 0);
+	}
+
 	IndexBufferClass *indexbuffer;
 	int	verticesperprimitive;/// lorenzen fixed
 	int current;
@@ -1008,11 +1019,23 @@ void PointGroupClass::Render(RenderInfoClass &rinfo)
 
 		if ( sort )
 		{
+				SortingRendererClass::Set_Insert_Effects(effects, EffectData);
 				SortingRendererClass::Insert_Triangles (0, delta / verticesperprimitive, 0, delta);
+				SortingRendererClass::Set_Insert_Effects(0, nullptr);
 		}
 		else
 		{
+			bool faded = false;
+			if (effects != 0)
+			{
+				DX8Wrapper::Apply_Render_State_Changes();
+				faded = soft_hook->Begin(Shader, effects, EffectData);
+			}
 			DX8Wrapper::Draw_Triangles (0, delta / verticesperprimitive, 0, delta);
+			if (faded)
+			{
+				soft_hook->End();
+			}
 		}
 
 		current+=delta;
@@ -1250,8 +1273,17 @@ void PointGroupClass::Update_Arrays(
 				for (i = 0; i < active_points; i++) {
 					if (!Billboard) {
 						// If we're not billboarding, then the coordinate we have is in screen space.
-						Matrix4x4 rotMat;
-						D3DXMatrixRotationZ(&(D3DXMATRIX&) rotMat, ((float)point_orientation[i] / 255.0f * 2 * D3DX_PI));
+						// The rotation is clockwise: the D3DX matrix this replaces was written
+						// into the transposed Matrix4x4 layout, which negated the angle.
+						const float angle = (float)point_orientation[i] / 255.0f * 2 * WWMATH_PI;
+						const float cos_a = cosf(angle);
+						const float sin_a = sinf(angle);
+
+						Matrix4x4 rotMat(
+							Vector4( cos_a, sin_a, 0.0f, 0.0f),
+							Vector4(-sin_a, cos_a, 0.0f, 0.0f),
+							Vector4(  0.0f,  0.0f, 1.0f, 0.0f),
+							Vector4(  0.0f,  0.0f, 0.0f, 1.0f));
 
 						Vector4 orientedVecX = rotMat * GroundMultiplierX;
 						Vector4 orientedVecY = rotMat * GroundMultiplierY;

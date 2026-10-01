@@ -80,8 +80,8 @@ IndexBufferClass::IndexBufferClass(unsigned type_, unsigned short index_count_)
 	_IndexBufferTotalIndices+=index_count;
 	_IndexBufferTotalSize+=index_count*sizeof(unsigned short);
 #ifdef VERTEX_BUFFER_LOG
-	WWDEBUG_SAY(("New IB, %d indices, size %d bytes",index_count,index_count*sizeof(unsigned short)));
-	WWDEBUG_SAY(("Total IB count: %d, total %d indices, total size %d bytes",
+	RENDER_LOG(("New IB, %d indices, size %d bytes",index_count,index_count*sizeof(unsigned short)));
+	RENDER_LOG(("Total IB count: %d, total %d indices, total size %d bytes",
 		_IndexBufferCount,
 		_IndexBufferTotalIndices,
 		_IndexBufferTotalSize));
@@ -94,8 +94,8 @@ IndexBufferClass::~IndexBufferClass()
 	_IndexBufferTotalIndices-=index_count;
 	_IndexBufferTotalSize-=index_count*sizeof(unsigned short);
 #ifdef VERTEX_BUFFER_LOG
-	WWDEBUG_SAY(("Delete IB, %d indices, size %d bytes",index_count,index_count*sizeof(unsigned short)));
-	WWDEBUG_SAY(("Total IB count: %d, total %d indices, total size %d bytes",
+	RENDER_LOG(("Delete IB, %d indices, size %d bytes",index_count,index_count*sizeof(unsigned short)));
+	RENDER_LOG(("Total IB count: %d, total %d indices, total size %d bytes",
 		_IndexBufferCount,
 		_IndexBufferTotalIndices,
 		_IndexBufferTotalSize));
@@ -190,11 +190,16 @@ IndexBufferClass::WriteLockClass::WriteLockClass(IndexBufferClass* index_buffer_
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			indices = static_cast<DX8IndexBufferClass*>(index_buffer)->shadow;
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->Get_DX8_Index_Buffer()->Lock(
 			0,
 			index_buffer->Get_Index_Count()*sizeof(WORD),
-			(unsigned char**)&indices,
+			(DX8LockPointer)&indices,
 			flags));
 		break;
 	case BUFFER_TYPE_SORTING:
@@ -216,6 +221,11 @@ IndexBufferClass::WriteLockClass::~WriteLockClass()
 	DX8_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			static_cast<DX8IndexBufferClass*>(index_buffer)->Upload_Shadow(0, index_buffer->Get_Index_Count());
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
@@ -232,7 +242,9 @@ IndexBufferClass::WriteLockClass::~WriteLockClass()
 
 IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffer_,unsigned start_index, unsigned index_range)
 	:
-	index_buffer(index_buffer_)
+	index_buffer(index_buffer_),
+	start(start_index),
+	range(index_range)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(start_index+index_range<=index_buffer->Get_Index_Count());
@@ -241,11 +253,16 @@ IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffe
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			indices = static_cast<DX8IndexBufferClass*>(index_buffer)->shadow + start_index;
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Lock(
 			start_index*sizeof(unsigned short),
 			index_range*sizeof(unsigned short),
-			(unsigned char**)&indices,
+			(DX8LockPointer)&indices,
 			0));
 		break;
 	case BUFFER_TYPE_SORTING:
@@ -264,6 +281,11 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 	DX8_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
 	case BUFFER_TYPE_DX8:
+		if (static_cast<DX8IndexBufferClass*>(index_buffer)->shadow != nullptr)
+		{
+			static_cast<DX8IndexBufferClass*>(index_buffer)->Upload_Shadow(start, range);
+			break;
+		}
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
@@ -284,10 +306,20 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 
 DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType usage)
 	:
-	IndexBufferClass(BUFFER_TYPE_DX8,index_count_)
+	IndexBufferClass(BUFFER_TYPE_DX8,index_count_),
+	shadow(nullptr)
 {
 	DX8_THREAD_ASSERT();
 	WWASSERT(index_count);
+
+#if defined(BUILD_WITH_D3D9)
+	if (DX8Wrapper::Is_Ex() && !(usage&USAGE_DYNAMIC))
+	{
+		shadow = W3DNEWARRAY unsigned short[index_count];
+		memset(shadow, 0, sizeof(unsigned short)*index_count);
+	}
+#endif
+
 	unsigned usage_flags=
 		D3DUSAGE_WRITEONLY|
 		((usage&USAGE_DYNAMIC) ? D3DUSAGE_DYNAMIC : 0)|
@@ -297,7 +329,7 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 		usage_flags|=D3DUSAGE_SOFTWAREPROCESSING;
 	}
 
-	HRESULT ret=DX8Wrapper::_Get_D3D_Device8()->CreateIndexBuffer(
+	HRESULT ret=DX8_CREATE_INDEX_BUFFER(DX8Wrapper::_Get_D3D_Device8(),
 		sizeof(WORD)*index_count,
 		usage_flags,
 		D3DFMT_INDEX16,
@@ -308,7 +340,7 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 		return;
 	}
 
-	WWDEBUG_SAY(("Index buffer creation failed, trying to release assets..."));
+	RENDER_LOG(("Index buffer creation failed, trying to release assets..."));
 
 	// Index buffer creation failed, so try releasing least used textures and flushing the mesh cache.
 
@@ -319,7 +351,7 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 	WW3D::_Invalidate_Mesh_Cache();
 
 	// Try again...
-	ret=DX8Wrapper::_Get_D3D_Device8()->CreateIndexBuffer(
+	ret=DX8_CREATE_INDEX_BUFFER(DX8Wrapper::_Get_D3D_Device8(),
 		sizeof(WORD)*index_count,
 		usage_flags,
 		D3DFMT_INDEX16,
@@ -327,7 +359,7 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 		&index_buffer);
 
 	if (SUCCEEDED(ret)) {
-		WWDEBUG_SAY(("...Index buffer creation successful"));
+		RENDER_LOG(("...Index buffer creation successful"));
 	}
 
 	// If it still fails it is fatal
@@ -339,6 +371,23 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 DX8IndexBufferClass::~DX8IndexBufferClass()
 {
 	index_buffer->Release();
+	delete[] shadow;
+}
+
+// ----------------------------------------------------------------------------
+
+void DX8IndexBufferClass::Upload_Shadow(unsigned first_index, unsigned count)
+{
+	// A zero size would lock the whole buffer.
+	if (count == 0)
+	{
+		return;
+	}
+	DX8_Assert();
+	void *data = nullptr;
+	DX8_ErrorCode(index_buffer->Lock(first_index*sizeof(unsigned short), count*sizeof(unsigned short), (DX8LockPointer)&data, 0));
+	memcpy(data, shadow + first_index, count*sizeof(unsigned short));
+	DX8_ErrorCode(index_buffer->Unlock());
 }
 
 // ----------------------------------------------------------------------------
@@ -434,7 +483,7 @@ DynamicIBAccessClass::WriteLockClass::WriteLockClass(DynamicIBAccessClass* ib_ac
 			static_cast<DX8IndexBufferClass*>(DynamicIBAccess->IndexBuffer)->Get_DX8_Index_Buffer()->Lock(
 			DynamicIBAccess->IndexBufferOffset*sizeof(WORD),
 			DynamicIBAccess->Get_Index_Count()*sizeof(WORD),
-			(unsigned char**)&Indices,
+			(DX8LockPointer)&Indices,
 			!DynamicIBAccess->IndexBufferOffset ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE));
 		break;
 	case BUFFER_TYPE_DYNAMIC_SORTING:

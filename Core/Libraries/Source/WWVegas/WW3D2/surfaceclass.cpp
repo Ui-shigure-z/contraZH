@@ -53,7 +53,6 @@
 #include "WWMath/vector2i.h"
 #include "colorspace.h"
 #include "WWLib/bound.h"
-#include <d3dx8.h>
 
 void Convert_Pixel(Vector3 &rgb, const SurfaceClass::SurfaceDescription &sd, const unsigned char * pixel)
 {
@@ -162,6 +161,8 @@ void Convert_Pixel(unsigned char * pixel,const SurfaceClass::SurfaceDescription 
 *************************************************************************/
 SurfaceClass::SurfaceClass(unsigned width, unsigned height, WW3DFormat format):
 	D3DSurface(nullptr),
+	UploadTexture(nullptr),
+	RawAccess(false),
 	SurfaceFormat(format)
 {
 	WWASSERT(width);
@@ -170,7 +171,9 @@ SurfaceClass::SurfaceClass(unsigned width, unsigned height, WW3DFormat format):
 }
 
 SurfaceClass::SurfaceClass(const char *filename):
-	D3DSurface(nullptr)
+	D3DSurface(nullptr),
+	UploadTexture(nullptr),
+	RawAccess(false)
 {
 	D3DSurface = DX8Wrapper::_Create_DX8_Surface(filename);
 	SurfaceDescription desc;
@@ -179,7 +182,9 @@ SurfaceClass::SurfaceClass(const char *filename):
 }
 
 SurfaceClass::SurfaceClass(IDirect3DSurface8 *d3d_surface)	:
-	D3DSurface (nullptr)
+	D3DSurface (nullptr),
+	UploadTexture(nullptr),
+	RawAccess(false)
 {
 	Attach (d3d_surface);
 	SurfaceDescription desc;
@@ -189,14 +194,18 @@ SurfaceClass::SurfaceClass(IDirect3DSurface8 *d3d_surface)	:
 
 SurfaceClass::~SurfaceClass()
 {
-	if (D3DSurface) {
-		D3DSurface->Release();
-		D3DSurface = nullptr;
-	}
+	Detach();
 }
 
 void SurfaceClass::Get_Description(SurfaceDescription &surface_desc)
 {
+	if (D3DSurface == NULL) {
+		surface_desc.Format = WW3D_FORMAT_UNKNOWN;
+		surface_desc.Height = 0;
+		surface_desc.Width = 0;
+		return;
+	}
+
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
 	DX8_ErrorCode(D3DSurface->GetDesc(&d3d_desc));
@@ -239,7 +248,11 @@ SurfaceClass::LockedSurfacePtr SurfaceClass::Lock(int *pitch, const Vector2i &mi
 
 void SurfaceClass::Unlock()
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
 	DX8_ErrorCode(D3DSurface->UnlockRect());
+	Upload();
 }
 
 /***********************************************************************************************
@@ -259,6 +272,10 @@ void SurfaceClass::Unlock()
  *=============================================================================================*/
 void SurfaceClass::Clear()
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -278,6 +295,7 @@ void SurfaceClass::Clear()
 	}
 
 	DX8_ErrorCode(D3DSurface->UnlockRect());
+	Upload();
 }
 
 
@@ -298,6 +316,10 @@ void SurfaceClass::Clear()
  *=============================================================================================*/
 void SurfaceClass::Copy(const unsigned char *other)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -317,6 +339,7 @@ void SurfaceClass::Copy(const unsigned char *other)
 	}
 
 	DX8_ErrorCode(D3DSurface->UnlockRect());
+	Upload();
 }
 
 
@@ -337,6 +360,10 @@ void SurfaceClass::Copy(const unsigned char *other)
  *=============================================================================================*/
 void SurfaceClass::Copy(const Vector2i &min, const Vector2i &max, const unsigned char *other)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -362,6 +389,7 @@ void SurfaceClass::Copy(const Vector2i &min, const Vector2i &max, const unsigned
 	}
 
 	DX8_ErrorCode(D3DSurface->UnlockRect());
+	Upload();
 }
 
 
@@ -382,6 +410,13 @@ void SurfaceClass::Copy(const Vector2i &min, const Vector2i &max, const unsigned
  *=============================================================================================*/
 unsigned char *SurfaceClass::CreateCopy(int *width,int *height,int*size,bool flip)
 {
+	if (D3DSurface == NULL) {
+		*width = 0;
+		*height = 0;
+		*size = 0;
+		return NULL;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -443,6 +478,10 @@ void SurfaceClass::Copy(
 	WWASSERT(width);
 	WWASSERT(height);
 
+	if (D3DSurface == NULL || other->D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd,osd;
 	Get_Description(sd);
 	const_cast <SurfaceClass*>(other)->Get_Description(osd);
@@ -474,8 +513,9 @@ void SurfaceClass::Copy(
 		if (dest.right>int(sd.Width)) dest.right=int(sd.Width);
 		if (dest.bottom>int(sd.Height)) dest.bottom=int(sd.Height);
 
-		DX8_ErrorCode(D3DXLoadSurfaceFromSurface(D3DSurface,nullptr,&dest,other->D3DSurface,nullptr,&src,D3DX_FILTER_NONE,0));
+		DX8_ErrorCode(Load_Surface_From_Surface(D3DSurface, &dest, other->D3DSurface, &src));
 	}
+	Upload();
 }
 
 /***********************************************************************************************
@@ -500,6 +540,10 @@ void SurfaceClass::Stretch_Copy(
 {
 	WWASSERT(other);
 
+	if (D3DSurface == NULL || other->D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd,osd;
 	Get_Description(sd);
 	const_cast <SurfaceClass*>(other)->Get_Description(osd);
@@ -516,7 +560,8 @@ void SurfaceClass::Stretch_Copy(
 	dest.top=dsty;
 	dest.bottom=dsty+dstheight;
 
-	DX8_ErrorCode(D3DXLoadSurfaceFromSurface(D3DSurface,nullptr,&dest,other->D3DSurface,nullptr,&src,D3DX_FILTER_TRIANGLE ,0));
+	DX8_ErrorCode(Load_Surface_From_Surface(D3DSurface, &dest, other->D3DSurface, &src));
+	Upload();
 }
 
 /***********************************************************************************************
@@ -536,6 +581,10 @@ void SurfaceClass::Stretch_Copy(
  *=============================================================================================*/
 void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -611,6 +660,10 @@ void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
  *=============================================================================================*/
 bool SurfaceClass::Is_Transparent_Column(unsigned int column)
 {
+	if (D3DSurface == NULL) {
+		return true;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -680,6 +733,11 @@ bool SurfaceClass::Is_Transparent_Column(unsigned int column)
  *=============================================================================================*/
 void SurfaceClass::Get_Pixel(Vector3 &rgb, int x, int y, LockedSurfacePtr pBits, int pitch)
 {
+	if (D3DSurface == NULL) {
+		rgb.Set(0, 0, 0);
+		return;
+	}
+
 	SurfaceDescription sd;
 	Get_Description(sd);
 
@@ -742,6 +800,23 @@ void SurfaceClass::Detach ()
 	}
 
 	D3DSurface = nullptr;
+
+	if (UploadTexture != nullptr) {
+		if (RawAccess) {
+			Upload();
+		}
+		UploadTexture->Release ();
+		UploadTexture = nullptr;
+	}
+	RawAccess = false;
+}
+
+void SurfaceClass::Upload()
+{
+	// Only what the locks marked dirty is copied, so reads cost nothing
+	if (UploadTexture != nullptr) {
+		DX8Wrapper::_Upload_Lockable_Texture(UploadTexture, false);
+	}
 }
 
 
@@ -815,6 +890,10 @@ void SurfaceClass::Draw_H_Line(const unsigned int y, const unsigned int x1, cons
  *=============================================================================================*/
 bool SurfaceClass::Is_Monochrome()
 {
+	if (D3DSurface == NULL) {
+		return false;
+	}
+
 	unsigned int x,y;
 	SurfaceDescription sd;
 	Get_Description(sd);
@@ -905,6 +984,10 @@ bool SurfaceClass::Is_Monochrome()
  *=============================================================================================*/
 void SurfaceClass::Hue_Shift(const Vector3 &hsv_shift)
 {
+	if (D3DSurface == NULL) {
+		return;
+	}
+
 	unsigned int x,y;
 	SurfaceDescription sd;
 	Get_Description(sd);

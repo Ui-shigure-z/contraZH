@@ -326,6 +326,11 @@ void SegmentedLineClass::Set_End_Caps(int onoff)
 	LineRenderer.Set_End_Caps(onoff);
 }
 
+void SegmentedLineClass::Set_Effects(unsigned int effects, const void *effectData)
+{
+	LineRenderer.Set_Effects(effects, effectData);
+}
+
 /*
 ** RenderObjClass interface:
 */

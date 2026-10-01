@@ -55,6 +55,7 @@ public:
 
 protected:
 	void formatScriptActionText(Int parmNdx);
+	void ParseHelpText(const CString& helpText);
 protected:
 	ScriptAction *m_action;
 	Bool			m_updating;
@@ -64,6 +65,9 @@ protected:
 	Int				m_curEditParameter;
 	CTreeCtrl	m_actionTreeView;
 
+	CFont m_treeFont;
+	CFont m_oldFont;
+	BOOL m_bCompressed;
 protected:
 
 	// Generated message map functions
@@ -71,6 +75,11 @@ protected:
 	virtual BOOL OnInitDialog() override;
 	afx_msg void OnSelchangeScriptActionType();
 	afx_msg void OnTimer(UINT nIDEvent);
+
+	afx_msg void OnCompress();
+	afx_msg void OnSearch();
+	afx_msg void OnReset();
+	virtual void OnOK();
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

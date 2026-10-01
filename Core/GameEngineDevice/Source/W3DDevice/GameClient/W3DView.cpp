@@ -91,7 +91,6 @@
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DView.h"
-#include "d3dx8math.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
@@ -1796,6 +1795,17 @@ void W3DView::update()
 			}
 			else
 			{	Coord3D objpos = *cameraLockObj->getPosition();
+				Real objAngle = cameraLockObj->getOrientation();
+#if RTS_ZEROHOUR
+				// Follow the model where it is drawn, or it jitters against the camera.
+				if (const Drawable *lockDraw = cameraLockObj->getDrawable())
+				{
+					const Matrix3D *drawnMtx = lockDraw->getDrawnTransformMatrix();
+					const Vector3 drawnPos = drawnMtx->Get_Translation();
+					objpos.set(drawnPos.X, drawnPos.Y, drawnPos.Z);
+					objAngle = drawnMtx->Get_Z_Rotation();
+				}
+#endif
 				Coord3D curpos = getPosition();
 				// don't "snap" directly to the pos, but move there smoothly.
 				Real snapThreshSqr = sqr(TheGlobalData->m_partitionCellSize);
@@ -1849,7 +1859,7 @@ void W3DView::update()
 					if (cameraLockObj->isUsingAirborneLocomotor() && cameraLockObj->isAboveTerrainOrWater())
 					{
 						Matrix3D camXForm;
-						Real idealZRot = cameraLockObj->getOrientation() - M_PI_2;
+						Real idealZRot = objAngle - M_PI_2;
 
 						if (m_snapImmediate)
 						{
@@ -2115,6 +2125,7 @@ Bool W3DView::setViewFilter(FilterTypes filter)
 {
 	FilterTypes oldFilter = m_viewFilter;	//save previous filter in case setup fails.
 
+	RENDER_LOG(("W3DView::setViewFilter: filter %d mode %d at frame %d", (Int)filter, (Int)m_viewFilterMode, TheGameLogic ? TheGameLogic->getFrame() : 0));
 	m_viewFilter = filter;
 	if (m_viewFilterMode != FM_NULL_MODE &&
 		m_viewFilter != FT_NULL_FILTER) {
@@ -3121,7 +3132,15 @@ void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 	// MDC - we no longer want to rotate maps (design made all of them right to begin with)
 	//	m_defaultAngle = angle * M_PI/180.0f;
 	setDefaultPitch(pitch);
+#if defined(GENERALS_ONLINE_WIDESCREEN)
+	// A wider aspect than 4:3 shows less map vertically, so the camera may rise to compensate.
+	const Real baseAspectRatio = (Real)DEFAULT_DISPLAY_WIDTH / (Real)DEFAULT_DISPLAY_HEIGHT;
+	const Real currentAspectRatio = (Real)TheDisplay->getWidth() / (Real)TheDisplay->getHeight();
+	const Real aspectWidthScale = fabs(1.0f + (currentAspectRatio - baseAspectRatio));
+	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight * maxHeight * aspectWidthScale;
+#else
 	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*maxHeight;
+#endif
 	if (m_minHeightAboveGround > m_maxHeightAboveGround)
 		m_maxHeightAboveGround = m_minHeightAboveGround;
 }
@@ -4655,14 +4674,9 @@ void W3DView::updateTerrain()
 		TheTerrainRenderObject->setTerrainDrawSize(drawSize.x, drawSize.y);
 	}
 
-	RefRenderObjListIterator *it = W3DDisplay::m_3DScene->createLightsIterator();
+	RefRenderObjListClass* lightlist = W3DDisplay::m_3DScene->getLightList();
+	RefRenderObjListIterator it(lightlist);
 
 	const Vector3 cameraPivot(m_pos.x, m_pos.y, m_pos.z);
-	TheTerrainRenderObject->updateCenter(m_3DCamera, &cameraPivot, it);
-
-	if (it)
-	{
-		W3DDisplay::m_3DScene->destroyLightsIterator(it);
-		it = nullptr;
-	}
+	TheTerrainRenderObject->updateCenter(m_3DCamera, &cameraPivot, &it);
 }

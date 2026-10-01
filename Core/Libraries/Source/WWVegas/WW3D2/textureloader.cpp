@@ -52,7 +52,6 @@
 #include "dx8caps.h"
 #include "missingtexture.h"
 #include "WWLib/TARGA.h"
-#include <d3dx8tex.h>
 #include "WWDebug/wwmemlog.h"
 #include "formconv.h"
 #include "texturethumbnail.h"
@@ -268,13 +267,15 @@ IDirect3DTexture8* Load_Compressed_Texture(
 		(MipCountType)mips
 	);
 
+	IDirect3DTexture8* lockable=DX8Wrapper::_Peek_Lockable_Texture(d3d_texture);
 	for (unsigned level=0;level<mips;++level) {
 		IDirect3DSurface8* d3d_surface=nullptr;
 		WWASSERT(d3d_texture);
-		DX8_ErrorCode(d3d_texture->GetSurfaceLevel(level/*-reduction_factor*/,&d3d_surface));
+		DX8_ErrorCode(lockable->GetSurfaceLevel(level/*-reduction_factor*/,&d3d_surface));
 		dds_file.Copy_Level_To_Surface(level,d3d_surface);
 		d3d_surface->Release();
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(d3d_texture);
 	return d3d_texture;
 }
 
@@ -453,11 +454,12 @@ IDirect3DTexture8* TextureLoader::Load_Thumbnail(const StringClass& filename, co
 	unsigned level=0;
 	D3DLOCKED_RECT locked_rects[12]={0};
 	WWASSERT(sysmem_texture->GetLevelCount()<=12);
+	IDirect3DTexture8* lockable_texture=DX8Wrapper::_Peek_Lockable_Texture(sysmem_texture);
 
 	// Lock all surfaces
 	for (level=0;level<sysmem_texture->GetLevelCount();++level) {
 		DX8_ErrorCode(
-			sysmem_texture->LockRect(
+			lockable_texture->LockRect(
 				level,
 				&locked_rects[level],
 				nullptr,
@@ -494,8 +496,9 @@ IDirect3DTexture8* TextureLoader::Load_Thumbnail(const StringClass& filename, co
 
 	// Unlock all surfaces
 	for (level=0;level<sysmem_texture->GetLevelCount();++level) {
-		DX8_ErrorCode(sysmem_texture->UnlockRect(level));
+		DX8_ErrorCode(lockable_texture->UnlockRect(level));
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(sysmem_texture);
 #ifdef USE_MANAGED_TEXTURES
 	return sysmem_texture;
 #else
@@ -508,7 +511,7 @@ IDirect3DTexture8* TextureLoader::Load_Thumbnail(const StringClass& filename, co
 	DX8CALL(UpdateTexture(sysmem_texture,d3d_texture));
 	sysmem_texture->Release();
 
-	WWDEBUG_SAY(("Created non-managed texture (%s)",filename));
+	RENDER_LOG(("Created non-managed texture (%s)",filename));
 	return d3d_texture;
 #endif
 }
@@ -533,8 +536,9 @@ IDirect3DSurface8* TextureLoader::Load_Surface_Immediate(
 	if (compressed) {
 		IDirect3DTexture8* comp_tex=Load_Compressed_Texture(filename,0,MIP_LEVELS_1,WW3D_FORMAT_UNKNOWN);
 		if (comp_tex) {
+			// The caller reads the surface on the CPU, and it keeps the lockable copy alive
 			IDirect3DSurface8* d3d_surface=nullptr;
-			DX8_ErrorCode(comp_tex->GetSurfaceLevel(0,&d3d_surface));
+			DX8_ErrorCode(DX8Wrapper::_Peek_Lockable_Texture(comp_tex)->GetSurfaceLevel(0,&d3d_surface));
 			comp_tex->Release();
 			return d3d_surface;
 		}
@@ -1637,7 +1641,7 @@ void TextureLoadTaskClass::Lock_Surfaces()
 		D3DLOCKED_RECT locked_rect;
 		DX8_ErrorCode
 		(
-			Peek_D3D_Texture()->LockRect
+			DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Texture())->LockRect
 			(
 				i,
 				&locked_rect,
@@ -1658,17 +1662,18 @@ void TextureLoadTaskClass::Unlock_Surfaces()
 		if (LockedSurfacePtr[i])
 		{
 			WWASSERT(ThreadClass::_Get_Current_Thread_ID() == DX8Wrapper::_Get_Main_Thread_ID());
-			DX8_ErrorCode(Peek_D3D_Texture()->UnlockRect(i));
+			DX8_ErrorCode(DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Texture())->UnlockRect(i));
 		}
 		LockedSurfacePtr[i] = nullptr;
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(Peek_D3D_Texture());
 
 #ifndef USE_MANAGED_TEXTURES
 	IDirect3DTexture8* tex = DX8Wrapper::_Create_DX8_Texture(Width, Height, Format, Texture->MipLevelCount,D3DPOOL_DEFAULT);
 	DX8CALL(UpdateTexture(Peek_D3D_Texture(),tex));
 	Peek_D3D_Texture()->Release();
 	D3DTexture=tex;
-	WWDEBUG_SAY(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
+	RENDER_LOG(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
 #endif
 
 }
@@ -2010,7 +2015,7 @@ void CubeTextureLoadTaskClass::Lock_Surfaces()
 			D3DLOCKED_RECT locked_rect;
 			DX8_ErrorCode
 			(
-				Peek_D3D_Cube_Texture()->LockRect
+				DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Cube_Texture())->LockRect
 				(
 					(D3DCUBEMAP_FACES)f,
 					i,
@@ -2036,12 +2041,13 @@ void CubeTextureLoadTaskClass::Unlock_Surfaces()
 				WWASSERT(ThreadClass::_Get_Current_Thread_ID() == DX8Wrapper::_Get_Main_Thread_ID());
 				DX8_ErrorCode
 				(
-					Peek_D3D_Cube_Texture()->UnlockRect((D3DCUBEMAP_FACES)f,i)
+					DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Cube_Texture())->UnlockRect((D3DCUBEMAP_FACES)f,i)
 				);
 			}
 			LockedCubeSurfacePtr[f][i] = nullptr;
 		}
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(Peek_D3D_Cube_Texture());
 
 #ifndef USE_MANAGED_TEXTURES
 	IDirect3DCubeTexture8* tex = DX8Wrapper::_Create_DX8_Cube_Texture
@@ -2055,7 +2061,7 @@ void CubeTextureLoadTaskClass::Unlock_Surfaces()
 	DX8CALL(UpdateTexture(Peek_D3D_Volume_Texture(),tex));
 	Peek_D3D_Volume_Texture()->Release();
 	D3DTexture=tex;
-	WWDEBUG_SAY(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
+	RENDER_LOG(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
 #endif
 
 }
@@ -2326,7 +2332,7 @@ void VolumeTextureLoadTaskClass::Lock_Surfaces()
 		D3DLOCKED_BOX locked_box;
 		DX8_ErrorCode
 		(
-			Peek_D3D_Volume_Texture()->LockBox
+			DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Volume_Texture())->LockBox
 			(
 				i,
 				&locked_box,
@@ -2350,18 +2356,19 @@ void VolumeTextureLoadTaskClass::Unlock_Surfaces()
 			WWASSERT(ThreadClass::_Get_Current_Thread_ID() == DX8Wrapper::_Get_Main_Thread_ID());
 			DX8_ErrorCode
 			(
-				Peek_D3D_Volume_Texture()->UnlockBox(i)
+				DX8Wrapper::_Peek_Lockable_Texture(Peek_D3D_Volume_Texture())->UnlockBox(i)
 			);
 		}
 		LockedSurfacePtr[i] = nullptr;
 	}
+	DX8Wrapper::_Upload_Lockable_Texture(Peek_D3D_Volume_Texture());
 
 #ifndef USE_MANAGED_TEXTURES
 	IDirect3DTexture8* tex = DX8Wrapper::_Create_DX8_Volume_Texture(Width, Height, Depth, Format, Texture->MipLevelCount,D3DPOOL_DEFAULT);
 	DX8CALL(UpdateTexture(Peek_D3D_Volume_Texture(),tex));
 	Peek_D3D_Volume_Texture()->Release();
 	D3DTexture=tex;
-	WWDEBUG_SAY(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
+	RENDER_LOG(("Created non-managed texture (%s)",Texture->Get_Full_Path()));
 #endif
 
 }

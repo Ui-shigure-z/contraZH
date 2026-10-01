@@ -117,7 +117,11 @@ NeutronMissileUpdate::NeutronMissileUpdate( Thing *thing, const ModuleData* modu
 	m_vel.zero();
 
 	m_state = PRELAUNCH;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 	m_isArmed = false;
 	m_isLaunched = false;
 	m_launcherID = INVALID_ID;
@@ -173,7 +177,11 @@ void NeutronMissileUpdate::projectileFireAtObjectOrPosition( const Object *victi
 	m_exhaustSysTmpl = exhaustSysOverride;
 
 	m_state = LAUNCH;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 
 	if( victim )
 	{
@@ -253,7 +261,11 @@ void NeutronMissileUpdate::doLaunch()
 
 		FXList::doFXObj(getNeutronMissileUpdateModuleData()->m_launchFX, getObject());
 		m_heightAtLaunch = getObject()->getPosition()->z;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		m_frameAtLaunch = TheGameLogic->getFrameLegacy();
+#else
 		m_frameAtLaunch = TheGameLogic->getFrame();
+#endif
 
 	}
 
@@ -272,7 +284,11 @@ void NeutronMissileUpdate::doLaunch()
 		TheParticleSystemManager->createAttachedParticleSystemID(m_exhaustSysTmpl, getObject());
 
 	m_state = ATTACK;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_stateTimestamp = TheGameLogic->getFrameLegacy();
+#else
 	m_stateTimestamp = TheGameLogic->getFrame();
+#endif
 
 	// arm the missile's "warhead"
 	m_isArmed = true;
@@ -384,7 +400,11 @@ void NeutronMissileUpdate::doAttack()
 	Coord3D pos = *getObject()->getPosition();
 
 	const NeutronMissileUpdateModuleData* d = getNeutronMissileUpdateModuleData();
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt now = TheGameLogic->getFrameLegacy();
+#else
 	UnsignedInt now = TheGameLogic->getFrame();
+#endif
 	if (d->m_specialSpeedTime > 0 && now <= m_frameAtLaunch + d->m_specialSpeedTime)
 	{
 		getObject()->getDrawable()->setInstanceMatrix(nullptr);
@@ -475,6 +495,13 @@ void NeutronMissileUpdate::detonate()
  */
 UpdateSleepTime NeutronMissileUpdate::update()
 {
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	if (!TheGameLogic->HasLegacyFrameAdvanced())
+	{
+		return UPDATE_SLEEP_NONE;
+	}
+#endif
+
 	m_deliveryDecal.update();
 
 	if (!m_reachedIntermediatePos)

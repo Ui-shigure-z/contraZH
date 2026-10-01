@@ -26,13 +26,31 @@
 
 #include "DrawObject.h"
 #include "LayersList.h"
+#include "MinimapDialog.h"
 #include "WHeightMapEdit.h"
 #include "wbview3d.h"
 #include "WorldBuilder.h"
 #include "WorldBuilderDoc.h"
 #include "WorldBuilderView.h"
+#include "WorldBuilderMcpBridge.h"
+#include "ToastDialog.h"
+#include "PickUnitDialog.h"
 
 #include "ScriptDialog.h"
+#ifdef RTS_HAS_QT
+#include <afxpriv.h>	// WM_SETMESSAGESTRING
+#include "qt/WBQtBridge.h"
+#include "qt/WBQtPanelBridge.h"
+#include "qt/panels/WBQtGlobalLightBridge.h"
+#include "qt/panels/WBQtCameraBridge.h"
+#include "qt/panels/WBQtAnimScrubBridge.h"
+#include "qt/panels/WBQtPickUnitBridge.h"
+#endif
+#define ADJUST_VIEW_TIMER 6969
+#define COUNTDOWN_TIMER 6910
+
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 
 /////////////////////////////////////////////////////////////////////////////
 // CMainFrame
@@ -42,15 +60,31 @@ IMPLEMENT_DYNAMIC(CMainFrame, CFrameWnd)
 BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	//{{AFX_MSG_MAP(CMainFrame)
 	ON_WM_CREATE()
-	ON_WM_MOVE()
+	ON_WM_EXITSIZEMOVE()
 	ON_COMMAND(ID_VIEW_BRUSHFEEDBACK, OnViewBrushfeedback)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_BRUSHFEEDBACK, OnUpdateViewBrushfeedback)
 	ON_WM_DESTROY()
-	ON_WM_SIZE()
+	ON_WM_COPYDATA()
 	ON_WM_TIMER()
 	ON_WM_CANCELMODE()
 	ON_COMMAND(ID_EDIT_CAMERAOPTIONS, OnEditCameraoptions)
+	ON_COMMAND(ID_VIEW_ANIMSCRUBBER, OnViewAnimScrubber)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_ANIMSCRUBBER, OnUpdateViewAnimScrubber)
+	ON_WM_DROPFILES()  
 	//}}AFX_MSG_MAP
+	ON_COMMAND(ID_SHOW_ASSERT_DIALOGS, OnShowAssertDialogs)
+	ON_UPDATE_COMMAND_UI(ID_SHOW_ASSERT_DIALOGS, OnUpdateShowAssertDialogs)
+	ON_MESSAGE(WorldBuilderMcpBridge::PROCESS_REQUEST_MESSAGE, OnMcpRequest)
+	ON_COMMAND(ID_MCP_SERVER_ENABLED, OnMcpServerEnabled)
+	ON_UPDATE_COMMAND_UI(ID_MCP_SERVER_ENABLED, OnUpdateMcpServerEnabled)
+	ON_COMMAND(ID_MCP_SERVER_INFORMATION, OnMcpServerInformation)
+#ifdef RTS_HAS_QT
+	ON_COMMAND_RANGE(ID_QTTHEME_SYSTEM, ID_QTTHEME_LIGHT, OnQtTheme)
+	ON_UPDATE_COMMAND_UI_RANGE(ID_QTTHEME_SYSTEM, ID_QTTHEME_LIGHT, OnUpdateQtTheme)
+	ON_MESSAGE(WM_SETMESSAGESTRING, OnSetMessageString)
+	ON_WM_SETTINGCHANGE()
+	ON_WM_CLOSE()
+#endif
 END_MESSAGE_MAP()
 
 static UINT indicators[] =
@@ -72,17 +106,50 @@ CMainFrame::CMainFrame()
 	m_curOptions = nullptr;
 	m_hAutoSaveTimer = 0;
 	m_autoSaving = false;
-	m_layersList = nullptr;
-	m_scriptDialog = nullptr;
+	m_layersList = NULL;
+	m_minimapDialog = NULL;
+	m_curDialogID = IDD_NO_OPTIONS;
+	m_scriptDialog = NULL;
+#ifdef RTS_HAS_QT
+	m_qtViewportHost = NULL;
+#endif
+	// DragAcceptFiles(TRUE);
 }
+
+void CMainFrame::OnDropFiles(HDROP hDropInfo)
+{
+    UINT nFiles = DragQueryFile(hDropInfo, 0xFFFFFFFF, NULL, 0);
+
+    for (UINT i = 0; i < nFiles; i++)
+    {
+        TCHAR szFile[MAX_PATH];
+        DragQueryFile(hDropInfo, i, szFile, MAX_PATH);
+
+        CString path = szFile;
+        if (path.Right(4).CompareNoCase(".map") == 0) // accept only .map files
+        {
+            // Use MFC doc template system to open the map
+            AfxGetApp()->OpenDocumentFile(path);
+        }
+    }
+
+    DragFinish(hDropInfo);
+}
+
 
 CMainFrame::~CMainFrame()
 {
 	delete m_layersList;
 	m_layersList = nullptr;
 
-	delete m_scriptDialog;
-	m_scriptDialog = nullptr;
+	if (m_minimapDialog) {
+		delete m_minimapDialog;
+	}
+
+	if (m_scriptDialog) {
+		delete m_scriptDialog;
+		m_scriptDialog = NULL;
+	}
 
 	SaveBarState("MainFrame");
 	TheMainFrame = nullptr;
@@ -191,6 +258,16 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (m_optionsPanelWidth < frameRect.Width()) m_optionsPanelWidth = frameRect.Width();
 	if (m_optionsPanelHeight < frameRect.Height()) m_optionsPanelHeight = frameRect.Height();
 
+	m_waveEditorOptions.Create(IDD_WAVE_EDITOR_OPTIONS, this);
+	m_waveEditorOptions.SetWindowPos(NULL, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	m_waveEditorOptions.GetWindowRect(&frameRect);
+	// The Wave Editor panel is intentionally wider than the rest; keep its own size and do
+	// NOT roll it into the shared m_optionsPanelWidth, or every other panel (Object
+	// Properties, etc.) would be stretched to match it.  showOptionsDialog() sizes this
+	// panel to its own dimensions.
+	m_waveEditorPanelWidth = frameRect.Width();
+	m_waveEditorPanelHeight = frameRect.Height();
+
 	m_objectOptions.Create(IDD_OBJECT_OPTIONS, this);
 	m_objectOptions.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
 	m_objectOptions.GetWindowRect(&frameRect);
@@ -203,12 +280,19 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (m_optionsPanelWidth < frameRect.Width()) m_optionsPanelWidth = frameRect.Width();
 	if (m_optionsPanelHeight < frameRect.Height()) m_optionsPanelHeight = frameRect.Height();
 
+#ifdef RTS_HAS_QT
+	// De-bridged Object Properties (qt-debridge): the panel window is never Create()d --
+	// the object is only the model container behind the Qt panel (see the qtM* statics
+	// in WBQtObjectPropsBridge.cpp). makeMain still registers TheMapObjectProps.
+	m_mapObjectProps.makeMain();
+#else
 	m_mapObjectProps.Create(IDD_MAPOBJECT_PROPS, this);
 	m_mapObjectProps.makeMain();
 	m_mapObjectProps.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
 	m_mapObjectProps.GetWindowRect(&frameRect);
 	if (m_optionsPanelWidth < frameRect.Width()) m_optionsPanelWidth = frameRect.Width();
 	if (m_optionsPanelHeight < frameRect.Height()) m_optionsPanelHeight = frameRect.Height();
+#endif
 
 	m_roadOptions.Create(IDD_ROAD_OPTIONS, this);
 	m_roadOptions.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
@@ -281,14 +365,48 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_cameraOptions.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
  	m_cameraOptions.GetWindowRect(&frameRect);
 
+	// We know people are retarded -- so we have to force them dickwads to use the layers list at least once
+	int introduced = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "LayerListIntroducedToShitHead", 0);
+
+	if (introduced != 1)
+	{
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", 1);
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "LayerListIntroducedToShitHead", 1);
+	}
+	
 	// now, setup the Layers Panel
 	m_layersList = new LayersList(LayersList::IDD, this);
 	m_layersList->Create(LayersList::IDD, this);
 	m_layersList->ShowWindow(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", 0) ? SW_SHOW : SW_HIDE);
-
+#ifdef RTS_HAS_QT
+	// Qt mode: the MFC dialog is only the hidden model owner; the Qt Layers window is opened
+	// from the View menu (qApp is not up yet here, so no startup auto-open).
+	m_layersList->ShowWindow(SW_HIDE);
+#endif
+	
 	CRect optionsRect;
 	m_globalLightOptions.GetWindowRect(&optionsRect);
-	m_layersList->SetWindowPos(nullptr, optionsRect.left, optionsRect.bottom + 100, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+
+	frameRect.top = ::AfxGetApp()->GetProfileInt(LAYERS_LIST_SECTION, "Top", optionsRect.bottom + 100);
+	frameRect.left =::AfxGetApp()->GetProfileInt(LAYERS_LIST_SECTION, "Left", optionsRect.left);
+	m_layersList->SetWindowPos(NULL, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+
+	// Minimap as a floating modeless tool window.
+	m_minimapDialog = new MinimapDialog(this);
+	m_minimapDialog->Create(MinimapDialog::IDD, this);
+	m_minimapDialog->ShowWindow(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowMinimap", 0) ? SW_SHOW : SW_HIDE);
+#ifdef RTS_HAS_QT
+	// Qt mode: the minimap opens hosted inside a Qt window from the View menu (qApp is not
+	// up yet here, so no startup auto-open); keep the raw MFC popup hidden.
+	m_minimapDialog->ShowWindow(SW_HIDE);
+#endif
+	// Restore the saved window position. OnExitSizeMove persists Top/Left when the user
+	// finishes moving the dialog; just read them back here. The -32000 sentinel means
+	// "never saved" -- leave the dialog at its default spawn position in that case.
+	int mmTop  = ::AfxGetApp()->GetProfileInt(MINIMAP_SECTION, "Top", -32000);
+	int mmLeft = ::AfxGetApp()->GetProfileInt(MINIMAP_SECTION, "Left", -32000);
+	if (mmTop != -32000 && mmLeft != -32000)
+		m_minimapDialog->SetWindowPos(NULL, mmLeft, mmTop, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
 
 	Int sbf = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 1);
 	if (sbf != 0) {
@@ -296,22 +414,48 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	} else {
 		DrawObject::disableFeedback();
 	}
+		
+	// Eversince the shity auto save was revamped, we need to make sure people are aware of it
+	int autosaveintro = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSaveForcedReintroduction", 0);
+
+	if (autosaveintro != 1)
+	{
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSave", 1);
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSaveForcedReintroduction", 1);
+	}
 
 	Int autoSave = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSave", 1);
 	m_autoSave = autoSave != 0;
 	autoSave = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSaveIntervalSeconds", 120);
 	m_autoSaveInterval = autoSave;
-	m_hAutoSaveTimer = this->SetTimer(1, m_autoSaveInterval*1000, nullptr);
-
+	m_hAutoSaveTimer = this->SetTimer(1, m_autoSaveInterval*1000, NULL);
+	if (m_autoSave) {
+		m_nextAutoSaveTime = CTime::GetCurrentTime() + CTimeSpan(0, 0, 0, m_autoSaveInterval);
+		SetTimer(COUNTDOWN_TIMER, 1000, NULL);
+	}
 #if USE_STREAMING_AUDIO
 	StartMusic();
 #endif
 
+	// TheSuperHackers @feature Let users persistently enable the local MCP endpoint.
+	if (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "McpServerEnabled", 1) != 0) {
+		WorldBuilderMcpBridge::Attach(m_hWnd);
+	}
+
+	DragAcceptFiles(TRUE);
 	return 0;
 }
 
-void CMainFrame::adjustWindowSize()
+void CMainFrame::adjustWindowSize(Bool forcedResolution, Bool dynamicResolution)
 {
+	DEBUG_LOG(("Adjusting window size"));
+	// if (m_disableOnSize){
+	// 	Int viewWidth = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
+	// 	Int viewHeight = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
+	// 		DEBUG_LOG(("viewWidth: %d, viewHeight: %d\n", viewWidth, viewHeight));
+	// 	return;
+	// } 
+
 	HWND hDesk = ::GetDesktopWindow();
 	CRect top;
 	::GetWindowRect(hDesk, &top);
@@ -330,52 +474,80 @@ void CMainFrame::adjustWindowSize()
 		GetClientRect(&client);
 		client.right -= 2*borderX;
 	}
-		int widthDelta = client.Width() - (viewWidth);
-		int heightDelta = client.Height() - (viewHeight);
+	    // No use to us anymore
+		// int widthDelta = client.Width() - (viewWidth);
+		// int heightDelta = client.Height() - (viewHeight);
+		
+		Int newWidth = 0;
+		Int newHeight = 0; 
 		this->GetWindowRect(window);
-		Int newWidth = window.Width()-widthDelta;
-		Int newHeight = window.Height()-heightDelta;
-	this->SetWindowPos(nullptr, 0,
+		
+		/**
+		 * Adriane [Deathscythe] 
+		 * `forcedResolution` is `true` by default. The check below preserves the old behavior  
+		 * (using specific resolution values) while supporting the new one.  
+		 * 
+		 * If `forcedResolution` is true, we use the provided resolution.  
+		 * If `dynamicResolution` is true and `forcedResolution` is false, we use the current window size.  
+		 * Otherwise, we fallback to using the specific resolution values.
+		 */
+		if (forcedResolution) {
+			newWidth = viewWidth;
+			newHeight = viewHeight;
+		} else if (dynamicResolution) {
+			newWidth = window.Width();
+			newHeight = window.Height();
+
+			// Save the new dynamic resolution -- Make sure its greater than 0 or else if we load a 0 it will crash the wb everytime
+			if(newWidth > 0 && newHeight > 0){
+				::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", newWidth);
+				::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", newHeight);
+			}
+		} else {
+			newWidth = viewWidth;
+			newHeight = viewHeight;
+		}
+
+
+#ifdef RTS_HAS_QT
+	// When the viewport is hosted in Qt, the Qt host owns the on-screen pixel area and its
+	// resizeEvent drives the device (WBQt_OnViewportHostResized). Don't push a competing
+	// device size here, and don't snap the frame for incidental callers (startup, dynamic
+	// resize bookkeeping). An EXPLICIT resolution pick (View > resolution menu, Entity
+	// Finder viewport combo -- the forcedResolution callers) still resizes the frame; the
+	// host's resizeEvent cascade then drives the device from the real pane area. Keep
+	// m_3dViewWidth current so the resolution-menu checkmark stays consistent.
+	if (m_qtViewportHost != NULL) {
+		if (forcedResolution) {
+			if (WBQt_InversionActive()) {
+				// Stage 1: the Qt main window is the visible top-level; resize IT and let
+				// the central pane's resizeEvent drive the device from the real client area.
+				WBQt_ResizeMainWindow(newWidth, newHeight);
+			} else {
+				this->SetWindowPos(NULL, 0, 0, newWidth, newHeight, SWP_NOMOVE|SWP_NOZORDER);
+			}
+		}
+		m_3dViewWidth = newWidth;
+		return;
+	}
+#endif
+
+	this->SetWindowPos(NULL, 0,
 	0, newWidth, newHeight,
 	SWP_NOMOVE|SWP_NOZORDER); // MainFrm.cpp sets the top and left.
 	if (pView) {
-		pView->reset3dEngineDisplaySize(viewWidth, viewHeight);
+		pView->reset3dEngineDisplaySize(newWidth, newHeight);
 	}
-	m_3dViewWidth = viewWidth;
-}
+	
+	/**  This is responsible for the check icon for the resolution selector -- 
+	 * make sure we sent similar values to the ones we have in the menu or else it wont have that check icon
+	*/ 
+	m_3dViewWidth = newWidth;
 
-// ----------------------------------------------------------------------------
-// Debounce a burst of resize events: (re)start a one-shot timer so the render
-// resolution is only rescaled once the user stops dragging.
-void CMainFrame::ScheduleAdjustViewAfterResize(void)
-{
-	KillTimer(ADJUST_VIEW_TIMER);
-	SetTimer(ADJUST_VIEW_TIMER, 1000, nullptr);
-}
-
-// ----------------------------------------------------------------------------
-// Reset the 3D render resolution to match the current 3D-view client size.
-// Does NOT move the window (unlike adjustWindowSize), so it never re-triggers
-// WM_SIZE -- no feedback loop.
-void CMainFrame::applyDynamicResolution(void)
-{
-	WbView3d *pView = CWorldBuilderDoc::GetActive3DView();
-	if (pView == nullptr) {
-		return;
-	}
-	CRect client;
-	pView->GetClientRect(&client);
-	Int w = client.Width();
-	Int h = client.Height();
-	if (w <= 0 || h <= 0) {
-		return;
-	}
-	// reset3dEngineDisplaySize early-returns if the size is unchanged.
-	pView->reset3dEngineDisplaySize(w, h);
-	m_3dViewWidth = w;
-	// Persist so the last window-fit size is restored on next launch.
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", w);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", h);
+	// DEBUG_LOG(("Client Width: %d, Client Height: %d\n", client.Width(), client.Height()));
+	// DEBUG_LOG(("widthDelta: %d, heightDelta: %d\n", widthDelta, heightDelta));
+	// DEBUG_LOG(("OLD viewWidth: %d, OLD viewHeight: %d\n", viewWidth, viewHeight));
+	// DEBUG_LOG(("New Width: %d, New Height: %d\n", newWidth, newHeight));
 }
 
 BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
@@ -387,13 +559,62 @@ BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 
 void CMainFrame::ResetWindowPositions()
 {
-	if (m_curOptions == nullptr) {
-		m_curOptions = &m_brushOptions;
+	int top = 50;
+	int left = 50; 
+	
+	// Main Window
+#ifdef RTS_HAS_QT
+	if (WBQt_InversionActive()) {
+		// Stage 1: the visible top-level is the Qt main window; move that instead and
+		// keep the MFC frame hidden.
+		WBQt_MoveMainWindow(20, 20);
+	} else {
+		SetWindowPos(NULL, 20, 20, 0, 0, SWP_NOSIZE|SWP_NOZORDER);
+		ShowWindow(SW_SHOW);
 	}
-	SetWindowPos(nullptr, 20, 20, 0, 0, SWP_NOSIZE|SWP_NOZORDER);
+#else
+	SetWindowPos(NULL, 20, 20, 0, 0, SWP_NOSIZE|SWP_NOZORDER);
 	ShowWindow(SW_SHOW);
-	m_curOptions->SetWindowPos(nullptr, 40, 40, 0, 0,  SWP_NOSIZE|SWP_NOZORDER);
-	m_curOptions->ShowWindow(SW_SHOW);
+#endif
+
+#ifdef RTS_HAS_QT
+	// The visible tool windows are the Qt panels (the MFC ones below are the hidden /
+	// OFF-build fallbacks): wipe their saved [QtWindowPositions]/[QtWindowSize] store
+	// and cascade the live ones -- without this the command looked like a no-op.
+	WBQtWindowPos_ResetAll();
+#endif
+
+	// Tool Window
+	if (m_curOptions != NULL) {
+		// m_curOptions = &m_brushOptions;
+		m_curOptions->SetWindowPos(NULL, 40, 40, 0, 0,  SWP_NOSIZE|SWP_NOZORDER);
+		m_curOptions->ShowWindow(SW_SHOW);
+	}
+	::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Top", top);
+	::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Left", left);
+
+	// Script Dialog
+	if (m_scriptDialog){
+		m_scriptDialog->SetWindowPos(NULL, left, top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	}
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Top", top);
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Left", left);
+
+	// Layers List
+	if (m_layersList){
+		m_layersList->SetWindowPos(NULL, left + 10, top + 10, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
+	}
+	::AfxGetApp()->WriteProfileInt(LAYERS_LIST_SECTION, "Top", top);
+	::AfxGetApp()->WriteProfileInt(LAYERS_LIST_SECTION, "Left", left);
+
+	// Build List Pick Panel
+	::AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Top", top);
+	::AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Left", left + 20);
+	PickUnitDialog::ResetWindowPosition();
+#ifdef RTS_HAS_QT
+	WBQtBuildPickPanel_ResetPos(top, left + 20);
+#endif
+
 	CView *pView = CWorldBuilderDoc::GetActive2DView();
 	if (pView) {
 		CWnd *pParent = pView->GetParentFrame();
@@ -410,7 +631,46 @@ void CMainFrame::ResetWindowPositions()
 
 void CMainFrame::showOptionsDialog(Int dialogID)
 {
-	CWnd *newOptions = nullptr;
+	if (dialogID == m_curDialogID && m_curOptions && m_curOptions->IsWindowVisible()) {
+		// DEBUG_LOG(("Already showing visible dialog ID: %d\n", dialogID));
+		return;
+	}
+
+	/**
+	 * Adriane [Deathscythe]
+	 * Suggested feature -- lets not entertain the huge ass dialog that blocks the app 
+	 * just hide that damn thing ..
+	 */
+	if (dialogID == IDD_NO_OPTIONS) {
+#ifdef RTS_HAS_QT
+		WBQt_HideOptionsPanel();
+#endif
+		// DEBUG_LOG(("Hiding current options dialog (IDD_NO_OPTIONS triggered).\n"));
+		if (m_curOptions) {
+			m_curOptions->ShowWindow(SW_HIDE);
+			m_curOptions = NULL;
+		}
+		return;
+	}
+
+#ifdef RTS_HAS_QT
+	{
+		int qtTop  = ::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Top", 10);
+		int qtLeft = ::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Left", 10);
+		if (WBQt_ShowOptionsPanel(GetSafeHwnd(), dialogID, qtLeft, qtTop,
+				m_optionsPanelWidth, m_optionsPanelHeight)) {
+			if (m_curOptions) {
+				m_curOptions->ShowWindow(SW_HIDE);
+				m_curOptions = NULL;
+			}
+			m_curDialogID = dialogID;
+			return;
+		}
+		WBQt_HideOptionsPanel();
+	}
+#endif
+
+	CWnd *newOptions = NULL;
 	switch(dialogID) {
 		case IDD_BRUSH_OPTIONS : newOptions = &m_brushOptions; break;
 		case IDD_TERRAIN_MATERIAL: newOptions = &m_terrainMaterial; break;
@@ -421,6 +681,7 @@ void CMainFrame::showOptionsDialog(Int dialogID)
 		case IDD_ROAD_OPTIONS:newOptions  = &m_roadOptions; break;
 		case IDD_MOUND_OPTIONS:newOptions  = &m_moundOptions; break;
 		case IDD_RULER_OPTIONS:newOptions  = &m_rulerOptions; break;
+		case IDD_WAVE_EDITOR_OPTIONS:newOptions  = &m_waveEditorOptions; break;
 		case IDD_FEATHER_OPTIONS:newOptions  = &m_featherOptions; break;
 		case IDD_MESHMOLD_OPTIONS:newOptions  = &m_meshMoldOptions; break;
 		case IDD_WAYPOINT_OPTIONS:newOptions  = &m_waypointOptions; break;
@@ -439,38 +700,102 @@ void CMainFrame::showOptionsDialog(Int dialogID)
 		if (m_curOptions) {
 			m_curOptions->GetWindowRect(&frameRect);
 		}
-		newOptions->SetWindowPos(m_curOptions, frameRect.left, frameRect.top,
-			m_optionsPanelWidth, m_optionsPanelHeight,
+		/**
+		 * Adriane [Deathscythe] -- Bug fix
+		 * These panels just wouldn't behave, so I had to force them to use the actual saved position values
+		 * as their base location.
+		 */
+		int top = ::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Top", 10);
+		int left = ::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Left", 10);
+		// The Wave Editor panel keeps its own (wider) size; all other panels use the shared
+		// width/height so adding the Wave Editor didn't stretch them (e.g. Object Properties).
+		int panelW = m_optionsPanelWidth;
+		int panelH = m_optionsPanelHeight;
+		if (dialogID == IDD_WAVE_EDITOR_OPTIONS) {
+			panelW = m_waveEditorPanelWidth;
+			panelH = m_waveEditorPanelHeight;
+		}
+		newOptions->SetWindowPos(m_curOptions, left, top,
+			panelW, panelH,
 			SWP_NOZORDER | SWP_NOACTIVATE );
-		::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 		newOptions->ShowWindow(SW_SHOWNA);
 		if (m_curOptions) {
 			m_curOptions->ShowWindow(SW_HIDE);
 		}
 		m_curOptions = newOptions;
+		m_curDialogID = dialogID;
+		// DEBUG_LOG(("Current ID----------:%d\n", m_curDialogID));
 	}
 }
 
 void CMainFrame::OnEditGloballightoptions()
 {
+#ifdef RTS_HAS_QT
+	// Qt mode: open the Qt Global Light window; the MFC dialog stays hidden (state owner).
+	WBQtGlobalLight_Open(GetSafeHwnd());
+	return;
+#endif
 	m_globalLightOptions.ShowWindow(SW_SHOWNA);
+}
+
+void CMainFrame::closeScriptDialog()
+{
+    if (m_scriptDialog) {
+        m_scriptDialog->DestroyWindow();
+        delete m_scriptDialog;
+        m_scriptDialog = NULL;
+    }
 }
 
 void CMainFrame::onEditScripts()
 {
-	delete m_scriptDialog;
+#ifdef RTS_HAS_QT
+	// F4 / menu toggles the editor. Showing -> hide it; hidden but still alive -> bring it
+	// back. Neither path recreates the session: the recreate path below reseeds m_sides from
+	// TheSidesList, which would silently discard uncommitted script edits. Hiding is NOT a
+	// commit or a cancel -- OK/Cancel still own those -- so the edits survive the round trip.
+	if (m_scriptDialog != NULL && WBQtScript_HasSession()) {
+		if (WBQtScript_IsOpen()) {
+			WBQtScript_Hide();
+		} else {
+			WBQtScript_Reshow();
+		}
+		return;
+	}
+#endif
+	if (m_scriptDialog) {
+		// Delete the old one since it is no longer valid.
+		delete m_scriptDialog;
+	}
+
+	m_focusedinScripting = true;
 
 	CRect frameRect;
 	GetWindowRect(&frameRect);
 
+	frameRect.top = ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Top", frameRect.top);
+	frameRect.left =::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Left", frameRect.left);
 	// Setup the Script Dialog.
 	// This needs to be recreated each time so that it will have the current data.
 	m_scriptDialog = new ScriptDialog(this);
+#ifdef RTS_HAS_QT
+	// De-bridged Qt Script editor (qt-debridge): the dialog window is never Create()d --
+	// the ScriptDialog OBJECT is the model container only (no hidden tree/controls or
+	// message map). qtOpenModelOnly seeds it exactly like OnInitDialog minus the UI, and
+	// the Qt window drives the model-only qtM* command set (see WBQtScriptBridge.cpp).
+	m_scriptDialog->qtOpenModelOnly();
+	WBQtScript_Open(GetSafeHwnd(), frameRect.left, frameRect.top);
+#else
 	m_scriptDialog->Create(IDD_ScriptDialog, this);
 	m_scriptDialog->SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
  	m_scriptDialog->GetWindowRect(&frameRect);
 	m_scriptDialog->ShowWindow(SW_SHOWNA);
+#endif
+}
+
+void CMainFrame::setFocusInScripting(Bool focus)
+{
+	m_focusedinScripting = focus;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -501,9 +826,11 @@ void CMainFrame::Dump(CDumpContext& dc) const
 	}
 #endif
 
-void CMainFrame::OnMove(int x, int y)
+// Persist the main window position once the user finishes moving it. WM_MOVE fires on
+// every pixel of the drag (hundreds of INI writes); WM_EXITSIZEMOVE fires once, on release.
+void CMainFrame::OnExitSizeMove()
 {
-	CFrameWnd::OnMove(x, y);
+	CFrameWnd::OnExitSizeMove();
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
@@ -528,53 +855,328 @@ void CMainFrame::OnUpdateViewBrushfeedback(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(DrawObject::isFeedbackEnabled()?1:0);
 }
 
-void CMainFrame::OnDestroy()
+// Troubleshooting > Show Assertion Dialogs: debug/internal builds pop a message box for
+// every failed assert (DEBUG_CRASH). Unchecking sets the engine's ignore-asserts flag (the
+// same one the game's -ignoreAsserts option sets), so asserts only log; persisted in
+// WorldBuilder.ini and re-applied at startup (CWorldBuilderApp::InitInstance).
+void CMainFrame::OnShowAssertDialogs() 
 {
+#ifdef DEBUG_CRASHING
+	if (TheWritableGlobalData) {
+		TheWritableGlobalData->m_debugIgnoreAsserts = !TheGlobalData->m_debugIgnoreAsserts;
+		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowAssertDialogs",
+			TheGlobalData->m_debugIgnoreAsserts ? 0 : 1);
+	}
+#endif
+}
+
+void CMainFrame::OnUpdateShowAssertDialogs(CCmdUI* pCmdUI) 
+{
+#ifdef DEBUG_CRASHING
+	pCmdUI->Enable(TRUE);
+	pCmdUI->SetCheck((TheGlobalData && !TheGlobalData->m_debugIgnoreAsserts) ? 1 : 0);
+#else
+	// this build never shows assert dialogs -- gray the item out
+	pCmdUI->Enable(FALSE);
+	pCmdUI->SetCheck(0);
+#endif
+}
+
+#ifdef RTS_HAS_QT
+void CMainFrame::OnClose()
+{
+	// Stage 1 inversion: the MFC close path walks the 3D view's GetParentFrame()
+	// (CDocument::OnCloseDocument ENSURE_VALIDs it before destroying the frame), but
+	// while the view is hosted under the Qt window that walk returns NULL and the
+	// whole close dies as an "Internal application error.". Reparent the view back
+	// under the frame BEFORE the close runs; if the user cancels the save prompt,
+	// host it again.
+	if (WBQt_InversionActive() && m_qtViewportHost != NULL)
+	{
+		// Ask about unsaved changes FIRST, while the Qt main window is still fully
+		// assembled -- unhosting hides the whole app window, so the old order made the
+		// main window vanish and left the save prompt floating alone (and Cancel had to
+		// rebuild the hosting). Cancel now returns before anything is torn down.
+		CWorldBuilderDoc *pCloseDoc = CWorldBuilderDoc::GetActiveDoc();
+		if (pCloseDoc != NULL)
+		{
+			if (!pCloseDoc->SaveModified())
+			{
+				return;	// user canceled the close; nothing was hidden
+			}
+			// Saved or discarded: clear the flag so CFrameWnd::OnClose (SaveAllModified)
+			// does not pop the same prompt a second time.
+			pCloseDoc->SetModifiedFlag(FALSE);
+		}
+		WbView3d *p3d = CWorldBuilderDoc::GetActive3DView();
+		WBQt_UnhostViewport(GetSafeHwnd(), p3d ? p3d->GetSafeHwnd() : NULL);
+		m_qtViewportHost = NULL;
+		CFrameWnd::OnClose();
+		if (::IsWindow(GetSafeHwnd()))
+		{
+			// Close canceled -- put the viewport back into the Qt window.
+			p3d = CWorldBuilderDoc::GetActive3DView();
+			if (p3d != NULL)
+			{
+				m_qtViewportHost = (HWND)WBQt_HostViewport(GetSafeHwnd(), p3d->GetSafeHwnd());
+				WBQt_ShowMainWindow();
+			}
+		}
+		return;
+	}
+	CFrameWnd::OnClose();
+}
+#endif
+
+BOOL CMainFrame::OnCopyData(CWnd *pWnd, COPYDATASTRUCT *pCopyDataStruct)
+{
+	// Queue MCP work so WM_COPYDATA returns before modal editor operations run.
+	if (WorldBuilderMcpBridge::IsEnabled(m_hWnd) && WorldBuilderMcpBridge::IsRequest(pCopyDataStruct)) {
+		return WorldBuilderMcpBridge::QueueRequest(m_hWnd, pCopyDataStruct);
+	}
+	return CFrameWnd::OnCopyData(pWnd, pCopyDataStruct);
+}
+
+LRESULT CMainFrame::OnMcpRequest(WPARAM, LPARAM lParam)
+{
+	return WorldBuilderMcpBridge::ProcessQueuedRequest(lParam);
+}
+
+void CMainFrame::OnMcpServerEnabled()
+{
+	if (WorldBuilderMcpBridge::IsEnabled(m_hWnd)) {
+		WorldBuilderMcpBridge::Detach(m_hWnd);
+	} else {
+		WorldBuilderMcpBridge::Attach(m_hWnd);
+	}
+	::AfxGetApp()->WriteProfileInt(
+		MAIN_FRAME_SECTION,
+		"McpServerEnabled",
+		WorldBuilderMcpBridge::IsEnabled(m_hWnd) ? 1 : 0);
+}
+
+void CMainFrame::OnUpdateMcpServerEnabled(CCmdUI *pCmdUI)
+{
+	pCmdUI->SetCheck(WorldBuilderMcpBridge::IsEnabled(m_hWnd) ? 1 : 0);
+}
+
+void CMainFrame::OnMcpServerInformation()
+{
+	CString information;
+	information.Format(
+		"Status: %s\n"
+		"Native bridge version: %lu\n"
+		"Process ID: %lu\n"
+		"Discovery marker: %s\n"
+		"Transport: local WM_COPYDATA\n"
+		"Request directory: %%TEMP%%\\GeneralsWorldBuilderMcp\n\n"
+		"The external Python MCP host runs as a separate process and connects "
+		"to this native WorldBuilder endpoint.",
+		WorldBuilderMcpBridge::IsEnabled(m_hWnd) ? "Enabled" : "Disabled",
+		static_cast<unsigned long>(WorldBuilderMcpBridge::BRIDGE_VERSION),
+		static_cast<unsigned long>(GetCurrentProcessId()),
+		"GeneralsWorldBuilderMcp");
+	MessageBox(information, "WorldBuilder MCP Server", MB_OK | MB_ICONINFORMATION);
+}
+
+void CMainFrame::OnDestroy() 
+{
+	// Drain any queued MCP work while the document and views are still alive.
+	WorldBuilderMcpBridge::Detach(m_hWnd);
+
 	if (m_hAutoSaveTimer) {
 		KillTimer(m_hAutoSaveTimer);
 	}
-	m_hAutoSaveTimer = 0;
+	m_hAutoSaveTimer = NULL;
+
 	KillTimer(ADJUST_VIEW_TIMER);
+#ifdef RTS_HAS_QT
+	// Detach the viewport from the Qt host while everything is still alive, BEFORE MFC tears
+	// the frame children down -- so the MFC-owned view HWND is not double-destroyed.
+	if (m_qtViewportHost != NULL)
+	{
+		WbView3d *p3d = CWorldBuilderDoc::GetActive3DView();
+		WBQt_UnhostViewport(GetSafeHwnd(), p3d ? p3d->GetSafeHwnd() : NULL);
+		m_qtViewportHost = NULL;
+	}
+#endif
 	CFrameWnd::OnDestroy();
 }
 
-void CMainFrame::OnSize(UINT nType, int cx, int cy)
+void CMainFrame::ScheduleAdjustViewAfterResize(void) 
 {
-	CFrameWnd::OnSize(nType, cx, cy);
-	// Ignore minimize and degenerate sizes; otherwise debounce a render rescale.
-	if (nType == SIZE_MINIMIZED || cx <= 0 || cy <= 0) {
-		return;
-	}
-	ScheduleAdjustViewAfterResize();
+    KillTimer(ADJUST_VIEW_TIMER);
+    SetTimer(ADJUST_VIEW_TIMER, 300, NULL);  // 300ms delay to detect when resizing stops
 }
 
-void CMainFrame::OnTimer(UINT nIDEvent)
+#ifdef RTS_HAS_QT
+// Size the Qt viewport host to fill the same pane the 3D view used to occupy: the client
+// area minus the docked toolbar/status bar. RepositionBars(..., reposQuery, &pane) asks MFC
+// for that rect without moving anything, so the host lands exactly where the view was.
+void CMainFrame::positionQtViewportHost(void)
 {
-	if (nIDEvent == ADJUST_VIEW_TIMER) {
-		KillTimer(ADJUST_VIEW_TIMER);
-		applyDynamicResolution();
+	if (m_qtViewportHost == NULL || !::IsWindow(m_qtViewportHost))
+	{
 		return;
 	}
 
-	CWorldBuilderDoc *pDoc = CWorldBuilderDoc::GetActiveDoc();
-	if (pDoc && pDoc->needAutoSave()) {
-		m_autoSaving = true;
-		HCURSOR old = SetCursor(::LoadCursor(nullptr, IDC_WAIT));
-		SetMessageText("Auto Saving map...");
-		pDoc->autoSave();
-		if (old) SetCursor(old);
-		SetMessageText("Auto Save Complete.");
-		m_autoSaving = false;
+	CRect pane;
+	RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST,
+		AFX_IDW_PANE_FIRST, reposQuery, &pane);
+	// Drive the host geometry through Qt so its layout reflows and sizes the hosted
+	// viewport to fill (a Win32 SetWindowPos left Qt's geometry stale, pinning the view
+	// at Qt's ~100x30 default).
+	WBQt_SetViewportHostGeometry(pane.left, pane.top, pane.Width(), pane.Height());
+}
+
+// Phase 3: a runtime "Theme" menu (System/Dark/Light) flipping WBQtTheme live.
+void CMainFrame::addQtThemeMenu(void)
+{
+	CMenu *pBar = GetMenu();
+	if (pBar == NULL)
+	{
+		return;
 	}
+	CMenu theme;
+	theme.CreatePopupMenu();
+	theme.AppendMenu(MF_STRING, ID_QTTHEME_SYSTEM, "&System (follow Windows)");
+	theme.AppendMenu(MF_STRING, ID_QTTHEME_DARK, "&Dark");
+	theme.AppendMenu(MF_STRING, ID_QTTHEME_LIGHT, "&Light");
+	pBar->AppendMenu(MF_POPUP, (UINT_PTR)theme.Detach(), "&Theme");
+	DrawMenuBar();
+}
+
+void CMainFrame::OnQtTheme(UINT nID)
+{
+	WBQt_SetThemeMode((int)(nID - ID_QTTHEME_SYSTEM));
+}
+
+void CMainFrame::OnUpdateQtTheme(CCmdUI *pCmdUI)
+{
+	pCmdUI->SetCheck(WBQt_GetThemeMode() == (int)(pCmdUI->m_nID - ID_QTTHEME_SYSTEM) ? 1 : 0);
+}
+#endif
+
+void CMainFrame::OnTimer(UINT nIDEvent) 
+{
+    if (nIDEvent == ADJUST_VIEW_TIMER)
+    {
+        KillTimer(ADJUST_VIEW_TIMER);
+        adjustWindowSize(false, true);
+        return;
+    }
+	if (nIDEvent == COUNTDOWN_TIMER) // UI update timer
+	{
+		// Auto-reload map.ini watch (File > Map.ini > Auto-reload): reloads when the file
+		// changes on disk. No-op unless the toggle is on; the 1s tick is fine here.
+		{
+			CWorldBuilderDoc* pWatchDoc = CWorldBuilderDoc::GetActiveDoc();
+			if (pWatchDoc)
+				pWatchDoc->pollMapIniWatch();
+		}
+
+		CTime currentTime = CTime::GetCurrentTime();
+		CTimeSpan diff = m_nextAutoSaveTime - currentTime;
+		double secondsRemaining = diff.GetTotalSeconds();
+
+		// DEBUG_LOG(("Countdown timer active. Seconds until auto-save: %.0f\n", secondsRemaining));
+
+		CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+        if (pDoc && pDoc->needAutoSave() && secondsRemaining <= 10 && secondsRemaining > 0)
+		{
+			CString msg;
+			msg.Format("Autosaving in %.0f seconds...", secondsRemaining);
+			// DEBUG_LOG(("SetMessageText: %s", msg));
+
+			SetMessageText(msg);
+
+			// Play a system sound as a cue (only once at 10 seconds)
+			if ((int)secondsRemaining == 10)
+			{
+
+				// CWnd* pMain = AfxGetMainWnd();
+				// bool mainIsActive = (pMain && pMain->m_hWnd == ::GetForegroundWindow());
+				// if (mainIsActive)
+				// {
+				// 	CToastDialog* pToast = new CToastDialog(_T(msg), 5000, false);
+				// 	pToast->Create(CToastDialog::IDD);
+				// 	pToast->ShowWindow(SW_SHOWNOACTIVATE);
+				// }
+
+				m_showAutoSaveMessage = true;
+					
+				PlaySound("data\\editor\\audio\\autosaving.wav", NULL, SND_FILENAME | SND_ASYNC);
+				// PlaySound((LPCTSTR)SND_ALIAS_SYSTEMASTERISK, NULL, SND_ALIAS_ID | SND_ASYNC);
+			}
+		}
+
+		// Ensure view refresh
+		CView* pView = GetActiveView();
+		if (pView) pView->Invalidate(); // force redraw if needed
+
+		return;
+	}
+
+    if (nIDEvent == 1) // Auto-save timer
+    {
+        CWorldBuilderDoc* pDoc = CWorldBuilderDoc::GetActiveDoc();
+        if (pDoc && pDoc->needAutoSave()) {
+            m_autoSaving = true;
+
+            HCURSOR old = SetCursor(::LoadCursor(0, IDC_WAIT));
+            SetMessageText("Auto Saving map...");
+            pDoc->autoSave();
+
+            if (old) SetCursor(old);
+            SetMessageText("Auto Save Complete.");
+			m_showAutoSaveMessage = false;
+            m_autoSaving = false;
+
+            CView* pView = GetActiveView();
+            if (pView) pView->Invalidate();
+        }
+
+		// 🔁 Set the next expected save time first
+		m_nextAutoSaveTime = CTime::GetCurrentTime() + CTimeSpan(0, 0, 0, m_autoSaveInterval);
+        return;
+    }
 }
 
 void CMainFrame::OnEditCameraoptions()
 {
+#ifdef RTS_HAS_QT
+	// Qt mode: open the Qt Camera window; the MFC dialog stays hidden (waypoint/center logic owner).
+	WBQtCamera_Open(GetSafeHwnd());
+	return;
+#endif
 	m_cameraOptions.ShowWindow(SW_SHOWNA);
 }
 
-void CMainFrame::handleCameraChange()
+void CMainFrame::OnViewAnimScrubber()
+{
+#ifdef RTS_HAS_QT
+	WBQtAnimScrub_Open(GetSafeHwnd());
+#endif
+}
+
+void CMainFrame::OnUpdateViewAnimScrubber(CCmdUI* pCmdUI)
+{
+	// Qt-only: the scrubber has no MFC dialog behind it (unlike Camera Options, which kept its
+	// hidden CameraOptions as the OFF fallback). Grey it out rather than offer a dead command.
+#ifdef RTS_HAS_QT
+	pCmdUI->Enable(TRUE);
+#else
+	pCmdUI->Enable(FALSE);
+#endif
+}
+
+void CMainFrame::handleCameraChange(void)
 {
 	m_cameraOptions.update();
+
+	// Camera moved/zoomed -> only the view box moves; cheap repaint, no recomposite
+	// (this is the per-mouse-move path while dragging the minimap, so it must be light).
+	if (TheMinimapDialog && TheMinimapDialog->IsWindowVisible())
+		TheMinimapDialog->requestViewBoxRefresh();
 }
 
