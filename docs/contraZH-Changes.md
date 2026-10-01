@@ -885,8 +885,8 @@ spawned them in amber)
 * `Ctrl + '` - (The `CommandSet` the object uses, in yellow)
 * `Ctrl + ;` - (The weapons the object is armed with, in red, under the command set)
 * `Ctrl + -` - (The `Armor` the object currently uses, in light blue, under the weapons)
-* `Ctrl + /` - (The W3D model each draw module has loaded, in teal, labelled above that model with a
-leader line down to it)
+* `Ctrl + /` - (The W3D model each draw module has loaded, in teal, as a callout: a leader line runs
+from the model out to one side and the name sits at the end of it)
 * `Ctrl + ,` - (Laser beams: the laser object's name, which for a weapon is its `LaserName`, in pink
 at the middle of the beam)
 * `Ctrl + .` - (Laser beams: the `W3DLaserDraw` module tags, in lavender, under the laser name)
@@ -897,8 +897,9 @@ then "and N more".
 engine actually picked. Empty cases show `<none>`, `<no weapons>` or `<no armor>`.
 * Weapons are listed as in a `WeaponSet` block, e.g. `PRIMARY NapalmMissileWeapon`.
 * Models are the ones the current condition states picked, so damaged, night and snow variants show.
-A module with no model in its current state gets no label. Each label sits above the centre of its
-model's bounds; labels that would overlap are pushed up above each other.
+A module with no model in its current state gets no label. Each leader starts at the centre of its
+model's bounds and goes out on the side that model is on; labels that would overlap are pushed up
+above each other. Up to 16 per object.
 * Laser labels that would overlap are pushed up above each other. A second beam of the same laser
 landing on an existing label is not labelled again. With a laser overlay on, the object overlays
 skip laser objects, which sit on their firer.

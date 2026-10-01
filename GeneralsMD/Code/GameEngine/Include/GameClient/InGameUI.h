@@ -567,7 +567,7 @@ public:  // ********************************************************************
 	// only when toggled on.
 	virtual void toggleArmorSetOverlay( void ) { m_armorSetOverlayOn = !m_armorSetOverlayOn; }
 	virtual Bool isArmorSetOverlayOn( void ) const { return m_armorSetOverlayOn; }
-	// The W3D model each draw module has loaded, labelled above that model with a leader line.
+	// The W3D model each draw module has loaded, as a callout with a leader line to that model.
 	virtual void toggleModelNameOverlay( void ) { m_modelNameOverlayOn = !m_modelNameOverlayOn; }
 	virtual Bool isModelNameOverlayOn( void ) const { return m_modelNameOverlayOn; }
 	// Laser template name and W3DLaserDraw module tags, drawn at the middle of each beam.

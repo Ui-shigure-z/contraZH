@@ -3047,8 +3047,18 @@ static const Int MAX_OVERLAY_PARTICLE_LINES = 4;
 // rather than pretending the list is complete when it does not.
 static const Int MAX_OVERLAY_SUBOBJECT_LINES = 16;
 
-// Pixels a model label sits above its model's centre, which is the length of its leader line.
-static const Int MODEL_LABEL_RISE = 18;
+// A model label is a callout: its leader runs this far out and up from the model's centre.
+static const Int MODEL_LABEL_REACH_X = 44;
+static const Int MODEL_LABEL_REACH_Y = 22;
+
+// Pixels between the end of the leader and the text.
+static const Int MODEL_LABEL_GAP = 3;
+
+// A model this close to the middle of its object's models has no side of its own.
+static const Int MODEL_LABEL_SIDE_SLOP = 8;
+
+// Most models labelled on one object.
+static const Int MAX_OVERLAY_MODEL_LABELS = 16;
 
 // Model labels placed this render frame, so labels that would overlap push above each other.
 static const Int MAX_MODEL_OVERLAY_SLOTS = 256;
@@ -3521,7 +3531,8 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 		}
 	}
 
-	// Each model is labelled above its own centre rather than in the stack, with a leader line down to it.
+	// Each model gets a callout rather than a line in the stack: a leader runs from the model's
+	// centre out to one side, and the name sits at the end of it.
 	if( wantModelNames && TheTacticalView != nullptr )
 	{
 		const UnsignedInt renderFrame = WW3D::Get_Frame_Count();
@@ -3531,7 +3542,12 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 			s_modelOverlaySlotCount = 0;
 		}
 
-		for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm; ++dm )
+		AsciiString modelNames[ MAX_OVERLAY_MODEL_LABELS ];
+		ICoord2D modelPoints[ MAX_OVERLAY_MODEL_LABELS ];
+		Int modelCount = 0;
+		Int sumX = 0;
+
+		for( DrawModule **dm = getDrawModulesNonDirty(); dm && *dm && modelCount < MAX_OVERLAY_MODEL_LABELS; ++dm )
 		{
 			const ObjectDrawInterface *di = (*dm)->getObjectDrawInterface();
 			if( di == nullptr )
@@ -3539,31 +3555,52 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 				continue;
 			}
 
-			AsciiString modelName;
 			Coord3D center;
-			if( !di->clientOnly_getModelNameAndCenter( &modelName, &center ) )
+			if( !di->clientOnly_getModelNameAndCenter( &modelNames[ modelCount ], &center ) )
 			{
 				continue;
 			}
 
-			ICoord2D point;
-			if( !TheTacticalView->worldToScreen( &center, &point ) )
+			if( !TheTacticalView->worldToScreen( &center, &modelPoints[ modelCount ] ) )
 			{
 				continue;
+			}
+
+			sumX += modelPoints[ modelCount ].x;
+			++modelCount;
+		}
+
+		const Int middleX = ( modelCount > 0 ) ? ( sumX / modelCount ) : 0;
+
+		for( Int m = 0; m < modelCount; ++m )
+		{
+			const ICoord2D &point = modelPoints[m];
+
+			// A label goes out on the side its model is on, so the leaders fan apart; models at the middle alternate.
+			Bool toLeft = ( ( m & 1 ) == 0 );
+			if( point.x < middleX - MODEL_LABEL_SIDE_SLOP )
+			{
+				toLeft = TRUE;
+			}
+			else if( point.x > middleX + MODEL_LABEL_SIDE_SLOP )
+			{
+				toLeft = FALSE;
 			}
 
 			UnicodeString line;
-			line.format( L"%hs", modelName.str() );
+			line.format( L"%hs", modelNames[m].str() );
 			s_nameString->setText( line );
 
 			Int width, height;
 			s_nameString->getSize( &width, &height );
 
+			const Int leaderEndX = toLeft ? ( point.x - MODEL_LABEL_REACH_X ) : ( point.x + MODEL_LABEL_REACH_X );
+
 			IRegion2D rect;
-			rect.lo.x = point.x - ( width / 2 );
+			rect.lo.x = toLeft ? ( leaderEndX - MODEL_LABEL_GAP - width ) : ( leaderEndX + MODEL_LABEL_GAP );
 			rect.hi.x = rect.lo.x + width;
-			rect.hi.y = point.y - MODEL_LABEL_RISE;
-			rect.lo.y = rect.hi.y - height;
+			rect.lo.y = point.y - MODEL_LABEL_REACH_Y - ( height / 2 );
+			rect.hi.y = rect.lo.y + height;
 
 			// Each push clears one placed label for good, so a pass per slot settles it.
 			for( Int pass = 0; pass <= s_modelOverlaySlotCount; ++pass )
@@ -3590,23 +3627,13 @@ void Drawable::drawDebugNameOverlay( const IRegion2D *healthBarRegion )
 				}
 			}
 
-			// The leader stops under the first label in its way, so a pushed label never strikes through one below it.
-			Int leaderTop = rect.hi.y;
-			for( Int i = 0; i < s_modelOverlaySlotCount; ++i )
-			{
-				const IRegion2D &slot = s_modelOverlaySlots[i];
-				if( point.x >= slot.lo.x && point.x < slot.hi.x && slot.hi.y > leaderTop && slot.hi.y <= point.y )
-				{
-					leaderTop = slot.hi.y;
-				}
-			}
-
 			if( s_modelOverlaySlotCount < MAX_MODEL_OVERLAY_SLOTS )
 			{
 				s_modelOverlaySlots[ s_modelOverlaySlotCount++ ] = rect;
 			}
 
-			TheDisplay->drawLine( point.x, point.y, point.x, leaderTop, 1.0f, modelNameColor );
+			// The leader ends level with the middle of the text, wherever the push left it.
+			TheDisplay->drawLine( point.x, point.y, leaderEndX, ( rect.lo.y + rect.hi.y ) / 2, 1.0f, modelNameColor );
 			s_nameString->draw( rect.lo.x, rect.lo.y, modelNameColor, dropColor );
 		}
 	}

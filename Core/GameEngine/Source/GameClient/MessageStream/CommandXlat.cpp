@@ -4207,7 +4207,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			break;
 		}
 
-		// Toggle the model name overlay, one label per draw module, above that module's model.
+		// Toggle the model name overlay, one callout per draw module, pointing at that module's model.
 		case GameMessage::MSG_CHEAT_SHOW_MODEL_NAMES:
 		{
 			TheInGameUI->toggleModelNameOverlay();
