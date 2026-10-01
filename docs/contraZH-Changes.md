@@ -157,7 +157,8 @@ fired, tinted in player colour (`House`) or faction colour (`Army`). `Hidden` is
 decals stay hidden. Needs `ComboBoxAlliedDecals` and `AlliedDecalsLabel` in `OptionsMenu.wnd` for
 the menu control.)
 * `NumericalHealth = No` - (Yes prints hit points beside the health bar, wherever a bar shows.)
-* `SelectionCircle = No` - (Yes draws a green ring under selected objects.)
+* `SelectionCircle = No` - (Yes draws a green ring under selected objects. The D3D9 build outlines
+the object's collision shape with a shader instead, on cards with `ps_2_a`.)
 * `DefensesRangeCircle = No` - (Yes shows an armed structure's widest attack range, upgrades
 included, while placing it. Wall pieces get one ring each.)
 * `ObjectDecals = Yes` - (No hides ground decals requested with `DisplayDecal`. Independent of shadow

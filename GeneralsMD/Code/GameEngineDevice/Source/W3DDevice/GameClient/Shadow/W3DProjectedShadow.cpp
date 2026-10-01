@@ -55,6 +55,8 @@
 #include "GameClient/Drawable.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "WWMath/vector4.h"
 
 
 /** @todo: We're going to have a pool of a couple rendertargets to use
@@ -106,6 +108,43 @@ int	nShadowDecalPolysInBatch=0;
 int	nShadowDecalVertsInBatch=0;
 int SHADOW_DECAL_VERTEX_SIZE=32768;
 int SHADOW_DECAL_INDEX_SIZE=65536;
+
+// The footprint outline sits this far outside the collision shape, so hulls and walls do not hide it.
+static const Real FOOTPRINT_PAD = 1.5f;
+// The decal reaches this far past the outline, enough for its glow and its snap-in.
+static const Real FOOTPRINT_MARGIN = 7.0f;
+static const Real FOOTPRINT_LINE_HALF_WIDTH = 0.35f;
+static const Real FOOTPRINT_OUTER_GLOW = 0.8f;	//world units the glow reaches outside the outline
+static const Real FOOTPRINT_GLOW_STRENGTH = 0.3f;
+static const Real FOOTPRINT_SNAP_DISTANCE = 4.0f;	//how far outside the outline starts when it appears
+static const UnsignedInt FOOTPRINT_SNAP_TIME = 220;	//milliseconds the outline takes to close in
+static const UnsignedInt FOOTPRINT_FLASH_TIME = 450;	//milliseconds the selection flash lasts
+static const UnsignedInt FOOTPRINT_SWEEP_TIME = 4000;	//milliseconds per turn of the highlights
+static const UnsignedInt FOOTPRINT_PULSE_TIME = 2400;	//milliseconds per glow pulse
+
+#if defined(BUILD_WITH_D3D9)
+static DWORD footprintShader = 0;
+static Bool footprintShaderLoaded = FALSE;
+#endif
+
+// Whether the footprint pixel shader is ready, loading it on first use.
+static Bool canDrawFootprints()
+{
+#if defined(BUILD_WITH_D3D9)
+	if (!footprintShaderLoaded)
+	{
+		footprintShaderLoaded = TRUE;
+		if (!W3DShaderManager::supportsPixelShader2a() ||
+			FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\footprint.pso", nullptr, 0, false, &footprintShader)))
+		{
+			footprintShader = 0;
+		}
+	}
+	return footprintShader != 0;
+#else
+	return FALSE;
+#endif
+}
 
 
 class W3DShadowTexture;	//forward reference
@@ -309,6 +348,44 @@ void W3DProjectedShadowManager::ReleaseResources()
 		shadowDecalVertexBufferD3D->Release();
 	shadowDecalIndexBufferD3D=nullptr;
 	shadowDecalVertexBufferD3D=nullptr;
+#if defined(BUILD_WITH_D3D9)
+	if (footprintShader != 0)
+	{
+		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), footprintShader);
+	}
+	footprintShader = 0;
+	footprintShaderLoaded = FALSE;
+#endif
+}
+
+void W3DProjectedShadowManager::applyFootprintShader(const W3DProjectedShadow *shadow)
+{
+#if defined(BUILD_WITH_D3D9)
+	const UnsignedInt now = timeGetTime();
+	const UnsignedInt age = now - shadow->m_footprintStart;
+
+	// The outline starts wide and bright, then closes onto the footprint.
+	Real snap = 1.0f - min((Real)age / (Real)FOOTPRINT_SNAP_TIME, 1.0f);
+	snap *= snap;
+	const Real flash = 1.0f - min((Real)age / (Real)FOOTPRINT_FLASH_TIME, 1.0f);
+
+	const Real turn = (Real)(now % FOOTPRINT_SWEEP_TIME) / (Real)FOOTPRINT_SWEEP_TIME * 2.0f * PI;
+	const Real pulse = (Real)(now % FOOTPRINT_PULSE_TIME) / (Real)FOOTPRINT_PULSE_TIME * 2.0f * PI;
+
+	// The glow fills more of a large footprint than of a small one.
+	const Real smaller = min(shadow->m_footprintHalfX, shadow->m_footprintHalfY);
+	const Real innerGlow = min(max(smaller * 0.5f, 2.0f), 10.0f);
+
+	Vector4 constants[3];
+	constants[0] = Vector4(shadow->m_decalSizeX, shadow->m_decalSizeY,
+		shadow->m_footprintHalfX - shadow->m_footprintRound, shadow->m_footprintHalfY - shadow->m_footprintRound);
+	constants[1] = Vector4(shadow->m_footprintRound + snap * FOOTPRINT_SNAP_DISTANCE, FOOTPRINT_LINE_HALF_WIDTH,
+		1.0f / innerGlow, 1.0f / FOOTPRINT_OUTER_GLOW);
+	constants[2] = Vector4(cos(turn), sin(turn), flash, FOOTPRINT_GLOW_STRENGTH * (0.85f + 0.15f * sin(pulse)));
+
+	DX8Wrapper::Set_Pixel_Shader(footprintShader);
+	DX8Wrapper::Set_Pixel_Shader_Constant(0, constants, 3);
+#endif
 }
 
 void W3DProjectedShadowManager::invalidateCachedLightPositions()
@@ -670,7 +747,7 @@ void TestBlendRender(RenderInfoClass & rinfo)
 }
 #endif
 
-void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowType type)
+void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowType type, const W3DProjectedShadow *footprint)
 {
 	static	Matrix4x4 mWorld(true);	//initialize to identity matrix
 
@@ -742,6 +819,12 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 	DX8Wrapper::Set_DX8_Stream_Source(0, shadowDecalVertexBufferD3D, 0, sizeof(SHADOW_DECAL_VERTEX));
 	DX8_SET_FVF(m_pDev, SHADOW_DECAL_FVF);
 
+	// The texture stays bound so the fixed function pipeline still hands the shader its coordinates.
+	if (footprint)
+	{
+		applyFootprintShader(footprint);
+	}
+
 //Hard Shadows using stencil
 /*	m_pDev->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_ZERO);
 	m_pDev->SetRenderState( D3DRS_DESTBLEND, D3DBLEND_ONE );
@@ -762,6 +845,11 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(nShadowDecalPolysInBatch,nShadowDecalVertsInBatch,ShaderClass::_PresetOpaqueShader);
 		DX8Wrapper::Draw_DX8_Indexed_Primitive(D3DPT_TRIANGLELIST,0,nShadowDecalVertsInBatch,nShadowDecalStartBatchIndex,nShadowDecalPolysInBatch);
+	}
+
+	if (footprint)
+	{
+		DX8Wrapper::Set_Pixel_Shader(0);
 	}
 
 //	m_pDev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);	//should reject background pixels
@@ -1547,6 +1635,19 @@ Int W3DProjectedShadowManager::renderDecals(RenderInfoClass & rinfo, Bool aboveW
 
 		if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled)
 		{
+			// A footprint carries its own shader constants, so it draws alone.
+			if (shadow->m_isFootprint)
+			{
+				if (canDrawFootprints() && !(shadow->m_robj && !shadow->m_robj->Is_Really_Visible()))
+				{
+					flushDecals(lastShadowDecalTexture,lastShadowType);
+					queueDecal(shadow);
+					flushDecals(shadow->m_shadowTexture[0],shadow->m_type,shadow);
+					projectionCount++;
+				}
+				continue;
+			}
+
 			// seed from this decal, not the list head - the head may have been skipped by the
 			// water pass or by being hidden, and its blend style can differ from this one's
 			if (lastShadowDecalTexture == nullptr)
@@ -1733,11 +1834,33 @@ Shadow* W3DProjectedShadowManager::addDecal(RenderObjClass *robj, Shadow::Shadow
 	decalOffsetX=shadowInfo->m_offsetX;
 	decalOffsetY=shadowInfo->m_offsetY;
 
+	// The footprint shader draws the shape itself, so the decal only has to cover it.
+	const Bool isFootprint = shadowInfo->m_footprint && canDrawFootprints();
+	const Real footprintHalfX = shadowInfo->m_footprintMajor + FOOTPRINT_PAD;
+	const Real footprintHalfY = (shadowInfo->m_footprintIsCircle ? shadowInfo->m_footprintMajor : shadowInfo->m_footprintMinor) + FOOTPRINT_PAD;
+	if (isFootprint)
+	{
+		decalSizeX = (footprintHalfX + FOOTPRINT_MARGIN) * 2.0f;
+		decalSizeY = (footprintHalfY + FOOTPRINT_MARGIN) * 2.0f;
+		decalOffsetX = 0.0f;
+		decalOffsetY = 0.0f;
+	}
+
 	W3DProjectedShadow *shadow = NEW W3DProjectedShadow;
 
 	// sanity
 	if( shadow == nullptr )
 		return nullptr;
+
+	if (isFootprint)
+	{
+		const Real smaller = min(footprintHalfX, footprintHalfY);
+		shadow->m_isFootprint = TRUE;
+		shadow->m_footprintHalfX = footprintHalfX;
+		shadow->m_footprintHalfY = footprintHalfY;
+		shadow->m_footprintRound = shadowInfo->m_footprintIsCircle ? smaller : min(max(smaller * 0.3f, 1.0f), 4.0f);
+		shadow->m_footprintStart = timeGetTime();
+	}
 
 	shadow->setRenderObject(robj);
 	shadow->setTexture(0,st);	///@todo: Fix projected shadows to allow multiple lights
@@ -2201,6 +2324,11 @@ W3DProjectedShadow::W3DProjectedShadow()
 	m_isEnabled = TRUE;
 	m_isInvisibleEnabled = FALSE;
 	m_replacedByShadowMap = FALSE;
+	m_isFootprint = FALSE;
+	m_footprintHalfX = 0.0f;
+	m_footprintHalfY = 0.0f;
+	m_footprintRound = 0.0f;
+	m_footprintStart = 0;
 	for (Int i=0; i<MAX_SHADOW_LIGHTS; i++)
 		m_shadowTexture[i]=nullptr;
 }

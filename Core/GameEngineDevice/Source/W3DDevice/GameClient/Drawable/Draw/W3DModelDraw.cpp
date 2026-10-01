@@ -2016,6 +2016,7 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	m_selectionDecalWanted = FALSE;
 	m_selectionDecalRadius = 0.0f;
 	m_selectionDecalColor = 0;
+	m_selectionDecalFootprint = FALSE;
 	m_objectDecal = nullptr;
 	m_trackRenderObject = nullptr;
 	m_lastTrackWasBackwards = FALSE;
@@ -3337,14 +3338,17 @@ void W3DModelDraw::handleFXEvents()
 	* sharing m_terrainDecal, so selecting a horde unit does not evict its horde ring.
 	*
 	* Expects a PlainRingSelection.tga in the mod's assets. The engine appends the extension, and
-	* the art is tinted at runtime, so a plain white or greyscale ring works. */
+	* the art is tinted at runtime, so a plain white or greyscale ring works.
+	*
+	* With footprint set, a renderer with the footprint shader outlines the collision shape instead. */
 //-------------------------------------------------------------------------------------------------
-void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color)
+void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color, Bool footprint)
 {
 	// remembered so the ring can be recreated after a model swap tears the render object down
 	m_selectionDecalWanted = enable;
 	m_selectionDecalRadius = radius;
 	m_selectionDecalColor = color;
+	m_selectionDecalFootprint = footprint;
 
 	if (m_selectionDecal)
 	{
@@ -3364,6 +3368,16 @@ void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color)
 	decalInfo.m_sizeY = radius * 2.0f;
 	decalInfo.m_offsetX = 0.0f;
 	decalInfo.m_offsetY = 0.0f;
+
+	const Object *obj = footprint ? getDrawable()->getObject() : nullptr;
+	if (obj != nullptr)
+	{
+		const GeometryInfo &geometry = obj->getGeometryInfo();
+		decalInfo.m_footprint = TRUE;
+		decalInfo.m_footprintIsCircle = geometry.getGeomType() != GEOMETRY_BOX;
+		decalInfo.m_footprintMajor = geometry.getMajorRadius();
+		decalInfo.m_footprintMinor = geometry.getMinorRadius();
+	}
 
 	m_selectionDecal = TheProjectedShadowManager->addDecal(m_renderObject, &decalInfo);
 	if (m_selectionDecal)
@@ -3843,7 +3857,7 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		// torn down; the object is still selected, so put the ring back on the new one.
 		if (m_selectionDecalWanted)
 		{
-			setSelectionDecal(TRUE, m_selectionDecalRadius, m_selectionDecalColor);
+			setSelectionDecal(TRUE, m_selectionDecalRadius, m_selectionDecalColor, m_selectionDecalFootprint);
 		}
 
 		if( m_renderObject )

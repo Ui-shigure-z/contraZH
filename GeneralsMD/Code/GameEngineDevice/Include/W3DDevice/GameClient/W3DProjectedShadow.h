@@ -75,9 +75,10 @@ class W3DProjectedShadowManager	: public ProjectedShadowManager
 		void updateRenderTargetTextures();	///<render into any textures that need updating.
 		void queueDecal(W3DProjectedShadow *shadow);	///<add shadow decal to render list - decal conforms to terrain.
 		void queueSimpleDecal(W3DProjectedShadow *shadow);	///< add shadow decal to render list - decal floats on terrain.
-		void flushDecals(W3DShadowTexture *texture, ShadowType type);	///<empty queue by rendering all decals with given texture
+		void flushDecals(W3DShadowTexture *texture, ShadowType type, const W3DProjectedShadow *footprint = nullptr);	///<empty queue by rendering all decals with given texture, or one footprint with its shader
 
 	private:
+		void applyFootprintShader(const W3DProjectedShadow *shadow);	///<bind the footprint pixel shader with this decal's shape.
 		Int renderProjectedTerrainShadow(W3DProjectedShadow *shadow, AABoxClass &box);	///<render shadow on map terrain.
 		void updateShadowNumbers(ShadowType shadowType, Int addNum);
 
@@ -136,5 +137,10 @@ class W3DProjectedShadow	: public Shadow
 		Real	m_decalOffsetV;		/// texture coordinate offset so not centered at object origin.
 		Int		m_flags;			/// custom rendering flags
 		Bool	m_replacedByShadowMap;	/// a real shadow, drawn by the shadow map instead while it is active
+		Bool	m_isFootprint;		/// drawn by the footprint pixel shader instead of its texture
+		Real	m_footprintHalfX;	/// half size of the footprint along the object's x axis
+		Real	m_footprintHalfY;	/// half size of the footprint along the object's y axis
+		Real	m_footprintRound;	/// corner radius of the footprint
+		UnsignedInt	m_footprintStart;	/// when the footprint appeared, in timeGetTime milliseconds
 		virtual void release() override	{TheW3DProjectedShadowManager->removeShadow(this);}	///<release shadow from manager
 };

@@ -1246,7 +1246,7 @@ void Drawable::updateSelectionDecal( void )
 
 	for( DrawModule **dm = getDrawModules(); *dm; ++dm )
 	{
-		(*dm)->setSelectionDecal( wanted, radius, GameMakeColor( 0, 255, 0, 255 ) );
+		(*dm)->setSelectionDecal( wanted, radius, GameMakeColor( 0, 255, 0, 255 ), TRUE );
 		break;	// first draw module only, so rings do not stack
 	}
 }
