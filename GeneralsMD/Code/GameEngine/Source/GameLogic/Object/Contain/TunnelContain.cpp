@@ -486,25 +486,12 @@ void TunnelContain::onObjectCreated()
 	tunnelTracker->onTunnelCreated(getObject());
 	m_isCurrentlyRegistered = TRUE;
 
-	if (tunnelTracker->doAutoPopRegistion(getObject()))
-		m_isAutoPopModelConditionSet = TRUE;
 }
 
 //-------------------------------------------------------------------------------------------------
 void TunnelContain::onBuildComplete()
 {
-	//ShigureUi 28/09/2026 Do newly built auto pop tunnel's model condition
-	if (m_isAutoPopModelConditionSet)
-		return;
 
-	Player* owningPlayer = getObject()->getControllingPlayer();
-	if (owningPlayer == nullptr)
-		return;
-	TunnelTracker* tunnelTracker = owningPlayer->getTunnelSystem();
-	if (tunnelTracker == nullptr)
-		return;
-
-	tunnelTracker->doAutoPopRegistion(getObject());
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -584,6 +571,12 @@ UpdateSleepTime TunnelContain::update()
 			{
 				orderAllPassengersToExit(CMD_FROM_AI, false);
 			}
+		}
+
+		if (!m_isAutoPopModelConditionSet && !obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+		{
+			tunnelSystem->doAutoPopRegistion(getObject());
+			m_isAutoPopModelConditionSet = TRUE;
 		}
 
 		// check for attacked.
