@@ -934,6 +934,44 @@ Who receives the stealth:
 | Power on a location | nobody | allies around the location |
 | `ActivateOnCreate` | the created object | allies around the created object |
 
+A unit ability needs a special power, a button and a `SpecialAbility` module beside this one:
+
+```
+SpecialPower SpecialAbilityCloak
+  Enum        = SPECIAL_CIA_INTELLIGENCE
+  ReloadTime  = 30000
+  PublicTimer = No
+End
+
+CommandButton Command_Cloak
+  Command      = SPECIAL_POWER
+  SpecialPower = SpecialAbilityCloak
+  TextLabel    = CONTROLBAR:Cloak
+  ButtonImage  = SUGPS02
+End
+
+; on the unit
+Behavior = SpecialAbility ModuleTag_CloakPower
+  SpecialPowerTemplate = SpecialAbilityCloak
+End
+Behavior = GrantTemporaryStealthBehavior ModuleTag_Cloak
+  SpecialPowerTemplate = SpecialAbilityCloak
+  Duration             = 10000
+End
+```
+
+The engine decides by the power's `Enum` which kind of target it accepts. These work without an
+update module of their own:
+
+| Target | `Enum` | Button `Options` |
+| --- | --- | --- |
+| None | `SPECIAL_CIA_INTELLIGENCE`, `SPECIAL_COMMUNICATIONS_DOWNLOAD` | - |
+| Allied object | `SPECIAL_TANKHUNTER_TNT_ATTACK` | `CONTEXTMODE_COMMAND NEED_TARGET_ALLY_OBJECT` |
+| Location | `SPECIAL_RADAR_VAN_SCAN` | `CONTEXTMODE_COMMAND NEED_TARGET_POS` |
+
+`SPECIAL_TANKHUNTER_TNT_ATTACK` accepts structures and ground vehicles only. A power on an object
+has no range limit and lands the moment the player clicks.
+
 A field dropped by an OCL, for an area effect that needs no special power on the caster:
 
 ```
