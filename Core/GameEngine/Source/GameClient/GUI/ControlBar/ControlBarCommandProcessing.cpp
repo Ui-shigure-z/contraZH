@@ -1527,6 +1527,15 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 		}
 
+		//Same as above
+		case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
+		{
+
+			TheMessageStream->appendMessage(GameMessage::MSG_TOGGLE_TUNNEL_AUTO_POP);
+			break;
+
+		}
+
 #ifdef ALLOW_SURRENDER
 		// ------------------------------------------------------------------------------------------------
 		case GUI_COMMAND_POW_RETURN_TO_PRISON:

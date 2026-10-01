@@ -54,6 +54,7 @@ TunnelContain::TunnelContain( Thing *thing, const ModuleData* moduleData ) : Ope
 {
 	m_needToRunOnBuildComplete = true;
 	m_isCurrentlyRegistered = FALSE;
+	m_isAutoPopModelConditionSet = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -310,7 +311,8 @@ Bool TunnelContain::isValidContainerFor(const Object* obj, Bool checkCapacity) c
 	Player *owningPlayer = getObject()->getControllingPlayer();
 	if( owningPlayer && owningPlayer->getTunnelSystem() )
 	{
-		return owningPlayer->getTunnelSystem()->isValidContainerFor( obj, checkCapacity );
+		TunnelTracker* tunnelSystem = owningPlayer->getTunnelSystem();
+		return tunnelSystem->isValidContainerFor( obj, checkCapacity ) && !tunnelSystem->isAutoExitTunnel(getObject());
 	}
 	return false;
 }
@@ -481,31 +483,28 @@ void TunnelContain::onObjectCreated()
 	if( tunnelTracker == nullptr )
 		return;
 
-	tunnelTracker->onTunnelCreated( getObject() );
+	tunnelTracker->onTunnelCreated(getObject());
 	m_isCurrentlyRegistered = TRUE;
+
+	if (tunnelTracker->doAutoPopRegistion(getObject()))
+		m_isAutoPopModelConditionSet = TRUE;
 }
 
 //-------------------------------------------------------------------------------------------------
 void TunnelContain::onBuildComplete()
 {
-	//Kris: July 29, 2003
-	//Obsolete -- onObjectCreated handles it before this function gets called.
-	/*
-	if( ! shouldDoOnBuildComplete() )
+	//ShigureUi 28/09/2026 Do newly built auto pop tunnel's model condition
+	if (m_isAutoPopModelConditionSet)
 		return;
 
-	m_needToRunOnBuildComplete = false;
-
-	Player *owningPlayer = getObject()->getControllingPlayer();
-	if( owningPlayer == nullptr )
+	Player* owningPlayer = getObject()->getControllingPlayer();
+	if (owningPlayer == nullptr)
 		return;
-	TunnelTracker *tunnelTracker = owningPlayer->getTunnelSystem();
-	if( tunnelTracker == nullptr )
+	TunnelTracker* tunnelTracker = owningPlayer->getTunnelSystem();
+	if (tunnelTracker == nullptr)
 		return;
 
-	tunnelTracker->onTunnelCreated( getObject() );
-	m_isCurrentlyRegistered = TRUE;
-	*/
+	tunnelTracker->doAutoPopRegistion(getObject());
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -519,12 +518,14 @@ void TunnelContain::onCapture( Player *oldOwner, Player *newOwner )
 		{
 			DEBUG_ASSERTCRASH( oldTunnelTracker->getContainCount() == 0, ("You shouldn't force a capture of a Tunnel with people in it. Future ExitFromContainer scripts will fail."));
 			oldTunnelTracker->onTunnelDestroyed(getObject());
+			m_isAutoPopModelConditionSet = FALSE;
 		}
 
 		TunnelTracker *newTunnelTracker = newOwner->getTunnelSystem();
 		if( newTunnelTracker )
 		{
 			newTunnelTracker->onTunnelCreated(getObject());
+			newTunnelTracker->doAutoPopRegistion(getObject());
 		}
 	}
 
@@ -577,6 +578,14 @@ UpdateSleepTime TunnelContain::update()
 		}
 #endif
 
+		if (tunnelSystem)
+		{
+			if (tunnelSystem->isNextTunnelToPop(obj, TheGameLogic->getFrame()) && tunnelSystem->getContainCount() > 0)
+			{
+				orderAllPassengersToExit(CMD_FROM_AI, false);
+			}
+		}
+
 		// check for attacked.
 		BodyModuleInterface *body = obj->getBodyModule();
 		if (body) {
@@ -599,6 +608,7 @@ UpdateSleepTime TunnelContain::update()
 	return UPDATE_SLEEP_NONE;
 
 }
+
 
 // ------------------------------------------------------------------------------------------------
 /** CRC */
@@ -632,6 +642,9 @@ void TunnelContain::xfer( Xfer *xfer )
 
 	// Currently registered with owning player
 	xfer->xferBool( &m_isCurrentlyRegistered );
+
+	// ShigureUi 28/09/2026 newly built tunnel need this to set conditions later
+	xfer->xferBool(&m_isAutoPopModelConditionSet);
 
 }
 

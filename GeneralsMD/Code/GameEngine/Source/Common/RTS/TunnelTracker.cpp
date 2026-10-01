@@ -51,18 +51,22 @@
 TunnelTracker::TunnelTracker()
 {
 	m_tunnelCount = 0;
+	m_tunnelAutoExitCount = 0;
 	m_containListSize = 0;
 	m_heroUnitsContained = 0;
 	m_curNemesisID = INVALID_ID;
 	m_nemesisTimestamp = 0;
 	m_framesForFullHeal = 0;
 	m_needsFullHealTimeUpdate = false;
+	m_nextTunnelToPop = INVALID_ID;
+	m_curFrame = 0;
 }
 
 // ------------------------------------------------------------------------
 TunnelTracker::~TunnelTracker()
 {
 	m_tunnelIDs.clear();
+	m_autoExitIDs.clear();
 }
 
 // ------------------------------------------------------------------------
@@ -131,6 +135,123 @@ void TunnelTracker::updateNemesis(const Object *target)
 	} else if (getCurNemesis()==target) {
 		m_nemesisTimestamp = TheGameLogic->getFrame();
 	}
+}
+
+void TunnelTracker::setTunnelAutoPop(Object* tunnel, Bool on)
+{
+	//sanity
+	if (!tunnel)
+		return;
+
+	ObjectID tunnelID = tunnel->getID();
+	std::list< ObjectID >::iterator inTunnelList, inExitList;
+	inTunnelList = std::find(m_tunnelIDs.begin(), m_tunnelIDs.end(), tunnelID);
+
+	//sanity, it's illegal
+	if (inTunnelList == m_tunnelIDs.end())
+		return;
+
+	inExitList = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnelID);
+
+	Object *obj;
+
+	if (inExitList == m_autoExitIDs.end() && on)
+	{
+		if (!m_tunnelAutoExitCount)
+		{
+			for (inTunnelList = m_tunnelIDs.begin(); inTunnelList != m_tunnelIDs.end(); inTunnelList++)
+			{
+				obj = TheGameLogic->findObjectByID(*inTunnelList);
+				if (!obj || obj == tunnel || obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+					continue;
+				obj->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT, MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+			}
+
+			m_nextTunnelToPop = tunnelID;
+		}
+
+		tunnel->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE, MODELCONDITION_TUNNEL_AUTO_EXIT);
+		m_autoExitIDs.push_back(tunnelID);
+		m_tunnelAutoExitCount++;
+	}
+	else if (inExitList != m_autoExitIDs.end() && !on)
+	{
+		if (m_tunnelAutoExitCount == 1)
+		{
+			for (inTunnelList = m_tunnelIDs.begin(); inTunnelList != m_tunnelIDs.end(); inTunnelList++)
+			{
+				obj = TheGameLogic->findObjectByID(*inTunnelList);
+				if (!obj || obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
+					continue;
+
+				obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+				obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+			}
+
+			m_nextTunnelToPop = INVALID_ID;
+		}
+		else
+		{
+			obj = TheGameLogic->findObjectByID(tunnelID);
+			if (obj)
+			{
+				obj->clearAndSetModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT, MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+			}
+		}
+		m_autoExitIDs.erase(inExitList);
+		m_tunnelAutoExitCount--;
+	}
+}
+
+Bool TunnelTracker::isNextTunnelToPop(Object *tunnel, UnsignedInt frame)
+{
+	if (frame <= m_curFrame)
+		return false;
+
+
+
+	std::list<ObjectID>::iterator it = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), m_nextTunnelToPop);
+
+	if (it == m_autoExitIDs.end())
+	{
+		if (m_autoExitIDs.empty())
+			return false;
+		it = m_autoExitIDs.begin();
+		m_nextTunnelToPop = *it;
+	}
+
+	while (TheGameLogic->findObjectByID(*it)->isDisabled())
+	{
+		it++;
+		if (it == m_autoExitIDs.end())
+			it = m_autoExitIDs.begin();
+		if (*it == m_nextTunnelToPop)
+			return false;
+	}
+
+	m_nextTunnelToPop = *it;
+
+	if (tunnel && tunnel->getID() == m_nextTunnelToPop)
+	{
+		it = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnel->getID());
+		m_nextTunnelToPop = *(++it == m_autoExitIDs.end() ? m_autoExitIDs.begin() : it);
+		m_curFrame = frame;
+		return true;
+	}
+	return false;
+}
+
+Bool TunnelTracker::isAutoExitTunnel(const Object* tunnel)
+{
+	if (!tunnel)
+		return false;
+
+	std::list<ObjectID>::iterator it = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnel->getID());
+
+	if (it == m_autoExitIDs.end())
+		return false;
+	else
+		return true;
 }
 
 // ------------------------------------------------------------------------
@@ -233,15 +354,39 @@ void TunnelTracker::onTunnelCreated( const Object *newTunnel )
 void TunnelTracker::onTunnelDestroyed( const Object *deadTunnel )
 {
 	{
-		std::list<ObjectID>::iterator it = std::find(m_tunnelIDs.begin(), m_tunnelIDs.end(), deadTunnel->getID());
-		if (it == m_tunnelIDs.end())
+		std::list< ObjectID >::iterator inTunnelList, inExitList;
+		ObjectID tunnelID = deadTunnel->getID();
+
+		inTunnelList = std::find(m_tunnelIDs.begin(), m_tunnelIDs.end(), tunnelID);
+		if (inTunnelList == m_tunnelIDs.end())
 		{
 			DEBUG_CRASH(("TunnelTracker::onTunnelDestroyed - Attempting to remove object '%s' that has never been tracked as a tunnel", deadTunnel->getName().str()));
 			return;
 		}
 
+		inExitList = std::find(m_autoExitIDs.begin(), m_autoExitIDs.end(), tunnelID);
+
+		Object* obj;
+
+		if (inExitList != m_autoExitIDs.end())
+		{
+			m_autoExitIDs.erase(inExitList);
+			m_tunnelAutoExitCount--;
+			if (!m_tunnelAutoExitCount)
+			{
+				for (inTunnelList = m_tunnelIDs.begin(); inTunnelList != m_tunnelIDs.end(); inTunnelList++)
+				{
+					obj = TheGameLogic->findObjectByID(*inTunnelList);
+					if (!obj)
+						continue;
+					obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+					obj->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+				}
+			}
+		}
+
 		m_tunnelCount--;
-		m_tunnelIDs.erase(it);
+		m_tunnelIDs.erase(inTunnelList);
 		m_needsFullHealTimeUpdate = true;
 	}
 
@@ -265,6 +410,27 @@ void TunnelTracker::onTunnelDestroyed( const Object *deadTunnel )
 				obj->onContainedBy( validTunnel );
 		}
 	}
+}
+
+Bool TunnelTracker::doAutoPopRegistion(const Object* newTunnel) const
+{
+	Drawable* draw = newTunnel->getDrawable();
+
+	if (!draw)
+		return false;
+
+	if (m_tunnelAutoExitCount > 0)
+	{
+		draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+		draw->setModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+	}
+	else
+	{
+		draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_EXIT);
+		draw->clearModelConditionState(MODELCONDITION_TUNNEL_AUTO_ENTRANCE);
+	}
+
+	return true;
 }
 
 // ------------------------------------------------------------------------
@@ -392,6 +558,8 @@ void TunnelTracker::xfer( Xfer *xfer )
 	// tunnel object id list
 	xfer->xferSTLObjectIDList( &m_tunnelIDs );
 
+	xfer->xferSTLObjectIDList( &m_autoExitIDs );
+
 	// contain list count
 	xfer->xferInt( &m_containListSize );
 
@@ -426,6 +594,8 @@ void TunnelTracker::xfer( Xfer *xfer )
 
 	// tunnel count
 	xfer->xferUnsignedInt( &m_tunnelCount );
+	xfer->xferUnsignedInt( &m_tunnelAutoExitCount );
+	xfer->xferObjectID( &m_nextTunnelToPop );
 
 }
 
