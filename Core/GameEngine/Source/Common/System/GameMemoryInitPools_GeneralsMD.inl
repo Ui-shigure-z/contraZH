@@ -110,6 +110,7 @@ static PoolSizeRec PoolSizes[] =
 	{ "WeaponBonusUpdate", 16, 16 },
 	{ "BuffUpdate", 32, 32 },
 	{ "GrantStealthBehavior", 4096, 32 },
+	{ "GrantTemporaryStealthBehavior", 32, 32 },
 	{ "NeutronBlastBehavior", 4096, 32 },
 	{ "CountermeasuresBehavior", 256, 32 },
 	{ "BattlePlanBonusBehavior", 256, 32 },

@@ -144,6 +144,8 @@ StealthUpdate::StealthUpdate( Thing *thing, const ModuleData* moduleData ) : Upd
 	m_nextBlackMarketCheckFrame = 0;
 	m_lastUnitCreatedFrame = 0;
 	m_framesGranted = 0;
+	m_temporaryStealthEndFrame = 0;
+	m_temporaryStealthWoke = FALSE;
 
 	m_stealthLevelOverride = 0;
 
@@ -217,6 +219,7 @@ void StealthUpdate::receiveGrant( Bool active, UnsignedInt frames )
 		m_stealthAllowedFrame = TheGameLogic->getFrame();
 	  setWakeFrame( obj, UPDATE_SLEEP_NONE );
 		m_framesGranted = frames;
+		m_temporaryStealthWoke = FALSE;
 	}
 	else
 	{
@@ -228,6 +231,12 @@ void StealthUpdate::receiveGrant( Bool active, UnsignedInt frames )
 		if( draw )
 		{
 			draw->setEffectiveOpacity( 1.0f );
+		}
+
+		if( hasTemporaryStealth() )
+		{
+			// The temporary stealth carries on without the grant that just ended.
+			m_stealthAllowedFrame = TheGameLogic->getFrame();
 		}
 	}
 
@@ -245,6 +254,73 @@ void StealthUpdate::receiveGrant( Bool active, UnsignedInt frames )
 
 
 
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool StealthUpdate::hasTemporaryStealth() const
+{
+	return TheGameLogic->getFrame() < m_temporaryStealthEndFrame;
+}
+
+//-------------------------------------------------------------------------------------------------
+void StealthUpdate::receiveTemporaryGrant( UnsignedInt frames )
+{
+	Object *obj = getObject();
+
+	if( frames == 0 || canDisguise() )
+	{
+		return;
+	}
+
+	UnsignedInt now = TheGameLogic->getFrame();
+
+	if( m_temporaryStealthEndFrame == 0 )
+	{
+		m_temporaryStealthWoke = getWakeFrame() > UPDATE_SLEEP_NONE;
+
+		// A unit that stealths by itself keeps its own StealthDelay.
+		if( !m_enabled || !obj->testStatus( OBJECT_STATUS_CAN_STEALTH ) )
+		{
+			m_stealthAllowedFrame = now;
+		}
+	}
+
+	// A refresh never shortens what is already running.
+	if( m_temporaryStealthEndFrame < now + frames )
+	{
+		m_temporaryStealthEndFrame = now + frames;
+	}
+
+	setWakeFrame( obj, UPDATE_SLEEP_NONE );
+
+	const ContainModuleInterface *contain = obj->getContain();
+	if( contain && contain->isRiderChangeContain() )
+	{
+		const Object *rider = contain->friend_getRider();
+		if( rider )
+		{
+			StealthUpdate *riderStealth = rider->getStealth();
+			if( riderStealth )
+			{
+				riderStealth->receiveTemporaryGrant( frames );
+			}
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void StealthUpdate::inheritGrant( const Object *source )
+{
+	const StealthUpdate *sourceStealth = source->getStealth();
+
+	// A source running on temporary stealth alone only passes on what is left of it.
+	if( sourceStealth && sourceStealth->hasTemporaryStealth() && !source->testStatus( OBJECT_STATUS_CAN_STEALTH ) )
+	{
+		receiveTemporaryGrant( sourceStealth->m_temporaryStealthEndFrame - TheGameLogic->getFrame() );
+		return;
+	}
+
+	receiveGrant( TRUE );
 }
 
 
@@ -345,7 +421,7 @@ Bool StealthUpdate::allowedToStealth( Object *stealthOwner ) const
 		}
 	}
 
-	if( !stealthOwner->getStatusBits().test( OBJECT_STATUS_CAN_STEALTH ) )
+	if( !stealthOwner->getStatusBits().test( OBJECT_STATUS_CAN_STEALTH ) && !hasTemporaryStealth() )
 	{
 		return FALSE;
 	}
@@ -640,7 +716,7 @@ Object* StealthUpdate::calcStealthOwner()
 //-------------------------------------------------------------------------------------------------
 UpdateSleepTime StealthUpdate::calcSleepTime() const
 {
-	return m_enabled ? UPDATE_SLEEP_NONE : UPDATE_SLEEP_FOREVER;
+	return ( m_enabled || m_temporaryStealthEndFrame != 0 ) ? UPDATE_SLEEP_NONE : UPDATE_SLEEP_FOREVER;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -695,7 +771,28 @@ UpdateSleepTime StealthUpdate::update()
 /// @todo srj -- improve sleeping behavior. we currently just sleep when not enabled,
 // and demand every-frame attention when enabled. this could probably be smartened.
 
-	if( !m_enabled )
+	if( m_temporaryStealthEndFrame != 0 && now >= m_temporaryStealthEndFrame )
+	{
+		Bool backToSleep = !m_enabled || ( m_temporaryStealthWoke && !stealthOwner->testStatus( OBJECT_STATUS_CAN_STEALTH ) );
+
+		m_temporaryStealthEndFrame = 0;
+		m_temporaryStealthWoke = FALSE;
+
+		if( backToSleep )
+		{
+			// The module was off or asleep before the grant and returns to that.
+			self->clearStatus( MAKE_OBJECT_STATUS_MASK2( OBJECT_STATUS_STEALTHED, OBJECT_STATUS_DETECTED ) );
+			Drawable *expiredDraw = self->getDrawable();
+			if( expiredDraw )
+			{
+				expiredDraw->setEffectiveOpacity( 1.0f );
+				expiredDraw->setStealthLook( STEALTHLOOK_NONE );
+			}
+			return UPDATE_SLEEP_FOREVER;
+		}
+	}
+
+	if( !m_enabled && m_temporaryStealthEndFrame == 0 )
 	{
 		return calcSleepTime();
 	}
@@ -1209,13 +1306,14 @@ void StealthUpdate::crc( Xfer *xfer )
 	* Version Info:
 	* 1: Initial version
 	* 2: Added m_framesGranted
-	* 3: Added m_lastUnitCreatedFrame */
+	* 3: Added m_lastUnitCreatedFrame
+	* 4: Added m_temporaryStealthEndFrame and m_temporaryStealthWoke */
 // ------------------------------------------------------------------------------------------------
 void StealthUpdate::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 3;
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1285,6 +1383,12 @@ void StealthUpdate::xfer( Xfer *xfer )
 	if( version >= 3 )
 	{
 		xfer->xferUnsignedInt( &m_lastUnitCreatedFrame );
+	}
+
+	if( version >= 4 )
+	{
+		xfer->xferUnsignedInt( &m_temporaryStealthEndFrame );
+		xfer->xferBool( &m_temporaryStealthWoke );
 	}
 
 }  // end xfer

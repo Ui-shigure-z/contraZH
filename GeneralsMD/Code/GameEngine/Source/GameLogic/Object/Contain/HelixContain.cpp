@@ -442,7 +442,7 @@ void HelixContain::onContaining( Object *obj, Bool wasSelected )
     StealthUpdate *myStealth =  obj->getStealth();
     if ( myStealth )
     {
-      myStealth->receiveGrant( true );
+      myStealth->inheritGrant( getObject() );
       // note to anyone... once stealth is granted to this gattlingcannon ( or such )
       // let its own stealthupdate govern the allowedtostealth cases
       // a portable structure never gets removed, so...

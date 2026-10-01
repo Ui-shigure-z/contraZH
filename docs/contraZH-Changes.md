@@ -898,6 +898,72 @@ Notes:
 * Runtime switches now relight trees, bibs, bridges and roads immediately; the debug time of day
 hotkey benefits too, and refreshes player indicator colours.
 
+## GrantTemporaryStealthBehavior
+
+Grants stealth for a set time. It runs beside permanent stealth (`GrantStealthBehavior`, upgrades,
+innate) and never removes it when it runs out. Two modes:
+
+* On the object firing a special power: grants when the power fires.
+* On an object an OCL or weapon creates, with `ActivateOnCreate`: grants once, on creation.
+
+```
+Behavior = GrantTemporaryStealthBehavior ModuleTag_TempStealth01
+  SpecialPowerTemplate = SpecialAbilityCloak  ; optional, see below
+  Duration             = 10000
+  Radius               = 0
+  KindOf               = INFANTRY VEHICLE
+  ForbiddenKindOf      = AIRCRAFT
+End
+```
+
+* `SpecialPowerTemplate` - (Only react to this power. Leave it out and the module reacts to every
+special power the object fires. Not used when `ActivateOnCreate` is set.)
+* `Duration = 0` - (In milliseconds. How long the stealth lasts. Required.)
+* `Radius = 0` - (`0` grants to a single object. Any other value grants to every allied object
+within that distance.)
+* `KindOf` - (A receiver needs at least one of these. Default = everything.)
+* `ForbiddenKindOf` - (A receiver may have none of these. Default = none.)
+* `ActivateOnCreate = No` - (Yes grants on creation instead of on a special power.)
+
+Who receives the stealth:
+
+| Trigger | `Radius = 0` | `Radius > 0` |
+| --- | --- | --- |
+| Power without a target | the firing object | allies around the firing object |
+| Power on an object | the target | allies around the target |
+| Power on a location | nobody | allies around the location |
+| `ActivateOnCreate` | the created object | allies around the created object |
+
+A field dropped by an OCL, for an area effect that needs no special power on the caster:
+
+```
+Object TempStealthField
+  KindOf = IMMOBILE UNATTACKABLE INERT
+  Behavior = GrantTemporaryStealthBehavior ModuleTag_01
+    ActivateOnCreate = Yes
+    Duration         = 15000
+    Radius           = 150
+  End
+  Behavior = LifetimeUpdate ModuleTag_02
+    MinLifetime = 100
+    MaxLifetime = 100
+  End
+End
+```
+
+Notes:
+* A receiver needs a `StealthUpdate`, as with the GPS Scrambler. Its `StealthForbiddenConditions`
+and `StealthDelay` still apply while the grant runs.
+* Only allies of the granting object receive it, its own units included.
+* A second grant never shortens a running one. The later end time wins.
+* When the time is up, a unit that can stealth by other means stays stealthed.
+* A portable structure or drone that joins a carrier running on temporary stealth alone gets the
+time the carrier has left, not permanent stealth.
+* A player order does not end it, unlike the supply center's `GrantTemporaryStealth`.
+* Disguisers such as the Bomb Truck are skipped.
+* List the module before the power's own update module (e.g. `SpecialAbilityUpdate`), which stops
+later modules from seeing the power fire.
+
 # Drag Selection
 
 ## EasyMilitaryDrag
