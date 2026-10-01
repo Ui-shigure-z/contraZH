@@ -6111,6 +6111,7 @@ void Object::doCommandButton( const CommandButton *commandButton, CommandSourceT
 			case GUI_COMMAND_ATTACK_MOVE:
 			case GUI_COMMAND_REVERSE_MOVE:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
 			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
@@ -6243,6 +6244,7 @@ void Object::doCommandButtonAtObject( const CommandButton *commandButton, Object
 			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_GUARD:
 			case GUI_COMMAND_GUARD_WITHOUT_PURSUIT:
 			case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
@@ -6412,6 +6414,7 @@ void Object::doCommandButtonUsingWaypoints( const CommandButton *commandButton, 
 			case GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP:
 			case GUI_COMMAND_TOGGLE_FIRE_WEAPON:
 			case GUI_COMMAND_AUTO_FILL:
+			case GUI_COMMAND_EVACUATE_TO_WORK:
 			case GUI_COMMAND_STOP:
 			case GUI_COMMAND_DOZER_CONSTRUCT:
 			case GUI_COMMAND_DOZER_CONSTRUCT_CANCEL:

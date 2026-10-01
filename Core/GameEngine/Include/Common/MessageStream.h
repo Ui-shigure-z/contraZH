@@ -651,6 +651,7 @@ public:
 		MSG_TOGGLE_FIRE_WEAPON,											///< (weapon slot, max shots) start the selected group firing a weapon, or stop it
 		MSG_UPDATE_FOCUSED_GROUP,										///< update and tell every player that we have smart selection focus on this group
 		MSG_DO_REVERSE_MOVETO_HINT,									///< (location) If clicked, a reverse move would be ordered
+		MSG_EVACUATE_TO_WORK,												///< Dump out all of OUR contained objects, supply gatherers among them resume gathering
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 

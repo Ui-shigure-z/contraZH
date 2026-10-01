@@ -952,6 +952,7 @@ public:
 	void groupDock( Object *obj, CommandSourceType cmdSource );							///< get near given object and wait for enter clearance
 	void groupExit( Object *objectToExit, CommandSourceType cmdSource );			///< get out of this Object
 	void groupEvacuate( CommandSourceType cmdSource );												///< empty its contents
+	void groupEvacuateToWork( CommandSourceType cmdSource );									///< empty its contents, supply gatherers among them resume gathering
 	void groupExecuteRailedTransport( CommandSourceType cmdSource );					///< execute railed transport events
 	void groupGoProne( const DamageInfo *damageInfo, CommandSourceType cmdSource );												///< life altering state change, if this AI can do it
 	void groupGuardPosition( const Coord3D *pos, GuardMode guardMode, CommandSourceType cmdSource );						///< guard the given spot

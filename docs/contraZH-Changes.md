@@ -782,6 +782,26 @@ End
 Takes uncontained infantry not already in the group, nearest first. They break off whatever they are
 doing.
 
+## EVACUATE_TO_WORK
+
+Evacuates like `EVACUATE`, then sends the supply gatherers among the passengers back to gathering.
+
+```
+CommandButton Command_BackToWork
+  Command       = EVACUATE_TO_WORK
+  Options       = OK_FOR_MULTI_SELECT
+  TextLabel     = CONTROLBAR:BackToWork
+  ButtonImage   = SNBackToWork
+  DescriptLabel = CONTROLBAR:TooltipBackToWork
+End
+```
+
+Notes:
+* Applies to passengers with a `WorkerAIUpdate` or `SupplyTruckAIUpdate`; other passengers exit and idle.
+* A gatherer returns to the dock the player last assigned it, else the nearest warehouse.
+* A gatherer carrying boxes delivers them to a supply center first.
+* Greyed out under the same conditions as `EVACUATE`.
+
 ## Queue reorder
 
 Off by default; enable with `QueueReorder = Yes` in the `GameData` block of GameData.ini.
