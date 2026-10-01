@@ -480,6 +480,7 @@ protected:
 	void handleClientRecoil();
 	void recalcBonesForClientParticleSystems();
 	void stopClientParticleSystems();
+	const ParticleSystemTemplate* findMoveEffectTemplate(const AsciiString& name) const;	///< snow drawables take "<name>Snow" when it exists
 	void doHideShowSubObjs(const std::vector<ModelConditionInfo::HideShowSubObjInfo>* vec);
 	virtual void adjustTransformMtx(Matrix3D& mtx) const;
 
