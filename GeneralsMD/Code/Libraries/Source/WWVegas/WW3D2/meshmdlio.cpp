@@ -89,6 +89,7 @@
 #include "WWLib/simplevec.h"
 #include "WWLib/realcrc.h"
 #include "dx8wrapper.h"
+#include <algorithm>
 
 #ifdef _UNIX
 #include "osdep/osdep.h"
@@ -1666,6 +1667,8 @@ void MeshModelClass::post_process()
 
 	}
 
+	post_process_night_lights();
+
 	// fog activation.
 	if (WW3DAssetManager::Get_Instance()->Get_Activate_Fog_On_Load()) {
 		post_process_fog();
@@ -1769,6 +1772,58 @@ void MeshModelClass::post_process_fog()
 				DefMatDesc->ShaderArray [pass]->Get_Element (tri).Enable_Fog (Get_Name());
 			}
 		}
+	}
+}
+
+// Retail night models add the lit skin over opaque unlit lights. The passes trade places here,
+// so the lights are the additive pass and the skin is the base pass that lighting and bloom expect.
+void MeshModelClass::post_process_night_lights()
+{
+	MeshMatDescClass * desc = DefMatDesc;
+	if (AlternateMatDesc != nullptr || desc->PassCount != 2 || desc->ShaderArray[0] != nullptr || desc->ShaderArray[1] != nullptr)
+	{
+		return;
+	}
+
+	ShaderClass & shader0 = desc->Shader[0];
+	ShaderClass & shader1 = desc->Shader[1];
+
+	const bool unlit_base = shader0.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_ONE &&
+									shader0.Get_Dst_Blend_Func() == ShaderClass::DSTBLEND_ZERO &&
+									shader0.Get_Alpha_Test() == ShaderClass::ALPHATEST_DISABLE &&
+									shader0.Get_Texturing() == ShaderClass::TEXTURING_ENABLE &&
+									!shader0.Uses_Primary_Gradient();
+
+	const bool lit_additive = shader1.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_ONE &&
+									  shader1.Get_Dst_Blend_Func() == ShaderClass::DSTBLEND_ONE &&
+									  shader1.Get_Alpha_Test() == ShaderClass::ALPHATEST_DISABLE &&
+									  shader1.Get_Texturing() == ShaderClass::TEXTURING_ENABLE &&
+									  shader1.Uses_Primary_Gradient();
+
+	if (!unlit_base || !lit_additive)
+	{
+		return;
+	}
+
+	// each slot keeps its blend and depth write
+	const ShaderClass::DepthMaskType base_depth_mask = shader0.Get_Depth_Mask();
+	const ShaderClass::DepthMaskType additive_depth_mask = shader1.Get_Depth_Mask();
+	std::swap(shader0, shader1);
+	shader0.Set_Dst_Blend_Func(ShaderClass::DSTBLEND_ZERO);
+	shader0.Set_Depth_Mask(base_depth_mask);
+	shader1.Set_Dst_Blend_Func(ShaderClass::DSTBLEND_ONE);
+	shader1.Set_Depth_Mask(additive_depth_mask);
+
+	std::swap(desc->Material[0], desc->Material[1]);
+	std::swap(desc->MaterialArray[0], desc->MaterialArray[1]);
+	std::swap(desc->DCGSource[0], desc->DCGSource[1]);
+	std::swap(desc->DIGSource[0], desc->DIGSource[1]);
+
+	for (int stage = 0; stage < MeshMatDescClass::MAX_TEX_STAGES; stage++)
+	{
+		std::swap(desc->Texture[0][stage], desc->Texture[1][stage]);
+		std::swap(desc->TextureArray[0][stage], desc->TextureArray[1][stage]);
+		std::swap(desc->UVSource[0][stage], desc->UVSource[1][stage]);
 	}
 }
 
