@@ -118,6 +118,10 @@ know are underlined, and right-click offers the closest matches.)
 * Reload map.ini and Check map.ini - (Apply or check the file without reopening the map. The report
 lists every block that failed to parse; only those blocks are dropped.)
 * Auto-reload map.ini on change - (Reloads when the file is saved outside WorldBuilder.)
+* Water tuning - (Tunes the map's water against the 3D view. Each row is a `WaterTransparency` key
+from [Water](Water.md), stepped with the - and + buttons or typed. A changed key is saved to the
+`WaterTransparency` block of the map's `map.ini`; the reset button removes it, so the map follows
+`Water.ini` again. Offers to create `map.ini` when the map has none.)
 
 The same editor opens any INI file from its own File menu. It completes names from the game's INI
 data, narrowed to the values each key takes, and Ctrl+Space opens a searchable picker. It also
