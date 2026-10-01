@@ -112,6 +112,14 @@ attack still uses exact range, so nothing gains reach.
 
 Changes when units fire; affects replays.
 
+## Force fire respects line of sight
+
+* A turreted unit with `ATTACK_NEEDS_LINE_OF_SIGHT` used to force fire at the ground through
+buildings while its hull drove around them.
+* The turret now holds fire until the shot is clear, as it already did for object targets.
+
+Changes when units fire; affects replays.
+
 # Game Setup
 
 ## Random army per faction

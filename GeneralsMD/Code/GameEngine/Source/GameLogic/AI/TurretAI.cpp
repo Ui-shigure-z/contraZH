@@ -1460,6 +1460,11 @@ StateReturnType TurretAIAimTurretState::update()
 		{
 			return STATE_CONTINUE;
 		}
+		// the fire state only tests line of sight against a victim, so a ground target is tested here
+		if (targetType == TARGET_POSITION && isAttackViewBlockedToPosition(obj, &enemyPosition))
+		{
+			return STATE_CONTINUE;
+		}
 		return STATE_SUCCESS;
 	}
 
