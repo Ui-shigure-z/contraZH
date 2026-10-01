@@ -2860,7 +2860,7 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 					//DEBUG_LOG((">>>DX8Renderer: ADDITIVE + ALPHA OVERRIDE - alpha = %f", mesh->Get_Alpha_Override()));
 					vmaterial->Set_Diffuse(mesh->Get_Alpha_Override(),mesh->Get_Alpha_Override(),mesh->Get_Alpha_Override());
 
-					vmaterial->Set_Emissive(mesh->Get_Emissive_Override(), mesh->Get_Emissive_Override(), mesh->Get_Emissive_Override());
+					vmaterial->Set_Emissive(oldEmissive.X * mesh->Get_Emissive_Override(), oldEmissive.Y * mesh->Get_Emissive_Override(), oldEmissive.Z * mesh->Get_Emissive_Override());
 
 					theAlphaShader = theShader;	//keep using additive blending.
 				}
