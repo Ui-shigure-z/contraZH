@@ -253,6 +253,7 @@ rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow4.ps
 rts_add_shader("${RTS_SHADER_DIR}/laserglow.hlsl"      ps_2_a main laserglow7.pso               BEAMS=7)
 # The footprint outline antialiases with screen derivatives, which ps_2_0 lacks.
 rts_add_shader("${RTS_SHADER_DIR}/footprint.hlsl"      ps_2_a main footprint.pso)
+rts_add_shader("${RTS_SHADER_DIR}/footprint.hlsl"      ps_2_a main footprintring.pso            RING=1)
 rts_add_shader("${RTS_SHADER_DIR}/heathaze.hlsl"       ps_2_0 main heathaze.pso)
 rts_add_shader("${RTS_SHADER_DIR}/shockwave.hlsl"      ps_2_0 main shockwave.pso)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusion.pso      BLUR=0)

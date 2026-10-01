@@ -3369,14 +3369,20 @@ void W3DModelDraw::setSelectionDecal(Bool enable, Real radius, Color color, Bool
 	decalInfo.m_offsetX = 0.0f;
 	decalInfo.m_offsetY = 0.0f;
 
+	// The shader fits a hexagon to the collision shape, or draws a ring of the radius when not asked to.
 	const Object *obj = footprint ? getDrawable()->getObject() : nullptr;
+	decalInfo.m_footprint = TRUE;
 	if (obj != nullptr)
 	{
 		const GeometryInfo &geometry = obj->getGeometryInfo();
-		decalInfo.m_footprint = TRUE;
 		decalInfo.m_footprintIsCircle = geometry.getGeomType() != GEOMETRY_BOX;
 		decalInfo.m_footprintMajor = geometry.getMajorRadius();
 		decalInfo.m_footprintMinor = geometry.getMinorRadius();
+	}
+	else
+	{
+		decalInfo.m_footprintIsRing = TRUE;
+		decalInfo.m_footprintMajor = radius;
 	}
 
 	m_selectionDecal = TheProjectedShadowManager->addDecal(m_renderObject, &decalInfo);

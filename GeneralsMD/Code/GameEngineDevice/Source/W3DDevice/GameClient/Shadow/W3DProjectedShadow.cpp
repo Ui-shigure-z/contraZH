@@ -56,6 +56,7 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "WWMath/vector2.h"
 #include "WWMath/vector4.h"
 
 
@@ -111,34 +112,51 @@ int SHADOW_DECAL_INDEX_SIZE=65536;
 
 // The footprint outline sits this far outside the collision shape, so hulls and walls do not hide it.
 static const Real FOOTPRINT_PAD = 1.5f;
-// The decal reaches this far past the outline, enough for its glow and its snap-in.
-static const Real FOOTPRINT_MARGIN = 7.0f;
+// The decal reaches this far past the outline, enough for its glow.
+static const Real FOOTPRINT_MARGIN = 4.0f;
 static const Real FOOTPRINT_LINE_HALF_WIDTH = 0.35f;
 static const Real FOOTPRINT_OUTER_GLOW = 0.8f;	//world units the glow reaches outside the outline
 static const Real FOOTPRINT_GLOW_STRENGTH = 0.3f;
-static const Real FOOTPRINT_SNAP_DISTANCE = 4.0f;	//how far outside the outline starts when it appears
-static const UnsignedInt FOOTPRINT_SNAP_TIME = 220;	//milliseconds the outline takes to close in
-static const UnsignedInt FOOTPRINT_FLASH_TIME = 450;	//milliseconds the selection flash lasts
+static const Real FOOTPRINT_GAP = 0.3f;	//share of each flat side cut open around its middle
+static const Real FOOTPRINT_TAN_30 = 0.57735f;	//a regular hexagon's points reach this far per unit of half width
+static const Real FOOTPRINT_MAX_POINT = 12.0f;	//a box's points reach no further than this past its ends
 static const UnsignedInt FOOTPRINT_SWEEP_TIME = 4000;	//milliseconds per turn of the highlights
 static const UnsignedInt FOOTPRINT_PULSE_TIME = 2400;	//milliseconds per glow pulse
 
 #if defined(BUILD_WITH_D3D9)
 static DWORD footprintShader = 0;
+static DWORD footprintRingShader = 0;
 static Bool footprintShaderLoaded = FALSE;
+
+static void releaseFootprintShaders()
+{
+	if (footprintShader != 0)
+	{
+		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), footprintShader);
+	}
+	if (footprintRingShader != 0)
+	{
+		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), footprintRingShader);
+	}
+	footprintShader = 0;
+	footprintRingShader = 0;
+	footprintShaderLoaded = FALSE;
+}
 #endif
 
-// Whether the footprint pixel shader is ready, loading it on first use.
+// Whether the footprint pixel shaders are ready, loading them on first use.
 static Bool canDrawFootprints()
 {
 #if defined(BUILD_WITH_D3D9)
 	if (!footprintShaderLoaded)
 	{
-		footprintShaderLoaded = TRUE;
 		if (!W3DShaderManager::supportsPixelShader2a() ||
-			FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\footprint.pso", nullptr, 0, false, &footprintShader)))
+			FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\footprint.pso", nullptr, 0, false, &footprintShader)) ||
+			FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\footprintring.pso", nullptr, 0, false, &footprintRingShader)))
 		{
-			footprintShader = 0;
+			releaseFootprintShaders();
 		}
+		footprintShaderLoaded = TRUE;
 	}
 	return footprintShader != 0;
 #else
@@ -349,12 +367,7 @@ void W3DProjectedShadowManager::ReleaseResources()
 	shadowDecalIndexBufferD3D=nullptr;
 	shadowDecalVertexBufferD3D=nullptr;
 #if defined(BUILD_WITH_D3D9)
-	if (footprintShader != 0)
-	{
-		DX8_DELETE_PIXEL_SHADER(DX8Wrapper::_Get_D3D_Device8(), footprintShader);
-	}
-	footprintShader = 0;
-	footprintShaderLoaded = FALSE;
+	releaseFootprintShaders();
 #endif
 }
 
@@ -362,29 +375,24 @@ void W3DProjectedShadowManager::applyFootprintShader(const W3DProjectedShadow *s
 {
 #if defined(BUILD_WITH_D3D9)
 	const UnsignedInt now = timeGetTime();
-	const UnsignedInt age = now - shadow->m_footprintStart;
-
-	// The outline starts wide and bright, then closes onto the footprint.
-	Real snap = 1.0f - min((Real)age / (Real)FOOTPRINT_SNAP_TIME, 1.0f);
-	snap *= snap;
-	const Real flash = 1.0f - min((Real)age / (Real)FOOTPRINT_FLASH_TIME, 1.0f);
-
 	const Real turn = (Real)(now % FOOTPRINT_SWEEP_TIME) / (Real)FOOTPRINT_SWEEP_TIME * 2.0f * PI;
 	const Real pulse = (Real)(now % FOOTPRINT_PULSE_TIME) / (Real)FOOTPRINT_PULSE_TIME * 2.0f * PI;
 
 	// The glow fills more of a large footprint than of a small one.
-	const Real smaller = min(shadow->m_footprintHalfX, shadow->m_footprintHalfY);
-	const Real innerGlow = min(max(smaller * 0.5f, 2.0f), 10.0f);
+	const Real innerGlow = min(max(shadow->m_footprintHalfWidth * 0.5f, 2.0f), 10.0f);
 
-	Vector4 constants[3];
-	constants[0] = Vector4(shadow->m_decalSizeX, shadow->m_decalSizeY,
-		shadow->m_footprintHalfX - shadow->m_footprintRound, shadow->m_footprintHalfY - shadow->m_footprintRound);
-	constants[1] = Vector4(shadow->m_footprintRound + snap * FOOTPRINT_SNAP_DISTANCE, FOOTPRINT_LINE_HALF_WIDTH,
-		1.0f / innerGlow, 1.0f / FOOTPRINT_OUTER_GLOW);
-	constants[2] = Vector4(cos(turn), sin(turn), flash, FOOTPRINT_GLOW_STRENGTH * (0.85f + 0.15f * sin(pulse)));
+	// The slanted sides run from the shoulders to the points, and this is their outward normal.
+	Vector2 slant(shadow->m_footprintHalfWidth, shadow->m_footprintTip - shadow->m_footprintShoulder);
+	slant.Normalize();
 
-	DX8Wrapper::Set_Pixel_Shader(footprintShader);
-	DX8Wrapper::Set_Pixel_Shader_Constant(0, constants, 3);
+	Vector4 constants[4];
+	constants[0] = Vector4(shadow->m_decalSizeX, shadow->m_decalSizeY, shadow->m_footprintSideways ? 1.0f : 0.0f, shadow->m_footprintHalfWidth);
+	constants[1] = Vector4(slant.X, slant.Y, shadow->m_footprintTip, FOOTPRINT_LINE_HALF_WIDTH);
+	constants[2] = Vector4(cos(turn), sin(turn), 1.0f / innerGlow, 1.0f / FOOTPRINT_OUTER_GLOW);
+	constants[3] = Vector4(FOOTPRINT_GLOW_STRENGTH * (0.85f + 0.15f * sin(pulse)), FOOTPRINT_GAP * shadow->m_footprintShoulder, 0.0f, 0.0f);
+
+	DX8Wrapper::Set_Pixel_Shader(shadow->m_footprintRing ? footprintRingShader : footprintShader);
+	DX8Wrapper::Set_Pixel_Shader_Constant(0, constants, 4);
 #endif
 }
 
@@ -1836,12 +1844,48 @@ Shadow* W3DProjectedShadowManager::addDecal(RenderObjClass *robj, Shadow::Shadow
 
 	// The footprint shader draws the shape itself, so the decal only has to cover it.
 	const Bool isFootprint = shadowInfo->m_footprint && canDrawFootprints();
-	const Real footprintHalfX = shadowInfo->m_footprintMajor + FOOTPRINT_PAD;
-	const Real footprintHalfY = (shadowInfo->m_footprintIsCircle ? shadowInfo->m_footprintMajor : shadowInfo->m_footprintMinor) + FOOTPRINT_PAD;
-	if (isFootprint)
+	Bool footprintSideways = FALSE;
+	Real footprintHalfWidth = 0.0f;
+	Real footprintShoulder = 0.0f;
+	Real footprintTip = 0.0f;
+	if (isFootprint && shadowInfo->m_footprintIsRing)
 	{
-		decalSizeX = (footprintHalfX + FOOTPRINT_MARGIN) * 2.0f;
-		decalSizeY = (footprintHalfY + FOOTPRINT_MARGIN) * 2.0f;
+		// The ring is cut as a regular hexagon of its size would be.
+		footprintHalfWidth = shadowInfo->m_footprintMajor;
+		footprintShoulder = footprintHalfWidth * FOOTPRINT_TAN_30;
+		footprintTip = footprintHalfWidth;
+		decalSizeX = (footprintTip + FOOTPRINT_MARGIN) * 2.0f;
+		decalSizeY = decalSizeX;
+		decalOffsetX = 0.0f;
+		decalOffsetY = 0.0f;
+	}
+	else if (isFootprint)
+	{
+		// The hexagon points along the longer axis and keeps the whole collision shape inside it.
+		Real halfLength = shadowInfo->m_footprintMajor + FOOTPRINT_PAD;
+		footprintHalfWidth = (shadowInfo->m_footprintIsCircle ? shadowInfo->m_footprintMajor : shadowInfo->m_footprintMinor) + FOOTPRINT_PAD;
+		if (footprintHalfWidth > halfLength)
+		{
+			footprintSideways = TRUE;
+			const Real longer = footprintHalfWidth;
+			footprintHalfWidth = halfLength;
+			halfLength = longer;
+		}
+		if (shadowInfo->m_footprintIsCircle)
+		{
+			footprintShoulder = footprintHalfWidth * FOOTPRINT_TAN_30;
+			footprintTip = footprintShoulder * 2.0f;
+		}
+		else
+		{
+			footprintShoulder = halfLength;
+			footprintTip = halfLength + min(footprintHalfWidth * FOOTPRINT_TAN_30, FOOTPRINT_MAX_POINT);
+		}
+
+		const Real along = (footprintTip + FOOTPRINT_MARGIN) * 2.0f;
+		const Real across = (footprintHalfWidth + FOOTPRINT_MARGIN) * 2.0f;
+		decalSizeX = footprintSideways ? across : along;
+		decalSizeY = footprintSideways ? along : across;
 		decalOffsetX = 0.0f;
 		decalOffsetY = 0.0f;
 	}
@@ -1854,12 +1898,12 @@ Shadow* W3DProjectedShadowManager::addDecal(RenderObjClass *robj, Shadow::Shadow
 
 	if (isFootprint)
 	{
-		const Real smaller = min(footprintHalfX, footprintHalfY);
 		shadow->m_isFootprint = TRUE;
-		shadow->m_footprintHalfX = footprintHalfX;
-		shadow->m_footprintHalfY = footprintHalfY;
-		shadow->m_footprintRound = shadowInfo->m_footprintIsCircle ? smaller : min(max(smaller * 0.3f, 1.0f), 4.0f);
-		shadow->m_footprintStart = timeGetTime();
+		shadow->m_footprintRing = shadowInfo->m_footprintIsRing;
+		shadow->m_footprintSideways = footprintSideways;
+		shadow->m_footprintHalfWidth = footprintHalfWidth;
+		shadow->m_footprintShoulder = footprintShoulder;
+		shadow->m_footprintTip = footprintTip;
 	}
 
 	shadow->setRenderObject(robj);
@@ -2325,10 +2369,11 @@ W3DProjectedShadow::W3DProjectedShadow()
 	m_isInvisibleEnabled = FALSE;
 	m_replacedByShadowMap = FALSE;
 	m_isFootprint = FALSE;
-	m_footprintHalfX = 0.0f;
-	m_footprintHalfY = 0.0f;
-	m_footprintRound = 0.0f;
-	m_footprintStart = 0;
+	m_footprintRing = FALSE;
+	m_footprintSideways = FALSE;
+	m_footprintHalfWidth = 0.0f;
+	m_footprintShoulder = 0.0f;
+	m_footprintTip = 0.0f;
 	for (Int i=0; i<MAX_SHADOW_LIGHTS; i++)
 		m_shadowTexture[i]=nullptr;
 }

@@ -138,9 +138,10 @@ class W3DProjectedShadow	: public Shadow
 		Int		m_flags;			/// custom rendering flags
 		Bool	m_replacedByShadowMap;	/// a real shadow, drawn by the shadow map instead while it is active
 		Bool	m_isFootprint;		/// drawn by the footprint pixel shader instead of its texture
-		Real	m_footprintHalfX;	/// half size of the footprint along the object's x axis
-		Real	m_footprintHalfY;	/// half size of the footprint along the object's y axis
-		Real	m_footprintRound;	/// corner radius of the footprint
-		UnsignedInt	m_footprintStart;	/// when the footprint appeared, in timeGetTime milliseconds
+		Bool	m_footprintRing;	/// a ring whose radius is m_footprintTip, instead of a hexagon
+		Bool	m_footprintSideways;	/// the hexagon's points lie along the object's y axis instead of x
+		Real	m_footprintHalfWidth;	/// half distance between the hexagon's two flat sides
+		Real	m_footprintShoulder;	/// distance along the pointed axis to where the flat sides end
+		Real	m_footprintTip;		/// distance along the pointed axis to the points
 		virtual void release() override	{TheW3DProjectedShadowManager->removeShadow(this);}	///<release shadow from manager
 };

@@ -96,6 +96,7 @@ public:
 						m_shadowMapOnly = false;
 						m_footprint = false;
 						m_footprintIsCircle = false;
+						m_footprintIsRing = false;
 						m_footprintMajor = 0.0f;
 						m_footprintMinor = 0.0f;
 				}
@@ -113,6 +114,7 @@ public:
 				Bool	m_shadowMapOnly;	//casts into the shadow map only, with no legacy shadow
 				Bool	m_footprint;		//draw the footprint below with a pixel shader where one is supported
 				Bool	m_footprintIsCircle;	//a circle of the major radius, else a box
+				Bool	m_footprintIsRing;	//draw a ring of the major radius instead of fitting a hexagon
 				Real	m_footprintMajor;	//half length along the object's x axis
 				Real	m_footprintMinor;	//half length along the object's y axis
 		};
