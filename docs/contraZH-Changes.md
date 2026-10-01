@@ -888,6 +888,9 @@ up the army without dragging workers along.)
 
 Builders are `KINDOF_DOZER` and `KINDOF_IGNORES_SELECT_ALL`, as for Select All.
 
+`KindOf = NOT_MILITARY` marks any other unit as a builder for this option only. Select All still
+picks it up.
+
 Notes:
 * Ctrl while dragging selects **only** builders.
 * A drag that would select only structures ignores the filter.
