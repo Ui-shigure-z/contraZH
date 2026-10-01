@@ -220,7 +220,9 @@ Bool TunnelTracker::isNextTunnelToPop(Object *tunnel, UnsignedInt frame)
 		m_nextTunnelToPop = *it;
 	}
 
-	while (TheGameLogic->findObjectByID(*it)->isDisabled())
+
+	Object *obj;
+	while (!(obj = TheGameLogic->findObjectByID(*it)) || obj->isDisabled())
 	{
 		it++;
 		if (it == m_autoExitIDs.end())
