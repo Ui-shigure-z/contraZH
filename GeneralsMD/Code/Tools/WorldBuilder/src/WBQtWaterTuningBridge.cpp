@@ -40,9 +40,11 @@ namespace
 #define WATER_COLOR(key, member, advanced, help) \
 	{ key, help, WBQT_WATER_COLOR, 0.0f, 255.0f, 1.0f, advanced, NULL, NULL, &WaterTransparencySetting::member, FALSE }
 
-	// Same keys, order, ranges and steps as the Water tab of the FX tuner.
+	// IsWater, then the keys of the FX tuner's Water tab in its order, ranges and steps.
 	const WaterKey s_keys[] =
 	{
+		WATER_BOOL("IsWater", m_isWater, 0,
+			"No draws the old water without shaders, for lava and the like."),
 		WATER_REAL("ShaderWaterOpacity", m_shaderWaterOpacity, 0.0f, 1.0f, 0.01f, 0,
 			"Deep water opacity. 1 hides the seabed. 0 uses TransparentWaterMinOpacity."),
 		WATER_REAL("ShaderWaterClarity", m_shaderWaterClarity, 0.1f, 10.0f, 0.1f, 0,
