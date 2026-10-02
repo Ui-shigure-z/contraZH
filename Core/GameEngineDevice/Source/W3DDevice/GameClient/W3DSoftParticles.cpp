@@ -914,11 +914,8 @@ bool W3DSoftParticles::Begin(const ShaderClass &shader, unsigned effects, const 
 		DX8Wrapper::Set_Pixel_Shader(shadedShader);
 		bound = TRUE;
 
-		// Texture coordinates arrive packed by textured stage, so the beam's reach TEXCOORD2 only with stage 1 filled.
-		if (laser || (cryo && beam))
-		{
-			DX8Wrapper::_Get_D3D_Device8()->SetTexture(SOFT_STAGE, m_noise);
-		}
+		// Texture coordinates arrive packed by textured stage, so the camera position reaches TEXCOORD1 only with stage 1 filled.
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(SOFT_STAGE, m_noise);
 	}
 	if (!bound)
 	{

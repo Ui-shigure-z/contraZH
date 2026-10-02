@@ -82,6 +82,9 @@ shaders for its translucent meshes, the ones with an additive or alpha-blended m
 * `DisruptionShader = No` - (Default. `Yes` or `Only` bends the scene behind them, and combines
 with any of the three above.)
 
+Like disruption, the three shaders only touch translucent meshes (additive or alpha-blended
+materials). An opaque mesh skips the sorter and stays plain.
+
 The module takes the six `Flame` keys from `FlameWarp` to `FlameRise`, the six `Electric` keys and
 the nine `Cryo` keys from `CryoTint` to `CryoShardSize`. Each one it sets overrides `GameData.ini`
 for that model alone. Opaque meshes stay as they are, and the laser shader needs a beam, so a model
