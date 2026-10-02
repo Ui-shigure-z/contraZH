@@ -510,7 +510,7 @@ void TunnelContain::onCapture( Player *oldOwner, Player *newOwner )
 		if( newTunnelTracker )
 		{
 			newTunnelTracker->onTunnelCreated(getObject());
-			newTunnelTracker->doAutoPopRegistion(getObject());
+			newTunnelTracker->doAutoPopIconInit(getObject());
 		}
 	}
 
@@ -573,7 +573,7 @@ UpdateSleepTime TunnelContain::update()
 
 		if (!m_isAutoPopModelConditionSet && !obj->getStatusBits().test(OBJECT_STATUS_UNDER_CONSTRUCTION))
 		{
-			tunnelSystem->doAutoPopRegistion(getObject());
+			tunnelSystem->doAutoPopIconInit(getObject());
 			m_isAutoPopModelConditionSet = TRUE;
 		}
 
