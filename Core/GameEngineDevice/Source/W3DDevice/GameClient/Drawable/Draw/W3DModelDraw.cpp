@@ -70,6 +70,7 @@
 #include "WW3D2/rendobj.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
+#include "WW3D2/sortingrenderer.h"
 #include "Common/BitFlagsIO.h"
 
 
@@ -1080,6 +1081,9 @@ W3DModelDrawModuleData::W3DModelDrawModuleData() :
 	m_ignoreRotation = FALSE;
 	m_showForOwnerOnly = FALSE;
 	m_keepRecoilAcrossStates = FALSE;
+	m_flameShader = FALSE;
+	m_electricShader = FALSE;
+	m_cryoShader = FALSE;
 
 	// m_ignoreConditionStates defaults to all zero, which is what we want
 }
@@ -1215,12 +1219,29 @@ const Vector3* W3DModelDrawModuleData::getAttachToDrawableBoneOffset(const Drawa
 #endif
 
 //-------------------------------------------------------------------------------------------------
-// Hands every mesh under the object the module's disruption settings, which the module data keeps alive.
-static void setDisruption(RenderObjClass *robj, const DisruptionShaderInfo &info)
+// Hands every mesh under the object the module's shader settings, which the module data keeps alive.
+// One shader draws a mesh, so cryo wins over flame and flame over electric, as on a beam.
+static void setShaderEffects(RenderObjClass *robj, const W3DModelDrawModuleData &data)
 {
 	if (robj->Class_ID() == RenderObjClass::CLASSID_MESH)
 	{
-		robj->Set_Disruption(&info, info.hidesArt());
+		if (data.m_disruption.isOn())
+		{
+			robj->Set_Disruption(&data.m_disruption, data.m_disruption.hidesArt());
+		}
+
+		if (data.m_cryoShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_MESH, &data.m_beamTuning);
+		}
+		else if (data.m_flameShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_MESH, &data.m_flameTuning);
+		}
+		else if (data.m_electricShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_ELECTRIC | SoftParticleHookClass::EFFECT_MESH, &data.m_beamTuning);
+		}
 	}
 
 	for (Int i = 0; i < robj->Get_Num_Sub_Objects(); i++)
@@ -1228,7 +1249,7 @@ static void setDisruption(RenderObjClass *robj, const DisruptionShaderInfo &info
 		RenderObjClass *sub = robj->Get_Sub_Object(i);
 		if (sub != nullptr)
 		{
-			setDisruption(sub, info);
+			setShaderEffects(sub, data);
 			sub->Release_Ref();
 		}
 	}
@@ -1282,11 +1303,16 @@ void W3DModelDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "IgnoreRotation", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_ignoreRotation) },
 		{ "OnlyVisibleToOwningPlayer", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_showForOwnerOnly) },
 		{ "KeepRecoilAcrossStates", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_keepRecoilAcrossStates) },
+		{ "FlameShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_flameShader) },
+		{ "ElectricShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_electricShader) },
+		{ "CryoShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_cryoShader) },
 		//{ "DisableMovementEffectsOverWater", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_disableMoveEffectsOverWater) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
   p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DModelDrawModuleData, m_disruption));
+  p.add(ParticleSystemTemplate::getFlameTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_flameTuning));
+  p.add(W3DLaserDrawModuleData::getShaderTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_beamTuning));
 
 }
 
@@ -3834,9 +3860,10 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		{
 			m_renderObject = W3DDisplay::m_assetManager->Create_Render_Obj(newState->m_modelName.str(), draw->getScale(), m_hexColor);
 			DEBUG_ASSERTCRASH(m_renderObject, ("*** ASSET ERROR: Model %s not found!",newState->m_modelName.str()));
-			if (m_renderObject && getW3DModelDrawModuleData()->m_disruption.isOn())
+			const W3DModelDrawModuleData *shaders = getW3DModelDrawModuleData();
+			if (m_renderObject && (shaders->m_disruption.isOn() || shaders->m_flameShader || shaders->m_electricShader || shaders->m_cryoShader))
 			{
-				setDisruption(m_renderObject, getW3DModelDrawModuleData()->m_disruption);
+				setShaderEffects(m_renderObject, *shaders);
 			}
 		}
 

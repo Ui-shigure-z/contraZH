@@ -65,7 +65,7 @@ public:
 	Bool beginDisruption();
 	void endDisruption();
 
-	/// The effect data is the flame's ParticleSystemTemplate, with EFFECT_BEAM the beam's BeamShaderTuning or with EFFECT_DISRUPT the draw's DisruptionShaderInfo, and null takes GameData.ini's.
+	/// The effect data is a flame's FlameShaderTuning, a beam's or mesh's BeamShaderTuning or with EFFECT_DISRUPT the draw's DisruptionShaderInfo, and null takes GameData.ini's.
 	virtual bool Begin(const ShaderClass &shader, unsigned effects, const void *effectData) override;
 	virtual void End() override;
 	virtual bool Can_Disrupt() override;
@@ -79,8 +79,8 @@ private:
 	void setWorldConstants(Int firstRegister);
 	Bool bindSceneDepth(DWORD shader);
 	Bool bindTerrainHeight(DWORD shader);
-	void bindFlame(const FlameShaderTuning &tuning);
-	void bindElectric(const BeamShaderTuning &tuning, Bool beam);
+	void bindFlame(const FlameShaderTuning &tuning, Bool beam, Bool mesh);
+	void bindElectric(const BeamShaderTuning &tuning, Bool beam, Bool mesh);
 	void bindLaser(const BeamShaderTuning &tuning);
 	void bindCryo(const BeamShaderTuning &tuning, Bool beam);
 	Bool bindHaze(const ShaderClass &shader, const FlameShaderTuning &tuning);

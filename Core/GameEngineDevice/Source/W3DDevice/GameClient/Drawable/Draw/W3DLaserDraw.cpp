@@ -124,6 +124,43 @@ static RGBColor getAverageTextureColor( const AsciiString &name, TextureClass *t
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+BeamShaderTuning::BeamShaderTuning()
+{
+	Real *setting = &laserCore;
+	for (UnsignedInt i = 0; i < sizeof( BeamShaderTuning ) / sizeof( Real ); ++i)
+	{
+		setting[i] = -1.0f;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+const FieldParse *W3DLaserDrawModuleData::getShaderTuningFieldParse()
+{
+	static const FieldParse tuningFieldParse[] =
+	{
+		{ "ElectricArcs",							INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricArcs) },
+		{ "ElectricArcSharpness",			INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricArcSharpness) },
+		{ "ElectricNoiseSize",				INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricNoiseSize) },
+		{ "ElectricJitter",						INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricJitter) },
+		{ "ElectricFlicker",					INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricFlicker) },
+		{ "ElectricRate",							INI::parseReal,									nullptr, offsetof(BeamShaderTuning, electricRate) },
+		{ "CryoTint",								INI::parseRGBColor,								nullptr, offsetof(BeamShaderTuning, cryoTint) },
+		{ "CryoTintStrength",					INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoTintStrength) },
+		{ "CryoCore",								INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoCore) },
+		{ "CryoCoreWidth",						INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoCoreWidth) },
+		{ "CryoFrost",								INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoFrost) },
+		{ "CryoFrostSize",						INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoFrostSize) },
+		{ "CryoFrostSpeed",						INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoFrostSpeed) },
+		{ "CryoShards",							INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoShards) },
+		{ "CryoShardSize",						INI::parseReal,									nullptr, offsetof(BeamShaderTuning, cryoShardSize) },
+		{ nullptr, nullptr, nullptr, 0 }
+	};
+	return tuningFieldParse;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
 W3DLaserDrawModuleData::W3DLaserDrawModuleData() :
 	m_disruption(DisruptionShaderInfo::SHAPE_BEAM)
 {
@@ -149,12 +186,7 @@ W3DLaserDrawModuleData::W3DLaserDrawModuleData() :
 	m_laserShader = TRUE;
 	m_electricShader = FALSE;
 	m_cryoShader = FALSE;
-
-	Real *setting = &m_shaderTuning.laserCore;
-	for (UnsignedInt i = 0; i < sizeof( m_shaderTuning ) / sizeof( Real ); ++i)
-	{
-		setting[i] = -1.0f;
-	}
+	m_flameShader = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -195,31 +227,19 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "LaserShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_laserShader) },
 		{ "ElectricShader",						INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_electricShader) },
 		{ "CryoShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_cryoShader) },
+		{ "FlameShader",							INI::parseBool,									nullptr, offsetof(W3DLaserDrawModuleData, m_flameShader) },
 		{ "LaserCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCore) },
 		{ "LaserCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserCoreWidth) },
 		{ "LaserShimmer",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserShimmer) },
 		{ "LaserPulse",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulse) },
 		{ "LaserPulseSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulseSize) },
 		{ "LaserPulseSpeed",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.laserPulseSpeed) },
-		{ "ElectricArcs",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricArcs) },
-		{ "ElectricArcSharpness",			INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricArcSharpness) },
-		{ "ElectricNoiseSize",				INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricNoiseSize) },
-		{ "ElectricJitter",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricJitter) },
-		{ "ElectricFlicker",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricFlicker) },
-		{ "ElectricRate",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.electricRate) },
-		{ "CryoTint",								INI::parseRGBColor,								nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTint) },
-		{ "CryoTintStrength",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoTintStrength) },
-		{ "CryoCore",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCore) },
-		{ "CryoCoreWidth",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoCoreWidth) },
-		{ "CryoFrost",								INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrost) },
-		{ "CryoFrostSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSize) },
-		{ "CryoFrostSpeed",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSpeed) },
-		{ "CryoShards",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShards) },
-		{ "CryoShardSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShardSize) },
 		{ "DisruptionWidth",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_disruptionWidth) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
+  p.add(getShaderTuningFieldParse(), offsetof(W3DLaserDrawModuleData, m_shaderTuning));
+  p.add(ParticleSystemTemplate::getFlameTuningFieldParse(), offsetof(W3DLaserDrawModuleData, m_flameTuning));
   p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DLaserDrawModuleData, m_disruption));
 }
 
@@ -430,6 +450,10 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 				if( data->m_cryoShader )
 				{
 					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM, &data->m_shaderTuning );
+				}
+				else if( data->m_flameShader )
+				{
+					line->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_BEAM, &data->m_flameTuning );
 				}
 				else if( data->m_electricShader )
 				{
@@ -685,7 +709,7 @@ void W3DLaserDraw::updateGroundLights( LaserUpdate *update, Bool beamChanged )
 		const Coord3D *start = update->getStartPos();
 		const Coord3D *end = update->getEndPos();
 		// the glow pulses along with a laser-shaded beam and holds steady under any other
-		const BeamShaderTuning *pulses = (data->m_laserShader && !data->m_electricShader && !data->m_cryoShader) ? &data->m_shaderTuning : nullptr;
+		const BeamShaderTuning *pulses = (data->m_laserShader && !data->m_electricShader && !data->m_cryoShader && !data->m_flameShader) ? &data->m_shaderTuning : nullptr;
 		TheW3DLaserGlow->add( Vector3( start->x, start->y, start->z ), Vector3( end->x, end->y, end->z ), reach,
 			Vector3( glowRed, glowGreen, glowBlue ) * intensity, pulses );
 		return;

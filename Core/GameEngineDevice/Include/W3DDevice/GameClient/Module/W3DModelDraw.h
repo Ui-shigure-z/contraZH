@@ -53,6 +53,7 @@ public:
 #endif
 #include "Common/SparseMatchFinder.h"
 #include "GameClient/ParticleSys.h"
+#include "W3DLaserDraw.h"
 #include "Common/STLTypedefs.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -336,6 +337,12 @@ public:
 	Bool															m_keepRecoilAcrossStates;  ///< Don't reset recoil bones when switching states
 
 	DisruptionShaderInfo							m_disruption;  ///< DisruptionShader and its settings, for translucent meshes that bend the scene behind them
+
+	Bool															m_flameShader;  ///< shade the translucent meshes as fire
+	Bool															m_electricShader;  ///< shade them as electricity, unless FlameShader or CryoShader is on
+	Bool															m_cryoShader;  ///< shade them as ice, over either
+	FlameShaderTuning									m_flameTuning;
+	BeamShaderTuning									m_beamTuning;  ///< the electric and cryo settings
 
 	// Bool															m_disableMoveEffectsOverWater;  ///< disable track marks and tread/wheel anims over water
 

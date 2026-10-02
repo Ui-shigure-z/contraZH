@@ -23,6 +23,9 @@ them for one effect. Each shader's own section below lists its keys.
 | Effect | Shader | Set in | Turn on with | Own tuning |
 |---|---|---|---|---|
 | Fire sprites | [Flame](#flame-shading) | `ParticleSystem` | `FlameShader = Yes` | `Flame` and `Haze` keys |
+| Fire trails | [Flame](#flame-shading) | `ParticleSystem` | `Type = STREAK` and `FlameShader = Yes` | `Flame` keys |
+| Fire beams | [Flame](#flame-shading) | `W3DLaserDraw` | `FlameShader = Yes` | `Flame` keys |
+| Burning, crackling or frozen models | [Flame](#flame-shading), [Electric](#electric-shading), [Cryo](#cryo-shading) | `W3DModelDraw` | `FlameShader`, `ElectricShader` or `CryoShader = Yes` | That shader's keys |
 | Sparks and flares | [Electric](#electric-shading) | `ParticleSystem` | `ElectricShader = Yes` | `ElectricParticleScale` |
 | Laser trails | [Laser](#laser-shading) | `ParticleSystem` | `Type = STREAK` and `LaserShader = Yes` | None |
 | Laser beams | [Laser](#laser-shading) | `W3DLaserDraw` | On by default | `Laser` keys |
@@ -53,12 +56,14 @@ out of a list.
 |---|---|---|
 | `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame, electric or cryo, the soft fade, and disruption |
 | `PARTICLE` | `ALPHA_TEST`, `MULTIPLY` | Nothing |
-| `STREAK` | Any but `MULTIPLY` | Laser or cryo |
+| `STREAK` | Any but `MULTIPLY` | Laser, cryo, or flame with `FlameShader = Yes` |
 | `VOLUME_PARTICLE`, `SMUDGE`, `DRAWABLE` | Any | Nothing |
 
-* Cryo wins over every other shader. A system or beam with cryo on draws as ice.
-* A system that is both flame and electric draws as flame.
+* Cryo wins over every other shader. A system, beam or model with cryo on draws as ice.
+* Flame comes next. A system, beam or model that is both flame and electric draws as flame.
 * A beam with `ElectricShader = Yes` draws as electric, whatever its `LaserShader`.
+* A streak takes flame only with `FlameShader = Yes`. `Auto` leaves it alone, so trails behind flame
+shells keep their look.
 * Only `FlameShader = Auto` follows a master system. Slave systems need their own `ElectricShader` or
 `LaserShader`.
 * Terrain-conforming particles stay plain.
@@ -67,8 +72,29 @@ out of a list.
 ### Models and terrain
 
 Models and terrain pick up a shader when a matching texture sits beside theirs in `Art\Textures`, or
-from `Terrain.ini` for the glint. Disruption is the one shader a model switches on, with
-`DisruptionShader` in its `W3DModelDraw` module.
+from `Terrain.ini` for the glint. A model's `W3DModelDraw` module also switches on four effect
+shaders for its translucent meshes, the ones with an additive or alpha-blended material:
+
+* `FlameShader = No` - (Default. `Yes` shades the meshes as fire.)
+* `ElectricShader = No` - (Default. `Yes` shades them as electricity.)
+* `CryoShader = No` - (Default. `Yes` shades them as ice, the way a cryo sprite draws.)
+* `DisruptionShader = No` - (Default. `Yes` or `Only` bends the scene behind them, and combines
+with any of the three above.)
+
+The module takes the six `Flame` keys from `FlameWarp` to `FlameRise`, the six `Electric` keys and
+the nine `Cryo` keys from `CryoTint` to `CryoShardSize`. Each one it sets overrides `GameData.ini`
+for that model alone. Opaque meshes stay as they are, and the laser shader needs a beam, so a model
+cannot take it.
+
+```
+Draw = W3DModelDraw ModuleTag_01
+  DefaultConditionState
+    Model = EXShieldDome
+  End
+  ElectricShader = Yes
+  ElectricArcs = 2.5
+End
+```
 
 | Effect | Add | Section |
 |---|---|---|
@@ -321,8 +347,13 @@ Picked per particle system in `ParticleSystem.ini`:
 `DamageType = FLAME`, such as the Dragon tank, Immolator and flame tower sprays. `Yes` turns it on
 for any system, such as muzzle flames, burning buildings and fire fields. `No` turns it off.)
 
+Picked per beam in a `W3DLaserDraw` module, or per model in a `W3DModelDraw` module:
+
+* `FlameShader = No` - (Default. `Yes` shades the beam or the model's translucent meshes as fire. On
+a beam it wins over the laser and electric shaders.)
+
 Tuned in the mod's `GameData.ini`. The same keys in a `ParticleSystem` block override them for
-that system alone:
+that system alone, and a beam or model takes the six `Flame` keys the same way:
 
 * `FlameWarp = 0.04` - (How far the noise pushes the texture lookup, in texture widths. Higher licks
 more.)
@@ -356,7 +387,9 @@ that need them.
 * The `GameData.ini` keys reload while the game runs in cheat builds, as described at the top of this
 page. `ParticleSystem.ini` overrides take effect on the next launch.
 * Slave systems follow their master, and a system a particle carries follows that particle's system.
-* Streaks, projectile streams, volume particles and terrain-conforming particles stay plain.
+* A streak burns only with `FlameShader = Yes`, since `Auto` would turn every trail behind a flame
+shell to fire. Streaks, beams and models take the flame shading without the shimmer behind it.
+* Projectile streams, volume particles and terrain-conforming particles stay plain.
 * On a card without shader model 2.0a, flames keep their shading but lose the soft fade.
 * Launch with `CONTRA_FLAMESHADER=1` to drop the shimmer, or `0` to turn flame shading off.
 
@@ -378,6 +411,11 @@ Picked per beam in a `W3DLaserDraw` module:
 
 * `ElectricShader = No` - (Default. `Yes` shades the beam as electricity instead of as a laser, for
 tesla and lightning bolts. The beam keeps its texture, which tiles along it as before.)
+
+Picked per model in a `W3DModelDraw` module:
+
+* `ElectricShader = No` - (Default. `Yes` shades the model's translucent meshes as electricity. The
+module takes the six tuning keys below.)
 
 Listed and tuned in the mod's `GameData.ini`:
 
@@ -538,6 +576,11 @@ Picked per beam in a `W3DLaserDraw` module:
 
 * `CryoShader = No` - (Default. `Yes` shades the beam as ice, whatever its `LaserShader` and
 `ElectricShader`.)
+
+Picked per model in a `W3DModelDraw` module:
+
+* `CryoShader = No` - (Default. `Yes` shades the model's translucent meshes as ice, the way a cryo
+sprite draws. The module takes the nine tuning keys from `CryoTint` to `CryoShardSize`.)
 
 Picked per particle system in `ParticleSystem.ini`:
 

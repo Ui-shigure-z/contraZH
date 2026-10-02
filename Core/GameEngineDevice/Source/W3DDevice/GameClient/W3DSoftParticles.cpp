@@ -547,18 +547,27 @@ static Real Default_Camera_Distance()
 	return TheGlobalData->m_cameraHeight / sinf(pitch);
 }
 
-void W3DSoftParticles::bindFlame(const FlameShaderTuning &tuning)
+// A beam's texture tiles along its length in v and a mesh's may tile both ways, so a warped lookup stays inside the texture only where it does not tile.
+static Vector4 Warp_Clamp(Bool beam, Bool mesh)
+{
+	const Real open = 1.0e6f;
+	return Vector4(mesh ? -open : 0.0f, (beam || mesh) ? -open : 0.0f, mesh ? open : 1.0f, (beam || mesh) ? open : 1.0f);
+}
+
+void W3DSoftParticles::bindFlame(const FlameShaderTuning &tuning, Bool beam, Bool mesh)
 {
 	const Vector4 flame(Noise_Rise(tuning.rise), tuning.warp, Noise_Scale(tuning.noiseSize), tuning.heat);
 	const Vector4 shape(tuning.flicker, tuning.breakup, Default_Camera_Distance(), 0.0f);
+	const Vector4 clamp = Warp_Clamp(beam, mesh);
 	DX8Wrapper::Set_Pixel_Shader_Constant(6, &flame, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(10, &shape, 1);
+	DX8Wrapper::Set_Pixel_Shader_Constant(11, &clamp, 1);
 	setWorldConstants(7);
 	Bind_Noise(m_noise);
 }
 
 // The field jumps to a fresh spot ElectricRate times a second, so arcs crackle rather than drift.
-void W3DSoftParticles::bindElectric(const BeamShaderTuning &tuning, Bool beam)
+void W3DSoftParticles::bindElectric(const BeamShaderTuning &tuning, Bool beam, Bool mesh)
 {
 	const Real rate = tuning.electricRate;
 	const Int jump = (rate > 0.0f) ? (Int)fmod(WW3D::Get_Sync_Time() / 1000.0 * rate, 65536.0) : 0;
@@ -567,8 +576,7 @@ void W3DSoftParticles::bindElectric(const BeamShaderTuning &tuning, Bool beam)
 
 	const Vector4 electric(offsetX, offsetY, Noise_Scale(tuning.electricNoiseSize), tuning.electricJitter);
 	const Vector4 shape(tuning.electricFlicker, tuning.electricArcSharpness, tuning.electricArcs * 0.5f, Default_Camera_Distance());
-	// A beam's texture tiles along its length in v, so the jitter only stays inside the texture across it.
-	const Vector4 clamp(0.0f, beam ? -1.0e6f : 0.0f, 1.0f, beam ? 1.0e6f : 1.0f);
+	const Vector4 clamp = Warp_Clamp(beam, mesh);
 	const Vector4 strobe(1.0f - 0.5f * tuning.electricFlicker, 0.0f, 0.0f, 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(6, &electric, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(7, &shape, 1);
@@ -834,7 +842,7 @@ bool W3DSoftParticles::Begin(const ShaderClass &shader, unsigned effects, const 
 	FlameShaderTuning tuning;
 	if ((effects & (EFFECT_FLAME | EFFECT_HAZE)) != 0)
 	{
-		ParticleSystemTemplate::resolveFlameTuning(static_cast<const ParticleSystemTemplate *>(effectData), tuning);
+		ParticleSystemTemplate::resolveFlameTuning(static_cast<const FlameShaderTuning *>(effectData), tuning);
 	}
 
 	if ((effects & EFFECT_HAZE) != 0)
@@ -847,10 +855,11 @@ bool W3DSoftParticles::Begin(const ShaderClass &shader, unsigned effects, const 
 	const Bool electric = !cryo && !flame && (effects & EFFECT_ELECTRIC) != 0 && electricEnabled();
 	const Bool laser = !cryo && !flame && !electric && (effects & EFFECT_LASER) != 0 && laserEnabled();
 	const Bool beam = (effects & EFFECT_BEAM) != 0;
+	const Bool mesh = (effects & EFFECT_MESH) != 0;
 	// A beam or streak fades only as part of its shaded look, so with its shader off it draws as it always has.
 	const Bool soft = (effects & EFFECT_SOFT) != 0 && SoftParticleMode != SOFT_PARTICLES_OFF &&
 		TheGlobalData->m_useSoftParticles && TheGlobalData->m_softParticleDistance > 0.0f &&
-		(laser || electric || cryo || (effects & (EFFECT_LASER | EFFECT_BEAM)) == 0);
+		(flame || laser || electric || cryo || (effects & (EFFECT_LASER | EFFECT_BEAM)) == 0);
 	if ((!soft && !flame && !electric && !laser && !cryo) || !loadShaders())
 	{
 		return false;
@@ -918,13 +927,13 @@ bool W3DSoftParticles::Begin(const ShaderClass &shader, unsigned effects, const 
 
 	if (flame)
 	{
-		bindFlame(tuning);
+		bindFlame(tuning, beam, mesh);
 		m_bound = EFFECT_FLAME;
 	}
 	else if (electric || laser || cryo)
 	{
 		BeamShaderTuning beamTuning;
-		W3DLaserDrawModuleData::resolveShaderTuning(beam ? static_cast<const BeamShaderTuning *>(effectData) : nullptr, beamTuning);
+		W3DLaserDrawModuleData::resolveShaderTuning((beam || mesh) ? static_cast<const BeamShaderTuning *>(effectData) : nullptr, beamTuning);
 		if (cryo)
 		{
 			bindCryo(beamTuning, beam);
@@ -932,7 +941,7 @@ bool W3DSoftParticles::Begin(const ShaderClass &shader, unsigned effects, const 
 		}
 		else if (electric)
 		{
-			bindElectric(beamTuning, beam);
+			bindElectric(beamTuning, beam, mesh);
 			m_bound = EFFECT_ELECTRIC;
 		}
 		else

@@ -239,7 +239,7 @@ public:
 	RenderStateStruct sorting_state;
 
 	float depth;								// View space depth of the bounding sphere center, for object nodes
-	unsigned char effects;					// Particle effects drawn through the soft particle hook, 0 for none
+	unsigned short effects;					// Particle effects drawn through the soft particle hook, 0 for none
 	bool placed;								// A disruption node whose vertices are already in world space, so center says where it is
 	Vector3 center;
 	float disruption_strength;				// How much of its mask a disruption node keeps
@@ -312,7 +312,9 @@ static void End_Soft(bool soft)
 static void Draw_Object_Node(SortingNodeStruct* state)
 {
 	DX8Wrapper::Set_Render_State(state->sorting_state);
+	const bool soft = Begin_Soft(state);
 	DX8Wrapper::Draw_Triangles(state->start_index,state->polygon_count,state->min_vertex_index,state->vertex_count);
+	End_Soft(soft);
 }
 
 // Object nodes are sorted far to near and drawn between the pool's triangles as the depths pass them.
@@ -479,7 +481,7 @@ void SortingRendererClass::Insert_Triangles(
 	state->min_vertex_index=min_vertex_index;
 	state->vertex_count=vertex_count;
 	state->depth=0.0f;
-	state->effects=(SoftHook != nullptr) ? (unsigned char)InsertEffects : 0;
+	state->effects=(SoftHook != nullptr) ? (unsigned short)InsertEffects : 0;
 	state->effect_data=(state->effects != 0) ? InsertEffectData : nullptr;
 
 	if (disrupts) {

@@ -433,7 +433,8 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		// only systems with settings of their own carry them, so the rest keep batching together
 		const Bool flameEffects = (effects & (SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_HAZE)) != 0;
 		const ParticleSystemTemplate *tuning = (flameEffects && sys->getTemplate()->hasFlameTuning()) ? sys->getTemplate() : nullptr;
-		const void *effectData = (pass == DRAW_DISRUPT) ? static_cast<const void *>(&disruption) : tuning;
+		const void *effectData = (pass == DRAW_DISRUPT) ? static_cast<const void *>(&disruption) :
+			(tuning != nullptr) ? static_cast<const void *>(tuning->peekFlameTuning()) : nullptr;
 
 		// Handle smudge type particles
 		if (sys->isUsingSmudge())
@@ -585,10 +586,17 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			// Only a streak carries the beam coordinates the laser and cryo shaders read. A multiplied streak has no light to shade.
 			const Bool shaded = sys->getShaderType() != ParticleSystemInfo::MULTIPLY;
 			const Bool cryo = shaded && sys->isCryo();
-			const Bool laser = shaded && !cryo && sys->isLaser();
+			// a streak burns only when told to, since Auto would turn every trail behind a flame shell to fire
+			const Bool flame = shaded && !cryo && sys->isFlameSet() && TheW3DSoftParticles != nullptr && TheW3DSoftParticles->flameEnabled();
+			const Bool laser = shaded && !cryo && !flame && sys->isLaser();
 			if (cryo)
 			{
 				m_streakLine->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM );
+			}
+			else if (flame)
+			{
+				m_streakLine->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_BEAM,
+					sys->getTemplate()->hasFlameTuning() ? sys->getTemplate()->peekFlameTuning() : nullptr );
 			}
 			else
 			{

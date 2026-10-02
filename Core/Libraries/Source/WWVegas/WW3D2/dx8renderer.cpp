@@ -2820,7 +2820,9 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 			SortingRendererClass::Set_Insert_Effects(0,nullptr);
 		}
 		if (!mesh->Is_Disruption_Only() || !SortingRendererClass::Can_Disrupt()) {
+			SortingRendererClass::Set_Insert_Effects(mesh->Get_Shader_Effects(),mesh->Peek_Shader_Effect_Data());
 			renderer->Render_Sorted(mesh->Get_Base_Vertex_Offset(),mesh->Get_Bounding_Sphere());
+			SortingRendererClass::Set_Insert_Effects(0,nullptr);
 		}
 	} else if (!mesh->Is_Disruption_Only() || !SortingRendererClass::Can_Disrupt()) {
 		//non-transparent mesh that will be rendered immediately.  Okay to adjust the shader/material

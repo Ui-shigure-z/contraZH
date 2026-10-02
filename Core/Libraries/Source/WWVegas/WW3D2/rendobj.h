@@ -452,6 +452,11 @@ public:
 	const void *					Peek_Disruption() const { return DisruptionData; }
 	bool							Is_Disruption_Only() const { return DisruptionOnly; }
 
+	// SoftParticleHookClass effects a sorted mesh draws its own art with, and the data handed to the hook with them.
+	void							Set_Shader_Effects(unsigned effects, const void *data) { ShaderEffects=effects; ShaderEffectData=data; }
+	unsigned						Get_Shader_Effects() const { return ShaderEffects; }
+	const void *					Peek_Shader_Effect_Data() const { return ShaderEffectData; }
+
    virtual int						Get_Sort_Level() const													{ return 0; /* SORT_LEVEL_NONE */ }
    virtual void					Set_Sort_Level(int level)													{ }
 
@@ -555,6 +560,8 @@ protected:
 	void *							User_Data;
 	const void *					DisruptionData;
 	bool								DisruptionOnly;
+	unsigned							ShaderEffects;
+	const void *					ShaderEffectData;
 
 	RenderHookClass *				RenderHook;
 

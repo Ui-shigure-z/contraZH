@@ -587,9 +587,10 @@ static_assert(ARRAY_SIZE(CryoShaderModeNames) == ParticleSystemInfo::CRYO_SHADER
 
 #endif
 
-// Flame shading and heat haze settings. In ParticleSystem.ini a negative value, the default, takes GameData.ini's.
+// Flame shading and heat haze settings. In an entry of its own a negative value, the default, takes GameData.ini's.
 struct FlameShaderTuning
 {
+	FlameShaderTuning();
 	Real warp;						///< how far the noise pushes the texture lookup, in texture widths
 	Real heat;						///< how fast bright texels run to white
 	Real flicker;					///< how far brightness swings with the noise, 0 for steady
@@ -630,6 +631,11 @@ public:
 	Bool hasFlameTuning() const;	///< any FlameShaderTuning key is set on this system
 	/// GameData.ini's flame settings, with this template's own on top when it is not null.
 	static void resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning );
+	/// The same from bare settings, for the draw modules that take the flame shader.
+	static void resolveFlameTuning( const FlameShaderTuning *own, FlameShaderTuning &tuning );
+	const FlameShaderTuning *peekFlameTuning() const { return &m_flameTuning; }
+	/// FlameWarp to FlameRise, stored relative to a FlameShaderTuning. The haze keys stay with particle systems.
+	static const FieldParse *getFlameTuningFieldParse();
 	/// How much a cryo-shaded particle is drawn larger or smaller: this template's CryoParticleScale, else GameData.ini's.
 	Real getCryoParticleScale() const;
 	/// The same for an electric-shaded particle, from ElectricParticleScale.
@@ -741,6 +747,7 @@ public:
 	ParticleShaderType getShaderType() const { return m_shaderType; }
 
 	Bool isFlame();		///< draw with the flame shader
+	Bool isFlameSet() const { return m_flameShader == FLAME_SHADER_YES; }	///< FlameShader = Yes, which a streak needs since Auto is for sprites
 	Bool isElectric();	///< draw with the electric shader
 	Bool isLaser();		///< draw streaks with the laser shader
 	Bool isCryo();		///< draw with the cryo shader, over any other

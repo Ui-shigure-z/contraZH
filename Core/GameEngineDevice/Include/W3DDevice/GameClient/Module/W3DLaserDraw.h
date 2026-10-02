@@ -34,6 +34,7 @@
 //#include "WW3D2/Line3D.h"
 #include "GameClient/Color.h"
 #include "GameClient/DisruptionShader.h"
+#include "GameClient/ParticleSys.h"
 
 class SegmentedLineClass;
 class TextureClass;
@@ -42,9 +43,10 @@ class LaserUpdate;
 
 enum { MAX_LASER_GROUND_LIGHTS = 12 };
 
-// Laser, electric and cryo shading settings of one beam. In the W3DLaserDraw block a negative value, the default, takes GameData.ini's.
+// Laser, electric and cryo shading settings of one beam or model. In its draw module a negative value, the default, takes GameData.ini's.
 struct BeamShaderTuning
 {
+	BeamShaderTuning();
 	Real laserCore;						///< brightness of the white-hot core, 0 for none
 	Real laserCoreWidth;			///< core width as a fraction of the beam's half width
 	Real laserShimmer;				///< how far the core's width wavers along the beam
@@ -96,7 +98,9 @@ public:
 	Bool m_laserShader;		///< shade the beam with the laser shader: a hot core and pulses running along it
 	Bool m_electricShader;	///< shade the beam with the electric shader instead: arcs, jitter and flicker
 	Bool m_cryoShader;		///< shade the beam with the cryo shader over either: an ice tint, a blue-white core, frost bands and ice teeth
+	Bool m_flameShader;		///< shade the beam with the flame shader over all but cryo: a warping, flickering texture that runs white-hot
 	BeamShaderTuning m_shaderTuning;
+	FlameShaderTuning m_flameTuning;
 	DisruptionShaderInfo m_disruption;	///< DisruptionShader and its settings, for a strip along the beam that bends the scene behind it
 	Real m_disruptionWidth;	///< width of that strip in world units; 0 or less takes the outer beam's
 
@@ -106,6 +110,9 @@ public:
 
 	/// The beam's own settings where it has them and GameData.ini's elsewhere. Null takes GameData.ini's throughout.
 	static void resolveShaderTuning(const BeamShaderTuning *own, BeamShaderTuning &tuning);
+
+	/// The Electric and Cryo setting keys, stored relative to a BeamShaderTuning, for every module that takes those shaders.
+	static const FieldParse *getShaderTuningFieldParse();
 
 	/// The ice colour with its brightest channel at 1, so a colour pulled to it at its own peak keeps its brightness. Returns how far to pull, 0 to 1.
 	static Real getIceTint(const BeamShaderTuning &tuning, RGBColor &tint);

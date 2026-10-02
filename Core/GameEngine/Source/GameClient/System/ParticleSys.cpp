@@ -3335,7 +3335,42 @@ Bool ParticleSystemTemplate::hasFlameTuning() const
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+FlameShaderTuning::FlameShaderTuning()
+{
+	Real *setting = &warp;
+	for (UnsignedInt i = 0; i < sizeof( FlameShaderTuning ) / sizeof( Real ); ++i)
+	{
+		setting[i] = -1.0f;
+	}
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+const FieldParse *ParticleSystemTemplate::getFlameTuningFieldParse()
+{
+	static const FieldParse flameFieldParse[] =
+	{
+		{ "FlameWarp",					INI::parseReal, nullptr, offsetof( FlameShaderTuning, warp ) },
+		{ "FlameHeat",					INI::parseReal, nullptr, offsetof( FlameShaderTuning, heat ) },
+		{ "FlameFlicker",				INI::parseReal, nullptr, offsetof( FlameShaderTuning, flicker ) },
+		{ "FlameBreakup",				INI::parseReal, nullptr, offsetof( FlameShaderTuning, breakup ) },
+		{ "FlameNoiseSize",			INI::parseReal, nullptr, offsetof( FlameShaderTuning, noiseSize ) },
+		{ "FlameRise",					INI::parseReal, nullptr, offsetof( FlameShaderTuning, rise ) },
+		{ nullptr, nullptr, nullptr, 0 }
+	};
+	return flameFieldParse;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 void ParticleSystemTemplate::resolveFlameTuning( const ParticleSystemTemplate *tmpl, FlameShaderTuning &tuning )
+{
+	resolveFlameTuning( (tmpl != nullptr) ? &tmpl->m_flameTuning : nullptr, tuning );
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void ParticleSystemTemplate::resolveFlameTuning( const FlameShaderTuning *own, FlameShaderTuning &tuning )
 {
 	tuning.warp = TheGlobalData->m_flameWarp;
 	tuning.heat = TheGlobalData->m_flameHeat;
@@ -3350,18 +3385,18 @@ void ParticleSystemTemplate::resolveFlameTuning( const ParticleSystemTemplate *t
 	tuning.hazeRise = TheGlobalData->m_hazeRise;
 	tuning.hazeMask = TheGlobalData->m_hazeMask;
 
-	if (tmpl == nullptr)
+	if (own == nullptr)
 	{
 		return;
 	}
 
-	const Real *own = &tmpl->m_flameTuning.warp;
+	const Real *setting = &own->warp;
 	Real *resolved = &tuning.warp;
 	for (UnsignedInt i = 0; i < sizeof( tuning ) / sizeof( Real ); ++i)
 	{
-		if (own[i] >= 0.0f)
+		if (setting[i] >= 0.0f)
 		{
-			resolved[i] = own[i];
+			resolved[i] = setting[i];
 		}
 	}
 }
