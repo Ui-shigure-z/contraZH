@@ -1059,7 +1059,8 @@ W3DModelDrawModuleData::W3DModelDrawModuleData() :
 #endif
 	m_minLODRequired(STATIC_GAME_LOD_LOW),
 	m_defaultState(-1),
-	m_lastRealConditionStateIndex(-1)
+	m_lastRealConditionStateIndex(-1),
+	m_disruption(DisruptionShaderInfo::SHAPE_CENTER)
 {
 	const Real MAX_SHIFT = 3.0f;
 	const Real INITIAL_RECOIL_RATE = 2.0f;
@@ -1214,6 +1215,26 @@ const Vector3* W3DModelDrawModuleData::getAttachToDrawableBoneOffset(const Drawa
 #endif
 
 //-------------------------------------------------------------------------------------------------
+// Hands every mesh under the object the module's disruption settings, which the module data keeps alive.
+static void setDisruption(RenderObjClass *robj, const DisruptionShaderInfo &info)
+{
+	if (robj->Class_ID() == RenderObjClass::CLASSID_MESH)
+	{
+		robj->Set_Disruption(&info, info.hidesArt());
+	}
+
+	for (Int i = 0; i < robj->Get_Num_Sub_Objects(); i++)
+	{
+		RenderObjClass *sub = robj->Get_Sub_Object(i);
+		if (sub != nullptr)
+		{
+			setDisruption(sub, info);
+			sub->Release_Ref();
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 enum ParseCondStateType CPP_11(: Int)
 {
 	PARSE_NORMAL,
@@ -1265,6 +1286,7 @@ void W3DModelDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
+  p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DModelDrawModuleData, m_disruption));
 
 }
 
@@ -3794,6 +3816,10 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		{
 			m_renderObject = W3DDisplay::m_assetManager->Create_Render_Obj(newState->m_modelName.str(), draw->getScale(), m_hexColor);
 			DEBUG_ASSERTCRASH(m_renderObject, ("*** ASSET ERROR: Model %s not found!",newState->m_modelName.str()));
+			if (m_renderObject && getW3DModelDrawModuleData()->m_disruption.isOn())
+			{
+				setDisruption(m_renderObject, getW3DModelDrawModuleData()->m_disruption);
+			}
 		}
 
 		//BONEPOS_LOG(("validateStuff() from within W3DModelDraw::setModelState()"));

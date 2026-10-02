@@ -124,8 +124,10 @@ static RGBColor getAverageTextureColor( const AsciiString &name, TextureClass *t
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-W3DLaserDrawModuleData::W3DLaserDrawModuleData()
+W3DLaserDrawModuleData::W3DLaserDrawModuleData() :
+	m_disruption(DisruptionShaderInfo::SHAPE_BEAM)
 {
+	m_disruptionWidth = 0.0f;
 	m_innerBeamWidth = 0.0f;         //The total width of beam
 	m_outerBeamWidth = 1.0f;         //The total width of beam
   m_numBeams = 1;                 //Number of overlapping cylinders that make the beam. 1 beam will just use inner data.
@@ -214,9 +216,11 @@ void W3DLaserDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "CryoFrostSpeed",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoFrostSpeed) },
 		{ "CryoShards",							INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShards) },
 		{ "CryoShardSize",						INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_shaderTuning.cryoShardSize) },
+		{ "DisruptionWidth",					INI::parseReal,									nullptr, offsetof(W3DLaserDrawModuleData, m_disruptionWidth) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
+  p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DLaserDrawModuleData, m_disruption));
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -278,6 +282,7 @@ Real W3DLaserDrawModuleData::getIceTint( const BeamShaderTuning &tuning, RGBColo
 W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 	DrawModule( thing, moduleData ),
 	m_line3D(nullptr),
+	m_disruptionLine(nullptr),
 	m_texture(nullptr),
 	m_textureAspectRatio(1.0f),
 	m_selfDirty(TRUE),
@@ -349,6 +354,35 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 
 	//Allocate an array of lines equal to the number of beams * segments
 	m_line3D = NEW SegmentedLineClass *[ data->m_numBeams * data->m_segments ];
+
+	// the disruption shader takes its mask from the beam texture, and without the hook the strip would draw as plain art
+	if( data->m_disruption.isOn() && m_texture && SortingRendererClass::Peek_Soft_Particle_Hook() != nullptr )
+	{
+		m_disruptionLine = NEW SegmentedLineClass *[ data->m_segments ];
+		for( UnsignedInt segment = 0; segment < data->m_segments; segment++ )
+		{
+			SegmentedLineClass *line = NEW SegmentedLineClass;
+			m_disruptionLine[ segment ] = line;
+			line->Set_Texture( m_texture );
+			line->Set_Shader( ShaderClass::_PresetAdditiveShader );
+			line->Set_Color( Vector3( 1.0f, 1.0f, 1.0f ) );
+			line->Set_Effects( SoftParticleHookClass::EFFECT_DISRUPT, &data->m_disruption );
+			if (data->m_gridColumnsTotal > 1)
+			{
+				line->Set_Texture_Mapping_Mode(SegLineRendererClass::GRID_TILED_TEXTURE_MAP);
+				line->Set_U_Scale(1.0f / (Real)(data->m_gridColumnsTotal));
+			}
+			else
+			{
+				line->Set_Texture_Mapping_Mode(SegLineRendererClass::TILED_TEXTURE_MAP);
+			}
+			if (W3DDisplay::m_3DScene != nullptr)
+			{
+				W3DDisplay::m_3DScene->Add_Render_Object( line );
+			}
+			line->Set_Visible( 0 );
+		}
+	}
 
 	for( UnsignedInt segment = 0; segment < data->m_segments; segment++ )
 	{
@@ -423,6 +457,12 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 				// hide the render object until the first time we come to draw it and
 				// set the correct position
 				line->Set_Visible( 0 );
+
+				// a beam that only disrupts keeps its lines for their bookkeeping and never shows them
+				if( data->m_disruption.hidesArt() )
+				{
+					line->Set_Hidden( 1 );
+				}
 			}
 
 
@@ -453,6 +493,19 @@ W3DLaserDraw::~W3DLaserDraw()
 	}
 
 	delete [] m_line3D;
+
+	if( m_disruptionLine )
+	{
+		for( UnsignedInt segment = 0; segment < data->m_segments; segment++ )
+		{
+			if (W3DDisplay::m_3DScene != nullptr)
+			{
+				W3DDisplay::m_3DScene->Remove_Render_Object( m_disruptionLine[ segment ] );
+			}
+			REF_PTR_RELEASE( m_disruptionLine[ segment ] );
+		}
+		delete [] m_disruptionLine;
+	}
 	// TheSuperHackers @fix Mauller 11/03/2025 Free reference counted material
 	REF_PTR_RELEASE(m_texture);
 }
@@ -887,6 +940,16 @@ void W3DLaserDraw::doDrawModule(const Matrix3D* transformMtx)
 				//No arc -- way simpler!
 				laserPoints[ 0 ].Set( update->getStartPos()->x, update->getStartPos()->y, update->getStartPos()->z );
 				laserPoints[ 1 ].Set( update->getEndPos()->x, update->getEndPos()->y, update->getEndPos()->z );
+			}
+
+			if( m_disruptionLine )
+			{
+				// the strip fades with the beam, through the brightness the shader masks by
+				const Real level = MIN( MAX( update->getAlphaScale(), 0.0f ), 1.0f );
+				const Real stripWidth = data->m_disruptionWidth > 0.0f ? data->m_disruptionWidth : MAX( data->m_outerBeamWidth, data->m_innerBeamWidth );
+				m_disruptionLine[ segment ]->Set_Color( Vector3( level, level, level ) );
+				m_disruptionLine[ segment ]->Set_Width( stripWidth * update->getWidthScale() );
+				m_disruptionLine[ segment ]->Set_Points( 2, &laserPoints[0] );
 			}
 
 			//Get the color components for calculation purposes.

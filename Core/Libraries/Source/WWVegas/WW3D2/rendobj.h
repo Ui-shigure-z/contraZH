@@ -447,6 +447,11 @@ public:
  	void							Set_ObjectColor(unsigned int color) { ObjectColor=color;}	//the color that was used to modify the asset for player team color (for Generals). -MW
 	unsigned int					Get_ObjectColor() const { return ObjectColor; };
 
+	// A sorted mesh with disruption data also draws through the soft particle hook's disruption pass, and when only that, not as itself.
+	void							Set_Disruption(const void *data, bool only) { DisruptionData=data; DisruptionOnly=only; }
+	const void *					Peek_Disruption() const { return DisruptionData; }
+	bool							Is_Disruption_Only() const { return DisruptionOnly; }
+
    virtual int						Get_Sort_Level() const													{ return 0; /* SORT_LEVEL_NONE */ }
    virtual void					Set_Sort_Level(int level)													{ }
 
@@ -548,6 +553,8 @@ protected:
 	SceneClass *					Scene;
 	RenderObjClass *				Container;
 	void *							User_Data;
+	const void *					DisruptionData;
+	bool								DisruptionOnly;
 
 	RenderHookClass *				RenderHook;
 

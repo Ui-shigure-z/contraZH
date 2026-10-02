@@ -3193,6 +3193,19 @@ const FieldParse ParticleSystemTemplate::m_fieldParseTable[] =
 	{ "HazeMask",						INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_flameTuning.hazeMask ) },
 	{ "CryoParticleScale",		INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_cryoParticleScale ) },
 	{ "ElectricParticleScale",	INI::parsePercentToReal, nullptr, offsetof( ParticleSystemTemplate, m_electricParticleScale ) },
+	{ "DisruptionShader",				INI::parseIndexList, DisruptionShaderModeNames, offsetof( ParticleSystemTemplate, m_disruption.mode ) },
+	{ "DisruptionRingStrength",	INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.ringStrength ) },
+	{ "DisruptionRingSize",			INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.ringSize ) },
+	{ "DisruptionRingSpeed",		INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.ringSpeed ) },
+	{ "DisruptionWobble",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.wobble ) },
+	{ "DisruptionWobbleSize",		INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.wobbleSize ) },
+	{ "DisruptionWobbleSpeed",	INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.wobbleSpeed ) },
+	{ "DisruptionGlitch",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.glitch ) },
+	{ "DisruptionGlitchSize",		INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.glitchSize ) },
+	{ "DisruptionGlitchRate",		INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.glitchRate ) },
+	{ "DisruptionChroma",				INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.chroma ) },
+	{ "DisruptionChromaSpread",	INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.chromaSpread ) },
+	{ "DisruptionMask",					INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_disruption.tuning.mask ) },
 
 	{ "WindAngleChangeMin", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMin ) },
 	{ "WindAngleChangeMax", INI::parseReal, nullptr, offsetof( ParticleSystemTemplate, m_windAngleChangeMax ) },
@@ -3291,7 +3304,8 @@ void ParticleSystemTemplate::parseRandomRGBColor( INI* ini, void *instance,
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 ParticleSystemTemplate::ParticleSystemTemplate( const AsciiString &name ) :
-	m_name(name)
+	m_name(name),
+	m_disruption(DisruptionShaderInfo::SHAPE_SPRITE)
 {
 	m_slaveTemplate = nullptr;
 	m_cryoParticleScale = -1.0f;

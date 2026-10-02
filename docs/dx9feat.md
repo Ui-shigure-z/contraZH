@@ -9,15 +9,15 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser` and `Cryo` tuning keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
 
 ## Shader implementation
 
-An effect picks up its shader in one of three places: the `ParticleSystem` block, the `W3DLaserDraw`
-module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
+An effect picks up its shader in one of four places: the `ParticleSystem` block, the `W3DLaserDraw`
+module, a `W3DModelDraw` module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
 them for one effect. Each shader's own section below lists its keys.
 
 | Effect | Shader | Set in | Turn on with | Own tuning |
@@ -30,6 +30,8 @@ them for one effect. Each shader's own section below lists its keys.
 | Freeze rays | [Cryo](#cryo-shading) | `W3DLaserDraw` | `CryoShader = Yes` | `Cryo` keys |
 | Frost trails, puffs and flares | [Cryo](#cryo-shading) | `ParticleSystem` | `CryoShader = Yes` | `CryoParticleScale` |
 | Blast ring | [Shockwave](#shockwave-fxlistini) | `FXList` | A `Shockwave` block | The block's keys |
+| Jammer fields and distortion auras | [Disruption](#disruption-shading) | `ParticleSystem`, `W3DModelDraw`, `W3DLaserDraw` | `DisruptionShader = Yes` or `Only` | `Disruption` keys |
+| Distortion disc with no art | [Disruption](#disruption-shading) | `FXList` | A `Disruption` block | The block's keys |
 | Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
 | Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
 
@@ -49,7 +51,7 @@ out of a list.
 
 | `Type` | `Shader` | Takes |
 |---|---|---|
-| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame, electric or cryo, and the soft fade |
+| `PARTICLE` | `ADDITIVE`, `ALPHA` | Flame, electric or cryo, the soft fade, and disruption |
 | `PARTICLE` | `ALPHA_TEST`, `MULTIPLY` | Nothing |
 | `STREAK` | Any but `MULTIPLY` | Laser or cryo |
 | `VOLUME_PARTICLE`, `SMUDGE`, `DRAWABLE` | Any | Nothing |
@@ -60,11 +62,13 @@ out of a list.
 * Only `FlameShader = Auto` follows a master system. Slave systems need their own `ElectricShader` or
 `LaserShader`.
 * Terrain-conforming particles stay plain.
+* Disruption is a pass of its own behind the art, so it combines with any of the shaders above.
 
 ### Models and terrain
 
-Models and terrain have no shader switch. They pick up a shader when a matching texture sits beside
-theirs in `Art\Textures`, or from `Terrain.ini` for the glint.
+Models and terrain pick up a shader when a matching texture sits beside theirs in `Art\Textures`, or
+from `Terrain.ini` for the glint. Disruption is the one shader a model switches on, with
+`DisruptionShader` in its `W3DModelDraw` module.
 
 | Effect | Add | Section |
 |---|---|---|
@@ -79,12 +83,12 @@ theirs in `Art\Textures`, or from `Terrain.ini` for the glint.
 * The Direct3D 8 build ignores every shader on this page.
 * `FlameShaders`, `ElectricShaders`, `LaserShaders` and `CryoShaders` in `Options.ini` default to Yes.
 No turns that shader off everywhere.
-* Flame haze and shockwaves need `Heat Effects` on. Bloom needs `Bloom = Yes`.
+* Flame haze, shockwaves and disruption need `Heat Effects` on. Bloom needs `Bloom = Yes`.
 * The system's `Type` and `Shader` must allow the shader, as in the table above.
 * `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
 reloads in cheat builds.
-* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER` or `CONTRA_CRYOSHADER` set to 0 turns
-that shader off.
+* `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER`, `CONTRA_CRYOSHADER` or
+`CONTRA_DISRUPTSHADER` set to 0 turns that shader off.
 * `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
 laser shader.
 
@@ -593,6 +597,112 @@ the sprite drifts through them.
 beam and its glow keep their own colour.
 * Terrain-conforming particles, volume particles and multiplied sprites stay plain.
 * Launch with `CONTRA_CRYOSHADER=0` to turn cryo shading off.
+
+## Disruption shading
+
+A shape ripples the scene behind it and pulls its colours apart, like a jammed video signal. The
+shape can be a model's translucent meshes, a particle system's sprites, a strip along a laser beam, or
+a plain disc from an `FXList`. Its texture is the mask, so the scene bends most where the texture is
+brightest and not at all where it is black. Three movements add up, each with its own strength:
+
+* Rings travel outwards through the shape.
+* A noise field wobbles the scene, like strong heat haze.
+* Bands across the screen jump sideways in fits.
+
+Red bends further than green and blue less, which fringes every bent edge with colour. Needs the
+Direct3D 9 build, a shader model 2 card and `Heat Effects` on.
+
+Picked per entry in a `W3DModelDraw` module, a `W3DLaserDraw` module or a `ParticleSystem`:
+
+* `DisruptionShader = No` - (Default. `Yes` bends the scene behind the shape and draws the shape's own
+art over it. `Only` bends the scene and leaves the art undrawn, so the shape is a pure mask.)
+
+A `W3DLaserDraw` module also takes:
+
+* `DisruptionWidth = 0` - (Width of the strip that bends the scene, in world units. 0 takes the
+beam's widest width, which is often too thin to see.)
+
+Tuned in the mod's `GameData.ini`:
+
+* `DisruptionRingStrength = 3` - (How far the rings push the scene, in world units. 0 turns them off.)
+* `DisruptionRingSize = 40` - (World units from one ring to the next.)
+* `DisruptionRingSpeed = 60` - (World units a second the rings travel outwards. 0 freezes them.)
+* `DisruptionWobble = 1.5` - (How far the noise pushes the scene, in world units. 0 turns it off.)
+* `DisruptionWobbleSize = 30` - (World units across one tile of wobble noise. Smaller is finer.)
+* `DisruptionWobbleSpeed = 1.5` - (Noise tiles the wobble crosses per second.)
+* `DisruptionGlitch = 4` - (How far a band jumps sideways at most, in world units. 0 turns the bands
+off.)
+* `DisruptionGlitchSize = 12` - (Height of a band, in pixels on a 1080p screen, scaled to other
+resolutions.)
+* `DisruptionGlitchRate = 12` - (Jumps per second. 0 freezes the bands.)
+* `DisruptionChroma = 0.5` - (How much further red bends than green, and how much less blue does, as
+a fraction. 0 keeps the colours together.)
+* `DisruptionChromaSpread = 0.5` - (World units red and blue part along the rings' direction even
+where nothing bends. 0 fringes only bent pixels.)
+* `DisruptionMask = 2` - (How quickly the shape's brightness reaches full strength. Higher lets
+fainter parts of the texture bend the scene.)
+
+Every entry that takes `DisruptionShader` also takes these twelve keys. Each one it sets overrides
+`GameData.ini` for that entry alone, and the keys it leaves out keep `GameData.ini`'s values.
+
+```
+Draw = W3DModelDraw ModuleTag_01
+  DefaultConditionState
+    Model = EXGLAJammer
+  End
+  DisruptionShader       = Yes
+  DisruptionRingStrength = 5
+  DisruptionGlitch       = 8
+End
+
+ParticleSystem JammerSparks
+  ...
+  DisruptionShader = Only
+  DisruptionWobble = 3
+End
+
+Draw = W3DLaserDraw ModuleTag_Draw
+  ...
+  DisruptionShader = Yes
+  DisruptionWidth  = 30
+End
+```
+
+An `FXList` draws a disc with no art through a `Disruption` block. The disc is brightest at its
+middle and fades to its rim.
+
+* `Radius` - (The disc's radius, in world units.)
+* `Duration` - (How long the disc lasts, in milliseconds.)
+* `Fade = 20%` - (Share of the duration spent fading in, and again fading out.)
+* The twelve tuning keys above.
+
+```
+FXList FX_JammerPulse
+  Disruption
+    Radius                 = 425
+    Duration               = 1200
+    Fade                   = 20%
+    DisruptionRingStrength = 5
+  End
+End
+```
+
+Notes:
+* Disruption bends a copy of the scene taken before anything translucent draws. Particles, beams and
+translucent models stay crisp over it, and overlapping shapes do not bend each other.
+* On a model only translucent meshes take part, the ones with an additive or alpha-blended material.
+With `Only`, the whole model goes undrawn.
+* A model's rings start at each mesh's own origin, a sprite's at the middle of its texture, and a
+disc's at its middle. On a beam they run along its length and push across it.
+* Rings keep time with the game clock, so an effect that is replaced every second ripples without
+a jump.
+* A beam needs a `Texture`, which masks its strip. With `Only` the beam's own lines stay hidden.
+* On a particle system, `ALPHA_TEST` and `MULTIPLY` sprites, streaks, volume particles and
+terrain-conforming particles take no disruption.
+* An `FXList` disc lies flat and ignores depth, like a shockwave. At most 32 show at once.
+* With `Heat Effects` off or on the Direct3D 8 build, `Yes` draws the plain art and `Only` draws
+nothing.
+* Launch with `CONTRA_DISRUPTSHADER=0` to turn disruption off.
 
 ## Ambient occlusion
 

@@ -37,7 +37,8 @@ public:
 		EFFECT_ELECTRIC = 8,	// arcs, jitter and strobe
 		EFFECT_LASER = 16,	// hot core and travelling pulses, from the beam coordinates in the second uv set
 		EFFECT_BEAM = 32,	// a laser draw's beam or a streak, which fades only while shaded
-		EFFECT_CRYO = 64	// ice tint with teeth and frost bands on a beam, splinters and glints on a sprite
+		EFFECT_CRYO = 64,	// ice tint with teeth and frost bands on a beam, splinters and glints on a sprite
+		EFFECT_DISRUPT = 128	// ripple and colour-split the scene copy behind the shape, in a pass of its own before the sorted draws
 	};
 
 	virtual ~SoftParticleHookClass() {}
@@ -74,6 +75,10 @@ public:
 
 	static void Flush();
 	static void Deinit();
+
+	// Triangles inserted with EFFECT_DISRUPT wait here and draw through the hook alone. Flush drops any left undrawn.
+	static bool Has_Disruption();
+	static void Flush_Disruption();
 
 	static void SetMinVertexBufferSize( unsigned val );
 

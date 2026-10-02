@@ -256,6 +256,10 @@ rts_add_shader("${RTS_SHADER_DIR}/footprint.hlsl"      ps_2_a main footprint.pso
 rts_add_shader("${RTS_SHADER_DIR}/footprint.hlsl"      ps_2_a main footprintring.pso            RING=1)
 rts_add_shader("${RTS_SHADER_DIR}/heathaze.hlsl"       ps_2_0 main heathaze.pso)
 rts_add_shader("${RTS_SHADER_DIR}/shockwave.hlsl"      ps_2_0 main shockwave.pso)
+# The disruption's rings find their way across the screen with derivatives, which ps_2_0 lacks.
+rts_add_shader("${RTS_SHADER_DIR}/disruption.hlsl"     ps_2_a main disruptionsprite.pso         SHAPE=0)
+rts_add_shader("${RTS_SHADER_DIR}/disruption.hlsl"     ps_2_a main disruptioncenter.pso         SHAPE=1)
+rts_add_shader("${RTS_SHADER_DIR}/disruption.hlsl"     ps_2_a main disruptionbeam.pso           SHAPE=2)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusion.pso      BLUR=0)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusionblur.pso  BLUR=1)
 rts_add_shader("${RTS_SHADER_DIR}/skyclouds.hlsl"      ps_2_0 main skyclouds.pso)

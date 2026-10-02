@@ -305,6 +305,18 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "CryoGlintSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintSize ) },
 	{ "CryoGlintRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintRate ) },
 	{ "CryoParticleScale",				INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_cryoParticleScale ) },
+	{ "DisruptionRingStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringStrength ) },
+	{ "DisruptionRingSize",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringSize ) },
+	{ "DisruptionRingSpeed",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringSpeed ) },
+	{ "DisruptionWobble",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobble ) },
+	{ "DisruptionWobbleSize",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobbleSize ) },
+	{ "DisruptionWobbleSpeed",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobbleSpeed ) },
+	{ "DisruptionGlitch",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitch ) },
+	{ "DisruptionGlitchSize",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitchSize ) },
+	{ "DisruptionGlitchRate",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitchRate ) },
+	{ "DisruptionChroma",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chroma ) },
+	{ "DisruptionChromaSpread",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chromaSpread ) },
+	{ "DisruptionMask",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.mask ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -1041,6 +1053,18 @@ GlobalData::GlobalData()
 	m_cryoGlintSize = 1.5f;
 	m_cryoGlintRate = 2.0f;
 	m_cryoParticleScale = 1.0f;
+	m_disruptionTuning.ringStrength = 3.0f;
+	m_disruptionTuning.ringSize = 40.0f;
+	m_disruptionTuning.ringSpeed = 60.0f;
+	m_disruptionTuning.wobble = 1.5f;
+	m_disruptionTuning.wobbleSize = 30.0f;
+	m_disruptionTuning.wobbleSpeed = 1.5f;
+	m_disruptionTuning.glitch = 4.0f;
+	m_disruptionTuning.glitchSize = 12.0f;
+	m_disruptionTuning.glitchRate = 12.0f;
+	m_disruptionTuning.chroma = 0.5f;
+	m_disruptionTuning.chromaSpread = 0.5f;
+	m_disruptionTuning.mask = 2.0f;
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -1696,6 +1720,8 @@ static const char *const LiveGameDataKeys[] =
 	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
 	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
 	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
+	"DisruptionRingStrength", "DisruptionRingSize", "DisruptionRingSpeed", "DisruptionWobble", "DisruptionWobbleSize", "DisruptionWobbleSpeed",
+	"DisruptionGlitch", "DisruptionGlitchSize", "DisruptionGlitchRate", "DisruptionChroma", "DisruptionChromaSpread", "DisruptionMask",
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };

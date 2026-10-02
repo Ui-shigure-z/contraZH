@@ -335,6 +335,8 @@ public:
 
 	Bool															m_keepRecoilAcrossStates;  ///< Don't reset recoil bones when switching states
 
+	DisruptionShaderInfo							m_disruption;  ///< DisruptionShader and its settings, for translucent meshes that bend the scene behind them
+
 	// Bool															m_disableMoveEffectsOverWater;  ///< disable track marks and tread/wheel anims over water
 
 	W3DModelDrawModuleData();

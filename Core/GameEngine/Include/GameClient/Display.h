@@ -55,6 +55,7 @@ class DebugDisplayInterface;
 class Radar;
 class Image;
 class DisplayString;
+struct DisruptionShaderInfo;
 enum StaticGameLODLevel CPP_11(: Int);
 /**
  * The Display class implements the Display interface
@@ -137,6 +138,8 @@ public:
 																 ) = 0;
 	/// an expanding ring that bends the scene, all in world units except strength when strengthInPixels counts it in pixels
 	virtual void createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationFrames ) {}
+	/// a disc on the ground that ripples the scene; fade is the share of its life spent fading in and again fading out, and the settings must outlive it
+	virtual void createDisruption( const Coord3D *pos, Real radius, const DisruptionShaderInfo *info, UnsignedInt durationFrames, Real fade ) {}
 
 	/// draw a line on the display in pixel coordinates with the specified color
 	virtual void drawLine( Int startX, Int startY, Int endX, Int endY,

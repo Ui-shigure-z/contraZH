@@ -33,6 +33,7 @@
 #include "Common/DrawModule.h"
 //#include "WW3D2/Line3D.h"
 #include "GameClient/Color.h"
+#include "GameClient/DisruptionShader.h"
 
 class SegmentedLineClass;
 class TextureClass;
@@ -96,6 +97,8 @@ public:
 	Bool m_electricShader;	///< shade the beam with the electric shader instead: arcs, jitter and flicker
 	Bool m_cryoShader;		///< shade the beam with the cryo shader over either: an ice tint, a blue-white core, frost bands and ice teeth
 	BeamShaderTuning m_shaderTuning;
+	DisruptionShaderInfo m_disruption;	///< DisruptionShader and its settings, for a strip along the beam that bends the scene behind it
+	Real m_disruptionWidth;	///< width of that strip in world units; 0 or less takes the outer beam's
 
 	W3DLaserDrawModuleData();
 	virtual ~W3DLaserDrawModuleData() override;
@@ -138,6 +141,7 @@ public:
 protected:
 
 	SegmentedLineClass **m_line3D;  ///< line 3D for effect
+	SegmentedLineClass **m_disruptionLine;	///< one strip per segment that masks the disruption shader, or null without DisruptionShader
 	TextureClass *m_texture;
 	Real m_textureAspectRatio;			///< aspect ratio of texture
 	Bool m_selfDirty;								// not saved

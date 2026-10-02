@@ -35,6 +35,7 @@
 #include "Common/Snapshot.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/ClientRandomValue.h"
+#include "GameClient/DisruptionShader.h"
 
 #include "WWMath/matrix3d.h"		///< @todo Replace with our own matrix library
 #include "Common/STLTypedefs.h"
@@ -633,6 +634,8 @@ public:
 	Real getCryoParticleScale() const;
 	/// The same for an electric-shaded particle, from ElectricParticleScale.
 	Real getElectricParticleScale() const;
+	/// DisruptionShader and its settings, for sprites that bend the scene behind them.
+	const DisruptionShaderInfo &getDisruption() const { return m_disruption; }
 
 protected:
 	friend class ParticleSystemManager;					///< @todo remove this friendship
@@ -655,6 +658,7 @@ protected:
 	FlameShaderTuning					m_flameTuning;
 	Real											m_cryoParticleScale;						///< negative takes GameData.ini's
 	Real											m_electricParticleScale;				///< negative takes GameData.ini's
+	DisruptionShaderInfo			m_disruption;
 
 	// template attribute data inherited from ParticleSystemInfo class
 };

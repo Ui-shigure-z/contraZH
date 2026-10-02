@@ -35,6 +35,7 @@
 #include "Common/GameMemory.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/Color.h"
+#include "GameClient/DisruptionShader.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
 
@@ -558,6 +559,7 @@ public:
   Real m_cryoGlintSize;
   Real m_cryoGlintRate;
   Real m_cryoParticleScale;       ///< how much larger or smaller cryo-shaded particles draw, 1 unchanged
+  DisruptionShaderTuning m_disruptionTuning;  ///< disruption shader defaults
   Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
   Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
   Bool m_useHQSky;                ///< Options.ini HQSky: cloud shadows drift softly and change shape where the hardware allows

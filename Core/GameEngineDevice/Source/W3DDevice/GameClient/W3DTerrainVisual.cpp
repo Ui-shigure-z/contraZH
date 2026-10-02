@@ -62,6 +62,7 @@
 #include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
+#include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
 #include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
@@ -216,6 +217,9 @@ W3DTerrainVisual::~W3DTerrainVisual()
 	delete TheW3DShockwaves;
 	TheW3DShockwaves = nullptr;
 
+	delete TheW3DDisruption;
+	TheW3DDisruption = nullptr;
+
 	delete TheW3DAmbientOcclusion;
 	TheW3DAmbientOcclusion = nullptr;
 	delete TheW3DSkyClouds;
@@ -269,6 +273,7 @@ void W3DTerrainVisual::init()
 		TheW3DBloom = NEW W3DBloom;
 		TheW3DSoftParticles = NEW W3DSoftParticles;
 		TheW3DShockwaves = NEW W3DShockwaveManager;
+		TheW3DDisruption = NEW W3DDisruptionManager;
 		TheW3DAmbientOcclusion = NEW W3DAmbientOcclusion;
 		TheW3DSkyClouds = NEW W3DSkyClouds;
 		TheW3DLaserGlow = NEW W3DLaserGlow;

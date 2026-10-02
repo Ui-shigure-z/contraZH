@@ -55,13 +55,14 @@ private:
 	{
 		DRAW_MAIN,
 		DRAW_BLOOM,		///< additive systems again, into the bloom target
-		DRAW_HAZE			///< flame systems as heat haze, before the main pass
+		DRAW_HAZE,		///< flame systems as heat haze, before the main pass
+		DRAW_DISRUPT	///< disrupting systems as masks for the disruption shader, before the haze
 	};
 
 	void drawSystems(RenderInfoClass &rinfo, DrawPass pass);	///< draws m_drawOrder
 	unsigned systemEffects(ParticleSystem &system, DrawPass pass);
-	Bool finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const ParticleSystemTemplate *tuning);
-	void initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const ParticleSystemTemplate *tuning);
+	Bool finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData);
+	void initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData);
 	void flushParticleBatch(RenderInfoClass& rinfo, UnsignedInt& pointCount);
 
 	enum { MAX_POINTS_PER_GROUP = 512 };
@@ -88,5 +89,5 @@ private:
 	Bool m_readyToRender;											///< if true, it is OK to render
 	Bool m_batchBillboard;
 	unsigned m_batchEffects;									///< SoftParticleHookClass effects beyond soft fading
-	const ParticleSystemTemplate *m_batchTuning;	///< the template whose flame settings override GameData.ini's, or null
+	const void *m_batchEffectData;						///< what the hook gets with the effects: a template with flame settings of its own, a DisruptionShaderInfo, or null
 };

@@ -81,6 +81,7 @@ static void drawFramerateBar();
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
+#include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DDebugDisplay.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DScreenshot.h"
@@ -2366,6 +2367,14 @@ void W3DDisplay::createShockwave( const Coord3D *pos, Real radius, Real width, R
 	if (TheW3DShockwaves != nullptr && pos != nullptr)
 	{
 		TheW3DShockwaves->add(*pos, radius, width, strength, strengthInPixels, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL));
+	}
+}
+
+void W3DDisplay::createDisruption( const Coord3D *pos, Real radius, const DisruptionShaderInfo *info, UnsignedInt durationFrames, Real fade )
+{
+	if (TheW3DDisruption != nullptr && pos != nullptr)
+	{
+		TheW3DDisruption->add(*pos, radius, info, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL), fade);
 	}
 }
 
