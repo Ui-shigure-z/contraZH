@@ -253,6 +253,7 @@ enum GUICommandType CPP_11(: Int)
 	GUI_COMMAND_TOGGLE_DEPLOY,						///< toggle a DeployStyleAIUpdate object between deployed and packed
 	GUI_COMMAND_TOGGLE_FIRE_WEAPON,				///< fire a weapon, or stop firing it if it is already firing
 	GUI_COMMAND_TOGGLE_TUNNEL_AUTO_POP,		///< tunnel with this toggle on will automatically evac units and becomes not enterable 
+	GUI_COMMAND_EVACUATE_TO_WORK,					///< dump all our contents, supply gatherers among them resume gathering
 	// add more commands here, don't forget to update the string command list below too ...
 
 	GUI_COMMAND_NUM_COMMANDS
@@ -312,6 +313,7 @@ static const char *const TheGuiCommandNames[] =
 	"TOGGLE_DEPLOY",
 	"TOGGLE_FIRE_WEAPON",
 	"TOGGLE_TUNNEL_AUTO_POP",
+	"EVACUATE_TO_WORK",
 
 	nullptr
 };

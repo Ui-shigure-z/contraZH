@@ -112,6 +112,14 @@ attack still uses exact range, so nothing gains reach.
 
 Changes when units fire; affects replays.
 
+## Force fire respects line of sight
+
+* A turreted unit with `ATTACK_NEEDS_LINE_OF_SIGHT` used to force fire at the ground through
+buildings while its hull drove around them.
+* The turret now holds fire until the shot is clear, as it already did for object targets.
+
+Changes when units fire; affects replays.
+
 # Game Setup
 
 ## Random army per faction
@@ -441,6 +449,25 @@ decals, instead of a flat quad that cuts through hills.
 Notes:
 * Opt-in per effect; retail effects are unchanged.
 * Cost grows with particle size squared. Past 160 cells per side the mesh samples every Nth cell.
+
+## Snow move effects
+
+A vehicle showing its `SNOW` model state swaps its move particles for the system of the same name
+ending in `Snow`.
+
+```
+ParticleSystem RocketBuggyDust      ; Dust = RocketBuggyDust in the draw module
+ParticleSystem RocketBuggyDustSnow  ; used instead on snow
+```
+
+* `W3DTankDraw` - (`TreadDebrisLeft` and `TreadDebrisRight`. The defaults become
+`TrackDebrisDirtLeftSnow` and `TrackDebrisDirtRightSnow`.)
+* `W3DTruckDraw` - (`Dust`, `DirtSpray` and `PowerslideSpray`.)
+* `W3DTankTruckDraw` - (All five keys above.)
+
+Notes:
+* A name without a `Snow` system keeps its normal effect, so nothing has to be defined.
+* Follows the unit's own snow state, including a per-object weather override set in WorldBuilder.
 
 # GameData.ini
 
@@ -782,6 +809,26 @@ End
 Takes uncontained infantry not already in the group, nearest first. They break off whatever they are
 doing.
 
+## EVACUATE_TO_WORK
+
+Evacuates like `EVACUATE`, then sends the supply gatherers among the passengers back to gathering.
+
+```
+CommandButton Command_BackToWork
+  Command       = EVACUATE_TO_WORK
+  Options       = OK_FOR_MULTI_SELECT
+  TextLabel     = CONTROLBAR:BackToWork
+  ButtonImage   = SNBackToWork
+  DescriptLabel = CONTROLBAR:TooltipBackToWork
+End
+```
+
+Notes:
+* Applies to passengers with a `WorkerAIUpdate` or `SupplyTruckAIUpdate`; other passengers exit and idle.
+* A gatherer returns to the dock the player last assigned it, else the nearest warehouse.
+* A gatherer carrying boxes delivers them to a supply center first.
+* Greyed out under the same conditions as `EVACUATE`.
+
 ## Queue reorder
 
 Off by default; enable with `QueueReorder = Yes` in the `GameData` block of GameData.ini.
@@ -859,6 +906,110 @@ Notes:
 * Runtime switches now relight trees, bibs, bridges and roads immediately; the debug time of day
 hotkey benefits too, and refreshes player indicator colours.
 
+## GrantTemporaryStealthBehavior
+
+Grants stealth for a set time. It runs beside permanent stealth (`GrantStealthBehavior`, upgrades,
+innate) and never removes it when it runs out. Two modes:
+
+* On the object firing a special power: grants when the power fires.
+* On an object an OCL or weapon creates, with `ActivateOnCreate`: grants once, on creation.
+
+```
+Behavior = GrantTemporaryStealthBehavior ModuleTag_TempStealth01
+  SpecialPowerTemplate = SpecialAbilityCloak  ; optional, see below
+  Duration             = 10000
+  Radius               = 0
+  KindOf               = INFANTRY VEHICLE
+  ForbiddenKindOf      = AIRCRAFT
+End
+```
+
+* `SpecialPowerTemplate` - (Only react to this power. Leave it out and the module reacts to every
+special power the object fires. Not used when `ActivateOnCreate` is set.)
+* `Duration = 0` - (In milliseconds. How long the stealth lasts. Required.)
+* `Radius = 0` - (`0` grants to a single object. Any other value grants to every allied object
+within that distance.)
+* `KindOf` - (A receiver needs at least one of these. Default = everything.)
+* `ForbiddenKindOf` - (A receiver may have none of these. Default = none.)
+* `ActivateOnCreate = No` - (Yes grants on creation instead of on a special power.)
+
+Who receives the stealth:
+
+| Trigger | `Radius = 0` | `Radius > 0` |
+| --- | --- | --- |
+| Power without a target | the firing object | allies around the firing object |
+| Power on an object | the target | allies around the target |
+| Power on a location | nobody | allies around the location |
+| `ActivateOnCreate` | the created object | allies around the created object |
+
+A unit ability needs a special power, a button and a `SpecialAbility` module beside this one:
+
+```
+SpecialPower SpecialAbilityCloak
+  Enum        = SPECIAL_CIA_INTELLIGENCE
+  ReloadTime  = 30000
+  PublicTimer = No
+End
+
+CommandButton Command_Cloak
+  Command      = SPECIAL_POWER
+  SpecialPower = SpecialAbilityCloak
+  TextLabel    = CONTROLBAR:Cloak
+  ButtonImage  = SUGPS02
+End
+
+; on the unit
+Behavior = SpecialAbility ModuleTag_CloakPower
+  SpecialPowerTemplate = SpecialAbilityCloak
+End
+Behavior = GrantTemporaryStealthBehavior ModuleTag_Cloak
+  SpecialPowerTemplate = SpecialAbilityCloak
+  Duration             = 10000
+End
+```
+
+The engine decides by the power's `Enum` which kind of target it accepts. These work without an
+update module of their own:
+
+| Target | `Enum` | Button `Options` |
+| --- | --- | --- |
+| None | `SPECIAL_CIA_INTELLIGENCE`, `SPECIAL_COMMUNICATIONS_DOWNLOAD` | - |
+| Allied object | `SPECIAL_TANKHUNTER_TNT_ATTACK` | `CONTEXTMODE_COMMAND NEED_TARGET_ALLY_OBJECT` |
+| Location | `SPECIAL_RADAR_VAN_SCAN` | `CONTEXTMODE_COMMAND NEED_TARGET_POS` |
+
+`SPECIAL_TANKHUNTER_TNT_ATTACK` accepts structures and ground vehicles only. A power on an object
+has no range limit and lands the moment the player clicks.
+
+A field dropped by an OCL, for an area effect that needs no special power on the caster:
+
+```
+Object TempStealthField
+  KindOf = IMMOBILE UNATTACKABLE INERT
+  Behavior = GrantTemporaryStealthBehavior ModuleTag_01
+    ActivateOnCreate = Yes
+    Duration         = 15000
+    Radius           = 150
+  End
+  Behavior = LifetimeUpdate ModuleTag_02
+    MinLifetime = 100
+    MaxLifetime = 100
+  End
+End
+```
+
+Notes:
+* A receiver needs a `StealthUpdate`, as with the GPS Scrambler. Its `StealthForbiddenConditions`
+and `StealthDelay` still apply while the grant runs.
+* Only allies of the granting object receive it, its own units included.
+* A second grant never shortens a running one. The later end time wins.
+* When the time is up, a unit that can stealth by other means stays stealthed.
+* A portable structure or drone that joins a carrier running on temporary stealth alone gets the
+time the carrier has left, not permanent stealth.
+* A player order does not end it, unlike the supply center's `GrantTemporaryStealth`.
+* Disguisers such as the Bomb Truck are skipped.
+* List the module before the power's own update module (e.g. `SpecialAbilityUpdate`), which stops
+later modules from seeing the power fire.
+
 # Drag Selection
 
 ## EasyMilitaryDrag
@@ -867,6 +1018,9 @@ hotkey benefits too, and refreshes player indicator colours.
 up the army without dragging workers along.)
 
 Builders are `KINDOF_DOZER` and `KINDOF_IGNORES_SELECT_ALL`, as for Select All.
+
+`KindOf = NOT_MILITARY` marks any other unit as a builder for this option only. Select All still
+picks it up.
 
 Notes:
 * Ctrl while dragging selects **only** builders.

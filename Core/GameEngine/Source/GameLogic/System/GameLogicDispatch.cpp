@@ -725,6 +725,16 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			onEvacuate(msg, currentlySelectedGroup);
 			break;
 		}
+		case GameMessage::MSG_EVACUATE_TO_WORK:
+		{
+			if( currentlySelectedGroup )
+			{
+				currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);
+				currentlySelectedGroup->groupEvacuateToWork( CMD_FROM_PLAYER );
+			}
+
+			break;
+		}
 		case GameMessage::MSG_EXECUTE_RAILED_TRANSPORT:
 		{
 			onExecuteRailedTransport(msg, currentlySelectedGroup);

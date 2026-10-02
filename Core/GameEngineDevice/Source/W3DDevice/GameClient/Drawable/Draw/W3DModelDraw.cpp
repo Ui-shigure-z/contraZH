@@ -2882,6 +2882,24 @@ void W3DModelDraw::stopClientParticleSystems()
 }
 
 //-------------------------------------------------------------------------------------------------
+const ParticleSystemTemplate* W3DModelDraw::findMoveEffectTemplate(const AsciiString& name) const
+{
+	if (!name.isEmpty() && getDrawable()->getModelConditionFlags().test(MODELCONDITION_SNOW))
+	{
+		AsciiString snowName = name;
+		snowName.concat("Snow");
+
+		const ParticleSystemTemplate* snowTemplate = TheParticleSystemManager->findTemplate(snowName);
+		if (snowTemplate != nullptr)
+		{
+			return snowTemplate;
+		}
+	}
+
+	return TheParticleSystemManager->findTemplate(name);
+}
+
+//-------------------------------------------------------------------------------------------------
 void W3DModelDraw::computeDrawnTurretAngles(Real* angles, Real* pitches)
 {
 	const Object *obj = getDrawable()->getObject();

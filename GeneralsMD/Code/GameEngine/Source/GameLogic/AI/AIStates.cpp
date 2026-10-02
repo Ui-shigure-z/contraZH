@@ -1217,6 +1217,39 @@ Bool wantToSquishTarget( State *thisState, void* userData )
 	return false;
 }
 
+/**
+ * Return true if an obstacle or the terrain blocks the object's shot at a ground position.
+ */
+Bool isAttackViewBlockedToPosition( const Object *obj, const Coord3D *pos )
+{
+	const AIUpdateInterface *ai = obj->getAI();
+	Bool onGround = true;
+	if (ai) {
+		onGround = ai->isDoingGroundMovement();
+	}
+	if( obj->isKindOf(KINDOF_IMMOBILE) ) {
+		onGround = true;
+	}
+	// brutal special case for stinger soldiers, who
+	// generally don't have locomotors, but are still on the ground.
+	if (obj->isKindOf(KINDOF_SPAWNS_ARE_THE_WEAPONS))
+	{
+		onGround = true;
+	}
+	const Object *containedBy = obj->getContainedBy();
+	if( containedBy && (containedBy->isKindOf( KINDOF_STRUCTURE ) || !containedBy->isAirborneTarget()) )
+	{
+		//Contained objects on the ground -- garrisoned buildings for example!
+		onGround = true;
+	}
+
+	if (onGround)
+	{
+		return TheAI->pathfinder()->isAttackViewBlockedByObstacle(obj, *obj->getPosition(), nullptr, *pos);
+	}
+	return false;
+}
+
 Bool outOfWeaponRangePosition( State *thisState, void* userData )
 {
 	Object *obj = thisState->getMachineOwner();
@@ -1225,33 +1258,7 @@ Bool outOfWeaponRangePosition( State *thisState, void* userData )
 
 	if (weapon && pos)
 	{
-		AIUpdateInterface *ai = obj->getAI();
-		Bool onGround = true;
-		if (ai) {
-			onGround = ai->isDoingGroundMovement();
-		}
-		if( obj->isKindOf(KINDOF_IMMOBILE) ) {
-			onGround = true;
-		}
-		// brutal special case for stinger soldiers, who
-		// generally don't have locomotors, but are still on the ground.
-		if (obj->isKindOf(KINDOF_SPAWNS_ARE_THE_WEAPONS))
-		{
-			onGround = true;
-		}
-		Object *containedBy = obj->getContainedBy();
-		if( containedBy && (containedBy->isKindOf( KINDOF_STRUCTURE ) || !containedBy->isAirborneTarget()) )
-		{
-			//Contained objects on the ground -- garrisoned buildings for example!
-			onGround = true;
-		}
-
-		Bool viewBlocked = false;
-		if (onGround)
-		{
-			viewBlocked = TheAI->pathfinder()->isAttackViewBlockedByObstacle(obj, *obj->getPosition(), nullptr, *pos);
-		}
-		if (viewBlocked)
+		if (isAttackViewBlockedToPosition(obj, pos))
 		{
 			return true;
 		}

@@ -1137,6 +1137,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 		GUICommandType commandType = command->getCommandType();
 		if( commandType != GUI_COMMAND_SELL &&
 				commandType != GUI_COMMAND_EVACUATE &&
+				commandType != GUI_COMMAND_EVACUATE_TO_WORK &&
 				commandType != GUI_COMMAND_AUTO_FILL &&
 				commandType != GUI_COMMAND_EXIT_CONTAINER &&
 				commandType != GUI_COMMAND_BEACON_DELETE &&
@@ -1444,6 +1445,7 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 		}
 
 		case GUI_COMMAND_EVACUATE:
+		case GUI_COMMAND_EVACUATE_TO_WORK:
 		{
 
 			// if we have no contained objects we can't evacuate anything
