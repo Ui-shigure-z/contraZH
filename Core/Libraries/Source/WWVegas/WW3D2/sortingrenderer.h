@@ -23,6 +23,7 @@
 class SortingNodeStruct;
 class SphereClass;
 class ShaderClass;
+class Vector3;
 struct VertexFormatXYZNDUV2;
 
 // Shades particle sprites in a pixel shader, around each of their draws.
@@ -47,6 +48,9 @@ public:
 	// The data is whatever the inserter handed over with the effects, opaque to the renderer.
 	virtual bool Begin(const ShaderClass &shader, unsigned effects, const void *effectData) = 0;
 	virtual void End() = 0;
+
+	// Whether EFFECT_DISRUPT draws at all. Where it cannot, a shape that would only disrupt draws its own art instead.
+	virtual bool Can_Disrupt() = 0;
 };
 
 class SortingRendererClass
@@ -79,6 +83,11 @@ public:
 	// Triangles inserted with EFFECT_DISRUPT wait here and draw through the hook alone. Flush drops any left undrawn.
 	static bool Has_Disruption();
 	static void Flush_Disruption();
+	static bool Can_Disrupt();
+
+	// For the hook, while a disruption node draws: where a draw with world-space vertices sits, or null to read the world transform, and how much of its mask it keeps.
+	static const Vector3 *Peek_Disruption_Center();
+	static float Get_Disruption_Strength();
 
 	static void SetMinVertexBufferSize( unsigned val );
 
@@ -91,5 +100,5 @@ public:
 	// Triangles inserted while effects are set are drawn through the hook with those effects.
 	static void Set_Soft_Particle_Hook(SoftParticleHookClass *hook);
 	static SoftParticleHookClass *Peek_Soft_Particle_Hook();
-	static void Set_Insert_Effects(unsigned effects, const void *effectData);
+	static void Set_Insert_Effects(unsigned effects, const void *effectData, float disruptionStrength = 1.0f);
 };

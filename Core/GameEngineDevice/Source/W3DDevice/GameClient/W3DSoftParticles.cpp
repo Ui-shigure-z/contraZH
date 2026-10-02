@@ -712,6 +712,11 @@ Bool W3DSoftParticles::bindHaze(const ShaderClass &shader, const FlameShaderTuni
 #endif
 }
 
+bool W3DSoftParticles::Can_Disrupt()
+{
+	return disruptionEnabled() != FALSE;
+}
+
 Bool W3DSoftParticles::beginDisruption()
 {
 	m_disrupting = disruptionEnabled() && W3DShaderManager::copyRenderTarget(m_sceneCopy);
@@ -723,7 +728,7 @@ void W3DSoftParticles::endDisruption()
 	m_disrupting = FALSE;
 }
 
-// Blend, alpha test and fog are overridden as the haze does, and End puts them back the same way.
+// Blend, alpha test, depth write and fog are overridden as the haze does, and End puts them back the same way.
 Bool W3DSoftParticles::bindDisruption(const ShaderClass &shader, const DisruptionShaderInfo &info)
 {
 #if defined(BUILD_WITH_D3D9)
@@ -742,7 +747,16 @@ Bool W3DSoftParticles::bindDisruption(const ShaderClass &shader, const Disruptio
 	device->GetTransform(D3DTS_WORLD, &world);
 	device->GetTransform(D3DTS_VIEW, &view);
 	const D3DMATRIX worldView = world * view;
-	const Vector4 center(worldView.m[3][0], worldView.m[3][1], worldView.m[3][2], 0.0f);
+	Vector4 center(worldView.m[3][0], worldView.m[3][1], worldView.m[3][2], 0.0f);
+
+	// A draw with world-space vertices has no transform to read, so the sorter says where it sits.
+	const Vector3 *placed = SortingRendererClass::Peek_Disruption_Center();
+	if (placed != nullptr)
+	{
+		center.X = placed->X * view.m[0][0] + placed->Y * view.m[1][0] + placed->Z * view.m[2][0] + view.m[3][0];
+		center.Y = placed->X * view.m[0][1] + placed->Y * view.m[1][1] + placed->Z * view.m[2][1] + view.m[3][1];
+		center.Z = placed->X * view.m[0][2] + placed->Y * view.m[1][2] + placed->Z * view.m[2][2] + view.m[3][2];
+	}
 
 	DX8Wrapper::Set_Texture(SOFT_STAGE, nullptr);
 	DX8Wrapper::Set_Texture(NOISE_STAGE, nullptr);
@@ -760,7 +774,7 @@ Bool W3DSoftParticles::bindDisruption(const ShaderClass &shader, const Disruptio
 	const Vector4 rings(twoPi / ringSize, (Real)fmod(seconds * tuning.ringSpeed / ringSize, 1.0) * twoPi, tuning.ringStrength, tuning.chromaSpread);
 
 	const Bool addsColor = shader.Get_Src_Blend_Func() == ShaderClass::SRCBLEND_ONE;
-	const Vector4 params(0.0f, addsColor ? 1.0f : 0.0f, 0.0f, 0.0f);
+	const Vector4 params(SortingRendererClass::Get_Disruption_Strength(), addsColor ? 1.0f : 0.0f, 0.0f, 0.0f);
 
 	const Vector4 wobble(Noise_Scale(tuning.wobbleSize), Noise_Rise(tuning.wobbleSpeed), tuning.wobble, tuning.mask);
 
@@ -798,6 +812,7 @@ Bool W3DSoftParticles::bindDisruption(const ShaderClass &shader, const Disruptio
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE, FALSE);
+	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, FALSE);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE, FALSE);
 	Bind_Camera_Position();
 	DX8Wrapper::Set_Pixel_Shader(m_disruptionShaders[info.shape]);

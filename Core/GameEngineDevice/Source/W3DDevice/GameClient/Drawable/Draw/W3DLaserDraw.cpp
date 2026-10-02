@@ -458,8 +458,8 @@ W3DLaserDraw::W3DLaserDraw( Thing *thing, const ModuleData* moduleData ) :
 				// set the correct position
 				line->Set_Visible( 0 );
 
-				// a beam that only disrupts keeps its lines for their bookkeeping and never shows them
-				if( data->m_disruption.hidesArt() )
+				// a beam that only disrupts keeps its lines for their bookkeeping and never shows them, unless nothing would disrupt
+				if( data->m_disruption.hidesArt() && m_disruptionLine && SortingRendererClass::Can_Disrupt() )
 				{
 					line->Set_Hidden( 1 );
 				}

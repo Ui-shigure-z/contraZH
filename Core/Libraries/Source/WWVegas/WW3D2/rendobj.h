@@ -447,7 +447,7 @@ public:
  	void							Set_ObjectColor(unsigned int color) { ObjectColor=color;}	//the color that was used to modify the asset for player team color (for Generals). -MW
 	unsigned int					Get_ObjectColor() const { return ObjectColor; };
 
-	// A sorted mesh with disruption data also draws through the soft particle hook's disruption pass, and when only that, not as itself.
+	// A sorted mesh with disruption data also draws through the soft particle hook's disruption pass, and when only that, not as itself while that pass can draw.
 	void							Set_Disruption(const void *data, bool only) { DisruptionData=data; DisruptionOnly=only; }
 	const void *					Peek_Disruption() const { return DisruptionData; }
 	bool							Is_Disruption_Only() const { return DisruptionOnly; }

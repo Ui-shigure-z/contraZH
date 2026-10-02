@@ -68,6 +68,7 @@ public:
 	/// The effect data is the flame's ParticleSystemTemplate, with EFFECT_BEAM the beam's BeamShaderTuning or with EFFECT_DISRUPT the draw's DisruptionShaderInfo, and null takes GameData.ini's.
 	virtual bool Begin(const ShaderClass &shader, unsigned effects, const void *effectData) override;
 	virtual void End() override;
+	virtual bool Can_Disrupt() override;
 
 	void ReleaseResources();	///< drops the shaders and textures before a device reset; the next draw makes them again
 

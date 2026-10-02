@@ -383,6 +383,15 @@ unsigned W3DParticleSystemManager::systemEffects(ParticleSystem &system, DrawPas
 	return 0;
 }
 
+// The pass takes blended sprites alone, and only where the disruption can draw at all.
+Bool W3DParticleSystemManager::disrupts(ParticleSystem &system)
+{
+	const Bool conformsToTerrain = !system.shouldBillboard() && system.getVolumeParticleDepth() == 0 && system.shouldConformToTerrain();
+	const Bool volume = system.isUsingVolumeParticles() && system.getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH;
+	return system.isUsingParticles() && !conformsToTerrain && !volume && systemEffects(system, DRAW_DISRUPT) != 0 &&
+		TheW3DSoftParticles->disruptionEnabled();
+}
+
 void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass)
 {
 	const Bool drawSmudge = TheSmudgeManager && TheSmudgeManager->getHardwareSupport() && TheGlobalData->m_useHeatEffects;
@@ -402,9 +411,9 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			continue;
 		}
 
-		// a system that only disrupts has no art for the other passes
+		// a system that only disrupts has no art for the other passes, unless the disruption pass leaves it out
 		const DisruptionShaderInfo &disruption = sys->getTemplate()->getDisruption();
-		if (pass != DRAW_DISRUPT && disruption.hidesArt())
+		if (pass != DRAW_DISRUPT && disruption.hidesArt() && disrupts(*sys))
 		{
 			continue;
 		}
@@ -491,11 +500,13 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		else if (!useTerrainConformingParticles &&
 			!(sys->isUsingVolumeParticles() && sys->getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH))
 		{
-			if ((effects & SoftParticleHookClass::EFFECT_CRYO) != 0)
+			// the disruption's mask is as large as the art the main pass draws
+			const unsigned artEffects = (pass == DRAW_DISRUPT) ? systemEffects(*sys, DRAW_MAIN) : effects;
+			if ((artEffects & SoftParticleHookClass::EFFECT_CRYO) != 0)
 			{
 				sizeScale = max(sys->getTemplate()->getCryoParticleScale(), 0.0f);
 			}
-			else if ((effects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
+			else if ((artEffects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
 			{
 				sizeScale = max(sys->getTemplate()->getElectricParticleScale(), 0.0f);
 			}

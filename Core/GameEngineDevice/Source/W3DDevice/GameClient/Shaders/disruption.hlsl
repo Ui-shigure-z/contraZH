@@ -21,7 +21,7 @@ float4 ClipY     : register(c1);
 float4 ClipW     : register(c2);
 float4 ScreenMap : register(c3);   // xy scale and zw offset from clip space to scene uv
 float4 Rings     : register(c4);   // x = radians per world unit, y = phase so far, z = push and w = colour spread in world units
-float4 Params    : register(c5);   // y = 1 when the shape adds its colour, which ignores alpha
+float4 Params    : register(c5);   // x = how much of its mask the draw keeps, y = 1 when the shape adds its colour, which ignores alpha
 float4 Wobble    : register(c6);   // x = world to noise scale, y = noise crossed so far, z = push in world units, w = mask gain
 float4 WorldX    : register(c7);   // camera space to world x, y and z, one row each
 float4 WorldY    : register(c8);
@@ -77,7 +77,7 @@ float4 main(PsIn input) : COLOR
     push.x += clamp(jolt * jolt * jolt * 4.0f, -1.0f, 1.0f) * Glitch.w;
 
     float4 shape = tex2D(ShapeTexture, input.TexCoord) * input.Diffuse;
-    float mask = saturate(max(shape.r, max(shape.g, shape.b)) * lerp(shape.a, 1.0f, Params.y) * Wobble.w);
+    float mask = saturate(max(shape.r, max(shape.g, shape.b)) * lerp(shape.a, 1.0f, Params.y) * Wobble.w) * Params.x;
 
     float2 unit = Bend.xy * (mask / w);
     float2 bend = push * unit;

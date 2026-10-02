@@ -696,12 +696,15 @@ With `Only`, the whole model goes undrawn.
 disc's at its middle. On a beam they run along its length and push across it.
 * Rings keep time with the game clock, so an effect that is replaced every second ripples without
 a jump.
-* A beam needs a `Texture`, which masks its strip. With `Only` the beam's own lines stay hidden.
+* A beam needs a `Texture`, which masks its strip. Without one it draws as a plain beam, even with
+`Only`.
 * On a particle system, `ALPHA_TEST` and `MULTIPLY` sprites, streaks, volume particles and
-terrain-conforming particles take no disruption.
+terrain-conforming particles take no disruption, and draw their own art even with `Only`.
+* The bend follows the mask at the size the sprite draws, so `CryoParticleScale` and
+`ElectricParticleScale` scale it too. On a model it fades with the object's opacity.
 * An `FXList` disc lies flat and ignores depth, like a shockwave. At most 32 show at once.
-* With `Heat Effects` off or on the Direct3D 8 build, `Yes` draws the plain art and `Only` draws
-nothing.
+* With `Heat Effects` off or on the Direct3D 8 build, `Yes` and `Only` both draw the plain art, so
+the effect never vanishes.
 * Launch with `CONTRA_DISRUPTSHADER=0` to turn disruption off.
 
 ## Ambient occlusion

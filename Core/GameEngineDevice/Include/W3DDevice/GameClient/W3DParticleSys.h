@@ -61,6 +61,7 @@ private:
 
 	void drawSystems(RenderInfoClass &rinfo, DrawPass pass);	///< draws m_drawOrder
 	unsigned systemEffects(ParticleSystem &system, DrawPass pass);
+	Bool disrupts(ParticleSystem &system);	///< whether the disruption pass draws the system
 	Bool finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData);
 	void initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData);
 	void flushParticleBatch(RenderInfoClass& rinfo, UnsignedInt& pointCount);
