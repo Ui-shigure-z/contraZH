@@ -156,6 +156,11 @@ Bool WBMapIni_IsPhantomTemplate(const AsciiString &name)
 // their reset would either do nothing or destroy non-override state.
 static void unloadMapIniOverrides(void)
 {
+#ifdef RTS_HAS_QT
+	// Tuning can change these with no map.ini loaded, so they go back ahead of the check below.
+	WBQtWaterTuning_RestoreGameData();
+#endif
+
 	if (!g_mapiniloaded)
 		return;
 
@@ -939,6 +944,9 @@ static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, CStrin
 			{
 				g_mapIniPhantomTemplates.insert(scan.newNames[i]);
 			}
+#ifdef RTS_HAS_QT
+			WBQtWaterTuning_ApplyGameData(iniPath.str());
+#endif
 		}
 
 		if (mode == MAPINI_INSTALL) {

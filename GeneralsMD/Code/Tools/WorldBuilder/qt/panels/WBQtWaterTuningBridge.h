@@ -1,9 +1,9 @@
 // WBQtWaterTuningBridge.h -- opaque facade for the Qt Water tuning window (File > Map.ini >
 // Water tuning).
 //
-// The MFC side owns the key table and writes the map's live WaterTransparency override, so the
-// 3D view shows each change. The Qt side owns the rows and the WaterTransparency block of the
-// map's map.ini.
+// The MFC side owns the key table and writes each change into the live WaterTransparency override
+// or GameData, so the 3D view shows it. The Qt side owns the rows and the WaterTransparency and
+// GameData blocks of the map's map.ini.
 #ifndef WB_QT_WATER_TUNING_BRIDGE_H
 #define WB_QT_WATER_TUNING_BRIDGE_H
 
@@ -20,7 +20,9 @@ enum
 
 typedef struct WBQtWaterTuningDesc
 {
-	const char *key;	// INI key in the WaterTransparency block
+	const char *key;	// INI key in its block
+	const char *block;	// map.ini block the key is saved in, WaterTransparency or GameData
+	const char *group;	// heading over the key's rows, NULL on the water tab
 	const char *help;	// tooltip
 	int kind;			// WBQT_WATER_*
 	float lo;
@@ -35,12 +37,20 @@ int  WBQtWaterTuning_Count(void);
 int  WBQtWaterTuning_GetDesc(int i, WBQtWaterTuningDesc *out);
 
 // A float or bool key uses v[0]. A colour uses v[0..2] as 0 to 255, negative when unset.
-// GetBase reads the Water.ini value under any map override.
+// GetBase reads the Water.ini or GameData.ini value under any map override.
 void WBQtWaterTuning_GetBase(int i, float v[3]);
 void WBQtWaterTuning_SetLive(int i, const float v[3]);
 
 // The window saved map.ini itself, so the auto-reload watch must not treat it as an outside edit.
 void WBQtWaterTuning_NoteSaved(void);
+
+// ====== MFC only (implemented in src/WBQtWaterTuningBridge.cpp) ======
+
+// WorldBuilder's map.ini loader skips GameData blocks, so the tuned GameData keys are applied here.
+void WBQtWaterTuning_ApplyGameData(const char *iniPath);
+
+// Returns the tuned GameData keys to their GameData.ini values.
+void WBQtWaterTuning_RestoreGameData(void);
 
 // ====== MFC -> Qt (implemented in qt/panels/WBQtWaterTuningPanel.cpp) ======
 

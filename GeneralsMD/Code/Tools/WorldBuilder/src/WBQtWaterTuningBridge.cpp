@@ -1,13 +1,14 @@
 // WBQtWaterTuningBridge.cpp -- MFC side of the Qt Water tuning window.
 //
-// Holds the table of WaterTransparency keys the window shows, and writes each change into the
-// map's override so the 3D view draws it. Whole body behind RTS_HAS_QT; empty TU when Qt is OFF.
+// Holds the tables of WaterTransparency and GameData keys the window shows, and writes each change
+// into the live data so the 3D view draws it. Whole body behind RTS_HAS_QT; empty TU when Qt is OFF.
 
 #include "StdAfx.h"
 
 #ifdef RTS_HAS_QT
 
 #include "Lib/BaseType.h"
+#include "Common/GlobalData.h"
 #include "GameClient/Water.h"
 #include "W3DDevice/GameClient/BaseHeightMap.h"
 #include "WorldBuilderDoc.h"
@@ -110,6 +111,172 @@ namespace
 
 	const int s_keyCount = sizeof(s_keys) / sizeof(s_keys[0]);
 
+	struct RenderKey
+	{
+		const char *key;
+		const char *group;
+		const char *help;
+		int kind;
+		float lo;
+		float hi;
+		float step;
+		Real GlobalData::*real;
+		Int GlobalData::*integer;
+		RGBColor GlobalData::*color;
+	};
+
+#define RENDER_REAL(group, key, member, lo, hi, step, help) \
+	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, &GlobalData::member, NULL, NULL }
+#define RENDER_INT(group, key, member, lo, hi, step, help) \
+	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, NULL, &GlobalData::member, NULL }
+#define RENDER_COLOR(group, key, member, help) \
+	{ key, group, help, WBQT_WATER_COLOR, 0.0f, 255.0f, 1.0f, NULL, NULL, &GlobalData::member }
+
+	// The GameData keys of the FX tuner's Glint, Ground, Blend and Sky tabs in its order, ranges and steps.
+	const RenderKey s_renderKeys[] =
+	{
+		RENDER_REAL("Glint", "TerrainGlintIntensity", m_terrainGlintIntensity, 0.0f, 2.0f, 0.01f,
+			"How bright the sun's glint on the ground is. 0 turns it off."),
+		RENDER_REAL("Glint", "TerrainGlintGloss", m_terrainGlintGloss, 1.0f, 128.0f, 0.5f,
+			"How tight the glint is. Higher gives a smaller, sharper glint, and 1 spreads it over all ground facing the sun."),
+		RENDER_REAL("Glint", "TerrainGlintAlbedo", m_terrainGlintAlbedo, 0.0f, 1.0f, 0.05f,
+			"How far the glint follows the ground's brightness. 0 glints dark and bright ground alike, and 1 leaves dark ground almost dull."),
+
+		RENDER_REAL("Ground", "GroundNoiseStrength", m_groundNoiseStrength, 0.0f, 0.5f, 0.005f,
+			"How far the ground's brightness strays from its average. 0 gives an even tone."),
+		RENDER_REAL("Ground", "GroundNoiseSize", m_groundNoiseSize, 100.0f, 5000.0f, 10.0f,
+			"World units across the broadest patches."),
+		RENDER_REAL("Ground", "GroundNoiseTint", m_groundNoiseTint, 0.0f, 0.2f, 0.005f,
+			"How far patches lean warm or cool. 0 keeps them grey."),
+		RENDER_REAL("Ground", "GroundNoiseBrightness", m_groundNoiseBrightness, 0.5f, 1.3f, 0.01f,
+			"The ground's average brightness under the noise."),
+
+		RENDER_REAL("Blend", "TerrainHeightBlendStrength", m_terrainHeightBlendStrength, 0.0f, 6.0f, 0.05f,
+			"How far the taller texture pushes into the other's side of a blend. 0 keeps the edge where the soft fade would put it."),
+		RENDER_REAL("Blend", "TerrainHeightBlendSharpness", m_terrainHeightBlendSharpness, 1.0f, 12.0f, 0.1f,
+			"How narrow the blend's edge is. 1 is as wide as the soft fade."),
+		RENDER_INT("Blend", "TerrainAtlasBorder", m_terrainAtlasBorder, 4.0f, 32.0f, 4.0f,
+			"Texels copied around each texture in the terrain atlas, in steps of 4. Wider keeps high anisotropy clean but fits fewer textures."),
+
+		RENDER_REAL("Sky", "SkyCloudSize", m_skyCloudSize, 150.0f, 3000.0f, 10.0f,
+			"World units across a typical cloud."),
+		RENDER_REAL("Sky", "SkyCloudCoverage", m_skyCloudCoverage, 0.0f, 1.0f, 0.01f,
+			"Share of the ground in shadow. 0 is a clear sky, 1 overcast."),
+		RENDER_REAL("Sky", "SkyCloudSoftness", m_skyCloudSoftness, 0.02f, 1.0f, 0.01f,
+			"How wide the fade at a cloud's edge is. Low gives crisp edges."),
+		RENDER_REAL("Sky", "SkyCloudShadowStrength", m_skyCloudShadowStrength, 0.0f, 1.0f, 0.01f,
+			"How dark a thick cloud's shadow is. 0 for none."),
+		RENDER_COLOR("Sky", "SkyCloudShadowTint", m_skyCloudShadowTint,
+			"The shadow's hue. White gives neutral grey. Unticked leaves the key out, so GameData.ini decides."),
+		RENDER_REAL("Sky", "SkyCloudWindSpeed", m_skyCloudWindSpeed, 0.0f, 100.0f, 0.5f,
+			"World units a second the clouds drift. 0 holds them still."),
+		RENDER_REAL("Sky", "SkyCloudWindAngle", m_skyCloudWindAngle, 0.0f, 360.0f, 1.0f,
+			"Degrees the clouds drift towards, 0 along the map's x."),
+		RENDER_REAL("Sky", "SkyCloudChurn", m_skyCloudChurn, 0.0f, 1.0f, 0.01f,
+			"How fast shapes change as they drift. 0 slides them as one sheet."),
+		RENDER_REAL("Sky", "SkyCloudBillow", m_skyCloudBillow, 0.0f, 1.5f, 0.01f,
+			"How far shapes bulge and curl. High values twist them into streaks."),
+		RENDER_REAL("Sky", "SkyCloudDetail", m_skyCloudDetail, 0.0f, 1.0f, 0.01f,
+			"Ragged detail at the edges. 0 gives smooth blobs."),
+	};
+
+	const int s_renderKeyCount = sizeof(s_renderKeys) / sizeof(s_renderKeys[0]);
+
+	// The GameData.ini values, taken before the first write. Nothing else in WorldBuilder changes these keys.
+	float s_renderBase[s_renderKeyCount][3];
+	Bool s_renderBaseTaken = FALSE;
+
+	void readRenderKey(const RenderKey &k, const GlobalData *data, float v[3])
+	{
+		v[0] = v[1] = v[2] = 0.0f;
+		if (k.color != NULL)
+		{
+			const RGBColor &c = data->*(k.color);
+			v[0] = c.red * 255.0f;
+			v[1] = c.green * 255.0f;
+			v[2] = c.blue * 255.0f;
+		}
+		else if (k.integer != NULL)
+		{
+			v[0] = (float)(data->*(k.integer));
+		}
+		else
+		{
+			v[0] = data->*(k.real);
+		}
+	}
+
+	void writeRenderKey(const RenderKey &k, GlobalData *data, const float v[3])
+	{
+		if (k.color != NULL)
+		{
+			RGBColor &c = data->*(k.color);
+			c.red = v[0] / 255.0f;
+			c.green = v[1] / 255.0f;
+			c.blue = v[2] / 255.0f;
+		}
+		else if (k.integer != NULL)
+		{
+			data->*(k.integer) = (Int)(v[0] + 0.5f);
+		}
+		else
+		{
+			data->*(k.real) = v[0];
+		}
+	}
+
+	Bool takeRenderBase()
+	{
+		if (TheWritableGlobalData == NULL)
+		{
+			return FALSE;
+		}
+		if (!s_renderBaseTaken)
+		{
+			for (int i = 0; i < s_renderKeyCount; ++i)
+			{
+				readRenderKey(s_renderKeys[i], TheWritableGlobalData, s_renderBase[i]);
+			}
+			s_renderBaseTaken = TRUE;
+		}
+		return TRUE;
+	}
+
+	// Steps past the blanks and the equals sign between a key and its value.
+	const char *valueText(const char *rest)
+	{
+		if (rest == NULL)
+		{
+			return "";
+		}
+		while (*rest == ' ' || *rest == '\t' || *rest == '=')
+		{
+			++rest;
+		}
+		return rest;
+	}
+
+	Bool parseRenderValue(const RenderKey &k, const char *text, float v[3])
+	{
+		if (k.color != NULL)
+		{
+			int r = 0;
+			int g = 0;
+			int b = 0;
+			if (sscanf(text, "R:%d G:%d B:%d", &r, &g, &b) != 3)
+			{
+				return FALSE;
+			}
+			v[0] = (float)r;
+			v[1] = (float)g;
+			v[2] = (float)b;
+			return TRUE;
+		}
+		char *end = NULL;
+		v[0] = (float)strtod(text, &end);
+		return end != text;
+	}
+
 	void readKey(const WaterKey &k, const WaterTransparencySetting *wt, float v[3])
 	{
 		v[0] = v[1] = v[2] = 0.0f;
@@ -180,17 +347,34 @@ namespace
 
 extern "C" int WBQtWaterTuning_Count(void)
 {
-	return s_keyCount;
+	return s_keyCount + s_renderKeyCount;
 }
 
+// The water keys come first, then the GameData keys.
 extern "C" int WBQtWaterTuning_GetDesc(int i, WBQtWaterTuningDesc *out)
 {
-	if (i < 0 || i >= s_keyCount || out == NULL)
+	if (i < 0 || i >= s_keyCount + s_renderKeyCount || out == NULL)
 	{
 		return 0;
 	}
+	if (i >= s_keyCount)
+	{
+		const RenderKey &r = s_renderKeys[i - s_keyCount];
+		out->key = r.key;
+		out->block = "GameData";
+		out->group = r.group;
+		out->help = r.help;
+		out->kind = r.kind;
+		out->lo = r.lo;
+		out->hi = r.hi;
+		out->step = r.step;
+		out->advanced = 0;
+		return 1;
+	}
 	const WaterKey &k = s_keys[i];
 	out->key = k.key;
+	out->block = "WaterTransparency";
+	out->group = NULL;
 	out->help = k.help;
 	out->kind = k.kind;
 	out->lo = k.lo;
@@ -207,6 +391,14 @@ extern "C" void WBQtWaterTuning_GetBase(int i, float v[3])
 		return;
 	}
 	v[0] = v[1] = v[2] = 0.0f;
+	if (i >= s_keyCount && i < s_keyCount + s_renderKeyCount)
+	{
+		if (takeRenderBase())
+		{
+			memcpy(v, s_renderBase[i - s_keyCount], sizeof(s_renderBase[0]));
+		}
+		return;
+	}
 	const WaterTransparencySetting *base = TheWaterTransparency.getNonOverloadedPointer();
 	if (i < 0 || i >= s_keyCount || base == NULL)
 	{
@@ -217,8 +409,23 @@ extern "C" void WBQtWaterTuning_GetBase(int i, float v[3])
 
 extern "C" void WBQtWaterTuning_SetLive(int i, const float v[3])
 {
-	if (i < 0 || i >= s_keyCount || v == NULL)
+	if (i < 0 || i >= s_keyCount + s_renderKeyCount || v == NULL)
 	{
+		return;
+	}
+	if (i >= s_keyCount)
+	{
+		if (!takeRenderBase())
+		{
+			return;
+		}
+		writeRenderKey(s_renderKeys[i - s_keyCount], TheWritableGlobalData, v);
+
+		WbView3d *view = CWorldBuilderDoc::GetActive3DView();
+		if (view != NULL)
+		{
+			view->Invalidate(false);
+		}
 		return;
 	}
 	const WaterKey &k = s_keys[i];
@@ -256,6 +463,89 @@ extern "C" void WBQtWaterTuning_NoteSaved(void)
 	{
 		doc->noteMapIniSaved();
 	}
+}
+
+extern "C" void WBQtWaterTuning_RestoreGameData(void)
+{
+	if (!s_renderBaseTaken || TheWritableGlobalData == NULL)
+	{
+		return;
+	}
+	for (int i = 0; i < s_renderKeyCount; ++i)
+	{
+		writeRenderKey(s_renderKeys[i], TheWritableGlobalData, s_renderBase[i]);
+	}
+}
+
+extern "C" void WBQtWaterTuning_ApplyGameData(const char *iniPath)
+{
+	WBQtWaterTuning_RestoreGameData();
+	if (iniPath == NULL || !takeRenderBase())
+	{
+		return;
+	}
+	FILE *fp = fopen(iniPath, "rt");
+	if (fp == NULL)
+	{
+		return;
+	}
+
+	char line[1024];
+	Bool inGameData = FALSE;
+	Int depth = 0;
+	while (fgets(line, sizeof(line), fp) != NULL)
+	{
+		char *comment = strchr(line, ';');
+		if (comment != NULL)
+		{
+			*comment = 0;
+		}
+		const char *key = strtok(line, " \t\r\n=");
+		if (key == NULL)
+		{
+			continue;
+		}
+		const char *value = valueText(strtok(NULL, "\r\n"));
+
+		if (!inGameData)
+		{
+			inGameData = strcmp(key, "GameData") == 0;
+			depth = 0;
+			continue;
+		}
+		if (strcmp(key, "End") == 0)
+		{
+			if (depth == 0)
+			{
+				inGameData = FALSE;
+			}
+			else
+			{
+				--depth;
+			}
+			continue;
+		}
+		// A key without a value opens a nested block, which has an End of its own.
+		if (*value == 0)
+		{
+			++depth;
+			continue;
+		}
+		if (depth > 0)
+		{
+			continue;
+		}
+		for (int i = 0; i < s_renderKeyCount; ++i)
+		{
+			float v[3];
+			if (strcmp(key, s_renderKeys[i].key) == 0 && parseRenderValue(s_renderKeys[i], value, v))
+			{
+				writeRenderKey(s_renderKeys[i], TheWritableGlobalData, v);
+				break;
+			}
+		}
+	}
+	fclose(fp);
 }
 
 #endif // RTS_HAS_QT

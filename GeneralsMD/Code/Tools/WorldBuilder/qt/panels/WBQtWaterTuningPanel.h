@@ -1,8 +1,9 @@
 // WBQtWaterTuningPanel.h -- the modeless Water tuning window (File > Map.ini > Water tuning).
 //
-// One row per WaterTransparency key, taken from the bridge's table. A change shows in the 3D
-// view at once and is saved to the WaterTransparency block of the map's map.ini. Only keys the
-// map overrides are written; the rest keep following Water.ini.
+// One row per key of the bridge's table. The WaterTransparency keys sit on the Water tab and the
+// GameData terrain and sky keys on the other. A change shows in the 3D view at once and is saved to
+// the key's block of the map's map.ini. Only keys the map overrides are written; the rest keep
+// following Water.ini and GameData.ini.
 #ifndef WB_QT_WATER_TUNING_PANEL_H
 #define WB_QT_WATER_TUNING_PANEL_H
 
@@ -12,6 +13,7 @@
 #include <QWidget>
 
 class QCheckBox;
+class QGridLayout;
 class QHideEvent;
 class QLabel;
 class QTimer;
@@ -61,6 +63,7 @@ private:
 		int index;				// the key's index in the bridge table
 		int kind;				// WBQT_WATER_*
 		QString key;
+		QString block;			// map.ini block the key is saved in
 		float lo;				// the - and + buttons stop at lo and hi
 		float hi;
 		float step;
@@ -77,7 +80,7 @@ private:
 	};
 
 	void buildRows();
-	void addStepper(Row &row, int rowIndex, int channel, int gridRow, const QString &tip);
+	void addStepper(Row &row, int rowIndex, int channel, QGridLayout *grid, int gridRow, const QString &tip);
 	void showRow(int r);
 	void markChanged(int r);
 	void resetRow(int r);
