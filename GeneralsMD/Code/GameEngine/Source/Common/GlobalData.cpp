@@ -203,6 +203,27 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+// Every storm setting as a GameData key, once per storm type.
+#define STORM_TUNING_FIELDS(prefix, stormType) \
+	{ prefix "Radius",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].radius ) }, \
+	{ prefix "Height",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].height ) }, \
+	{ prefix "EdgeFade",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].edgeFade ) }, \
+	{ prefix "FadeTime",	INI::parseDurationReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].fadeFrames ) }, \
+	{ prefix "HazeColor",	INI::parseRGBColor,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeColor ) }, \
+	{ prefix "HazeDensity",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeDensity ) }, \
+	{ prefix "HazeMaxOpacity",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeMaxOpacity ) }, \
+	{ prefix "HazeNoiseSize",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeNoiseSize ) }, \
+	{ prefix "Gusts",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].gusts ) }, \
+	{ prefix "WindAngle",	INI::parseAngleReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].windAngle ) }, \
+	{ prefix "WindSpeed",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].windSpeed ) }, \
+	{ prefix "FallSpeed",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].fallSpeed ) }, \
+	{ prefix "Turbulence",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].turbulence ) }, \
+	{ prefix "GrainColor",	INI::parseRGBColor,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainColor ) }, \
+	{ prefix "GrainCount",	INI::parseInt,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainCount ) }, \
+	{ prefix "GrainSize",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainSize ) }, \
+	{ prefix "GrainStreak",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainStreak ) }, \
+	{ prefix "GrainOpacity",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainOpacity ) },
+
 /*static*/ const FieldParse GlobalData::s_GlobalDataFieldParseTable[] =
 {
 	{ "Windowed",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_windowed ) },
@@ -317,6 +338,8 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "DisruptionChroma",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chroma ) },
 	{ "DisruptionChromaSpread",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chromaSpread ) },
 	{ "DisruptionMask",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.mask ) },
+	STORM_TUNING_FIELDS("SandStorm", StormShaderInfo::TYPE_SAND)
+	STORM_TUNING_FIELDS("SnowStorm", StormShaderInfo::TYPE_SNOW)
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -1065,6 +1088,8 @@ GlobalData::GlobalData()
 	m_disruptionTuning.chroma = 0.5f;
 	m_disruptionTuning.chromaSpread = 0.5f;
 	m_disruptionTuning.mask = 2.0f;
+	m_stormTuning[StormShaderInfo::TYPE_SAND].setTypeDefaults(StormShaderInfo::TYPE_SAND);
+	m_stormTuning[StormShaderInfo::TYPE_SNOW].setTypeDefaults(StormShaderInfo::TYPE_SNOW);
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -1702,6 +1727,10 @@ void GlobalData::reset()
 
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 
+#define STORM_TUNING_KEYS(prefix) \
+	prefix "Radius", prefix "Height", prefix "EdgeFade", prefix "FadeTime", prefix "HazeColor", prefix "HazeDensity", prefix "HazeMaxOpacity", prefix "HazeNoiseSize", prefix "Gusts", \
+	prefix "WindAngle", prefix "WindSpeed", prefix "FallSpeed", prefix "Turbulence", prefix "GrainColor", prefix "GrainCount", prefix "GrainSize", prefix "GrainStreak", prefix "GrainOpacity"
+
 // Keys the renderer reads every frame, so a new value shows at once. The rest are read at load.
 static const char *const LiveGameDataKeys[] =
 {
@@ -1722,6 +1751,7 @@ static const char *const LiveGameDataKeys[] =
 	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
 	"DisruptionRingStrength", "DisruptionRingSize", "DisruptionRingSpeed", "DisruptionWobble", "DisruptionWobbleSize", "DisruptionWobbleSpeed",
 	"DisruptionGlitch", "DisruptionGlitchSize", "DisruptionGlitchRate", "DisruptionChroma", "DisruptionChromaSpread", "DisruptionMask",
+	STORM_TUNING_KEYS("SandStorm"), STORM_TUNING_KEYS("SnowStorm"),
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };

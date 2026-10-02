@@ -281,5 +281,10 @@ rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterri
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderwaterrichpacked.pso    RIVER=0 RICH=1 PACKED=1)
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderriverrich.pso          RIVER=1 RICH=1 PACKED=0)
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_3_0 main shaderriverrichpacked.pso    RIVER=1 RICH=1 PACKED=1)
+# The storm walks a view ray in a loop and reads textures per vertex, which both need shader model 3.
+rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          vs_3_0 mainVS stormhaze.vso              GRAIN=0)
+rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          ps_3_0 mainPS stormhaze.pso              GRAIN=0)
+rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          vs_3_0 mainVS stormgrain.vso             GRAIN=1)
+rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          ps_3_0 mainPS stormgrain.pso             GRAIN=1)
 
 add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})

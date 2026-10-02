@@ -647,6 +647,8 @@ GlobalData::GlobalData()
   m_disruptionTuning.chroma = 0.5f;
   m_disruptionTuning.chromaSpread = 0.5f;
   m_disruptionTuning.mask = 2.0f;
+  m_stormTuning[StormShaderInfo::TYPE_SAND].setTypeDefaults(StormShaderInfo::TYPE_SAND);
+  m_stormTuning[StormShaderInfo::TYPE_SNOW].setTypeDefaults(StormShaderInfo::TYPE_SNOW);
   m_useAmbientOcclusion = TRUE;
   m_useHeightBlend = TRUE;
   m_useHQSky = TRUE;

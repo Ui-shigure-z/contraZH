@@ -230,6 +230,7 @@ set(GAMEENGINE_SRC
     Include/GameClient/ShellMenuScheme.h
     Include/GameClient/Smudge.h
     Include/GameClient/Snow.h
+    Include/GameClient/StormShader.h
     Include/GameClient/Statistics.h
     Include/GameClient/TerrainRoads.h
     Include/GameClient/TerrainVisual.h
@@ -851,6 +852,7 @@ set(GAMEENGINE_SRC
     Source/GameClient/System/DisruptionShader.cpp
     Source/GameClient/System/Image.cpp
     Source/GameClient/System/ParticleSys.cpp
+    Source/GameClient/System/StormShader.cpp
     Source/GameClient/System/RayEffect.cpp
     Source/GameClient/System/Smudge.cpp
     Source/GameClient/Terrain/TerrainRoads.cpp

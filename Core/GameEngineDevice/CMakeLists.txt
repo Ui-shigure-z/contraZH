@@ -27,6 +27,7 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/Module/W3DSupplyDraw.h
     Include/W3DDevice/GameClient/Module/W3DTankDraw.h
     Include/W3DDevice/GameClient/Module/W3DTankTruckDraw.h
+    Include/W3DDevice/GameClient/Module/W3DStormDraw.h
     Include/W3DDevice/GameClient/Module/W3DTracerDraw.h
     Include/W3DDevice/GameClient/Module/W3DTreeDraw.h
     Include/W3DDevice/GameClient/Module/W3DTruckDraw.h
@@ -73,6 +74,7 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/W3DSoftParticles.h
     Include/W3DDevice/GameClient/W3DShockwave.h
     Include/W3DDevice/GameClient/W3DDisruption.h
+    Include/W3DDevice/GameClient/W3DStorm.h
     Include/W3DDevice/GameClient/W3DLaserGlow.h
     Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
     Include/W3DDevice/GameClient/W3DGroundNoise.h
@@ -129,6 +131,7 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/Drawable/Draw/W3DSupplyDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTankDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTankTruckDraw.cpp
+    Source/W3DDevice/GameClient/Drawable/Draw/W3DStormDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTracerDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTreeDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTruckDraw.cpp
@@ -188,6 +191,7 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/W3DSoftParticles.cpp
     Source/W3DDevice/GameClient/W3DShockwave.cpp
     Source/W3DDevice/GameClient/W3DDisruption.cpp
+    Source/W3DDevice/GameClient/W3DStorm.cpp
     Source/W3DDevice/GameClient/W3DLaserGlow.cpp
     Source/W3DDevice/GameClient/W3DAmbientOcclusion.cpp
     Source/W3DDevice/GameClient/W3DGroundNoise.cpp

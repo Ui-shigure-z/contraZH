@@ -9,15 +9,15 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys, and the `SandStorm` and `SnowStorm` keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
 
 ## Shader implementation
 
-An effect picks up its shader in one of four places: the `ParticleSystem` block, the `W3DLaserDraw`
-module, a `W3DModelDraw` module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
+An effect picks up its shader in one of five places: the `ParticleSystem` block, the `W3DLaserDraw`
+module, a `W3DModelDraw` module, a `W3DStormDraw` module, or an `FXList` nugget. Tuning defaults live in `GameData.ini`, and some places can override
 them for one effect. Each shader's own section below lists its keys.
 
 | Effect | Shader | Set in | Turn on with | Own tuning |
@@ -35,6 +35,7 @@ them for one effect. Each shader's own section below lists its keys.
 | Blast ring | [Shockwave](#shockwave-fxlistini) | `FXList` | A `Shockwave` block | The block's keys |
 | Jammer fields and distortion auras | [Disruption](#disruption-shading) | `ParticleSystem`, `W3DModelDraw`, `W3DLaserDraw` | `DisruptionShader = Yes` or `Only` | `Disruption` keys |
 | Distortion disc with no art | [Disruption](#disruption-shading) | `FXList` | A `Disruption` block | The block's keys |
+| Sandstorm or snowstorm | [Storm](#storms) | `FXList`, `W3DStormDraw` | A `Storm` block or the module | `SandStorm` and `SnowStorm` keys |
 | Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
 | Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
 
@@ -114,7 +115,7 @@ No turns that shader off everywhere.
 * `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
 reloads in cheat builds.
 * `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER`, `CONTRA_CRYOSHADER` or
-`CONTRA_DISRUPTSHADER` set to 0 turns that shader off.
+`CONTRA_DISRUPTSHADER` set to 0 turns that shader off. `CONTRA_STORMSHADER=0` turns storms off.
 * `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
 laser shader.
 
@@ -749,6 +750,89 @@ terrain-conforming particles take no disruption, and draw their own art even wit
 * With `Heat Effects` off or on the Direct3D 8 build, `Yes` and `Only` both draw the plain art, so
 the effect never vanishes.
 * Launch with `CONTRA_DISRUPTSHADER=0` to turn disruption off.
+
+## Storms
+
+A sandstorm or snowstorm stands on the ground inside an upright cylinder. The storm is haze that
+fills the cylinder and grains or flakes that blow through it, and the shaders make both, so no
+particle system is involved. The haze follows the terrain, thins out towards the storm's edge and
+top, and bunches into gusts that drift with the wind. Units and buildings inside it fade with
+their depth in the haze. Needs the Direct3D 9 build and a shader model 3 card that reads textures
+in the vertex shader. Older cards draw no storm.
+
+A storm comes from one of two places:
+
+* A `Storm` block in an `FXList` starts a storm where the effect plays. It stays there for its
+`Duration`.
+* A `W3DStormDraw` module on an object keeps a storm around the object. The storm follows the
+object and dies down once the object is gone.
+
+Both take these keys. A key left out takes the value `GameData.ini` holds for the storm's `Type`.
+There each key carries the type's name in front, so `HazeDensity` is `SandStormHazeDensity` for sand
+and `SnowStormHazeDensity` for snow, and the percent keys take a plain number such as
+`SandStormEdgeFade = 35`. The two columns list what `GameData.ini` starts with. A storm reads
+`GameData.ini` every frame, so in a cheat build a saved change shows on a running storm:
+
+| Key | `SAND` | `SNOW` | Meaning |
+|---|---|---|---|
+| `Type` | | | `SAND` or `SNOW`. Default `SAND`. |
+| `Radius` | 300 | 300 | World units from the storm's middle to its edge. |
+| `Height` | 120 | 150 | World units the storm stands above the ground. |
+| `EdgeFade` | 35% | 35% | Share of the radius over which the storm thins out to nothing. |
+| `FadeTime` | 3000 | 3000 | Milliseconds the storm takes to build up, and again to die down. |
+| `HazeColor` | R:194 G:158 B:107 | R:217 G:224 B:235 | Colour of the haze, before the map's lighting. |
+| `HazeDensity` | 0.8 | 0.35 | How much 100 world units of haze hide. 0 draws no haze. |
+| `HazeMaxOpacity` | 80% | 55% | The most the haze may hide, however deep. |
+| `HazeNoiseSize` | 300 | 350 | World units across one tile of gust noise. Smaller is finer. |
+| `Gusts` | 70% | 50% | How unevenly the haze and grains bunch up. 0% is an even fog. |
+| `WindAngle` | 0 | 0 | Direction the wind blows towards, in degrees. 0 is east, 90 is north. |
+| `WindSpeed` | 140 | 45 | World units a second. |
+| `FallSpeed` | 4 | 30 | World units a second the grains sink. |
+| `Turbulence` | 5 | 9 | World units the grains swirl off their path. |
+| `GrainColor` | R:219 G:189 B:140 | R:255 G:255 B:255 | Colour of the grains, before the map's lighting. |
+| `GrainCount` | 6000 | 5000 | Grains in view at once, up to 40000. 0 draws no grains. |
+| `GrainSize` | 1.0 | 1.8 | World units across a grain. |
+| `GrainStreak` | 0.06 | 0.02 | Seconds of travel a grain smears along. 0 draws round grains. |
+| `GrainOpacity` | 60% | 85% | |
+
+A `Storm` block also takes:
+
+* `Duration` - (How long the storm lasts, in milliseconds, with both fades inside it.)
+
+```
+FXList FX_SandstormStrike
+  Storm
+    Type        = SAND
+    Radius      = 350
+    Duration    = 30000
+    WindAngle   = 45
+    HazeDensity = 1.0
+  End
+End
+
+Object SnowstormEmitter
+  Draw = W3DStormDraw ModuleTag_Storm
+    Type       = SNOW
+    Radius     = 500
+    GrainCount = 12000
+  End
+  ...
+End
+```
+
+Notes:
+* Storms are visual only. They change no vision, damage or speed. They are not saved, so a loaded
+game has lost its `FXList` storms, while `W3DStormDraw` storms build up again.
+* Grains fill a square 640 world units wide around the middle of the view, so `GrainCount` sets how
+thick they look on screen whatever the storm's size.
+* Sand keeps close to the ground and snow fills the storm's height evenly.
+* The haze stops at whatever the scene's depth holds, so it thins in front of tall buildings and
+hills. Without a readable depth buffer it stops at the terrain alone and draws over objects.
+* Storms draw after particles, so effects inside a storm are hazed like the ground under them.
+* A `W3DStormDraw` storm dies down while its object is under the shroud. An `FXList` storm ignores
+the shroud.
+* At most 8 storms show at once, and further ones do not start.
+* Launch with `CONTRA_STORMSHADER=0` to turn storms off.
 
 ## Ambient occlusion
 

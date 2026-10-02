@@ -41,6 +41,7 @@
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
 #include "W3DDevice/GameClient/W3DDisruption.h"
+#include "W3DDevice/GameClient/W3DStorm.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8renderer.h"
 #include "WW3D2/ww3d.h"
@@ -341,6 +342,12 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	//Draw any particles belonging to weather effects
 	if (TheSnowManager)
 		((W3DSnowManager *)TheSnowManager)->render(rinfo);
+
+	// storms draw over the particles inside them, and the smudges and shockwaves after bend them with the scene
+	if (TheW3DStorms)
+	{
+		TheW3DStorms->render(rinfo);
+	}
 
 	//Now process screen smudges which are particles that distort the background behind them.
 	if(TheSmudgeManager)
