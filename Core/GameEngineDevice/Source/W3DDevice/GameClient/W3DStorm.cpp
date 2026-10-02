@@ -35,6 +35,7 @@
 #include "WW3D2/dx8fvf.h"
 #include "WW3D2/formconv.h"
 #include "WW3D2/shader.h"
+#include "WW3D2/sortingrenderer.h"
 #include "WW3D2/texture.h"
 #include "WW3D2/vertmaterial.h"
 #include "WW3D2/rinfo.h"
@@ -600,6 +601,9 @@ void W3DStormManager::render(RenderInfoClass &rinfo)
 	{
 		return;
 	}
+
+	// The sorter still holds the particles and translucent meshes, which would draw over the storm.
+	SortingRendererClass::Flush();
 
 	// The haze stops at the scene's depth where that is the bound one, which leaves out reflections. Elsewhere it stops at the ground alone.
 	IDirect3DTexture8 *depthTexture = DX8Wrapper::Peek_Scene_Depth_Texture();
