@@ -359,6 +359,25 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "SkyCloudChurn",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudChurn ) },
 	{ "SkyCloudBillow",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudBillow ) },
 	{ "SkyCloudDetail",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudDetail ) },
+	{ "ColorLut",							INI::parseAsciiString,		nullptr,			offsetof( GlobalData, m_colorLut ) },
+	{ "ColorLutStrength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutStrength ) },
+	{ "ColorLutBrightness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutBrightness ) },
+	{ "ColorLutContrast",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutContrast ) },
+	{ "ColorLutSaturation",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutSaturation ) },
+	{ "ColorLutTint",						INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_colorLutTint ) },
+	{ "ColorLutChroma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutChroma ) },
+	{ "ColorLutLuma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutLuma ) },
+	{ "ColorLutVibrance",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVibrance ) },
+	{ "ColorLutTechnicolor",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutTechnicolor ) },
+	{ "ColorLutBlackPoint",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutBlackPoint ) },
+	{ "ColorLutWhitePoint",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutWhitePoint ) },
+	{ "ColorLutGamma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutGamma ) },
+	{ "ColorLutOutputBlack",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutOutputBlack ) },
+	{ "ColorLutOutputWhite",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutOutputWhite ) },
+	{ "ColorLutVignette",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVignette ) },
+	{ "ColorLutVignetteRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVignetteRadius ) },
+	{ "ColorLutGrain",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutGrain ) },
+	{ "ColorLutDither",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutDither ) },
 	{ "TextureReductionFactor",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_textureReductionFactor ) },
 	{ "UseBehindBuildingMarker",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableBehindBuildingMarkers ) },
 	{ "WaterPositionX",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_waterPositionX ) },
@@ -1111,6 +1130,26 @@ GlobalData::GlobalData()
 	m_skyCloudChurn = 0.3f;
 	m_skyCloudBillow = 0.5f;
 	m_skyCloudDetail = 0.4f;
+	m_colorLutStrength = 1.0f;
+	m_colorLutBrightness = 1.0f;
+	m_colorLutContrast = 1.0f;
+	m_colorLutSaturation = 1.0f;
+	m_colorLutTint.red = 1.0f;
+	m_colorLutTint.green = 1.0f;
+	m_colorLutTint.blue = 1.0f;
+	m_colorLutChroma = 1.0f;
+	m_colorLutLuma = 1.0f;
+	m_colorLutVibrance = 0.0f;
+	m_colorLutTechnicolor = 0.0f;
+	m_colorLutBlackPoint = 0.0f;
+	m_colorLutWhitePoint = 1.0f;
+	m_colorLutGamma = 1.0f;
+	m_colorLutOutputBlack = 0.0f;
+	m_colorLutOutputWhite = 1.0f;
+	m_colorLutVignette = 0.0f;
+	m_colorLutVignetteRadius = 2.0f;
+	m_colorLutGrain = 0.0f;
+	m_colorLutDither = 1.0f;
 	m_textureReductionFactor = -1;
 	m_enableBehindBuildingMarkers = TRUE;
 	m_scriptDebug = FALSE;
@@ -1742,6 +1781,10 @@ static const char *const LiveGameDataKeys[] =
 	"TerrainHeightBlendStrength", "TerrainHeightBlendSharpness", "TerrainAtlasBorder",
 	"SkyCloudSize", "SkyCloudCoverage", "SkyCloudSoftness", "SkyCloudShadowStrength", "SkyCloudShadowTint",
 	"SkyCloudWindSpeed", "SkyCloudWindAngle", "SkyCloudChurn", "SkyCloudBillow", "SkyCloudDetail",
+	"ColorLut", "ColorLutStrength", "ColorLutBrightness", "ColorLutContrast", "ColorLutSaturation", "ColorLutTint",
+	"ColorLutChroma", "ColorLutLuma", "ColorLutVibrance", "ColorLutTechnicolor",
+	"ColorLutBlackPoint", "ColorLutWhitePoint", "ColorLutGamma", "ColorLutOutputBlack", "ColorLutOutputWhite",
+	"ColorLutVignette", "ColorLutVignetteRadius", "ColorLutGrain", "ColorLutDither",
 	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",

@@ -9,7 +9,7 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys, and the `SandStorm` and `SnowStorm` keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys, the `SandStorm` and `SnowStorm` keys, and the `ColorLut` keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
@@ -980,6 +980,119 @@ Notes:
 * Night keeps the clouds off, as before.
 * Trees and the water's reflected sky keep their old look.
 * `CONTRA_SKYCLOUDS=0` keeps the tiled texture, to rule the HQ sky out of a rendering fault.
+
+## Colour grading
+
+A colour table gives a map its look: warm for a desert, cold for snow, muted for a city. After each
+view's 3D scene is drawn, a shader reads every pixel's colour and replaces it with the colour the
+table holds for it. The interface, the cursor and the health bars draw afterwards and keep their
+colours. The grade changes no lighting. It recolours the lit picture, so it applies alike to terrain,
+units, effects and team colours. Needs the Direct3D 9 build and pixel shader 2.0a.
+
+Set in the mod's `GameData.ini` for every map, or in the `GameData` block of a map's `map.ini` for
+that map alone:
+
+The table:
+
+* `ColorLut = None` - (The table's file name, such as `lut_desert.tga`. `None` uses no table.)
+* `ColorLutStrength = 1` - (How much of the table's result is taken. 0 leaves the scene as it is.)
+* `ColorLutChroma = 1` - (How much of the table's hue is taken. 0 takes only its brightness.)
+* `ColorLutLuma = 1` - (How much of the table's brightness is taken. 0 takes only its hues, so units
+stay as bright or dark as they were.)
+
+Colour, before the table:
+
+* `ColorLutBrightness = 1` - (Multiplies the scene.)
+* `ColorLutContrast = 1` - (Spreads the scene around mid grey. 0 is flat grey.)
+* `ColorLutSaturation = 1` - (Colourfulness. 0 is black and white.)
+* `ColorLutTint = R:255 G:255 B:255` - (Colour the scene is multiplied by.)
+* `ColorLutVibrance = 0` - (Saturates dull colours more than vivid ones, so terrain gains colour and
+team colours hold. -1 to 1, and negative mutes them.)
+* `ColorLutTechnicolor = 0` - (Strength of the two-strip Technicolor film look, 0 to 1.)
+
+Levels, after the table:
+
+* `ColorLutBlackPoint = 0` - (Level that becomes black. Raise it to crush the shadows.)
+* `ColorLutWhitePoint = 1` - (Level that becomes white. Lower it to brighten the highlights.)
+* `ColorLutGamma = 1` - (Midtone brightness. Above 1 brightens and below 1 darkens.)
+* `ColorLutOutputBlack = 0` - (What black comes out as. Raise it for the lifted, matte look. The
+shroud lifts with it.)
+* `ColorLutOutputWhite = 1` - (What white comes out as. Lower it to dim the highlights.)
+
+Finish, last:
+
+* `ColorLutVignette = 0` - (How dark the view gets towards its edges, 0 to 1.)
+* `ColorLutVignetteRadius = 2` - (Distance from the view's centre, in half its height, where the
+vignette reaches full strength. 2 reaches the corners of a 16:9 view.)
+* `ColorLutGrain = 0` - (Film grain over the scene, new every frame. 0.1 to 0.2 is a light grain.)
+* `ColorLutDither = 1` - (Noise that breaks up the banding a grade leaves in smooth gradients, in
+8 bit colour steps. 0 is off.)
+
+Every key but `ColorLutStrength`, `ColorLutChroma` and `ColorLutLuma` works without a table, so a map
+can take a small correction alone. The dither draws only while some other key grades the scene.
+
+A `map.ini` that grades one map:
+
+```ini
+GameData
+  ColorLut = lut_snow.tga
+  ColorLutStrength = 0.8
+  ColorLutSaturation = 0.9
+End
+```
+
+Preset tables, in `Art\Textures`:
+
+| File | Map style | Look |
+|---|---|---|
+| `lut_desert.tga` | Desert | Warm midtones and highlights over cool shadows. |
+| `lut_snow.tga` | Snow | Blue shadows, clean whites and muted colour. |
+| `lut_naval.tga` | Naval | Deep blue-teal shadows and midtones under neutral highlights. |
+| `lut_island.tga` | Island | Vivid colour, lush greens and warm sunlight. |
+| `lut_urban.tga` | Urban | Muted colour with hard contrast. |
+| `lut_future.tga` | Future | Violet shadows, cyan highlights and hard contrast. |
+| `lut_neutral.tga` | None | Changes nothing. The starting point for a new table. |
+
+Seventeen more looks come from the MultiLUT atlas of [OtisFX](https://github.com/FransBouma/OtisFX),
+a ReShade shader pack by Frans Bouma under the MIT licence:
+
+| File | Look |
+|---|---|
+| `lut_otis_hollywood.tga` | Teal shadows and warm highlights, as in action films. |
+| `lut_otis_blue.tga` | Strong cold blue cast. |
+| `lut_otis_coollight.tga` | Slight cool cast with soft contrast. |
+| `lut_otis_flatgreen.tga` | Flat and green-grey, a military drab. |
+| `lut_otis_redliftmatte.tga` | Lifted, reddish shadows with a matte finish. |
+| `lut_otis_crossprocess.tga` | Cross-processed film: yellow highlights over blue shadows. |
+| `lut_otis_azurered.tga` | Two tones, warm red over azure. |
+| `lut_otis_vogue.tga` | Pale and clean, with cool shadows. |
+| `lut_otis_sepia.tga` | Brown monochrome, for old footage. |
+| `lut_otis_bw.tga`, `lut_otis_bwcontrast.tga` | Black and white, at medium and high contrast. |
+| `lut_otis_color1.tga`, `color2`, `color5` to `color8` | Six mild colour casts, warm to cool. |
+
+A ReShade `lut.png` of 1024 by 32 has the same layout, so it works once saved as a TGA.
+
+A table is a 24 or 32 bit TGA strip of N slices, N*N wide and N tall, with N up to 64. The presets
+are 1024 by 32. Red runs across a slice, green down it and blue from slice to slice. To make one,
+paste `lut_neutral.tga` beside a screenshot in an image editor, grade both together, and save the
+strip alone under a new name in `Art\Textures`. The game reads the file as it is, so the texture
+detail setting never shrinks it.
+
+Notes:
+* The render tuner's Colour grade tab previews each key on a screenshot and saves the keys into
+`GameData.ini` or a `map.ini`. `lut_presets.py` beside it writes the preset tables and splits a
+MultiLUT atlas.
+* Vibrance and Technicolor follow the [SweetFX](https://github.com/CeeJayDK/SweetFX) shaders of the
+same names, and the hue and brightness shares follow ReShade's `LUT.fx`.
+* The dither hides steps up to its own size. A strong contrast or gamma can widen the scene's own
+8 bit steps past that, and a higher `ColorLutDither` trades them for visible noise.
+* A map's value holds until the next map loads. A `map.ini` that sets no `ColorLut` key takes the
+`GameData.ini` ones.
+* View filters, such as the black and white one, draw first, and the grade applies over them.
+* WorldBuilder shows no grade.
+* A file that is missing or has the wrong shape draws no table, and a cheat build names it in
+`d3d9render.txt`.
+* `CONTRA_COLORLUT=0` turns the grade off, to rule it out of a rendering fault.
 
 ## Shader water
 

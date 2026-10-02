@@ -286,5 +286,8 @@ rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          vs_3_0 mainVS stormhaze.v
 rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          ps_3_0 mainPS stormhaze.pso              GRAIN=0)
 rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          vs_3_0 mainVS stormgrain.vso             GRAIN=1)
 rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          ps_3_0 mainPS stormgrain.pso             GRAIN=1)
+# The grade runs past ps_2_0's 64 arithmetic slots.
+rts_add_shader("${RTS_SHADER_DIR}/colorlut.hlsl"       ps_2_a main colorlut.pso                 LUT=1)
+rts_add_shader("${RTS_SHADER_DIR}/colorlut.hlsl"       ps_2_a main colorgrade.pso               LUT=0)
 
 add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})

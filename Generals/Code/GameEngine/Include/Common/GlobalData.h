@@ -585,6 +585,25 @@ public:
   Real m_skyCloudChurn;
   Real m_skyCloudBillow;
   Real m_skyCloudDetail;
+  AsciiString m_colorLut;         ///< the colour grade over the 3D scene, see W3DColorLut
+  Real m_colorLutStrength;
+  Real m_colorLutBrightness;
+  Real m_colorLutContrast;
+  Real m_colorLutSaturation;
+  RGBColor m_colorLutTint;
+  Real m_colorLutChroma;
+  Real m_colorLutLuma;
+  Real m_colorLutVibrance;
+  Real m_colorLutTechnicolor;
+  Real m_colorLutBlackPoint;
+  Real m_colorLutWhitePoint;
+  Real m_colorLutGamma;
+  Real m_colorLutOutputBlack;
+  Real m_colorLutOutputWhite;
+  Real m_colorLutVignette;
+  Real m_colorLutVignetteRadius;
+  Real m_colorLutGrain;
+  Real m_colorLutDither;
   Int m_vsync;                    ///< Options.ini VSync: 1 on, 0 off, -1 on in fullscreen and off in a window
   Bool m_lowLatency;              ///< Options.ini LowLatency: at most one frame queued ahead of the GPU
   Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn

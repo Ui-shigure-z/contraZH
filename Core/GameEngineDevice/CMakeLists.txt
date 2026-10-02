@@ -75,6 +75,7 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/W3DShockwave.h
     Include/W3DDevice/GameClient/W3DDisruption.h
     Include/W3DDevice/GameClient/W3DStorm.h
+    Include/W3DDevice/GameClient/W3DColorLut.h
     Include/W3DDevice/GameClient/W3DLaserGlow.h
     Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
     Include/W3DDevice/GameClient/W3DGroundNoise.h
@@ -192,6 +193,7 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/W3DShockwave.cpp
     Source/W3DDevice/GameClient/W3DDisruption.cpp
     Source/W3DDevice/GameClient/W3DStorm.cpp
+    Source/W3DDevice/GameClient/W3DColorLut.cpp
     Source/W3DDevice/GameClient/W3DLaserGlow.cpp
     Source/W3DDevice/GameClient/W3DAmbientOcclusion.cpp
     Source/W3DDevice/GameClient/W3DGroundNoise.cpp
