@@ -1092,6 +1092,8 @@ same names, and the hue and brightness shares follow ReShade's `LUT.fx`.
 * WorldBuilder shows no grade.
 * A file that is missing or has the wrong shape draws no table, and a cheat build names it in
 `d3d9render.txt`.
+* A loose table saved again under the same name shows within half a second, so a table can be
+graded with the map running.
 * `CONTRA_COLORLUT=0` turns the grade off, to rule it out of a rendering fault.
 
 ## Shader water

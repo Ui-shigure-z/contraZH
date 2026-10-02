@@ -44,7 +44,9 @@ private:
 
 	IDirect3DTexture8 *m_sceneCopy;
 	IDirect3DTexture8 *m_table;
-	AsciiString m_tableName;	///< the file m_table came from, kept after a failed load so a bad name is read once
+	AsciiString m_tableName;	///< the file m_table came from, kept after a failed load so a bad file is read once per save
+	Int64 m_tableStamp;				///< when that file was last saved, 0 unless it is a loose file
+	UnsignedInt m_tableCheckTime;	///< when the file was last looked at for a newer save
 	Int m_tableSize;					///< slices in the table, and texels along each side of one
 	DWORD m_tableShader;
 	DWORD m_gradeShader;			///< the grade without a table

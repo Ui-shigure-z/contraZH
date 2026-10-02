@@ -66,11 +66,13 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
     float size = sqrt(max(dot(colour, colour), 0.000001f));
     float lookedSize = sqrt(max(dot(looked, looked), 0.000001f));
     float3 hue = lerp(colour / size, looked / lookedSize, TableMix.x);
+    hue *= rsqrt(max(dot(hue, hue), 0.000001f));
     colour = lerp(colour, hue * lerp(size, lookedSize, TableMix.y), Grade.w);
 #endif
 
     colour = saturate((colour - LevelsIn.x) * LevelsIn.y);
-    colour = pow(max(colour, 0.00001f), LevelsIn.z) * LevelsOut.y + LevelsOut.x;
+    // Written as x times x to the power less one, which keeps black at black whatever the gamma.
+    colour = colour * pow(max(colour, 0.00001f), LevelsIn.z - 1.0f) * LevelsOut.y + LevelsOut.x;
 
     float2 fromCentre = uv * ViewMap.xy + ViewMap.zw;
     colour *= 1.0f - LevelsOut.z * saturate(dot(fromCentre, fromCentre) * LevelsOut.w);

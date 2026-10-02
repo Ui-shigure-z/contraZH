@@ -26,6 +26,8 @@
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "Common/GlobalData.h"
 #include "Common/Debug.h"
+#include "Common/FileSystem.h"
+#include "Common/LocalFileSystem.h"
 #include "WWLib/TARGA.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/shader.h"
@@ -41,14 +43,32 @@ static const Int ColorLutMode = (getenv("CONTRA_COLORLUT") != nullptr) ? atoi(ge
 // A table's side, so its strip is at most 4096 by 64.
 enum { MAX_TABLE_SIZE = 64 };
 
+// How often a loose table's file is looked at for a newer save.
+static const UnsignedInt TABLE_CHECK_MS = 500;
+
 // Floors that keep the levels and the vignette from dividing by nothing.
 static const Real MIN_LEVELS_SPAN = 0.0001f;
 static const Real MIN_GAMMA = 0.01f;
 static const Real MIN_VIGNETTE_RADIUS = 0.05f;
 
+// When a loose table was last saved, or 0 for one that is missing or sits in an archive.
+static Int64 Table_File_Stamp(const AsciiString &name)
+{
+	AsciiString path(TGA_DIR_PATH);
+	path.concat(name.str());
+	FileInfo info;
+	if (TheLocalFileSystem == nullptr || !TheLocalFileSystem->getFileInfo(path, &info))
+	{
+		return 0;
+	}
+	return info.timestamp();
+}
+
 W3DColorLut::W3DColorLut()
 	: m_sceneCopy(nullptr),
 	  m_table(nullptr),
+	  m_tableStamp(0),
+	  m_tableCheckTime(0),
 	  m_tableSize(0),
 	  m_tableShader(0),
 	  m_gradeShader(0),
@@ -98,6 +118,8 @@ void W3DColorLut::loadTable(const AsciiString &name)
 		m_table = nullptr;
 	}
 	m_tableName = name;
+	m_tableStamp = Table_File_Stamp(name);
+	m_tableCheckTime = timeGetTime();
 	m_tableSize = 0;
 
 	Targa targa;
@@ -165,9 +187,18 @@ void W3DColorLut::render(CameraClass &camera)
 	const Real strength = WWMath::Clamp(data->m_colorLutStrength, 0.0f, 1.0f);
 	const AsciiString &name = data->m_colorLut;
 	const Bool wantsTable = strength > 0.0f && name.isNotEmpty() && name.compareNoCase("None") != 0;
-	if (wantsTable && name.compareNoCase(m_tableName) != 0)
+	if (wantsTable)
 	{
-		loadTable(name);
+		Bool stale = name.compareNoCase(m_tableName) != 0;
+		if (!stale && timeGetTime() - m_tableCheckTime >= TABLE_CHECK_MS)
+		{
+			m_tableCheckTime = timeGetTime();
+			stale = Table_File_Stamp(name) != m_tableStamp;
+		}
+		if (stale)
+		{
+			loadTable(name);
+		}
 	}
 
 	const Bool useTable = wantsTable && m_table != nullptr;
