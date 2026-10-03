@@ -83,6 +83,7 @@ typedef enum
 	TERRAIN_CHINA,
 	TERRAIN_ACCENT_ROCK,
 	TERRAIN_URBAN,
+	TERRAIN_SEABED,
 
 	TERRAIN_NUM_CLASSES
 
@@ -132,6 +133,7 @@ static const char *const terrainTypeNames[] =
 	"CHINA",
 	"ROCK_ACCENT",
 	"URBAN",
+	"SEABED",
 
 	nullptr
 };
