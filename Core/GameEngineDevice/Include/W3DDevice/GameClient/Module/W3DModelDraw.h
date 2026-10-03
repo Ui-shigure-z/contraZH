@@ -587,6 +587,7 @@ private:
 		Real radius;
 	};
 	std::vector<Headlight>				m_headlights;
+	RenderObjClass*								m_headlightSource;								///< the render object m_headlights was found in, never dereferenced
 
 	Bool													m_pauseAnimation;
 	Int														m_animationMode;

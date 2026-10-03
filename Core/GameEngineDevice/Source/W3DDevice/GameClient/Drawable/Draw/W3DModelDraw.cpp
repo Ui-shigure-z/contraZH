@@ -2053,6 +2053,7 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	int i;
 	m_animationMode = RenderObjClass::ANIM_MODE_LOOP;
 	m_hideHeadlights = true;
+	m_headlightSource = nullptr;
 	m_pauseAnimation = false;
 	m_curState = nullptr;
 	m_hexColor = 0;
@@ -3631,6 +3632,8 @@ void W3DModelDraw::nukeCurrentRender(Matrix3D* xform)
 			W3DDisplay::m_3DScene->Remove_Render_Object(m_renderObject);
 		REF_PTR_RELEASE(m_renderObject);
 		m_renderObject = nullptr;
+		m_headlights.clear();
+		m_headlightSource = nullptr;
 	}
 	else
 	{
@@ -3669,23 +3672,62 @@ void W3DModelDraw::hideGarrisonFlags(Bool hide)
 #endif
 
 //-------------------------------------------------------------------------------------------------
+/** The level of detail a sub-object belongs to, or -1 for one that every level shows. */
+static Int getSubObjectLod(RenderObjClass* renderObject, Int subObject)
+{
+	if (renderObject->Class_ID() != RenderObjClass::CLASSID_HLOD)
+	{
+		return -1;
+	}
+
+	const HLodClass* hlod = (const HLodClass*)renderObject;
+	for (Int lod = 0; lod < hlod->Get_Lod_Count(); lod++)
+	{
+		if (subObject < hlod->Get_Lod_Model_Count(lod))
+		{
+			return lod;
+		}
+		subObject -= hlod->Get_Lod_Model_Count(lod);
+	}
+	return -1;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Hides all subobjects which are headlights.  Used to disable lights on models during the day.*/
 void W3DModelDraw::hideAllHeadlights(Bool hide)
 {
-	m_headlights.clear();
 	if (m_renderObject)
 	{
 		// Where the headlight shader runs it draws the lights, and their meshes stay hidden.
 		const Bool shaded = TheW3DHeadlights != nullptr && TheW3DHeadlights->isActive();
+
+		// The lamps are found once for each render object, since every change of state comes through here.
+		const Bool search = shaded && !hide && m_headlightSource != m_renderObject;
+		Int lampLod = -1;
+		if (search)
+		{
+			m_headlights.clear();
+			m_headlightSource = m_renderObject;
+		}
 		for (Int subObj = 0; subObj < m_renderObject->Get_Num_Sub_Objects(); subObj++)
 		{
 			RenderObjClass* test = m_renderObject->Get_Sub_Object(subObj);
 			if (strstr(test->Get_Name(),"HEADLIGHT"))
 			{
 				test->Set_Hidden(hide || shaded);
-				if (shaded && !hide)
+				if (search)
 				{
-					addHeadlight(subObj, test);
+					// Each level of detail holds its own copy of the lamps, and one copy is enough.
+					const Int lod = getSubObjectLod(m_renderObject, subObj);
+					if (lod < 0 || lampLod < 0 || lod == lampLod)
+					{
+						const size_t before = m_headlights.size();
+						addHeadlight(subObj, test);
+						if (lod >= 0 && m_headlights.size() > before)
+						{
+							lampLod = lod;
+						}
+					}
 				}
 			}
 			test->Release_Ref();
@@ -3714,7 +3756,7 @@ void W3DModelDraw::addHeadlight(Int subObject, RenderObjClass* mesh)
 /** Hands this frame's headlights to the headlight shader, where the model shows. */
 void W3DModelDraw::submitHeadlights()
 {
-	if (m_headlights.empty() || TheW3DHeadlights == nullptr || m_renderObject == nullptr ||
+	if (m_hideHeadlights || m_headlights.empty() || TheW3DHeadlights == nullptr || m_renderObject == nullptr ||
 		m_renderObject->Is_Hidden() || m_fullyObscuredByShroud)
 	{
 		return;
