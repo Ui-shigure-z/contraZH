@@ -267,6 +267,28 @@ int WBQtHQPreview_LiveFrame(unsigned char *bgra, int size)
 	return 1;
 }
 
+int WBQtHQPreview_LivePresent(void *window, int size)
+{
+	if (s_view == NULL || window == NULL)
+	{
+		s_error = "the 3D view is not ready";
+		return 0;
+	}
+	const Real width = s_liveView.x1 - s_liveView.x0;
+	const Real height = s_liveView.y1 - s_liveView.y0;
+	Real area[4];
+	area[0] = (s_liveArea[0] - s_liveView.x0) / width;
+	area[1] = (s_liveView.y1 - s_liveArea[3]) / height;
+	area[2] = (s_liveArea[2] - s_liveView.x0) / width;
+	area[3] = (s_liveView.y1 - s_liveArea[1]) / height;
+	if (!s_view->presentTopView(size, window, area))
+	{
+		s_error = s_view->getTopViewError();
+		return 0;
+	}
+	return 1;
+}
+
 void WBQtHQPreview_LiveEnd(void)
 {
 	if (s_view != NULL)

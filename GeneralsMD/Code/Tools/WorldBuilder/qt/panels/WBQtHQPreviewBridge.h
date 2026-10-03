@@ -68,6 +68,8 @@ void WBQtHQPreview_GetError(char *buf, int size);
 // The live view: Begin sets the scene up, Frame draws it into size^2 BGRA pixels, top row north, and End puts the editor back.
 int  WBQtHQPreview_LiveBegin(const WBQtHQCaptureParams *capture);
 int  WBQtHQPreview_LiveFrame(unsigned char *bgra, int size);
+// Draws a frame of the given size straight into the window, a native child of the dialog, without reading it back.
+int  WBQtHQPreview_LivePresent(void *window, int size);
 void WBQtHQPreview_LiveEnd(void);
 // Fills Size()^2 BGRA pixels, top row north.
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra);

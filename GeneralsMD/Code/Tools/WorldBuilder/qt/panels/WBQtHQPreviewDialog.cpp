@@ -23,6 +23,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -38,7 +39,31 @@ namespace
 {
 
 const int kDisplaySize = 512;
-const int kLiveIntervalMs = 100;
+const int kLiveIntervalMs = 33;
+
+// A native child window Direct3D presents the live view into. Qt never paints it.
+class NativeView : public QWidget
+{
+public:
+	explicit NativeView(QWidget *parent)
+		: QWidget(parent)
+	{
+		setAttribute(Qt::WA_NativeWindow);
+		setAttribute(Qt::WA_PaintOnScreen);
+		setAttribute(Qt::WA_NoSystemBackground);
+		setAttribute(Qt::WA_OpaquePaintEvent);
+	}
+
+	QPaintEngine *paintEngine() const override
+	{
+		return NULL;
+	}
+
+protected:
+	void paintEvent(QPaintEvent *) override
+	{
+	}
+};
 
 // One water, macro texture or sky key, with the value it had when the dialog opened.
 struct TunedKey
@@ -65,6 +90,12 @@ public:
 		m_image->setFixedSize(kDisplaySize, kDisplaySize);
 		m_image->setAlignment(Qt::AlignCenter);
 		m_image->setFrameShape(QFrame::Box);
+		m_native = new NativeView(this);
+		m_native->setFixedSize(kDisplaySize, kDisplaySize);
+		m_view = new QStackedWidget(this);
+		m_view->setFixedSize(kDisplaySize, kDisplaySize);
+		m_view->addWidget(m_native);
+		m_view->addWidget(m_image);
 		m_status = new QLabel(this);
 		m_status->setWordWrap(true);
 		m_status->setMaximumWidth(kDisplaySize);
@@ -87,7 +118,7 @@ public:
 		viewButtons->addStretch(1);
 
 		QVBoxLayout *viewColumn = new QVBoxLayout();
-		viewColumn->addWidget(m_image);
+		viewColumn->addWidget(m_view);
 		viewColumn->addLayout(viewButtons);
 		viewColumn->addWidget(m_status);
 		viewColumn->addStretch(1);
@@ -723,6 +754,7 @@ private:
 		m_frozen = false;
 		m_liveStarted = false;
 		m_liveBtn->setEnabled(false);
+		m_view->setCurrentWidget(m_useNative ? (QWidget *)m_native : (QWidget *)m_image);
 		m_status->setText(tr("Live view, without supersampling or shading. Render freezes a full-quality frame."));
 		m_timer->start(kLiveIntervalMs);
 		liveFrame();
@@ -743,6 +775,17 @@ private:
 				return;
 			}
 			m_liveStarted = true;
+		}
+		// Direct3D draws into the native window. Reading the frame back is the slower way, kept for when that fails.
+		if (m_useNative)
+		{
+			const int scaled = (int)(kDisplaySize * m_native->devicePixelRatioF() + 0.5);
+			if (WBQtHQPreview_LivePresent((void *)m_native->winId(), scaled) != 0)
+			{
+				return;
+			}
+			m_useNative = false;
+			m_view->setCurrentWidget(m_image);
 		}
 		m_live.resize(kDisplaySize*kDisplaySize*4);
 		if (WBQtHQPreview_LiveFrame(&m_live[0], kDisplaySize) == 0)
@@ -789,6 +832,7 @@ private:
 		m_frozen = true;
 		m_keysChangedSinceRender = false;
 		m_liveBtn->setEnabled(true);
+		m_view->setCurrentWidget(m_image);
 		m_status->setText(tr("Rendered at full quality with the shading. Save writes this frame; Live goes back to the live view."));
 		refresh();
 		return true;
@@ -813,6 +857,9 @@ private:
 	std::vector<unsigned char> m_live;
 	std::vector<TunedKey> m_keys;
 	QLabel *m_image;
+	NativeView *m_native;
+	QStackedWidget *m_view;
+	bool m_useNative = true;
 	QLabel *m_status;
 	QPushButton *m_renderBtn;
 	QPushButton *m_liveBtn;

@@ -4776,6 +4776,27 @@ void WbView3d::reloadIconColors()
 // }
 
 // ----------------------------------------------------------------------------
+// Animations advance by the time that actually passed, not a fixed step per redraw,
+// so the extra repaints a mouse move triggers do not speed them up. The cap keeps a
+// long stall from jumping them forward.
+void WbView3d::advanceAnimation()
+{
+	LARGE_INTEGER animFreq;
+	LARGE_INTEGER animNow;
+	::QueryPerformanceFrequency(&animFreq);
+	::QueryPerformanceCounter(&animNow);
+	Real animStepMs = TheFramePacer->getLogicTimeStepMilliseconds();
+	if (m_lastAnimTick != 0) {
+		animStepMs = (Real)((double)(animNow.QuadPart - m_lastAnimTick) * 1000.0 / (double)animFreq.QuadPart);
+		if (animStepMs > 100.0f) {
+			animStepMs = 100.0f;
+		}
+	}
+	m_lastAnimTick = animNow.QuadPart;
+	WW3D::Update_Logic_Frame_Time(animStepMs);
+	WW3D::Sync(WW3D::Get_Fractional_Sync_Milliseconds() >= WWSyncMilliseconds);
+}
+
 void WbView3d::redraw(void) 
 {
 	if (m_updateCount > 0) {
@@ -4852,23 +4873,7 @@ void WbView3d::redraw(void)
 		);
 	}
 
-	// Animations advance by the time that actually passed, not a fixed step per redraw,
-	// so the extra repaints a mouse move triggers do not speed them up. The cap keeps a
-	// long stall from jumping them forward.
-	LARGE_INTEGER animFreq;
-	LARGE_INTEGER animNow;
-	::QueryPerformanceFrequency(&animFreq);
-	::QueryPerformanceCounter(&animNow);
-	Real animStepMs = TheFramePacer->getLogicTimeStepMilliseconds();
-	if (m_lastAnimTick != 0) {
-		animStepMs = (Real)((double)(animNow.QuadPart - m_lastAnimTick) * 1000.0 / (double)animFreq.QuadPart);
-		if (animStepMs > 100.0f) {
-			animStepMs = 100.0f;
-		}
-	}
-	m_lastAnimTick = animNow.QuadPart;
-	WW3D::Update_Logic_Frame_Time(animStepMs);
-	WW3D::Sync(WW3D::Get_Fractional_Sync_Milliseconds() >= WWSyncMilliseconds);
+	advanceAnimation();
 
 	m_buildRedMultiplier += (GetTickCount()-m_time)/500.0f;
 	if (m_buildRedMultiplier>4.0f || m_buildRedMultiplier<0) {
@@ -4955,10 +4960,14 @@ Bool WbView3d::beginTopView(const TopViewCapture &capture, Bool aboveGround)
 	}
 
 	// Volume shadows resolve only inside a back-buffer-sized quad, which a render larger than the window overruns.
+	// Under the shadow map they draw no volumes and cast into the map instead, so they stay on there.
 	s.wantShadowVolumes = TheGlobalData->m_useShadowVolumes;
 	s.wantClouds = TheGlobalData->m_useCloudMap;
 	s.wantMacroTexture = TheGlobalData->m_useLightMap;
-	TheWritableGlobalData->m_useShadowVolumes = false;
+	if (!TheGlobalData->m_useShadowMap)
+	{
+		TheWritableGlobalData->m_useShadowVolumes = false;
+	}
 	TheWritableGlobalData->m_useCloudMap = capture.clouds;
 	TheWritableGlobalData->m_useLightMap = capture.macroTexture;
 
@@ -4987,10 +4996,10 @@ Bool WbView3d::beginTopView(const TopViewCapture &capture, Bool aboveGround)
 	return true;
 }
 
-Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
+Bool WbView3d::drawTopView(Int size)
 {
 	TopViewSession &s = m_topView;
-	if (!s.active || bgra == NULL || size <= 0)
+	if (!s.active || size <= 0)
 	{
 		m_topViewError = "no top view is set up";
 		return false;
@@ -5021,9 +5030,24 @@ Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
 	m_heightMapRenderObj->On_Frame_Update();
 
 	Bool ok = false;
-	DX8Wrapper::Set_Render_Target_With_Z(s.target, s.depth);
 	if (WW3D::Begin_Render(true, true, Vector3(0.0f, 0.0f, 0.0f)) == WW3D_ERROR_OK)
 	{
+		// The wrapper nests one render target, so the passes that draw into their own run before ours is bound.
+		RenderInfoClass rinfo(*s.camera);
+		if (TheW3DSkyClouds != nullptr && TheGlobalData->m_useCloudMap)
+		{
+			TheW3DSkyClouds->update(rinfo, *m_heightMapRenderObj);
+		}
+		if (TheW3DShadowMap != nullptr && TheW3DShadowMap->isAvailable() && TheW3DShadowManager != nullptr &&
+			TheGlobalData->m_useShadowMap && (TheGlobalData->m_useShadowVolumes || TheGlobalData->m_useShadowDecals))
+		{
+			TheW3DShadowMap->setShadowColor(TheW3DShadowManager->getShadowColor());
+			TheW3DShadowMap->updateFrustum(*s.camera, TheW3DShadowManager->getLightPosWorld(0), TheGlobalData->m_shadowMapMinSunElevation);
+			TheW3DShadowMap->renderDepthPass(rinfo);
+		}
+
+		DX8Wrapper::Set_Render_Target_With_Z(s.target, s.depth);
+		DX8Wrapper::Clear(true, true, Vector3(0.0f, 0.0f, 0.0f));
 		WW3D::Render(m_scene, s.camera);
 
 		// Water draws in both passes, so it does not count as something above the ground.
@@ -5063,11 +5087,21 @@ Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
 		m_topViewError = "WW3D refused to begin a frame";
 	}
 	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
+	return ok;
+}
 
+Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
+{
+	if (bgra == NULL || !drawTopView(size))
+	{
+		return false;
+	}
+	TopViewSession &s = m_topView;
 	SurfaceClass *surface = s.target->Get_Surface_Level();
 	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;
+	Bool ok = rt != NULL;
 	IDirect3DSurface8 *copy = NULL;
-	if (ok && rt != NULL)
+	if (rt != NULL)
 	{
 		LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
 		D3DSURFACE_DESC desc;
@@ -5102,6 +5136,83 @@ Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
 	return ok;
 }
 
+Bool WbView3d::presentTopView(Int size, void *window, const Real area[4])
+{
+	if (window == NULL)
+	{
+		return false;
+	}
+
+	// The editor view is held still, so the live view moves the clock, the water and the particles itself.
+	advanceAnimation();
+	if (TheWaterRenderObj != nullptr)
+	{
+		TheWaterRenderObj->update();
+	}
+	TheFramePacer->update();
+	WBParticleRuntime::tick();
+
+	if (!drawTopView(size))
+	{
+		return false;
+	}
+	TopViewSession &s = m_topView;
+	if (s.swapChain == NULL || s.swapWindow != window)
+	{
+		if (s.swapChain != NULL)
+		{
+			s.swapChain->Release();
+			s.swapChain = NULL;
+		}
+		s.swapChain = DX8Wrapper::Create_Additional_Swap_Chain((HWND)window);
+		s.swapWindow = window;
+		if (s.swapChain == NULL)
+		{
+			m_topViewError = "couldn't create a swap chain for the preview";
+			return false;
+		}
+	}
+
+	SurfaceClass *surface = s.target->Get_Surface_Level();
+	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;
+	IDirect3DSurface8 *back = NULL;
+	Bool ok = rt != NULL && SUCCEEDED(s.swapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &back)) && back != NULL;
+	if (ok)
+	{
+		// The copy stays on the card. The bars around a map that is not square stay black.
+		LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
+		D3DSURFACE_DESC desc;
+		back->GetDesc(&desc);
+		dev->ColorFill(back, NULL, D3DCOLOR_XRGB(0, 0, 0));
+		RECT src;
+		src.left = (LONG)(area[0] * size);
+		src.top = (LONG)(area[1] * size);
+		src.right = (LONG)(area[2] * size + 0.5f);
+		src.bottom = (LONG)(area[3] * size + 0.5f);
+		RECT dst;
+		dst.left = (LONG)(area[0] * desc.Width);
+		dst.top = (LONG)(area[1] * desc.Height);
+		dst.right = (LONG)(area[2] * desc.Width + 0.5f);
+		dst.bottom = (LONG)(area[3] * desc.Height + 0.5f);
+		ok = SUCCEEDED(dev->StretchRect(rt, &src, back, &dst, D3DTEXF_LINEAR))
+			&& SUCCEEDED(s.swapChain->Present(NULL, NULL, NULL, NULL, 0));
+		if (!ok)
+		{
+			m_topViewError = "couldn't show the frame in the preview";
+		}
+	}
+	else
+	{
+		m_topViewError = "couldn't reach the preview's back buffer";
+	}
+	if (back != NULL)
+	{
+		back->Release();
+	}
+	REF_PTR_RELEASE(surface);
+	return ok;
+}
+
 void WbView3d::endTopView()
 {
 	TopViewSession &s = m_topView;
@@ -5110,6 +5221,12 @@ void WbView3d::endTopView()
 		return;
 	}
 	s.active = false;
+	if (s.swapChain != NULL)
+	{
+		s.swapChain->Release();
+		s.swapChain = NULL;
+	}
+	s.swapWindow = NULL;
 	REF_PTR_RELEASE(s.camera);
 	REF_PTR_RELEASE(s.depth);
 	REF_PTR_RELEASE(s.target);

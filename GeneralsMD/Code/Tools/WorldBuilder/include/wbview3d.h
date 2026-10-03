@@ -761,6 +761,8 @@ public:
 
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
+	/// Moves WW3D's clock on by the time since the last call.
+	void advanceAnimation();
 
 	enum
 	{
@@ -787,14 +789,18 @@ public:
 	/// Sets the scene up for a run of renderTopView frames, holding the editor view still until endTopView.
 	Bool beginTopView(const TopViewCapture &capture, Bool aboveGround);
 	Bool renderTopView(Int size, UnsignedByte *bgra);
+	/// Draws a frame and shows the area, given as fractions of the square with the top row first, in the window.
+	Bool presentTopView(Int size, void *window, const Real area[4]);
 	void endTopView();
 	Bool isTopViewActive() const { return m_topView.active; }
 private:
+	Bool drawTopView(Int size);
 	/// What beginTopView changed, for endTopView to put back.
 	struct TopViewSession
 	{
 		TopViewSession() : active(false), aboveGround(false), camZ(0.0f), camera(NULL), target(NULL), depth(NULL), targetSize(0),
-			oldTimeOfDay(TIME_OF_DAY_INVALID), removedTrees(false), wantShadowVolumes(false), wantClouds(false), wantMacroTexture(false), paint(NULL) {}
+			oldTimeOfDay(TIME_OF_DAY_INVALID), removedTrees(false), wantShadowVolumes(false), wantClouds(false), wantMacroTexture(false), paint(NULL),
+			swapChain(NULL), swapWindow(NULL) {}
 		Bool active;
 		TopViewCapture capture;
 		Bool aboveGround;
@@ -812,6 +818,8 @@ private:
 		Bool wantMacroTexture;
 		std::vector<UnsignedByte> paintEverywhere;
 		UnsignedByte *paint;
+		IDirect3DSwapChain8 *swapChain;	///< presents into the live preview's window
+		void *swapWindow;
 	};
 	TopViewSession								m_topView;
 public:
