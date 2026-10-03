@@ -85,6 +85,10 @@ int  WBQtTerrainMaterial_GetPaintDensity(void);
 void WBQtTerrainMaterial_SetNoMixing(int on);
 int  WBQtTerrainMaterial_IsNoMixing(void);
 
+// --- Water-only painting. Texture paint skips cells outside the water areas. ----------------
+void WBQtTerrainMaterial_SetPaintWaterOnly(int on);
+int  WBQtTerrainMaterial_IsPaintWaterOnly(void);
+
 // --- Copy mode (texture / terrain / raise-only + select / apply + rotation). Mirrors
 //     OnCopyMode / OnCopyModeTerrain / OnRaiseOnly / OnCopySelect / OnCopyApply / OnRotate*. -
 void WBQtTerrainMaterial_SetCopyTextureMode(int on);

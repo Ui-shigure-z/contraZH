@@ -75,6 +75,7 @@ private slots:
 	void onPaintModeChanged(int index);
 	void onDensityChanged(int v);
 	void onNoMixingToggled();
+	void onPaintWaterOnlyToggled();
 	void onCopyTextureToggled();
 	void onCopyTerrainToggled();
 	void onRaiseOnlyToggled();
@@ -136,6 +137,9 @@ private:
 
 	// No mixing.
 	QCheckBox    *m_noMixing;
+
+	// Water-only painting.
+	QCheckBox    *m_paintWaterOnly;
 
 	// Copy mode.
 	QCheckBox    *m_copyTexture;
