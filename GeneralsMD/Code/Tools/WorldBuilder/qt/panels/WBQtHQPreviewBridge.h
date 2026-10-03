@@ -16,6 +16,7 @@ typedef struct WBQtHQPreviewParams
 	float relief;
 	float elevation;
 	float waterFalloff;
+	int depthTint;
 	int shallow[3];
 	int deep[3];
 } WBQtHQPreviewParams;
@@ -33,6 +34,8 @@ typedef struct WBQtHQCaptureParams
 	int trees;
 	int roads;
 	int colorGrade;
+	int renderedWater;	// the editor's flat water surface
+	int shaderWater;	// the shader water, which wins over renderedWater
 	int timeOfDay;		// 0 keeps the current one, 1 to 4 morning to night
 	int area;			// WBQT_HQ_AREA_*
 	int customX0;		// custom area corners in cells, without the border

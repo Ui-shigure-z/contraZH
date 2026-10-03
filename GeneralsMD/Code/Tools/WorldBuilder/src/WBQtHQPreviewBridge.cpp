@@ -23,6 +23,7 @@ static void toParams(const WBQtHQPreviewParams *in, HQPreviewParams *out)
 	out->relief = in->relief;
 	out->elevation = in->elevation;
 	out->waterFalloff = in->waterFalloff;
+	out->depthTint = in->depthTint != 0;
 	for (Int k = 0; k < 3; k++)
 	{
 		out->shallow[k] = in->shallow[k];
@@ -36,6 +37,8 @@ static void toCapture(const WBQtHQCaptureParams *in, HQCaptureParams *out)
 	out->trees = in->trees != 0;
 	out->roads = in->roads != 0;
 	out->colorGrade = in->colorGrade != 0;
+	out->renderedWater = in->renderedWater != 0;
+	out->shaderWater = in->shaderWater != 0;
 	out->timeOfDay = in->timeOfDay;
 	out->area = in->area;
 	out->customX0 = in->customX0;
@@ -133,6 +136,7 @@ void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams 
 	params->relief = p.relief;
 	params->elevation = p.elevation;
 	params->waterFalloff = p.waterFalloff;
+	params->depthTint = p.depthTint ? 1 : 0;
 	for (Int k = 0; k < 3; k++)
 	{
 		params->shallow[k] = p.shallow[k];
@@ -145,6 +149,8 @@ void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams 
 	capture->trees = c.trees ? 1 : 0;
 	capture->roads = c.roads ? 1 : 0;
 	capture->colorGrade = c.colorGrade ? 1 : 0;
+	capture->renderedWater = c.renderedWater ? 1 : 0;
+	capture->shaderWater = c.shaderWater ? 1 : 0;
 	capture->timeOfDay = c.timeOfDay;
 	capture->area = c.area;
 	capture->supersample = c.supersample;
@@ -164,6 +170,7 @@ void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *cap
 	params->relief = getProfileReal("Relief", params->relief);
 	params->elevation = getProfileReal("Elevation", params->elevation);
 	params->waterFalloff = getProfileReal("WaterFalloff", params->waterFalloff);
+	params->depthTint = getProfileInt("DepthTint", params->depthTint);
 	getProfileColor("ShallowWater", params->shallow);
 	getProfileColor("DeepWater", params->deep);
 
@@ -172,6 +179,8 @@ void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *cap
 	capture->trees = getProfileInt("Trees", capture->trees);
 	capture->roads = getProfileInt("Roads", capture->roads);
 	capture->colorGrade = getProfileInt("ColorGrade", capture->colorGrade);
+	capture->renderedWater = getProfileInt("RenderedWater", capture->renderedWater);
+	capture->shaderWater = getProfileInt("ShaderWater", capture->shaderWater);
 	capture->timeOfDay = getProfileInt("TimeOfDay", capture->timeOfDay);
 	capture->supersample = getProfileInt("Supersample", capture->supersample);
 	capture->size = getProfileInt("Size", capture->size);
@@ -215,12 +224,15 @@ int WBQtHQPreview_Save(const WBQtHQPreviewParams *params, const WBQtHQCapturePar
 	writeProfileReal("Relief", params->relief);
 	writeProfileReal("Elevation", params->elevation);
 	writeProfileReal("WaterFalloff", params->waterFalloff);
+	writeProfileInt("DepthTint", params->depthTint);
 	writeProfileColor("ShallowWater", params->shallow);
 	writeProfileColor("DeepWater", params->deep);
 	writeProfileInt("Objects", capture->objects);
 	writeProfileInt("Trees", capture->trees);
 	writeProfileInt("Roads", capture->roads);
 	writeProfileInt("ColorGrade", capture->colorGrade);
+	writeProfileInt("RenderedWater", capture->renderedWater);
+	writeProfileInt("ShaderWater", capture->shaderWater);
 	writeProfileInt("TimeOfDay", capture->timeOfDay);
 	writeProfileInt("Supersample", capture->supersample);
 	writeProfileInt("Size", capture->size);

@@ -79,6 +79,7 @@ enum { HQ_TGA_ID_LENGTH = 4 };
 MapPreview::MapPreview()
 	: m_hqSize(HQ_PREVIEW_SIZE)
 	, m_hqSuper(HQ_SUPERSAMPLE)
+	, m_hqWaterRendered(false)
 {
 	memset(m_pixelBuffer, 0xffffffff, sizeof(m_pixelBuffer));
 }
@@ -144,6 +145,7 @@ void MapPreview::getDefaultHQParams( HQPreviewParams *params )
 	params->relief = 0.8f;
 	params->elevation = 0.35f;
 	params->waterFalloff = 40.0f;
+	params->depthTint = true;
 	params->shallow[0] = 70;
 	params->shallow[1] = 140;
 	params->shallow[2] = 160;
@@ -158,6 +160,8 @@ void MapPreview::getDefaultHQCapture( HQCaptureParams *capture )
 	capture->trees = true;
 	capture->roads = true;
 	capture->colorGrade = false;
+	capture->renderedWater = false;
+	capture->shaderWater = false;
 	capture->timeOfDay = TIME_OF_DAY_INVALID;
 	capture->area = HQ_AREA_MAP;
 	capture->customX0 = 0;
@@ -219,6 +223,8 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 	view3d.roads = capture.roads;
 	view3d.colorGrade = capture.colorGrade;
 	view3d.timeOfDay = capture.timeOfDay;
+	view3d.water = capture.shaderWater ? WbView3d::TOP_VIEW_WATER_SHADER
+		: (capture.renderedWater ? WbView3d::TOP_VIEW_WATER_FLAT : WbView3d::TOP_VIEW_WATER_NONE);
 
 	m_hqSize = max((Int)HQ_MIN_SIZE, min(capture.size, (Int)HQ_MAX_SIZE));
 	m_hqSuper = max(1, min(capture.supersample, HQ_MAX_CAPTURE / m_hqSize));
@@ -231,6 +237,7 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 		m_hqScene.clear();
 		return false;
 	}
+	m_hqWaterRendered = view3d.water != WbView3d::TOP_VIEW_WATER_NONE;
 
 	const Real worldX = view3d.x1 - view3d.x0;
 	const Real worldY = view3d.y1 - view3d.y0;
@@ -318,7 +325,9 @@ void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
 					const Int n = (oy*m_hqSuper + sy)*big + ox*m_hqSuper + sx;
 					const UnsignedByte *s = &m_hqScene[n*4];
 					Real c[3] = { (Real)s[0], (Real)s[1], (Real)s[2] };
-					if (m_hqLight[n] >= 0.0f)
+					// A rendered water surface is flat, so the ground's relief stays off it.
+					const Bool water = m_hqDepth[n] > 0.0f;
+					if (m_hqLight[n] >= 0.0f && !(water && m_hqWaterRendered))
 					{
 						Real shade = 1.0f + params.relief * (m_hqLight[n] - 1.0f);
 						shade *= 1.0f + params.elevation * (m_hqHeight[n] - 0.5f);
@@ -327,17 +336,17 @@ void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
 						{
 							c[k] *= shade;
 						}
-						if (m_hqDepth[n] > 0.0f)
+					}
+					if (m_hqLight[n] >= 0.0f && water && params.depthTint)
+					{
+						const Real m = 1.0f - exp(-m_hqDepth[n] / falloff);
+						const Real alpha = 0.55f + 0.35f*m;
+						for (Int k = 0; k < 3; k++)
 						{
-							const Real m = 1.0f - exp(-m_hqDepth[n] / falloff);
-							const Real alpha = 0.55f + 0.35f*m;
-							for (Int k = 0; k < 3; k++)
-							{
-								// Colours are RGB and the pixels BGR.
-								const Real shallow = params.shallow[2 - k];
-								const Real water = shallow + (params.deep[2 - k] - shallow)*m;
-								c[k] += (water - c[k])*alpha;
-							}
+							// Colours are RGB and the pixels BGR.
+							const Real shallow = params.shallow[2 - k];
+							const Real tint = shallow + (params.deep[2 - k] - shallow)*m;
+							c[k] += (tint - c[k])*alpha;
 						}
 					}
 					for (Int k = 0; k < 3; k++)

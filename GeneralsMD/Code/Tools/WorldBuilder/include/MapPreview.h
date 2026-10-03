@@ -82,6 +82,7 @@ struct HQPreviewParams
 	Real relief;		///< hillshade strength
 	Real elevation;		///< brightness spread from the lowest to the highest ground
 	Real waterFalloff;	///< depth in world units at which water reaches most of its deep colour
+	Bool depthTint;		///< colour water by its depth over the render
 	Int shallow[3];
 	Int deep[3];
 };
@@ -93,6 +94,8 @@ struct HQCaptureParams
 	Bool trees;
 	Bool roads;			///< roads and bridges
 	Bool colorGrade;	///< the map.ini colour grade
+	Bool renderedWater;	///< the editor's flat water surface
+	Bool shaderWater;	///< the shader water, which wins over renderedWater
 	Int timeOfDay;		///< TIME_OF_DAY_INVALID keeps the current one
 	Int area;			///< HQPreviewArea
 	Int customX0;		///< HQ_AREA_CUSTOM corners in border-relative cells
@@ -134,6 +137,7 @@ private:
 	std::vector<Real> m_hqDepth;
 	Int m_hqSize;
 	Int m_hqSuper;
+	Bool m_hqWaterRendered;
 
 
 };

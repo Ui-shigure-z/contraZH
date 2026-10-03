@@ -760,6 +760,12 @@ public:
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
 
+	enum
+	{
+		TOP_VIEW_WATER_NONE = 0,
+		TOP_VIEW_WATER_FLAT,
+		TOP_VIEW_WATER_SHADER,
+	};
 	/// What captureTopView draws. The rectangle is in border-relative world units.
 	struct TopViewCapture
 	{
@@ -769,6 +775,7 @@ public:
 		Bool roads;
 		Bool colorGrade;
 		Int timeOfDay;	///< TIME_OF_DAY_INVALID keeps the current one
+		Int water;		///< TOP_VIEW_WATER_*
 	};
 	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
 	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);

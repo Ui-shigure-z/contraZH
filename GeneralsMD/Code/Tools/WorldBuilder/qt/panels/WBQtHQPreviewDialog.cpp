@@ -117,6 +117,10 @@ private:
 			tr("Depth in world units at which water reaches most of its deep colour."));
 		m_shallowBtn = addColorButton(grid, 3, tr("Shallow water"), m_shallow);
 		m_deepBtn = addColorButton(grid, 4, tr("Deep water"), m_deep);
+		m_depthTint = new QCheckBox(tr("Depth tint"), box);
+		m_depthTint->setToolTip(tr("Colours water from shallow to deep by its depth, over whatever the render drew."));
+		grid->addWidget(m_depthTint, 5, 0, 1, 3);
+		connect(m_depthTint, &QCheckBox::toggled, this, [this]() { refresh(); });
 		return box;
 	}
 
@@ -136,6 +140,14 @@ private:
 		row++;
 		grid->addWidget(m_roads, row, 0);
 		grid->addWidget(m_colorGrade, row, 1);
+		row++;
+
+		m_renderedWater = new QCheckBox(tr("Rendered water"), box);
+		m_renderedWater->setToolTip(tr("Draws the flat water surface with the map's water texture. Bridges cover it."));
+		m_shaderWater = new QCheckBox(tr("Shader water"), box);
+		m_shaderWater->setToolTip(tr("Draws the shader water, as in the game, in place of the flat surface. Seen from straight above it shows little reflection."));
+		grid->addWidget(m_renderedWater, row, 0);
+		grid->addWidget(m_shaderWater, row, 1);
 		row++;
 
 		m_timeOfDay = new QComboBox(box);
@@ -206,8 +218,8 @@ private:
 		});
 		grid->addWidget(m_renderBtn, row, 0, 1, 2, Qt::AlignLeft);
 
-		QCheckBox *checks[] = { m_objects, m_trees, m_roads, m_colorGrade };
-		for (int i = 0; i < 4; i++)
+		QCheckBox *checks[] = { m_objects, m_trees, m_roads, m_colorGrade, m_renderedWater, m_shaderWater };
+		for (int i = 0; i < 6; i++)
 		{
 			connect(checks[i], &QCheckBox::toggled, this, [this]() { updateRenderState(); });
 		}
@@ -295,6 +307,7 @@ private:
 		m_relief->setValue((int)(params.relief*100.0f + 0.5f));
 		m_elevation->setValue((int)(params.elevation*100.0f + 0.5f));
 		m_falloff->setValue((int)(params.waterFalloff + 0.5f));
+		m_depthTint->setChecked(params.depthTint != 0);
 		m_shallow = QColor(params.shallow[0], params.shallow[1], params.shallow[2]);
 		m_deep = QColor(params.deep[0], params.deep[1], params.deep[2]);
 		paintSwatch(m_shallowBtn, m_shallow);
@@ -310,6 +323,8 @@ private:
 		m_trees->setChecked(capture.trees != 0);
 		m_roads->setChecked(capture.roads != 0);
 		m_colorGrade->setChecked(capture.colorGrade != 0);
+		m_renderedWater->setChecked(capture.renderedWater != 0);
+		m_shaderWater->setChecked(capture.shaderWater != 0);
 		m_timeOfDay->setCurrentIndex(qBound(0, capture.timeOfDay, m_timeOfDay->count() - 1));
 		m_area->setCurrentIndex(qBound(0, capture.area, m_area->count() - 1));
 		m_x0->setValue(capture.customX0);
@@ -327,6 +342,7 @@ private:
 		params.relief = m_relief->value() / 100.0f;
 		params.elevation = m_elevation->value() / 100.0f;
 		params.waterFalloff = (float)m_falloff->value();
+		params.depthTint = m_depthTint->isChecked() ? 1 : 0;
 		params.shallow[0] = m_shallow.red();
 		params.shallow[1] = m_shallow.green();
 		params.shallow[2] = m_shallow.blue();
@@ -343,6 +359,8 @@ private:
 		capture.trees = m_trees->isChecked() ? 1 : 0;
 		capture.roads = m_roads->isChecked() ? 1 : 0;
 		capture.colorGrade = m_colorGrade->isChecked() ? 1 : 0;
+		capture.renderedWater = m_renderedWater->isChecked() ? 1 : 0;
+		capture.shaderWater = m_shaderWater->isChecked() ? 1 : 0;
 		capture.timeOfDay = m_timeOfDay->currentIndex();
 		capture.area = m_area->currentIndex();
 		capture.customX0 = m_x0->value();
@@ -359,6 +377,7 @@ private:
 		const bool sameCustom = a.area != WBQT_HQ_AREA_CUSTOM || (a.customX0 == b.customX0 && a.customY0 == b.customY0
 			&& a.customX1 == b.customX1 && a.customY1 == b.customY1);
 		return a.objects == b.objects && a.trees == b.trees && a.roads == b.roads && a.colorGrade == b.colorGrade
+			&& a.renderedWater == b.renderedWater && a.shaderWater == b.shaderWater
 			&& a.timeOfDay == b.timeOfDay && a.area == b.area && sameCustom && a.size == b.size && a.supersample == b.supersample;
 	}
 
@@ -375,6 +394,7 @@ private:
 		m_x1->setEnabled(custom);
 		m_y1->setEnabled(custom);
 		m_areaWarning->setVisible(capture.area != WBQT_HQ_AREA_MAP);
+		m_renderedWater->setEnabled(!m_shaderWater->isChecked());
 
 		m_renderDirty = !sameCapture(capture, m_rendered);
 		m_renderBtn->setEnabled(m_renderDirty);
@@ -440,6 +460,9 @@ private:
 	QCheckBox *m_trees;
 	QCheckBox *m_roads;
 	QCheckBox *m_colorGrade;
+	QCheckBox *m_renderedWater;
+	QCheckBox *m_shaderWater;
+	QCheckBox *m_depthTint;
 	QComboBox *m_timeOfDay;
 	QComboBox *m_area;
 	QSpinBox *m_x0;

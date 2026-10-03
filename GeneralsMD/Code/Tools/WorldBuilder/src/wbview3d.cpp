@@ -95,6 +95,7 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 #include "W3DDevice/Common/W3DConvert.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DSkyClouds.h"
@@ -4965,15 +4966,45 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	m_heightMapRenderObj->updateCenter(camera, &center, &lightListIt);
 	m_heightMapRenderObj->On_Frame_Update();
 
-	// The sun shadow map is fitted to the editor camera.
+	// The sun shadow map is fitted to the editor camera. The next editor frame fills it again.
 	const Bool wantShadowMap = TheGlobalData->m_useShadowMap;
 	TheWritableGlobalData->m_useShadowMap = false;
+	if (TheW3DShadowMap != nullptr)
+	{
+		TheW3DShadowMap->clearDepth();
+	}
 
 	Bool ok = false;
 	DX8Wrapper::Set_Render_Target_With_Z(target, depth);
 	if (WW3D::Begin_Render(true, true, Vector3(0.0f, 0.0f, 0.0f)) == WW3D_ERROR_OK)
 	{
 		WW3D::Render(m_scene, camera);
+
+		// Water draws in both passes, so it does not count as something above the ground.
+		if (capture.water != TOP_VIEW_WATER_NONE && TheWaterRenderObj != nullptr)
+		{
+			// A far camera gives the shader a straight-down view at every pixel. Moving the clip planes with it keeps the depth values.
+			const Real raise = 100000.0f;
+			CameraClass *waterCamera = NEW_REF(CameraClass, ());
+			Matrix3D waterTran(1);
+			waterTran.Set_Translation(Vector3((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, camZ + raise));
+			waterCamera->Set_Transform(waterTran);
+			waterCamera->Set_Projection_Type(CameraClass::ORTHO);
+			waterCamera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
+			waterCamera->Set_Clip_Planes(1.0f + raise, camZ + 1000.0f + raise);
+			waterCamera->Apply();
+
+			// Without soft edges the water takes its flat path, blended by its own alpha.
+			const Bool softEdge = TheGlobalData->m_showSoftWaterEdge;
+			if (capture.water == TOP_VIEW_WATER_FLAT)
+			{
+				TheWritableGlobalData->m_showSoftWaterEdge = false;
+			}
+			TheWaterRenderObj->renderWater();
+			TheWritableGlobalData->m_showSoftWaterEdge = softEdge;
+			REF_PTR_RELEASE(waterCamera);
+		}
+
 		if (capture.colorGrade && TheW3DColorLut != nullptr)
 		{
 			TheW3DColorLut->render(*camera);
