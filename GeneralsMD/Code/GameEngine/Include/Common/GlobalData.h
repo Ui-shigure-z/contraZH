@@ -37,6 +37,7 @@
 #include "GameClient/Color.h"
 #include "GameClient/DisruptionShader.h"
 #include "GameClient/StormShader.h"
+#include "GameClient/HeadlightShader.h"
 #include "GameClient/TintStatus.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
@@ -303,6 +304,7 @@ public:
 	Real m_cryoGlintRate;
 	Real m_cryoParticleScale;			///< GameData CryoParticleScale: how much larger or smaller cryo-shaded particles draw, 1 unchanged
 	DisruptionShaderTuning m_disruptionTuning;	///< GameData DisruptionRingStrength and the keys beside it: disruption shader defaults
+	HeadlightShaderTuning m_headlightTuning;	///< GameData HeadlightShader and the Headlight keys: headlights drawn in place of HEADLIGHT meshes
 	StormShaderInfo m_stormTuning[StormShaderInfo::TYPE_COUNT];	///< GameData SandStorm and SnowStorm keys: what each storm type takes where its entry sets nothing
 	Real m_ambientOcclusionRadius;		///< GameData AmbientOcclusionRadius: how far, in world units, geometry darkens what is near it
 	Real m_ambientOcclusionStrength;	///< GameData AmbientOcclusionStrength: how dark the occlusion gets, 0 for none

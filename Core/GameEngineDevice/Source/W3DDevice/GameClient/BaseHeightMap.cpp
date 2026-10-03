@@ -100,6 +100,7 @@
 #include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DStorm.h"
 #include "W3DDevice/GameClient/W3DColorLut.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
@@ -461,6 +462,11 @@ void BaseHeightMapRenderObjClass::ReleaseResources()
 	if (TheW3DColorLut)
 	{
 		TheW3DColorLut->ReleaseResources();
+	}
+
+	if (TheW3DHeadlights)
+	{
+		TheW3DHeadlights->ReleaseResources();
 	}
 
 	if (TheW3DSoftParticles)

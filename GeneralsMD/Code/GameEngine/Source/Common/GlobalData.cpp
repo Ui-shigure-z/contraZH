@@ -340,6 +340,18 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "DisruptionMask",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.mask ) },
 	STORM_TUNING_FIELDS("SandStorm", StormShaderInfo::TYPE_SAND)
 	STORM_TUNING_FIELDS("SnowStorm", StormShaderInfo::TYPE_SNOW)
+	{ "HeadlightShader",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_headlightTuning.enabled ) },
+	{ "HeadlightColor",						INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_headlightTuning.color ) },
+	{ "HeadlightBeamIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamIntensity ) },
+	{ "HeadlightBeamLength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamLength ) },
+	{ "HeadlightBeamWidth",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamWidth ) },
+	{ "HeadlightBeamFalloff",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamFalloff ) },
+	{ "HeadlightBeamSoftness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamSoftness ) },
+	{ "HeadlightPoolIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolIntensity ) },
+	{ "HeadlightPoolRange",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolRange ) },
+	{ "HeadlightPoolAngle",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolAngle ) },
+	{ "HeadlightPoolPitch",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolPitch ) },
+	{ "HeadlightPoolFalloff",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolFalloff ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -1109,6 +1121,7 @@ GlobalData::GlobalData()
 	m_disruptionTuning.mask = 2.0f;
 	m_stormTuning[StormShaderInfo::TYPE_SAND].setTypeDefaults(StormShaderInfo::TYPE_SAND);
 	m_stormTuning[StormShaderInfo::TYPE_SNOW].setTypeDefaults(StormShaderInfo::TYPE_SNOW);
+	m_headlightTuning.setDefaults();
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -1795,6 +1808,8 @@ static const char *const LiveGameDataKeys[] =
 	"DisruptionRingStrength", "DisruptionRingSize", "DisruptionRingSpeed", "DisruptionWobble", "DisruptionWobbleSize", "DisruptionWobbleSpeed",
 	"DisruptionGlitch", "DisruptionGlitchSize", "DisruptionGlitchRate", "DisruptionChroma", "DisruptionChromaSpread", "DisruptionMask",
 	STORM_TUNING_KEYS("SandStorm"), STORM_TUNING_KEYS("SnowStorm"),
+	"HeadlightColor", "HeadlightBeamIntensity", "HeadlightBeamLength", "HeadlightBeamWidth", "HeadlightBeamFalloff", "HeadlightBeamSoftness",
+	"HeadlightPoolIntensity", "HeadlightPoolRange", "HeadlightPoolAngle", "HeadlightPoolPitch", "HeadlightPoolFalloff",
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };

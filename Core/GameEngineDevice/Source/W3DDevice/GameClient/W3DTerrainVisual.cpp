@@ -65,6 +65,7 @@
 #include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DStorm.h"
 #include "W3DDevice/GameClient/W3DColorLut.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "W3DDevice/GameClient/W3DAmbientOcclusion.h"
 #include "W3DDevice/GameClient/W3DSkyClouds.h"
 #include "W3DDevice/GameClient/W3DLaserGlow.h"
@@ -228,6 +229,9 @@ W3DTerrainVisual::~W3DTerrainVisual()
 	delete TheW3DColorLut;
 	TheW3DColorLut = nullptr;
 
+	delete TheW3DHeadlights;
+	TheW3DHeadlights = nullptr;
+
 	delete TheW3DAmbientOcclusion;
 	TheW3DAmbientOcclusion = nullptr;
 	delete TheW3DSkyClouds;
@@ -284,6 +288,7 @@ void W3DTerrainVisual::init()
 		TheW3DDisruption = NEW W3DDisruptionManager;
 		TheW3DStorms = NEW W3DStormManager;
 		TheW3DColorLut = NEW W3DColorLut;
+		TheW3DHeadlights = NEW W3DHeadlightManager;
 		TheW3DAmbientOcclusion = NEW W3DAmbientOcclusion;
 		TheW3DSkyClouds = NEW W3DSkyClouds;
 		TheW3DLaserGlow = NEW W3DLaserGlow;

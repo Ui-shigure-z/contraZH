@@ -577,6 +577,17 @@ private:
 	ParticleSystemIDVec						m_particleSystemIDs;							///< The ID numbers of the particle systems currently running.
 	std::vector<ModelConditionInfo::HideShowSubObjInfo>		m_subObjectVec;
 	Bool													m_hideHeadlights;
+
+	// A HEADLIGHT mesh the headlight shader draws for, with its beam in the mesh's own space.
+	struct Headlight
+	{
+		Int subObject;
+		Vector3 start;
+		Vector3 end;
+		Real radius;
+	};
+	std::vector<Headlight>				m_headlights;
+
 	Bool													m_pauseAnimation;
 	Int														m_animationMode;
 	Bool													m_isFirstDrawModule;
@@ -598,6 +609,8 @@ private:
 	void adjustAnimSpeedToMovementSpeed();
 	static void hideAllMuzzleFlashes(const ModelConditionInfo* state, RenderObjClass* renderObject);
 	void hideAllHeadlights(Bool hide);
+	void addHeadlight(Int subObject, RenderObjClass* mesh);
+	void submitHeadlights();
 #if defined(RTS_DEBUG)	//art wants to see buildings without flags as a test.
 	void hideGarrisonFlags(Bool hide);
 #endif

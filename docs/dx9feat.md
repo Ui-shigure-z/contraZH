@@ -9,7 +9,7 @@ Cheat builds reload `Data\INI\GameData.ini` about half a second after it is save
 keys can be adjusted with a map running: `UnitSpecularIntensity`, `UnitSpecularPower`,
 `UnitBumpHeight`, `UnitNormalMapStrength`, `TerrainNormalMapStrength`, the `TerrainGlint` keys, `UnitEmissiveIntensity`,
 `UnitEmissiveNightIntensity`, `SoftParticleDistance`, `AmbientOcclusionRadius`,
-`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys, the `SandStorm` and `SnowStorm` keys, and the `ColorLut` keys. Other `GameData.ini` keys keep their
+`AmbientOcclusionStrength`, the `GroundNoise`, `TerrainHeightBlend` and `SkyCloud` keys, `TerrainAtlasBorder` and the `Flame`, `Haze`, `Electric`, `Laser`, `Cryo` and `Disruption` tuning keys, the `SandStorm` and `SnowStorm` keys, the `Headlight` keys but `HeadlightShader`, and the `ColorLut` keys. Other `GameData.ini` keys keep their
 value until a restart. The saved values win over a map's `map.ini` until the map loads again. A
 deleted key keeps its value until a restart, and a file with an error applies only the keys above
 the error until the next save.
@@ -36,6 +36,7 @@ them for one effect. Each shader's own section below lists its keys.
 | Jammer fields and distortion auras | [Disruption](#disruption-shading) | `ParticleSystem`, `W3DModelDraw`, `W3DLaserDraw` | `DisruptionShader = Yes` or `Only` | `Disruption` keys |
 | Distortion disc with no art | [Disruption](#disruption-shading) | `FXList` | A `Disruption` block | The block's keys |
 | Sandstorm or snowstorm | [Storm](#storms) | `FXList`, `W3DStormDraw` | A `Storm` block or the module | `SandStorm` and `SnowStorm` keys |
+| Vehicle headlights | [Headlights](#headlights) | Automatic | A `HEADLIGHT` mesh in the model | `Headlight` keys |
 | Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
 | Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
 
@@ -118,7 +119,7 @@ No turns that shader off everywhere.
 * `ParticleSystem.ini` changes and the texture lists apply on the next launch. `GameData.ini` tuning
 reloads in cheat builds.
 * `CONTRA_FLAMESHADER`, `CONTRA_ELECTRICSHADER`, `CONTRA_LASERSHADER`, `CONTRA_CRYOSHADER` or
-`CONTRA_DISRUPTSHADER` set to 0 turns that shader off. `CONTRA_STORMSHADER=0` turns storms off.
+`CONTRA_DISRUPTSHADER` set to 0 turns that shader off. `CONTRA_STORMSHADER=0` turns storms off, and `CONTRA_HEADLIGHTSHADER=0` brings back the headlight meshes.
 * `LaserDebug = Yes` in `GameData.ini` draws shaded beams dark, so it shows which beams took the
 laser shader.
 
@@ -836,6 +837,45 @@ hills. Without a readable depth buffer it stops at the terrain alone and draws o
 the shroud.
 * At most 8 storms show at once, and further ones do not start.
 * Launch with `CONTRA_STORMSHADER=0` to turn storms off.
+
+## Headlights
+
+At night a model shows every mesh whose name holds `HEADLIGHT`, such as `HEADLIGHT01`. With this
+feature those meshes stay hidden and a shader draws each headlight in their place, as two parts:
+
+* The beam is a soft cone in the air. It dims along its length and towards its edge, and fades out
+where it meets the ground or a model.
+* The pool is the light the lamp throws. It brightens the terrain, models and buildings inside the
+lamp's cone, by their own colours.
+
+Each headlight takes its place and size from its mesh. The beam runs along the side of the mesh
+that is long and leads away from the model's middle. The narrow end of a cone is the lamp, and a
+shape with no narrow end has its lamp at the end nearer the model's middle. In both cases
+the cone's width gives the beam's width at the far end. A mesh may hold several cones. Each cone
+that stands apart draws as a lamp of its own, and cones that lie within half their radius of each
+other, such as twin lamps set side by side, draw as one. The models need no INI change, and
+headlights still show only at night.
+
+Needs the Direct3D 9 build and a shader model 3 card. Elsewhere, and with `HeadlightShader = No`,
+the models show their headlight meshes as before. The pool has no shadows, so a lamp also lights
+ground that a hill or building hides from it.
+
+The keys live in `GameData.ini`. All but `HeadlightShader` reload in cheat builds:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `HeadlightShader` | `Yes` | `No` keeps the headlight meshes. Read at launch. |
+| `HeadlightColor` | `R:255 G:242 B:209` | Colour of the beam and the pool. |
+| `HeadlightBeamIntensity` | 0.35 | Brightness of the beam. 0 draws no beam. |
+| `HeadlightBeamLength` | 1.0 | Beam length, in mesh lengths. |
+| `HeadlightBeamWidth` | 1.0 | Beam width at the far end, in mesh widths. |
+| `HeadlightBeamFalloff` | 1.5 | How fast the beam dims along its length. 1 dims evenly, more dims sooner. |
+| `HeadlightBeamSoftness` | 8.0 | World units over which the beam fades into what it touches. |
+| `HeadlightPoolIntensity` | 0.8 | Brightness of the pool. 0 draws no pool. |
+| `HeadlightPoolRange` | 2.5 | How far the light reaches, in mesh lengths. |
+| `HeadlightPoolAngle` | 26 | Degrees from the middle of the light to its edge. |
+| `HeadlightPoolPitch` | 11.5 | Degrees the light tilts down from the mesh, so a level lamp reaches the ground. |
+| `HeadlightPoolFalloff` | 1.5 | How fast the pool dims with distance. |
 
 ## Ambient occlusion
 

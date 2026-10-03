@@ -231,6 +231,7 @@ set(GAMEENGINE_SRC
     Include/GameClient/Smudge.h
     Include/GameClient/Snow.h
     Include/GameClient/StormShader.h
+    Include/GameClient/HeadlightShader.h
     Include/GameClient/Statistics.h
     Include/GameClient/TerrainRoads.h
     Include/GameClient/TerrainVisual.h

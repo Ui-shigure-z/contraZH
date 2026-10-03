@@ -42,6 +42,7 @@
 #include "W3DDevice/GameClient/W3DShockwave.h"
 #include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DStorm.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8renderer.h"
 #include "WW3D2/ww3d.h"
@@ -279,6 +280,12 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	if (backToFront)
 	{
 		std::stable_sort(m_drawOrder.begin(), m_drawOrder.end(), isFarther);
+	}
+
+	// headlights light the opaque scene, so they draw before anything translucent and before the copies taken below
+	if (TheW3DHeadlights)
+	{
+		TheW3DHeadlights->render(rinfo);
 	}
 
 	// the disruption bends a copy of the scene taken before anything translucent draws, so its own art and all the rest stay crisp over it

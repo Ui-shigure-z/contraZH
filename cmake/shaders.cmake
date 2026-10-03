@@ -289,5 +289,10 @@ rts_add_shader("${RTS_SHADER_DIR}/storm.hlsl"          ps_3_0 mainPS stormgrain.
 # The grade runs past ps_2_0's 64 arithmetic slots.
 rts_add_shader("${RTS_SHADER_DIR}/colorlut.hlsl"       ps_2_a main colorlut.pso                 LUT=1)
 rts_add_shader("${RTS_SHADER_DIR}/colorlut.hlsl"       ps_2_a main colorgrade.pso               LUT=0)
+# Headlights read the scene's depth with tex2Dlod, which needs shader model 3.
+rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      vs_3_0 mainVS headlightbeam.vso          POOL=0)
+rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightbeam.pso          POOL=0)
+rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      vs_3_0 mainVS headlightpool.vso          POOL=1)
+rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightpool.pso          POOL=1)
 
 add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})

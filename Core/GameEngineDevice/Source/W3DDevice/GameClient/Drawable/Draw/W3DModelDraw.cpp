@@ -61,6 +61,7 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
@@ -2525,6 +2526,8 @@ void W3DModelDraw::doDrawModule(const Matrix3D* transformMtx)
 
 	handleFXEvents();
 
+	submitHeadlights();
+
 	m_prevAnimHelper = getCurrentAnimHelper();
 
 }
@@ -3669,17 +3672,72 @@ void W3DModelDraw::hideGarrisonFlags(Bool hide)
 /** Hides all subobjects which are headlights.  Used to disable lights on models during the day.*/
 void W3DModelDraw::hideAllHeadlights(Bool hide)
 {
+	m_headlights.clear();
 	if (m_renderObject)
 	{
+		// Where the headlight shader runs it draws the lights, and their meshes stay hidden.
+		const Bool shaded = TheW3DHeadlights != nullptr && TheW3DHeadlights->isActive();
 		for (Int subObj = 0; subObj < m_renderObject->Get_Num_Sub_Objects(); subObj++)
 		{
 			RenderObjClass* test = m_renderObject->Get_Sub_Object(subObj);
 			if (strstr(test->Get_Name(),"HEADLIGHT"))
 			{
-				test->Set_Hidden(hide);
+				test->Set_Hidden(hide || shaded);
+				if (shaded && !hide)
+				{
+					addHeadlight(subObj, test);
+				}
 			}
 			test->Release_Ref();
 		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Finds the lamps a HEADLIGHT mesh holds, for the headlight shader to draw. */
+void W3DModelDraw::addHeadlight(Int subObject, RenderObjClass* mesh)
+{
+	W3DHeadlightManager::Beam beams[8];
+	const Int count = W3DHeadlightManager::findBeams(*mesh, m_renderObject->Get_Position(), beams, ARRAY_SIZE(beams));
+	for (Int i = 0; i < count; i++)
+	{
+		Headlight light;
+		light.subObject = subObject;
+		light.start = beams[i].start;
+		light.end = beams[i].end;
+		light.radius = beams[i].radius;
+		m_headlights.push_back(light);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Hands this frame's headlights to the headlight shader, where the model shows. */
+void W3DModelDraw::submitHeadlights()
+{
+	if (m_headlights.empty() || TheW3DHeadlights == nullptr || m_renderObject == nullptr ||
+		m_renderObject->Is_Hidden() || m_fullyObscuredByShroud)
+	{
+		return;
+	}
+
+	for (size_t i = 0; i < m_headlights.size(); i++)
+	{
+		const Headlight &light = m_headlights[i];
+		if (light.subObject >= m_renderObject->Get_Num_Sub_Objects())
+		{
+			continue;
+		}
+
+		RenderObjClass* mesh = m_renderObject->Get_Sub_Object(light.subObject);
+		Vector3 start;
+		Vector3 end;
+		Matrix3D::Transform_Vector(mesh->Get_Transform(), light.start, &start);
+		Matrix3D::Transform_Vector(mesh->Get_Transform(), light.end, &end);
+		mesh->Release_Ref();
+
+		// The transform carries the drawable's scale, which the radius has to follow.
+		const Real scale = (end - start).Length() / (light.end - light.start).Length();
+		TheW3DHeadlights->add(start, end, light.radius * scale);
 	}
 }
 
