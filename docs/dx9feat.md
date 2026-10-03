@@ -876,6 +876,7 @@ The keys live in `GameData.ini`. All but `HeadlightShader` reload in cheat build
 | `HeadlightPoolAngle` | 26 | Degrees from the middle of the light to its edge. |
 | `HeadlightPoolPitch` | 11.5 | Degrees the light tilts down from the mesh, so a level lamp reaches the ground. |
 | `HeadlightPoolFalloff` | 1.5 | How fast the pool dims with distance. |
+| `HeadlightPoolClampBrightness` | `Yes` | Where pools overlap, the ground takes the brightest one alone, so lamps side by side do not burn it white. `No` stacks them. `GameData.ini` only. |
 
 A model can override any of these for itself. The same keys go in its `W3DModelDraw` module, or in
 a module built on it such as `W3DTankDraw`, beside `OkToChangeModelColor`. A key left out takes the

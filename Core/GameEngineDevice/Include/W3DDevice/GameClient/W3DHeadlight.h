@@ -74,6 +74,8 @@ private:
 	DWORD m_beamPixelShader;
 	DWORD m_poolVertexShader;
 	DWORD m_poolPixelShader;
+	DWORD m_poolMaxPixelShader;	///< draws every pool as the brightest at each pixel, for HeadlightPoolClampBrightness
+	IDirect3DTexture8 *m_poolTexture;	///< the pools that shader reads, three float texels each
 };
 
 extern W3DHeadlightManager *TheW3DHeadlights;

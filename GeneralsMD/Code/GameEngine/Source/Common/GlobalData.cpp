@@ -352,6 +352,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "HeadlightPoolAngle",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolAngle ) },
 	{ "HeadlightPoolPitch",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolPitch ) },
 	{ "HeadlightPoolFalloff",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolFalloff ) },
+	{ "HeadlightPoolClampBrightness",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolClampBrightness ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -1810,6 +1811,7 @@ static const char *const LiveGameDataKeys[] =
 	STORM_TUNING_KEYS("SandStorm"), STORM_TUNING_KEYS("SnowStorm"),
 	"HeadlightColor", "HeadlightBeamIntensity", "HeadlightBeamLength", "HeadlightBeamWidth", "HeadlightBeamFalloff", "HeadlightBeamSoftness",
 	"HeadlightPoolIntensity", "HeadlightPoolRange", "HeadlightPoolAngle", "HeadlightPoolPitch", "HeadlightPoolFalloff",
+	"HeadlightPoolClampBrightness",
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };

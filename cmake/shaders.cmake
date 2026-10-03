@@ -294,5 +294,6 @@ rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      vs_3_0 mainVS headlightbe
 rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightbeam.pso          POOL=0)
 rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      vs_3_0 mainVS headlightpool.vso          POOL=1)
 rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightpool.pso          POOL=1)
+rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightpoolmax.pso       POOL=2)
 
 add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})

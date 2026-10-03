@@ -7,6 +7,10 @@
 // POOL draws the light the lamp throws. A quad covers the light's place on screen, and each pixel
 // finds its world position from the scene depth and lights it by its place inside the lamp's cone.
 // The draw blends as dest * (1 + light), which lights the scene's own colour a second time.
+//
+// POOL=2 draws every pool in one quad over all of them and takes the brightest at each pixel, so pools
+// that overlap light the ground no more than the brightest one does. The pools come in a float texture,
+// since ps_3_0 cannot index constants by a loop counter.
 
 #ifndef POOL
 #define POOL 0
@@ -30,10 +34,15 @@ float SceneDepth(float2 uv, float4 linearize, float facing)
 
 float4 Eye       : register(c0);
 float4 Linearize : register(c1);
-float4 Params    : register(c2);   // x = sign of depth along the view
+float4 Params    : register(c2);   // x = sign of depth along the view, y = pools with POOL=2, z = 1 / the pool texture's width
+
+#if POOL == 2
+sampler2D PoolTexture : register(s1);   // three texels a pool: the origin, aim and colour below
+#else
 float4 Origin    : register(c3);   // xyz = the lamp, w = 1 / range
 float4 Aim       : register(c4);   // xyz = unit direction of the light, w = tangent of its half angle
 float4 Color     : register(c5);   // rgb = light over the scene's light, a = falloff power
+#endif
 
 struct VsIn
 {
@@ -64,21 +73,38 @@ struct PsIn
     float2 DepthUV : TEXCOORD1;
 };
 
+// How much of one lamp's light reaches a point, 0 to 1.
+float PoolLight(float3 world, float4 origin, float4 aim, float falloff)
+{
+    float3 fromLamp = world - origin.xyz;
+    float along = dot(fromLamp, aim.xyz);
+    float aside = length(fromLamp - aim.xyz * along);
+
+    // 0 on the light's middle line, 1 on the cone's edge.
+    float off = aside / max(along * aim.w, 0.001f);
+    float cone = Smooth(saturate((1.0f - off) * 2.5f));
+    float reach = pow(saturate(1.0f - along * origin.w), falloff);
+    return cone * reach * step(0.0f, along);
+}
+
 float4 mainPS(PsIn input) : COLOR
 {
     float3 world = Eye.xyz + input.Ray * SceneDepth(input.DepthUV, Linearize, Params.x);
 
-    float3 fromLamp = world - Origin.xyz;
-    float along = dot(fromLamp, Aim.xyz);
-    float aside = length(fromLamp - Aim.xyz * along);
-
-    // 0 on the light's middle line, 1 on the cone's edge.
-    float off = aside / max(along * Aim.w, 0.001f);
-    float cone = Smooth(saturate((1.0f - off) * 2.5f));
-    float reach = pow(saturate(1.0f - along * Origin.w), Color.a);
-
-    float light = cone * reach * step(0.0f, along);
-    return float4(Color.rgb * light, 0.0f);
+#if POOL == 2
+    float3 light = 0.0f;
+    [loop] for (float i = 0.0f; i < Params.y; i += 1.0f)
+    {
+        float u = (i * 3.0f + 0.5f) * Params.z;
+        float4 origin = tex2Dlod(PoolTexture, float4(u, 0.5f, 0.0f, 0.0f));
+        float4 aim = tex2Dlod(PoolTexture, float4(u + Params.z, 0.5f, 0.0f, 0.0f));
+        float4 color = tex2Dlod(PoolTexture, float4(u + Params.z * 2.0f, 0.5f, 0.0f, 0.0f));
+        light = max(light, color.rgb * PoolLight(world, origin, aim, color.a));
+    }
+    return float4(light, 0.0f);
+#else
+    return float4(Color.rgb * PoolLight(world, Origin, Aim, Color.a), 0.0f);
+#endif
 }
 
 #else

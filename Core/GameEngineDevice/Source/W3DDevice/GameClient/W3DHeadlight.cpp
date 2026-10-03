@@ -57,7 +57,9 @@ W3DHeadlightManager::W3DHeadlightManager()
 	  m_beamVertexShader(0),
 	  m_beamPixelShader(0),
 	  m_poolVertexShader(0),
-	  m_poolPixelShader(0)
+	  m_poolPixelShader(0),
+	  m_poolMaxPixelShader(0),
+	  m_poolTexture(nullptr)
 {
 }
 
@@ -75,11 +77,18 @@ void W3DHeadlightManager::ReleaseResources()
 		DX8_DELETE_PIXEL_SHADER(device, m_beamPixelShader);
 		DX8_DELETE_VERTEX_SHADER(device, m_poolVertexShader);
 		DX8_DELETE_PIXEL_SHADER(device, m_poolPixelShader);
+		DX8_DELETE_PIXEL_SHADER(device, m_poolMaxPixelShader);
 	}
 	m_beamVertexShader = 0;
 	m_beamPixelShader = 0;
 	m_poolVertexShader = 0;
 	m_poolPixelShader = 0;
+	m_poolMaxPixelShader = 0;
+	if (m_poolTexture != nullptr)
+	{
+		m_poolTexture->Release();
+		m_poolTexture = nullptr;
+	}
 	m_loaded = FALSE;
 }
 
@@ -116,6 +125,17 @@ Bool W3DHeadlightManager::loadShaders()
 			if (FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\headlightpool.pso", nullptr, 0, false, &m_poolPixelShader)))
 			{
 				m_poolPixelShader = 0;
+			}
+
+			// Without these the pools draw one by one and light each other's ground twice.
+			if (FAILED(W3DShaderManager::LoadAndCreateD3DShader("shaders\\headlightpoolmax.pso", nullptr, 0, false, &m_poolMaxPixelShader)))
+			{
+				m_poolMaxPixelShader = 0;
+			}
+			if (m_poolMaxPixelShader != 0 && FAILED(DX8Wrapper::_Get_D3D_Device8()->CreateTexture(MAX_LIGHTS * 3, 1, 1, D3DUSAGE_DYNAMIC,
+				D3DFMT_A32B32G32R32F, D3DPOOL_DEFAULT, &m_poolTexture, nullptr)))
+			{
+				m_poolTexture = nullptr;
 			}
 		}
 	}
@@ -452,6 +472,29 @@ static Vector3 View_Ray(const D3DMATRIX &projection, const D3DMATRIX &toWorld, R
 		cameraX * toWorld.m[0][2] + cameraY * toWorld.m[1][2] + cameraZ * toWorld.m[2][2]);
 }
 
+static void Write_Pool_Quad(VertexFormatXYZNDUV2 *&verts, const Real *rect, const D3DMATRIX &projection, const D3DMATRIX &toWorld,
+	const Vector4 &depthMap)
+{
+	for (Int corner = 0; corner < 4; corner++)
+	{
+		const Real clipX = (corner & 1) ? rect[2] : rect[0];
+		const Real clipY = (corner & 2) ? rect[3] : rect[1];
+		const Vector3 ray = View_Ray(projection, toWorld, clipX, clipY);
+		verts->x = clipX;
+		verts->y = clipY;
+		verts->z = 0.5f;
+		verts->nx = ray.X;
+		verts->ny = ray.Y;
+		verts->nz = ray.Z;
+		verts->diffuse = 0xffffffffu;
+		verts->u1 = clipX * depthMap.X + depthMap.Z;
+		verts->v1 = clipY * depthMap.Y + depthMap.W;
+		verts->u2 = 0.0f;
+		verts->v2 = 0.0f;
+		verts++;
+	}
+}
+
 static void Write_Quad_Indices(UnsignedShort *indices, Int quads)
 {
 	for (Int i = 0; i < quads; i++)
@@ -537,7 +580,9 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 	DynamicVBAccessClass vbAccess(BUFFER_TYPE_DYNAMIC_DX8, dynamic_fvf_type, count * 8);
 	PoolDraw pools[MAX_LIGHTS];
 	Int poolCount = 0;
+	Int poolQuads = 0;
 	Int beamCount = 0;
+	const Bool clampPools = TheGlobalData->m_headlightTuning.poolClampBrightness && m_poolMaxPixelShader != 0 && m_poolTexture != nullptr;
 	{
 		DynamicVBAccessClass::WriteLockClass lock(&vbAccess);
 		VertexFormatXYZNDUV2 *verts = lock.Get_Formatted_Vertex_Array();
@@ -643,34 +688,31 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 			{
 				continue;
 			}
-
-			for (Int corner = 0; corner < 4; corner++)
-			{
-				const Real clipX = (corner & 1) ? pool.rect[2] : pool.rect[0];
-				const Real clipY = (corner & 2) ? pool.rect[3] : pool.rect[1];
-				const Vector3 ray = View_Ray(projection, toWorld, clipX, clipY);
-				verts->x = clipX;
-				verts->y = clipY;
-				verts->z = 0.5f;
-				verts->nx = ray.X;
-				verts->ny = ray.Y;
-				verts->nz = ray.Z;
-				verts->diffuse = 0xffffffffu;
-				verts->u1 = clipX * depthMap.X + depthMap.Z;
-				verts->v1 = clipY * depthMap.Y + depthMap.W;
-				verts->u2 = 0.0f;
-				verts->v2 = 0.0f;
-				verts++;
-			}
 			poolCount++;
 		}
+
+		// Clamped pools draw as one quad over them all, since each pixel has to see every pool that reaches it.
+		for (Int first = 0; first < poolCount; first += clampPools ? poolCount : 1)
+		{
+			Real rect[4] = { pools[first].rect[0], pools[first].rect[1], pools[first].rect[2], pools[first].rect[3] };
+			const Int last = clampPools ? poolCount : first + 1;
+			for (Int i = first + 1; i < last; i++)
+			{
+				rect[0] = min(rect[0], pools[i].rect[0]);
+				rect[1] = min(rect[1], pools[i].rect[1]);
+				rect[2] = max(rect[2], pools[i].rect[2]);
+				rect[3] = max(rect[3], pools[i].rect[3]);
+			}
+			Write_Pool_Quad(verts, rect, projection, toWorld, depthMap);
+			poolQuads++;
+		}
 	}
-	if (beamCount == 0 && poolCount == 0)
+	if (beamCount == 0 && poolQuads == 0)
 	{
 		return;
 	}
 
-	const Int quads = beamCount + poolCount;
+	const Int quads = beamCount + poolQuads;
 	DynamicIBAccessClass ibAccess(BUFFER_TYPE_DYNAMIC_DX8, quads * 6);
 	{
 		DynamicIBAccessClass::WriteLockClass lock(&ibAccess);
@@ -703,28 +745,59 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 	const Vector4 linearize(projection.m[3][2], projection.m[3][3], projection.m[2][3], projection.m[2][2]);
 
 	// The pools go first, so the beams stay as bright over lit ground as over dark.
-	if (poolCount > 0)
+	if (poolQuads > 0)
 	{
 		device->SetVertexShader(Peek_D3D9_Vertex_Shader(m_poolVertexShader));
-		DX8Wrapper::Set_Pixel_Shader(m_poolPixelShader);
+		DX8Wrapper::Set_Pixel_Shader(clampPools ? m_poolMaxPixelShader : m_poolPixelShader);
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);
 
 		const Vector4 eyePosition(eye.X, eye.Y, eye.Z, 0.0f);
-		const Vector4 params(projection.m[2][3], 0.0f, 0.0f, 0.0f);
+		const Vector4 params(projection.m[2][3], (Real)poolCount, 1.0f / (Real)(MAX_LIGHTS * 3), 0.0f);
 		DX8Wrapper::Set_Pixel_Shader_Constant(0, &eyePosition, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(1, &linearize, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(2, &params, 1);
 
-		for (Int i = 0; i < poolCount; i++)
+		if (clampPools)
 		{
-			const PoolDraw &pool = pools[i];
-			const Vector4 origin(pool.origin.X, pool.origin.Y, pool.origin.Z, 1.0f / pool.range);
-			const Vector4 aim(pool.aim.X, pool.aim.Y, pool.aim.Z, pool.spread);
-			DX8Wrapper::Set_Pixel_Shader_Constant(3, &origin, 1);
-			DX8Wrapper::Set_Pixel_Shader_Constant(4, &aim, 1);
-			DX8Wrapper::Set_Pixel_Shader_Constant(5, &pool.color, 1);
-			DX8Wrapper::Draw_Triangles((unsigned short)((beamCount + i) * 6), 2, (unsigned short)((beamCount + i) * 4), 4);
+			D3DLOCKED_RECT locked;
+			if (SUCCEEDED(m_poolTexture->LockRect(0, &locked, nullptr, D3DLOCK_DISCARD)))
+			{
+				Vector4 *texels = (Vector4 *)locked.pBits;
+				for (Int i = 0; i < poolCount; i++)
+				{
+					const PoolDraw &pool = pools[i];
+					texels[i * 3 + 0].Set(pool.origin.X, pool.origin.Y, pool.origin.Z, 1.0f / pool.range);
+					texels[i * 3 + 1].Set(pool.aim.X, pool.aim.Y, pool.aim.Z, pool.spread);
+					texels[i * 3 + 2] = pool.color;
+				}
+				m_poolTexture->UnlockRect(0);
+
+				// Cleared through the wrapper, as stage 0 is above.
+				DX8Wrapper::Set_Texture(1, nullptr);
+				DX8Wrapper::Apply_Render_State_Changes();
+				device->SetTexture(1, m_poolTexture);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_MINFILTER, D3DTEXF_POINT);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_MAGFILTER, D3DTEXF_POINT);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_MIPFILTER, D3DTEXF_NONE);
+				DX8Wrapper::Draw_Triangles((unsigned short)(beamCount * 6), 2, (unsigned short)(beamCount * 4), 4);
+				device->SetTexture(1, nullptr);
+			}
+		}
+		else
+		{
+			for (Int i = 0; i < poolCount; i++)
+			{
+				const PoolDraw &pool = pools[i];
+				const Vector4 origin(pool.origin.X, pool.origin.Y, pool.origin.Z, 1.0f / pool.range);
+				const Vector4 aim(pool.aim.X, pool.aim.Y, pool.aim.Z, pool.spread);
+				DX8Wrapper::Set_Pixel_Shader_Constant(3, &origin, 1);
+				DX8Wrapper::Set_Pixel_Shader_Constant(4, &aim, 1);
+				DX8Wrapper::Set_Pixel_Shader_Constant(5, &pool.color, 1);
+				DX8Wrapper::Draw_Triangles((unsigned short)((beamCount + i) * 6), 2, (unsigned short)((beamCount + i) * 4), 4);
+			}
 		}
 	}
 
