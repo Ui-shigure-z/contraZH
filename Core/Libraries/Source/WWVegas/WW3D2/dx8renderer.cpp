@@ -507,13 +507,11 @@ void DX8FVFCategoryContainer::Render_Material_Pass_Window()
 			}
 		}
 
+		// The window's passes take no lighting, and setting a mesh's light environment here would mark the
+		// material changed when its ambient differs, which reapplies it and drops the pass's texgen.
 		for (size_t i=0;i<fixed.size();++i)
 		{
 			MeshClass * mesh = fixed[i].first;
-			if (mesh->Get_Lighting_Environment() != nullptr)
-			{
-				DX8Wrapper::Set_Light_Environment(mesh->Get_Lighting_Environment());
-			}
 			DX8Wrapper::Set_Transform(D3DTS_WORLD,mesh->Get_Transform());
 			pass->Install_Polygon_Materials(fixed[i].second);
 			fixed[i].second->Render(mesh->Get_Base_Vertex_Offset());

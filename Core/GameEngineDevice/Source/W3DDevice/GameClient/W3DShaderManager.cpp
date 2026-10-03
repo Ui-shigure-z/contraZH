@@ -2346,6 +2346,9 @@ static void Set_Camera_Space_Texcoord(Int stage, DWORD source)
 // W3DSpecularMaterialPassClass::Install_Polygon_Materials.
 Int SpecularShader::set(Int pass)
 {
+	// A pending material apply would otherwise land on the draw and put the stages back to passthrough.
+	DX8Wrapper::Apply_Render_State_Changes();
+
 	m_shadowed = (m_dwShadowedShaders[BUMP_NONE] != 0 && TheW3DShadowMap != nullptr &&
 		TheW3DShadowMap->bindReceiver(SPECULAR_SHADOW_STAGE));
 
