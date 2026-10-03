@@ -677,6 +677,7 @@ WbView3d::WbView3d() :
 	m_time(0),
 	m_lastAnimTick(0),
 	m_updateCount(0),
+	m_topViewError(""),
 	m_labelEpoch(0),
 	m_labelAnchorMode(0),
 	m_labelRenderer(0),
@@ -4889,9 +4890,11 @@ void WbView3d::redraw(void)
 
 Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra)
 {
+	m_topViewError = "";
 	WorldHeightMapEdit *pMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
 	if (!m_ww3dInited || pMap == NULL || m_heightMapRenderObj == NULL || bgra == NULL || size <= 0)
 	{
+		m_topViewError = "the 3D view is not ready";
 		return false;
 	}
 
@@ -4899,6 +4902,7 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	const Real worldY = capture.y1 - capture.y0;
 	if (worldX <= 0.0f || worldY <= 0.0f)
 	{
+		m_topViewError = "the area is empty";
 		return false;
 	}
 	Real maxZ = 0.0f;
@@ -4912,10 +4916,12 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 
 	TextureClass *target = NULL;
 	ZTextureClass *depth = NULL;
-	DX8Wrapper::Create_Render_Target(size, size, WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D16, &target, &depth);
+	// The shadow pass ends with a back-buffer-sized quad masked by the stencil, so the depth needs stencil bits.
+	DX8Wrapper::Create_Render_Target(size, size, WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D24S8, &target, &depth);
 	if (target == NULL)
 	{
 		REF_PTR_RELEASE(depth);
+		m_topViewError = "couldn't create the render target";
 		return false;
 	}
 
@@ -4966,13 +4972,9 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	m_heightMapRenderObj->updateCenter(camera, &center, &lightListIt);
 	m_heightMapRenderObj->On_Frame_Update();
 
-	// The sun shadow map is fitted to the editor camera. The next editor frame fills it again.
-	const Bool wantShadowMap = TheGlobalData->m_useShadowMap;
-	TheWritableGlobalData->m_useShadowMap = false;
-	if (TheW3DShadowMap != nullptr)
-	{
-		TheW3DShadowMap->clearDepth();
-	}
+	// Volume shadows resolve only inside that quad, which a render larger than the window overruns.
+	const Bool wantShadowVolumes = TheGlobalData->m_useShadowVolumes;
+	TheWritableGlobalData->m_useShadowVolumes = false;
 
 	Bool ok = false;
 	DX8Wrapper::Set_Render_Target_With_Z(target, depth);
@@ -5012,8 +5014,12 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 		WW3D::End_Render(false);
 		ok = true;
 	}
+	else
+	{
+		m_topViewError = "WW3D refused to begin a frame";
+	}
 	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
-	TheWritableGlobalData->m_useShadowMap = wantShadowMap;
+	TheWritableGlobalData->m_useShadowVolumes = wantShadowVolumes;
 
 	SurfaceClass *surface = target->Get_Surface_Level();
 	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;
@@ -5042,6 +5048,7 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 		else
 		{
 			ok = false;
+			m_topViewError = "couldn't read the render back";
 		}
 	}
 	if (copy != NULL)

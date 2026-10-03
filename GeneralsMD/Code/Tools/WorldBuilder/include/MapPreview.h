@@ -130,7 +130,7 @@ private:
 	
 	UnsignedInt m_pixelBuffer[MAP_PREVIEW_HEIGHT][MAP_PREVIEW_WIDTH];
 
-	// Per supersampled pixel. A negative light marks a bridge or object over water, left unshaded.
+	// Per supersampled pixel. A light of -1 marks a bridge or object over water, left unshaded, and -2 a pixel outside the area.
 	std::vector<UnsignedByte> m_hqScene;
 	std::vector<Real> m_hqLight;
 	std::vector<Real> m_hqHeight;

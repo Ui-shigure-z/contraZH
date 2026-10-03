@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -109,12 +110,12 @@ private:
 	{
 		QGroupBox *box = new QGroupBox(tr("Shading"), this);
 		QGridLayout *grid = new QGridLayout(box);
-		m_relief = addSlider(grid, 0, tr("Relief"), 0, 200, true,
-			tr("Strength of the hillshade that lights slopes from the north-west."));
-		m_elevation = addSlider(grid, 1, tr("Elevation"), 0, 100, true,
-			tr("How much brighter high ground is than low ground."));
-		m_falloff = addSlider(grid, 2, tr("Water depth"), 5, 200, false,
-			tr("Depth in world units at which water reaches most of its deep colour."));
+		m_relief = addSlider(grid, 0, tr("Relief"), 0, 200, 1000, true,
+			tr("Strength of the hillshade that lights slopes from the north-west. Type past the slider for more."));
+		m_elevation = addSlider(grid, 1, tr("Elevation"), 0, 100, 500, true,
+			tr("How much brighter high ground is than low ground. Type past the slider for more."));
+		m_falloff = addSlider(grid, 2, tr("Water depth"), 5, 200, 5000, false,
+			tr("Depth in world units at which water reaches most of its deep colour. Type past the slider for more."));
 		m_shallowBtn = addColorButton(grid, 3, tr("Shallow water"), m_shallow);
 		m_deepBtn = addColorButton(grid, 4, tr("Deep water"), m_deep);
 		m_depthTint = new QCheckBox(tr("Depth tint"), box);
@@ -236,26 +237,37 @@ private:
 		return box;
 	}
 
-	QSlider *addSlider(QGridLayout *grid, int row, const QString &label, int lo, int hi, bool percent, const QString &help)
+	// The spin box holds the value and takes typed values past the slider's range, which the slider then pins at its end.
+	QSpinBox *addSlider(QGridLayout *grid, int row, const QString &label, int lo, int hi, int typedMax, bool percent, const QString &help)
 	{
 		QLabel *name = new QLabel(label, this);
 		QSlider *slider = new QSlider(Qt::Horizontal, this);
-		QLabel *value = new QLabel(this);
+		QSpinBox *value = new QSpinBox(this);
 		slider->setRange(lo, hi);
-		value->setText(percent ? QString("%1%").arg(lo) : QString::number(lo));
+		value->setRange(lo, typedMax);
+		if (percent)
+		{
+			value->setSuffix("%");
+		}
 		slider->setMinimumWidth(160);
-		value->setMinimumWidth(40);
+		value->setMinimumWidth(70);
 		name->setToolTip(help);
 		slider->setToolTip(help);
+		value->setToolTip(help);
 		grid->addWidget(name, row, 0);
 		grid->addWidget(slider, row, 1);
 		grid->addWidget(value, row, 2);
-		connect(slider, &QSlider::valueChanged, this, [this, value, percent](int v)
+		connect(slider, &QSlider::valueChanged, this, [value](int v)
 		{
-			value->setText(percent ? QString("%1%").arg(v) : QString::number(v));
+			value->setValue(v);
+		});
+		connect(value, QOverload<int>::of(&QSpinBox::valueChanged), this, [this, slider](int v)
+		{
+			const QSignalBlocker block(slider);
+			slider->setValue(v);
 			refresh();
 		});
-		return slider;
+		return value;
 	}
 
 	QPushButton *addColorButton(QGridLayout *grid, int row, const QString &label, QColor &color)
@@ -420,7 +432,9 @@ private:
 		QApplication::restoreOverrideCursor();
 		if (ok == 0)
 		{
-			QMessageBox::warning(this, windowTitle(), tr("Couldn't render the map. Check that the area is not empty."));
+			char reason[256];
+			WBQtHQPreview_GetError(reason, sizeof(reason));
+			QMessageBox::warning(this, windowTitle(), tr("Couldn't render the map: %1.").arg(QString::fromLocal8Bit(reason)));
 			return false;
 		}
 		m_rendered = capture;
@@ -447,9 +461,9 @@ private:
 	std::vector<unsigned char> m_pixels;
 	QLabel *m_image;
 
-	QSlider *m_relief;
-	QSlider *m_elevation;
-	QSlider *m_falloff;
+	QSpinBox *m_relief;
+	QSpinBox *m_elevation;
+	QSpinBox *m_falloff;
 	QPushButton *m_shallowBtn;
 	QPushButton *m_deepBtn;
 	QColor m_shallow;

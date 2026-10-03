@@ -213,11 +213,17 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 		return false;
 	}
 
+	// The lobby fits the map into its square preview at the map's own proportions, so the render is a square around the area.
+	const Real areaX0 = cx0 * MAP_XY_FACTOR;
+	const Real areaY0 = cy0 * MAP_XY_FACTOR;
+	const Real areaX1 = cx1 * MAP_XY_FACTOR;
+	const Real areaY1 = cy1 * MAP_XY_FACTOR;
+	const Real half = max(areaX1 - areaX0, areaY1 - areaY0) * 0.5f;
 	WbView3d::TopViewCapture view3d;
-	view3d.x0 = cx0 * MAP_XY_FACTOR;
-	view3d.y0 = cy0 * MAP_XY_FACTOR;
-	view3d.x1 = cx1 * MAP_XY_FACTOR;
-	view3d.y1 = cy1 * MAP_XY_FACTOR;
+	view3d.x0 = (areaX0 + areaX1)*0.5f - half;
+	view3d.y0 = (areaY0 + areaY1)*0.5f - half;
+	view3d.x1 = (areaX0 + areaX1)*0.5f + half;
+	view3d.y1 = (areaY0 + areaY1)*0.5f + half;
 	view3d.objects = capture.objects;
 	view3d.trees = capture.trees;
 	view3d.roads = capture.roads;
@@ -243,6 +249,7 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 	const Real worldY = view3d.y1 - view3d.y0;
 	Real minZ = FLT_MAX;
 	Real maxZ = -FLT_MAX;
+	Real sumZ = 0.0f;
 	for (Int j = border; j < pMap->getYExtent() - border; j++)
 	{
 		for (Int i = border; i < pMap->getXExtent() - border; i++)
@@ -250,9 +257,11 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 			const Real z = pMap->getHeight(i, j) * MAP_HEIGHT_SCALE;
 			minZ = min(minZ, z);
 			maxZ = max(maxZ, z);
+			sumZ += z;
 		}
 	}
 	const Real rangeZ = max(maxZ - minZ, 1.0f);
+	const Real meanZ = sumZ / max(mapW*mapH, 1);
 
 	// Light from the north-west, as on most maps' sun.
 	Real lx = -1.0f;
@@ -274,6 +283,12 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 		{
 			const Real x = view3d.x0 + worldX * (px + 0.5f) / big;
 			const Int n = py*big + px;
+			if (x < areaX0 || x > areaX1 || y < areaY0 || y > areaY1)
+			{
+				m_hqLight[n] = -2.0f;
+				m_hqDepth[n] = 0.0f;
+				continue;
+			}
 			const UnsignedByte *s = &m_hqScene[n*4];
 			const UnsignedByte *g = &ground[n*4];
 			const Bool aboveGround = (abs(s[0] - g[0]) + abs(s[1] - g[1]) + abs(s[2] - g[2])) > ABOVE_GROUND_DIFF;
@@ -297,7 +312,8 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 			const Real dzdy = (TheTerrainRenderObject->getHeightMapHeight(x, y + step, NULL) - TheTerrainRenderObject->getHeightMapHeight(x, y - step, NULL)) / (2.0f*step);
 			const Real nLen = sqrt(dzdx*dzdx + dzdy*dzdy + 1.0f);
 			m_hqLight[n] = (-dzdx*lx - dzdy*ly + lz) / (nLen*lz);
-			m_hqHeight[n] = (z - minZ) / rangeZ;
+			// Centred on the average ground, so the elevation shading leaves the map's overall brightness alone.
+			m_hqHeight[n] = (z - meanZ) / rangeZ;
 		}
 	}
 	return true;
@@ -325,13 +341,19 @@ void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
 					const Int n = (oy*m_hqSuper + sy)*big + ox*m_hqSuper + sx;
 					const UnsignedByte *s = &m_hqScene[n*4];
 					Real c[3] = { (Real)s[0], (Real)s[1], (Real)s[2] };
+					if (m_hqLight[n] < -1.5f)
+					{
+						c[0] = 0.0f;
+						c[1] = 0.0f;
+						c[2] = 0.0f;
+					}
 					// A rendered water surface is flat, so the ground's relief stays off it.
 					const Bool water = m_hqDepth[n] > 0.0f;
 					if (m_hqLight[n] >= 0.0f && !(water && m_hqWaterRendered))
 					{
 						Real shade = 1.0f + params.relief * (m_hqLight[n] - 1.0f);
-						shade *= 1.0f + params.elevation * (m_hqHeight[n] - 0.5f);
-						shade = max(0.3f, min(shade, 1.8f));
+						shade *= 1.0f + params.elevation * m_hqHeight[n];
+						shade = max(0.0f, shade);
 						for (Int k = 0; k < 3; k++)
 						{
 							c[k] *= shade;

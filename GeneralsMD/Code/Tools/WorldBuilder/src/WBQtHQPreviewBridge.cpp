@@ -17,6 +17,7 @@ static const char *HQ_PREVIEW_SECTION = "HQMapPreview";
 static MapPreview *s_preview = NULL;
 static WbView3d *s_view = NULL;
 static CString s_mapPath;
+static CString s_error;
 
 static void toParams(const WBQtHQPreviewParams *in, HQPreviewParams *out)
 {
@@ -194,7 +195,26 @@ int WBQtHQPreview_Render(const WBQtHQCaptureParams *capture)
 	}
 	HQCaptureParams c;
 	toCapture(capture, &c);
-	return s_preview->prepareHQ(s_view, c) ? 1 : 0;
+	if (s_preview->prepareHQ(s_view, c))
+	{
+		s_error.Empty();
+		return 1;
+	}
+	s_error = s_view->getTopViewError();
+	if (s_error.IsEmpty())
+	{
+		s_error = "the area is empty";
+	}
+	return 0;
+}
+
+void WBQtHQPreview_GetError(char *buf, int size)
+{
+	if (buf != NULL && size > 0)
+	{
+		strncpy(buf, s_error, size - 1);
+		buf[size - 1] = 0;
+	}
 }
 
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra)

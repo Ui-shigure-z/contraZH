@@ -60,6 +60,8 @@ void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams 
 void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture);
 // Renders the map again. Returns 1 on success.
 int  WBQtHQPreview_Render(const WBQtHQCaptureParams *capture);
+// Why the last render failed.
+void WBQtHQPreview_GetError(char *buf, int size);
 // Fills Size()^2 BGRA pixels, top row north.
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra);
 // Writes the tga and remembers the settings. Returns 1 on success.

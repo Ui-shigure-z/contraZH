@@ -359,6 +359,7 @@ private:
 	Int											m_time;
 	LONGLONG										m_lastAnimTick;	///< QPC tick of the last animation advance, 0 before the first
 	Int											m_updateCount;
+	const char									*m_topViewError;
 	UINT										m_timer;
 	DrawObject							*m_drawObject;
 	RefRenderObjListClass		m_lightList;
@@ -779,6 +780,8 @@ public:
 	};
 	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
 	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);
+	/// Why the last captureTopView failed.
+	const char *getTopViewError() const { return m_topViewError; }
 
 	virtual void setCenterInView(Real x, Real y) override;
 
