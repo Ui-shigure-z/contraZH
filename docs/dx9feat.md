@@ -103,9 +103,10 @@ End
 
 | Effect | Add | Section |
 |---|---|---|
-| Bumps on a unit or structure | `<texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Bumps on a unit, structure or bridge | `<texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
 | Lit windows, lamps and exhausts | `<texture>_emi.dds` | [Glow masks](#glow-masks) |
 | Bumps on terrain | `<terrain texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
+| Bumps on a road | `<road texture>_nrm.dds` | [Surface detail](#surface-detail-normal-mapping) |
 | Stones pushing through blends | `<terrain texture>_hgt.dds` | [Height blending](#height-blending) |
 | Shine on one terrain type | `GlintStrength` and `GlintGloss` in `Terrain.ini` | [Terrain glint](#terrain-glint) |
 
@@ -160,7 +161,7 @@ This follows the cloud map setting and is off at night.
 
 ## Specular highlights
 
-Vehicles and structures get a per-pixel sun highlight, following the map's sun, brighter on bright
+Vehicles, structures and bridges get a per-pixel sun highlight, following the map's sun, brighter on bright
 texture areas, and hidden in shadow when shadow mapping is on. Infantry stay matte. Needs the
 Direct3D 9 build and a shader model 2 card.
 
@@ -228,16 +229,16 @@ reject a `Terrain.ini` that has them.
 
 ## Surface detail (normal mapping)
 
-Bump detail in sunlight on vehicles, structures and terrain. On units and structures it shades
-both diffuse light and the specular highlight, fades in shadow, and costs no extra draw. Infantry
-stay flat. Needs the Direct3D 9 build and shader model 2.0a; other cards get plain highlights and
+Bump detail in sunlight on vehicles, structures, bridges, terrain and roads. On units, structures
+and bridges it shades both diffuse light and the specular highlight, fades in shadow, and costs no
+extra draw. Infantry stay flat. Needs the Direct3D 9 build and shader model 2.0a; other cards get plain highlights and
 flat terrain.
 
 * `NormalMaps = Yes` - (No turns the detail off. Also `Surface detail` in the advanced display
 options, applied on Accept. Needs `CheckNormalMaps` in `OptionsMenu.wnd` for the menu control.)
 
-Units and structures use a normal map when one exists and otherwise derive bumps from texture
-brightness (light = raised, so painted markings emboss too). A normal map sits beside its texture in
+Units, structures and bridges use a normal map when one exists and otherwise derive bumps from
+texture brightness (light = raised, so painted markings emboss too). A normal map sits beside its texture in
 `Art\Textures` with `_nrm` added, e.g. `avtank_nrm.dds` for `avtank.tga`:
 
 * Tangent space, in the DirectX convention (green points down the texture).
@@ -259,7 +260,19 @@ Terrain uses normal maps only, never derived bumps:
 * In `Art\Textures`, not `Art\Terrain` beside the texture.
 * At least as large as the part of the texture the game reads; simplest is the same size.
 * Terrain without one stays flat.
-* Flat regardless: the third texture where three meet, flat terrain mode, roads, water reflections.
+* The third texture where three meet bumps with the rest.
+* Flat regardless: flat terrain mode, water reflections.
+
+Roads use a normal map when one exists and otherwise derive bumps from brightness, as units do:
+
+* Named after the `TerrainRoads.ini` texture, e.g. `TRStreet_nrm.dds` for `TRStreet.tga`.
+* In `Art\Textures`, laid out on the road texture's UVs, in the units' format above.
+* Normal map strength follows `TerrainNormalMapStrength`, and `NormalMapDebug` shows both kinds.
+* Derived bumps read the texture's green channel, which tracks brightness on grey roads.
+* Flat in water reflections.
+
+* `RoadBumpHeight = 0.15` - (How far, in world units, full brightness rises on road textures without
+a normal map. 0 leaves them flat. Lane markings emboss softly, as paint does on units.)
 
 * `TerrainNormalMapStrength = 2.0` - (Scales the tilt of terrain normal maps. Terrain is seen
 from further away than units, so it defaults stronger.)

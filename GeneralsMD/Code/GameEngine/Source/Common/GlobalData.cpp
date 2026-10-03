@@ -276,6 +276,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "UnitSpecularIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularIntensity ) },
 	{ "UnitSpecularPower",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularPower ) },
 	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
+	{ "RoadBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_roadBumpHeight ) },
 	{ "UnitNormalMapStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitNormalMapStrength ) },
 	{ "TerrainNormalMapStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainNormalMapStrength ) },
 	{ "TerrainGlintIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintIntensity ) },
@@ -1056,6 +1057,7 @@ GlobalData::GlobalData()
 	m_unitSpecularIntensity = 0.35f;
 	m_unitSpecularPower = 24.0f;
 	m_unitBumpHeight = 0.15f;
+	m_roadBumpHeight = 0.15f;
 	m_unitNormalMapStrength = 1.0f;
 	m_terrainNormalMapStrength = 2.0f;
 	m_terrainGlintIntensity = 0.25f;
@@ -1787,7 +1789,7 @@ void GlobalData::reset()
 // Keys the renderer reads every frame, so a new value shows at once. The rest are read at load.
 static const char *const LiveGameDataKeys[] =
 {
-	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength",
+	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength", "RoadBumpHeight",
 	"TerrainGlintIntensity", "TerrainGlintGloss", "TerrainGlintAlbedo",
 	"UnitEmissiveIntensity", "UnitEmissiveNightIntensity", "SoftParticleDistance",
 	"AmbientOcclusionRadius", "AmbientOcclusionStrength",

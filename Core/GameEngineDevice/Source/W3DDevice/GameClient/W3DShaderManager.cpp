@@ -1675,6 +1675,10 @@ static Bool TerrainBumpSupported = FALSE;
 static Real TerrainBumpStrength = 1.0f;
 static Bool TerrainBumpDebug = FALSE;
 static Int TerrainBumpCount = 0;
+static Bool RoadBumpLoaded = FALSE;
+static Bool RoadDerivedLoaded = FALSE;
+static Real RoadBumpHeight = 0.0f;
+static Int RoadBumpCount = 0;
 
 // The sun's glint on the ground, set once a frame by the scene and the terrain.
 static Bool TerrainGlintEnabled = FALSE;
@@ -1792,7 +1796,7 @@ static void Bind_Terrain_Glint(Int sunRegister, Bool on, Bool materials)
 #endif
 }
 
-static void Release_Glint_Shaders(DWORD shaders[2][3])
+static void Release_Ground_Variants(DWORD shaders[2][3])
 {
 	for (Int s=0; s<2; s++)
 	{
@@ -1809,8 +1813,8 @@ static void Release_Glint_Shaders(DWORD shaders[2][3])
 
 #if defined(BUILD_WITH_D3D9)
 
-// Loads a ground shader's glint-only variants by shadow and noise count, and says whether all of them loaded.
-static Bool Load_Glint_Shaders(const char *ground, Bool shadowMap, Bool packed, DWORD shaders[2][3])
+// Loads a ground shader's variants, such as roadglint, by shadow and noise count, and says whether all of them loaded.
+static Bool Load_Ground_Variants(const char *variant, Bool shadowMap, Bool packed, DWORD shaders[2][3])
 {
 	static const char *const noiseNames[3] = { "", "noise", "noise2" };
 	Bool complete = TRUE;
@@ -1819,7 +1823,7 @@ static Bool Load_Glint_Shaders(const char *ground, Bool shadowMap, Bool packed, 
 		for (Int i=0; i<3; i++)
 		{
 			char file[64];
-			snprintf(file, sizeof(file), "shaders\\%sglint%s%s.pso", ground, noiseNames[i], s == 0 ? "noshadow" : (packed ? "packed" : ""));
+			snprintf(file, sizeof(file), "shaders\\%s%s%s.pso", variant, noiseNames[i], s == 0 ? "noshadow" : (packed ? "packed" : ""));
 			if (FAILED(W3DShaderManager::LoadAndCreateD3DShader(file, nullptr, 0, false, &shaders[s][i])))
 			{
 				shaders[s][i]=0;
@@ -2955,11 +2959,12 @@ void W3DShaderManager::setRoadHeightBlend(Bool blendTiles)
 	RoadHeightBlendTiles = blendTiles;
 }
 
-void W3DShaderManager::setTerrainBumps(Bool enabled, Real strength, Bool debug)
+void W3DShaderManager::setTerrainBumps(Bool enabled, Real strength, Bool debug, Real roadHeight)
 {
 	TerrainBumpEnabled = enabled;
 	TerrainBumpStrength = strength;
 	TerrainBumpDebug = debug;
+	RoadBumpHeight = roadHeight;
 }
 
 Bool W3DShaderManager::wantsTerrainNormalAtlas()
@@ -3020,6 +3025,13 @@ Int W3DShaderManager::takeTerrainBumpCount()
 	return count;
 }
 
+Int W3DShaderManager::takeRoadBumpCount()
+{
+	const Int count = RoadBumpCount;
+	RoadBumpCount = 0;
+	return count;
+}
+
 void W3DShaderManager::takeSpecularCounts(Int &meshes, Int &derived, Int &normalMapped, Int &emissive)
 {
 	meshes = SpecularPassCount;
@@ -3061,6 +3073,15 @@ MaterialPassClass *W3DShaderManager::getSpecularPass(const Int *lights, Int ligh
 const MaterialPassClass *W3DShaderManager::getSpecularPassKey()
 {
 	return (W3DShadersPassCount[ST_SPECULAR] != 0) ? &SpecularMaterialPass : nullptr;
+}
+
+void W3DShaderManager::setSpecularTexture(TextureClass *texture)
+{
+#if defined(BUILD_WITH_D3D9)
+	specularShader.setTexture(texture);
+#else
+	DX8Wrapper::Set_Texture(0, texture);
+#endif
 }
 
 /*===========================================================================================*/
@@ -3608,7 +3629,7 @@ Int TerrainShaderPixelShader::shutdown()
 	}
 	TerrainSeabedLoaded = FALSE;
 
-	Release_Glint_Shaders(m_dwGlintPixelShader);
+	Release_Ground_Variants(m_dwGlintPixelShader);
 	TerrainGlintLoaded = FALSE;
 
 	return TRUE;
@@ -3800,7 +3821,7 @@ void TerrainShaderPixelShader::initGlint()
 	// Shadowed variants only go with the shadow receivers they replace.
 	const Bool shadowMap = (m_dwShadowPixelShader[0] != 0 && TheW3DShadowMap != nullptr);
 	const Bool packed = shadowMap && TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	TerrainGlintLoaded = Load_Glint_Shaders("terrain", shadowMap, packed, m_dwGlintPixelShader);
+	TerrainGlintLoaded = Load_Ground_Variants("terrainglint", shadowMap, packed, m_dwGlintPixelShader);
 #endif
 }
 
@@ -4440,7 +4461,7 @@ class RoadShaderPixelShader : public W3DShaderInterface
 	friend class RoadShader2Stage;	//the two-stage path hands its passes over when roads receive shadows.
 
 public:
-	RoadShaderPixelShader() : m_shadowStage(-1), m_lightStage(-1), m_pixelPath(FALSE) {}
+	RoadShaderPixelShader() : m_shadowStage(-1), m_lightStage(-1), m_normalStage(-1), m_pixelPath(FALSE) {}
 
 private:
 
@@ -4449,8 +4470,13 @@ private:
 	DWORD					m_dwPlainPixelShader[3];	///<every road mode without the shadow map, for lit draws' unlit neighbours and the ground noise
 	DWORD					m_dwLitPixelShader[2][3];	///<both again adding the point lights, by shadow and noise count
 	DWORD					m_dwGlintPixelShader[2][3];	///<both again adding the sun's glint instead, by shadow and noise count
+	DWORD					m_dwBumpPixelShader[2][3];	///<the glint variants also reading a normal map
+	DWORD					m_dwLitBumpPixelShader[2][3];	///<the lit variants also reading a normal map
+	DWORD					m_dwDerivedPixelShader[2][3];	///<the glint variants also bumped from the road texture's brightness
+	DWORD					m_dwLitDerivedPixelShader[2][3];	///<the lit variants also bumped from the road texture's brightness
 	Int						m_shadowStage;	///<stage the shadow map is bound to, or -1
 	Int						m_lightStage;	///<stage the world position is generated on, or -1
+	Int						m_normalStage;	///<stage the normal map is bound to, or -1
 	Bool					m_pixelPath;	///<whether the current pass draws through the shaders above
 
 	virtual Int set(Int pass) override;		///<setup shader for the specified rendering pass.
@@ -4461,6 +4487,7 @@ private:
 	void initShadowReceiver();
 	void initPixelLights();
 	void initGlint();
+	void initBump();
 	Bool setPixelPath();
 } roadShaderPixelShader;
 
@@ -4510,8 +4537,15 @@ Int RoadShaderPixelShader::shutdown()
 	}
 	RoadPixelLightsLoaded = FALSE;
 
-	Release_Glint_Shaders(m_dwGlintPixelShader);
+	Release_Ground_Variants(m_dwGlintPixelShader);
 	RoadGlintLoaded = FALSE;
+
+	Release_Ground_Variants(m_dwBumpPixelShader);
+	Release_Ground_Variants(m_dwLitBumpPixelShader);
+	Release_Ground_Variants(m_dwDerivedPixelShader);
+	Release_Ground_Variants(m_dwLitDerivedPixelShader);
+	RoadBumpLoaded = FALSE;
+	RoadDerivedLoaded = FALSE;
 
 	return TRUE;
 }
@@ -4604,7 +4638,40 @@ void RoadShaderPixelShader::initGlint()
 	// Shadowed variants only go with the shadow receivers they replace.
 	const Bool shadowMap = (m_dwShadowPixelShader[0] != 0 && TheW3DShadowMap != nullptr);
 	const Bool packed = shadowMap && TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
-	RoadGlintLoaded = Load_Glint_Shaders("road", shadowMap, packed, m_dwGlintPixelShader);
+	RoadGlintLoaded = Load_Ground_Variants("roadglint", shadowMap, packed, m_dwGlintPixelShader);
+#endif
+}
+
+void RoadShaderPixelShader::initBump()
+{
+	for (Int s=0; s<2; s++)
+	{
+		for (Int i=0; i<3; i++)
+		{
+			m_dwBumpPixelShader[s][i]=0;
+			m_dwLitBumpPixelShader[s][i]=0;
+			m_dwDerivedPixelShader[s][i]=0;
+			m_dwLitDerivedPixelShader[s][i]=0;
+		}
+	}
+	m_normalStage = -1;
+	RoadBumpLoaded = FALSE;
+	RoadDerivedLoaded = FALSE;
+
+#if defined(BUILD_WITH_D3D9)
+	const DX8Caps *caps = DX8Wrapper::Get_Current_Caps();
+	if (caps == nullptr || !Supports_Pixel_Shader_2_a(caps))
+	{
+		return;
+	}
+
+	// Shadowed variants only go with the shadow receivers they replace, and lit ones with the lit roads they replace.
+	const Bool shadowMap = (m_dwShadowPixelShader[0] != 0 && TheW3DShadowMap != nullptr);
+	const Bool packed = shadowMap && TheW3DShadowMap->getDepthMode() == W3DShadowMap::DEPTH_MODE_PACKED;
+	RoadBumpLoaded = Load_Ground_Variants("roadbump", shadowMap, packed, m_dwBumpPixelShader) &&
+		(!RoadPixelLightsLoaded || Load_Ground_Variants("roadlitbump", shadowMap, packed, m_dwLitBumpPixelShader));
+	RoadDerivedLoaded = Load_Ground_Variants("roadderived", shadowMap, packed, m_dwDerivedPixelShader) &&
+		(!RoadPixelLightsLoaded || Load_Ground_Variants("roadlitderived", shadowMap, packed, m_dwLitDerivedPixelShader));
 #endif
 }
 
@@ -4635,7 +4702,22 @@ Bool RoadShaderPixelShader::setPixelPath()
 	const Bool lightable = (RoadPixelLightsLoaded && PixelLightCount > 0);
 	const Bool lightMapReplaced = (anyLightMap && groundCapable);
 	const Bool glintable = Terrain_Glint_Wanted();
-	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glintable)
+
+	// Blend tiles draw the terrain atlas, so they read its normal atlas, and roads their own texture's _nrm.dds.
+	// Roads without one take bumps from their brightness. The mirror stays flat.
+	TextureClass *roadTexture = W3DShaderManager::getShaderTexture(0);
+	const Bool bumpAllowed = TerrainBumpEnabled && !ShaderClass::Is_Backface_Culling_Inverted();
+	TextureClass *normalMap = nullptr;
+	if (bumpAllowed && RoadBumpLoaded)
+	{
+		normalMap = RoadHeightBlendTiles ? W3DShaderManager::getShaderTexture(W3DShaderManager::TERRAIN_NORMAL_TEXTURE)
+			: W3DShaderManager::findNormalMap(roadTexture);
+	}
+	const Bool bumpable = (normalMap != nullptr && normalMap->Peek_D3D_Texture() != nullptr);
+	const Bool derivable = !bumpable && bumpAllowed && RoadDerivedLoaded && !RoadHeightBlendTiles && RoadBumpHeight > 0.0f &&
+		roadTexture != nullptr && roadTexture->Peek_D3D_Texture() != nullptr;
+
+	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glintable && !bumpable && !derivable)
 	{
 		return FALSE;
 	}
@@ -4653,13 +4735,31 @@ Bool RoadShaderPixelShader::setPixelPath()
 		m_shadowStage = shadowed ? stage : -1;
 	}
 	const Bool glint = glintable && m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount] != 0;
-	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glint)
+	const Bool bump = bumpable && m_dwBumpPixelShader[shadowed ? 1 : 0][noiseCount] != 0 &&
+		(!lightable || m_dwLitBumpPixelShader[shadowed ? 1 : 0][noiseCount] != 0);
+	const Bool derived = derivable && m_dwDerivedPixelShader[shadowed ? 1 : 0][noiseCount] != 0 &&
+		(!lightable || m_dwLitDerivedPixelShader[shadowed ? 1 : 0][noiseCount] != 0);
+	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glint && !bump && !derived)
 	{
 		return FALSE;
 	}
 
-	// Roads get the constants that leave their alpha alone.
-	const Vector4 heightConstants = Bind_Height_Blend(heightBlend ? heights : nullptr);
+	// Roads get the constants that leave their alpha alone. The unused w tells the bump the terrain atlas's layout.
+	Vector4 heightConstants = Bind_Height_Blend(heightBlend ? heights : nullptr);
+	heightConstants.W = RoadHeightBlendTiles ? 1.0f : 0.0f;
+	if (derived)
+	{
+		// The derived bump leaves alpha alone without the register, so it holds the rise, the road texture's texel and the softening.
+		Real texelU = 1.0f / 256.0f;
+		Real texelV = 1.0f / 256.0f;
+		D3DSURFACE_DESC desc;
+		if (SUCCEEDED(roadTexture->Peek_D3D_Texture()->GetLevelDesc(0, &desc)) && desc.Width > 0 && desc.Height > 0)
+		{
+			texelU = 1.0f / (Real)desc.Width;
+			texelV = 1.0f / (Real)desc.Height;
+		}
+		heightConstants.Set(RoadBumpHeight, texelU, texelV, 6.0f);
+	}
 	DX8Wrapper::Set_Pixel_Shader_Constant(ROAD_HEIGHT_BLEND_REGISTER, &heightConstants, 1);
 
 	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_TEXCOORDINDEX, 0 );
@@ -4736,16 +4836,43 @@ Bool RoadShaderPixelShader::setPixelPath()
 
 	// A complete set of lit variants includes the shadowed ones whenever a receiver loaded.
 	Bind_Terrain_Glint(ROAD_SUN_REGISTER, glint, FALSE);
-	const DWORD unlit = glint ? m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount]
+	DWORD unlit = glint ? m_dwGlintPixelShader[shadowed ? 1 : 0][noiseCount]
 		: (shadowed ? m_dwShadowPixelShader[noiseCount] : m_dwPlainPixelShader[noiseCount]);
-	if (lightable || glint)
+	DWORD lit = m_dwLitPixelShader[shadowed ? 1 : 0][noiseCount];
+	if (bump)
+	{
+		unlit = m_dwBumpPixelShader[shadowed ? 1 : 0][noiseCount];
+		lit = m_dwLitBumpPixelShader[shadowed ? 1 : 0][noiseCount];
+	}
+	else if (derived)
+	{
+		unlit = m_dwDerivedPixelShader[shadowed ? 1 : 0][noiseCount];
+		lit = m_dwLitDerivedPixelShader[shadowed ? 1 : 0][noiseCount];
+		++RoadBumpCount;
+	}
+	if (lightable || glint || bump || derived)
 	{
 		m_lightStage = 1 + noiseCount + (shadowed ? 1 : 0);
 		Set_Terrain_World_Position(m_lightStage);
 	}
+	if (bump)
+	{
+		// The normal map is read with the road UVs, so its own texcoords go unused. Only roads tile theirs.
+		m_normalStage = m_lightStage + 1;
+		const DWORD address = RoadHeightBlendTiles ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP;
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(m_normalStage, normalMap->Peek_D3D_Texture());
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_TEXCOORDINDEX, 0);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_ADDRESSU, address);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_ADDRESSV, address);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_MIPFILTER, D3DTEXF_LINEAR);
+		++RoadBumpCount;
+	}
 	if (lightable)
 	{
-		Begin_Draw_Pixel_Lights(unlit, m_dwLitPixelShader[shadowed ? 1 : 0][noiseCount]);
+		Begin_Draw_Pixel_Lights(unlit, lit);
 	}
 
 	m_pixelPath = TRUE;
@@ -4781,6 +4908,7 @@ Int RoadShaderPixelShader::init()
 			initShadowReceiver();
 			initPixelLights();
 			initGlint();
+			initBump();
 
 			//Only set this shader for use in dual noise mode.  The 2Stage shader will take care of
 			//all the other modes.
@@ -4870,13 +4998,19 @@ void RoadShaderPixelShader::reset()
 	}
 	m_shadowStage = -1;
 
-	// Only stages 0 to 3 go back below, and the world position can sit on stage 4.
+	// Only stages 0 to 3 go back below, and the world position can sit on stage 4 and the normal map on 5.
 	if (m_lightStage >= 0)
 	{
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_lightStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_lightStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU|m_lightStage);
 	}
 	m_lightStage = -1;
+	if (m_normalStage >= 0)
+	{
+		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU|m_normalStage);
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(m_normalStage, nullptr);
+	}
+	m_normalStage = -1;
 	if (m_pixelPath)
 	{
 		Unbind_Height_Atlas();

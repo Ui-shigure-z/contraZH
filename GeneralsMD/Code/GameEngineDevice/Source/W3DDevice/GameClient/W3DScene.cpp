@@ -1457,7 +1457,7 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 			Vector3(sun.ambient.red, sun.ambient.green, sun.ambient.blue),
 			TheGlobalData->m_unitBumpHeight, TheGlobalData->m_unitNormalMapStrength);
 		W3DShaderManager::setTerrainBumps(TheGlobalData->m_useNormalMaps, TheGlobalData->m_terrainNormalMapStrength,
-			TheGlobalData->m_normalMapDebug);
+			TheGlobalData->m_normalMapDebug, TheGlobalData->m_roadBumpHeight);
 		W3DShaderManager::setTerrainGlint(TheGlobalData->m_useSpecular, TheGlobalData->m_terrainGlintIntensity,
 			TheGlobalData->m_terrainGlintGloss, TheGlobalData->m_terrainGlintAlbedo);
 		// Glow masks ride the specular pass, so turning highlights off drops them rather than keeping the pass alive.
@@ -1469,11 +1469,12 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 		Int specularDraws, derivedGroups, normalMapGroups, emissiveGroups;
 		W3DShaderManager::takeSpecularCounts(specularDraws, derivedGroups, normalMapGroups, emissiveGroups);
 		const Int terrainBumpDraws = W3DShaderManager::takeTerrainBumpCount();
+		const Int roadBumpDraws = W3DShaderManager::takeRoadBumpCount();
 		if (specularFrames % 300 == 0 && specularFrames <= 300 * 15)
 		{
-			RENDER_LOG(("Specular: frame %d, %d mesh draws, %d groups bumped from brightness, %d from normal maps, %d glowing, pass %s, %d terrain draws bumped",
+			RENDER_LOG(("Specular: frame %d, %d mesh draws, %d groups bumped from brightness, %d from normal maps, %d glowing, pass %s, %d terrain draws bumped, %d road draws bumped",
 				specularFrames, specularDraws, derivedGroups, normalMapGroups, emissiveGroups,
-				W3DShaderManager::getSpecularPass() != nullptr ? "available" : "unavailable", terrainBumpDraws));
+				W3DShaderManager::getSpecularPass() != nullptr ? "available" : "unavailable", terrainBumpDraws, roadBumpDraws));
 		}
 		++specularFrames;
 	}
