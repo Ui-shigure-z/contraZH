@@ -151,6 +151,19 @@ private:
 		grid->addWidget(m_shaderWater, row, 1);
 		row++;
 
+		m_clouds = new QCheckBox(tr("Clouds"), box);
+		m_clouds->setToolTip(tr("Draws the cloud shadows moving over the ground."));
+		m_macroTexture = new QCheckBox(tr("Macro texture"), box);
+		m_macroTexture->setToolTip(tr("Draws the map's macro texture, the large light and dark patches over the ground."));
+		grid->addWidget(m_clouds, row, 0);
+		grid->addWidget(m_macroTexture, row, 1);
+		row++;
+
+		m_stochastic = new QCheckBox(tr("Stochastic filtering"), box);
+		m_stochastic->setToolTip(tr("Shifts and turns the ground textures in hex cells over the whole map, as the Stochastic Terrain brush does, to break up their repeat. The map's own paint is left as it was."));
+		grid->addWidget(m_stochastic, row, 0, 1, 2);
+		row++;
+
 		m_timeOfDay = new QComboBox(box);
 		m_timeOfDay->addItem(tr("Current"));
 		m_timeOfDay->addItem(tr("Morning"));
@@ -219,8 +232,8 @@ private:
 		});
 		grid->addWidget(m_renderBtn, row, 0, 1, 2, Qt::AlignLeft);
 
-		QCheckBox *checks[] = { m_objects, m_trees, m_roads, m_colorGrade, m_renderedWater, m_shaderWater };
-		for (int i = 0; i < 6; i++)
+		QCheckBox *checks[] = { m_objects, m_trees, m_roads, m_colorGrade, m_renderedWater, m_shaderWater, m_clouds, m_macroTexture, m_stochastic };
+		for (int i = 0; i < 9; i++)
 		{
 			connect(checks[i], &QCheckBox::toggled, this, [this]() { updateRenderState(); });
 		}
@@ -337,6 +350,9 @@ private:
 		m_colorGrade->setChecked(capture.colorGrade != 0);
 		m_renderedWater->setChecked(capture.renderedWater != 0);
 		m_shaderWater->setChecked(capture.shaderWater != 0);
+		m_clouds->setChecked(capture.clouds != 0);
+		m_macroTexture->setChecked(capture.macroTexture != 0);
+		m_stochastic->setChecked(capture.stochastic != 0);
 		m_timeOfDay->setCurrentIndex(qBound(0, capture.timeOfDay, m_timeOfDay->count() - 1));
 		m_area->setCurrentIndex(qBound(0, capture.area, m_area->count() - 1));
 		m_x0->setValue(capture.customX0);
@@ -373,6 +389,9 @@ private:
 		capture.colorGrade = m_colorGrade->isChecked() ? 1 : 0;
 		capture.renderedWater = m_renderedWater->isChecked() ? 1 : 0;
 		capture.shaderWater = m_shaderWater->isChecked() ? 1 : 0;
+		capture.clouds = m_clouds->isChecked() ? 1 : 0;
+		capture.macroTexture = m_macroTexture->isChecked() ? 1 : 0;
+		capture.stochastic = m_stochastic->isChecked() ? 1 : 0;
 		capture.timeOfDay = m_timeOfDay->currentIndex();
 		capture.area = m_area->currentIndex();
 		capture.customX0 = m_x0->value();
@@ -390,6 +409,7 @@ private:
 			&& a.customX1 == b.customX1 && a.customY1 == b.customY1);
 		return a.objects == b.objects && a.trees == b.trees && a.roads == b.roads && a.colorGrade == b.colorGrade
 			&& a.renderedWater == b.renderedWater && a.shaderWater == b.shaderWater
+			&& a.clouds == b.clouds && a.macroTexture == b.macroTexture && a.stochastic == b.stochastic
 			&& a.timeOfDay == b.timeOfDay && a.area == b.area && sameCustom && a.size == b.size && a.supersample == b.supersample;
 	}
 
@@ -475,6 +495,9 @@ private:
 	QCheckBox *m_colorGrade;
 	QCheckBox *m_renderedWater;
 	QCheckBox *m_shaderWater;
+	QCheckBox *m_clouds;
+	QCheckBox *m_macroTexture;
+	QCheckBox *m_stochastic;
 	QCheckBox *m_depthTint;
 	QComboBox *m_timeOfDay;
 	QComboBox *m_area;

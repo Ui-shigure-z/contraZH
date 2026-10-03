@@ -40,6 +40,9 @@ static void toCapture(const WBQtHQCaptureParams *in, HQCaptureParams *out)
 	out->colorGrade = in->colorGrade != 0;
 	out->renderedWater = in->renderedWater != 0;
 	out->shaderWater = in->shaderWater != 0;
+	out->clouds = in->clouds != 0;
+	out->macroTexture = in->macroTexture != 0;
+	out->stochastic = in->stochastic != 0;
 	out->timeOfDay = in->timeOfDay;
 	out->area = in->area;
 	out->customX0 = in->customX0;
@@ -152,6 +155,9 @@ void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams 
 	capture->colorGrade = c.colorGrade ? 1 : 0;
 	capture->renderedWater = c.renderedWater ? 1 : 0;
 	capture->shaderWater = c.shaderWater ? 1 : 0;
+	capture->clouds = c.clouds ? 1 : 0;
+	capture->macroTexture = c.macroTexture ? 1 : 0;
+	capture->stochastic = c.stochastic ? 1 : 0;
 	capture->timeOfDay = c.timeOfDay;
 	capture->area = c.area;
 	capture->supersample = c.supersample;
@@ -182,6 +188,9 @@ void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *cap
 	capture->colorGrade = getProfileInt("ColorGrade", capture->colorGrade);
 	capture->renderedWater = getProfileInt("RenderedWater", capture->renderedWater);
 	capture->shaderWater = getProfileInt("ShaderWater", capture->shaderWater);
+	capture->clouds = getProfileInt("Clouds", capture->clouds);
+	capture->macroTexture = getProfileInt("MacroTexture", capture->macroTexture);
+	capture->stochastic = getProfileInt("Stochastic", capture->stochastic);
 	capture->timeOfDay = getProfileInt("TimeOfDay", capture->timeOfDay);
 	capture->supersample = getProfileInt("Supersample", capture->supersample);
 	capture->size = getProfileInt("Size", capture->size);
@@ -253,6 +262,9 @@ int WBQtHQPreview_Save(const WBQtHQPreviewParams *params, const WBQtHQCapturePar
 	writeProfileInt("ColorGrade", capture->colorGrade);
 	writeProfileInt("RenderedWater", capture->renderedWater);
 	writeProfileInt("ShaderWater", capture->shaderWater);
+	writeProfileInt("Clouds", capture->clouds);
+	writeProfileInt("MacroTexture", capture->macroTexture);
+	writeProfileInt("Stochastic", capture->stochastic);
 	writeProfileInt("TimeOfDay", capture->timeOfDay);
 	writeProfileInt("Supersample", capture->supersample);
 	writeProfileInt("Size", capture->size);

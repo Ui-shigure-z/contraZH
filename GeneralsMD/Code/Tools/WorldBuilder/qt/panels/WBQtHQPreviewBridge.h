@@ -36,6 +36,9 @@ typedef struct WBQtHQCaptureParams
 	int colorGrade;
 	int renderedWater;	// the editor's flat water surface
 	int shaderWater;	// the shader water, which wins over renderedWater
+	int clouds;
+	int macroTexture;
+	int stochastic;		// stochastic filtering over all the ground
 	int timeOfDay;		// 0 keeps the current one, 1 to 4 morning to night
 	int area;			// WBQT_HQ_AREA_*
 	int customX0;		// custom area corners in cells, without the border

@@ -162,6 +162,9 @@ void MapPreview::getDefaultHQCapture( HQCaptureParams *capture )
 	capture->colorGrade = false;
 	capture->renderedWater = false;
 	capture->shaderWater = false;
+	capture->clouds = true;
+	capture->macroTexture = true;
+	capture->stochastic = false;
 	capture->timeOfDay = TIME_OF_DAY_INVALID;
 	capture->area = HQ_AREA_MAP;
 	capture->customX0 = 0;
@@ -229,6 +232,9 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 	view3d.roads = capture.roads;
 	view3d.colorGrade = capture.colorGrade;
 	view3d.timeOfDay = capture.timeOfDay;
+	view3d.clouds = capture.clouds;
+	view3d.macroTexture = capture.macroTexture;
+	view3d.stochastic = capture.stochastic;
 	view3d.water = capture.shaderWater ? WbView3d::TOP_VIEW_WATER_SHADER
 		: (capture.renderedWater ? WbView3d::TOP_VIEW_WATER_FLAT : WbView3d::TOP_VIEW_WATER_NONE);
 

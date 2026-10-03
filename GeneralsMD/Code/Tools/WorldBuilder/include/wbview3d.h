@@ -777,6 +777,9 @@ public:
 		Bool colorGrade;
 		Int timeOfDay;	///< TIME_OF_DAY_INVALID keeps the current one
 		Int water;		///< TOP_VIEW_WATER_*
+		Bool clouds;
+		Bool macroTexture;
+		Bool stochastic;	///< paints stochastic terrain over all the ground for the capture
 	};
 	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
 	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);

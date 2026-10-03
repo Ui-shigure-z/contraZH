@@ -4975,6 +4975,25 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	// Volume shadows resolve only inside that quad, which a render larger than the window overruns.
 	const Bool wantShadowVolumes = TheGlobalData->m_useShadowVolumes;
 	TheWritableGlobalData->m_useShadowVolumes = false;
+	const Bool wantClouds = TheGlobalData->m_useCloudMap;
+	const Bool wantMacroTexture = TheGlobalData->m_useLightMap;
+	TheWritableGlobalData->m_useCloudMap = capture.clouds;
+	TheWritableGlobalData->m_useLightMap = capture.macroTexture;
+
+	// The terrain reads the paint on every render, so painting every cell for this one covers all the ground.
+	std::vector<UnsignedByte> paintEverywhere;
+	UnsignedByte *paint = NULL;
+	if (capture.stochastic)
+	{
+		paintEverywhere.resize(pMap->getStochasticBytes());
+		for (size_t k = 0; k + 2 < paintEverywhere.size(); k += 3)
+		{
+			paintEverywhere[k] = 255;
+			paintEverywhere[k + 1] = 1;
+			paintEverywhere[k + 2] = 128;
+		}
+		paint = pMap->swapStochastic(&paintEverywhere[0]);
+	}
 
 	Bool ok = false;
 	DX8Wrapper::Set_Render_Target_With_Z(target, depth);
@@ -5020,6 +5039,12 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	}
 	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
 	TheWritableGlobalData->m_useShadowVolumes = wantShadowVolumes;
+	TheWritableGlobalData->m_useCloudMap = wantClouds;
+	TheWritableGlobalData->m_useLightMap = wantMacroTexture;
+	if (capture.stochastic)
+	{
+		pMap->swapStochastic(paint);
+	}
 
 	SurfaceClass *surface = target->Get_Surface_Level();
 	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;

@@ -126,6 +126,9 @@ public: // Editing methods.
 	void setHeight(Int xIndex, Int yIndex, UnsignedByte height);
 	void setCliff(Int xIndex, Int yIndex, Bool impassable) {setCliffState(xIndex, yIndex, impassable);}
 	void setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate);
+	/// Puts another paint buffer of getStochasticBytes() in place, or none, and returns the one it replaced.
+	UnsignedByte *swapStochastic(UnsignedByte *data) { UnsignedByte *old = m_stochasticData; m_stochasticData = data; m_stochasticTexDirty = true; return old; }
+	Int getStochasticBytes() const { return m_dataSize*STOCHASTIC_BYTES; }
 	Bool setTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile);
 	Bool isWaterCell(Int xIndex, Int yIndex);
 	static void setPaintWaterOnly(Bool on) {s_paintWaterOnly = on;}
