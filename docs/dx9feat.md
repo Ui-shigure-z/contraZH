@@ -271,7 +271,7 @@ Roads use a normal map when one exists and otherwise derive bumps from brightnes
 * Derived bumps read the texture's green channel, which tracks brightness on grey roads.
 * Flat in water reflections.
 
-* `RoadBumpHeight = 0.15` - (How far, in world units, full brightness rises on road textures without
+* `RoadBumpHeight = 8` - (How far, in world units, full brightness rises on road textures without
 a normal map. 0 leaves them flat. Lane markings emboss softly, as paint does on units.)
 
 * `TerrainNormalMapStrength = 2.0` - (Scales the tilt of terrain normal maps. Terrain is seen
