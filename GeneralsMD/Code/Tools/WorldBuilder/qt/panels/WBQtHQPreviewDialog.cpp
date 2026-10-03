@@ -397,7 +397,6 @@ private:
 		m_renderedWater->setEnabled(!m_shaderWater->isChecked());
 
 		m_renderDirty = !sameCapture(capture, m_rendered);
-		m_renderBtn->setEnabled(m_renderDirty);
 
 		const int maxCapture = WBQtHQPreview_MaxCapture();
 		const int effective = qMax(1, qMin(capture.supersample, maxCapture / qMax(1, capture.size)));
