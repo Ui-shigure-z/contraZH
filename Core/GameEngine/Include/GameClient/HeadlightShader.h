@@ -22,10 +22,13 @@
 
 #include "Lib/BaseType.h"
 
-// GameData's Headlight keys. The beam is the cone in the air, the pool the light it throws on the scene.
+struct FieldParse;
+
+// The Headlight keys of GameData and of a model's draw module. The beam is the cone in the air, the pool the light
+// it throws on the scene. In a draw module a key left out is unset and takes GameData.ini's value.
 struct HeadlightShaderTuning
 {
-	Bool enabled;						///< off keeps the models' own headlight meshes
+	Bool enabled;						///< off keeps the headlight meshes, of every model in GameData and of one in its module
 	RGBColor color;
 	Real beamIntensity;
 	Real beamLength;				///< times the headlight mesh's length
@@ -37,6 +40,12 @@ struct HeadlightShaderTuning
 	Real poolAngle;					///< radians from the light's middle to its edge
 	Real poolPitch;					///< radians the light tilts down from the mesh
 	Real poolFalloff;				///< how fast the light dims with distance
+
+	void setUnset();	///< what a draw module starts with
+	void resolve( HeadlightShaderTuning &resolved ) const;	///< the settings with GameData.ini's where this one sets none
+
+	/// HeadlightShader and the setting keys, stored relative to a HeadlightShaderTuning.
+	static const FieldParse *getFieldParse();
 
 	void setDefaults()
 	{

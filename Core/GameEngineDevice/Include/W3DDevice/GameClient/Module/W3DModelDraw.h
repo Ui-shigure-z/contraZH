@@ -53,6 +53,7 @@ public:
 #endif
 #include "Common/SparseMatchFinder.h"
 #include "GameClient/ParticleSys.h"
+#include "GameClient/HeadlightShader.h"
 #include "W3DLaserDraw.h"
 #include "Common/STLTypedefs.h"
 
@@ -335,6 +336,8 @@ public:
 	Bool															m_showForOwnerOnly;  ///< show this model only to the owning player 
 
 	Bool															m_keepRecoilAcrossStates;  ///< Don't reset recoil bones when switching states
+
+	HeadlightShaderTuning							m_headlightTuning;  ///< HeadlightShader and the Headlight keys, unset where the model takes GameData.ini's
 
 	DisruptionShaderInfo							m_disruption;  ///< DisruptionShader and its settings, for translucent meshes that bend the scene behind them
 

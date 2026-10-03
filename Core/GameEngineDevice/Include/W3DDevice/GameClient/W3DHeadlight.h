@@ -26,6 +26,7 @@
 
 class RenderInfoClass;
 class RenderObjClass;
+struct HeadlightShaderTuning;
 
 // Vehicle headlights drawn by headlight.hlsl in place of the models' HEADLIGHT meshes.
 class W3DHeadlightManager
@@ -47,7 +48,8 @@ public:
 
 	Bool isActive();	///< false where the models have to keep their headlight meshes
 	/// One headlight for the coming frame, from the lamp to the far end of its mesh. The radius is the mesh's at that end.
-	void add(const Vector3 &start, const Vector3 &end, Real radius);
+	/// The model's own settings must outlive the frame.
+	void add(const Vector3 &start, const Vector3 &end, Real radius, const HeadlightShaderTuning *own);
 	void render(RenderInfoClass &rinfo);	///< draws the frame's headlights and forgets them
 	void ReleaseResources();	///< drops the shaders before a device reset; render loads them again
 
@@ -59,6 +61,7 @@ private:
 		Vector3 start;
 		Vector3 end;
 		Real radius;
+		const HeadlightShaderTuning *own;
 	};
 
 	Bool loadShaders();

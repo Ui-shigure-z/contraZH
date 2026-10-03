@@ -36,7 +36,7 @@ them for one effect. Each shader's own section below lists its keys.
 | Jammer fields and distortion auras | [Disruption](#disruption-shading) | `ParticleSystem`, `W3DModelDraw`, `W3DLaserDraw` | `DisruptionShader = Yes` or `Only` | `Disruption` keys |
 | Distortion disc with no art | [Disruption](#disruption-shading) | `FXList` | A `Disruption` block | The block's keys |
 | Sandstorm or snowstorm | [Storm](#storms) | `FXList`, `W3DStormDraw` | A `Storm` block or the module | `SandStorm` and `SnowStorm` keys |
-| Vehicle headlights | [Headlights](#headlights) | Automatic | A `HEADLIGHT` mesh in the model | `Headlight` keys |
+| Vehicle headlights | [Headlights](#headlights) | Automatic, `W3DModelDraw` | A `HEADLIGHT` mesh in the model | `Headlight` keys, per model too |
 | Soft edges on sprites | [Soft particles](#soft-particles) | Automatic | Nothing | None |
 | Glow around bright effects | [Bloom](contraZH-Changes.md#bloom) | `ParticleSystem` | `Shader = ADDITIVE` | None |
 
@@ -876,6 +876,24 @@ The keys live in `GameData.ini`. All but `HeadlightShader` reload in cheat build
 | `HeadlightPoolAngle` | 26 | Degrees from the middle of the light to its edge. |
 | `HeadlightPoolPitch` | 11.5 | Degrees the light tilts down from the mesh, so a level lamp reaches the ground. |
 | `HeadlightPoolFalloff` | 1.5 | How fast the pool dims with distance. |
+
+A model can override any of these for itself. The same keys go in its `W3DModelDraw` module, or in
+a module built on it such as `W3DTankDraw`, beside `OkToChangeModelColor`. A key left out takes the
+`GameData.ini` value, so a module names only what differs. `HeadlightShader = No` there keeps that
+model's headlight meshes while the rest of the game uses the shader. It cannot turn the shader on
+for one model while `GameData.ini` has it off. A negative `HeadlightPoolPitch` tilts the light up.
+Module keys are read at launch.
+
+```
+Draw = W3DTruckDraw ModuleTag_01
+  HeadlightColor         = R:190 G:215 B:255
+  HeadlightPoolIntensity = 1.4
+  HeadlightPoolAngle     = 34
+  DefaultConditionState
+    Model = AVOmega
+  End
+End
+```
 
 ## Ambient occlusion
 

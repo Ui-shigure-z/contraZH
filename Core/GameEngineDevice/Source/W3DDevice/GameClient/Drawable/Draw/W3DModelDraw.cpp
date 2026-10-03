@@ -1064,6 +1064,7 @@ W3DModelDrawModuleData::W3DModelDrawModuleData() :
 	m_lastRealConditionStateIndex(-1),
 	m_disruption(DisruptionShaderInfo::SHAPE_CENTER)
 {
+	m_headlightTuning.setUnset();
 	const Real MAX_SHIFT = 3.0f;
 	const Real INITIAL_RECOIL_RATE = 2.0f;
 	const Real RECOIL_DAMPING = 0.4f;
@@ -1312,6 +1313,7 @@ void W3DModelDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 	};
   p.add(dataFieldParse);
   p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DModelDrawModuleData, m_disruption));
+  p.add(HeadlightShaderTuning::getFieldParse(), offsetof(W3DModelDrawModuleData, m_headlightTuning));
   p.add(ParticleSystemTemplate::getFlameTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_flameTuning));
   p.add(W3DLaserDrawModuleData::getShaderTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_beamTuning));
 
@@ -3699,7 +3701,7 @@ void W3DModelDraw::hideAllHeadlights(Bool hide)
 	if (m_renderObject)
 	{
 		// Where the headlight shader runs it draws the lights, and their meshes stay hidden.
-		const Bool shaded = TheW3DHeadlights != nullptr && TheW3DHeadlights->isActive();
+		const Bool shaded = TheW3DHeadlights != nullptr && TheW3DHeadlights->isActive() && getW3DModelDrawModuleData()->m_headlightTuning.enabled;
 
 		// The lamps are found once for each render object, since every change of state comes through here.
 		const Bool search = shaded && !hide && m_headlightSource != m_renderObject;
@@ -3779,7 +3781,7 @@ void W3DModelDraw::submitHeadlights()
 
 		// The transform carries the drawable's scale, which the radius has to follow.
 		const Real scale = (end - start).Length() / (light.end - light.start).Length();
-		TheW3DHeadlights->add(start, end, light.radius * scale);
+		TheW3DHeadlights->add(start, end, light.radius * scale, &getW3DModelDrawModuleData()->m_headlightTuning);
 	}
 }
 

@@ -854,6 +854,7 @@ set(GAMEENGINE_SRC
     Source/GameClient/System/Image.cpp
     Source/GameClient/System/ParticleSys.cpp
     Source/GameClient/System/StormShader.cpp
+    Source/GameClient/System/HeadlightShader.cpp
     Source/GameClient/System/RayEffect.cpp
     Source/GameClient/System/Smudge.cpp
     Source/GameClient/Terrain/TerrainRoads.cpp

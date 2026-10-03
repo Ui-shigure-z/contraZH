@@ -130,7 +130,7 @@ Bool W3DHeadlightManager::isActive()
 	return TheGlobalData->m_headlightTuning.enabled && loadShaders();
 }
 
-void W3DHeadlightManager::add(const Vector3 &start, const Vector3 &end, Real radius)
+void W3DHeadlightManager::add(const Vector3 &start, const Vector3 &end, Real radius, const HeadlightShaderTuning *own)
 {
 	// Lights that no render took belong to an older frame.
 	const UnsignedInt frame = WW3D::Get_Frame_Count();
@@ -149,6 +149,7 @@ void W3DHeadlightManager::add(const Vector3 &start, const Vector3 &end, Real rad
 	light.start = start;
 	light.end = end;
 	light.radius = radius;
+	light.own = own;
 }
 
 // Cones whose middle lines lie closer than this share of their radius draw as one lamp. It joins the
@@ -394,6 +395,8 @@ struct PoolDraw
 	Vector3 origin;
 	Vector3 aim;
 	Real range;
+	Real spread;		///< tangent of the cone's half angle
+	Vector4 color;	///< rgb = light over the scene's light, a = falloff power
 	Real rect[4];		///< the light's place on screen in clip space: left, bottom, right, top
 };
 
@@ -517,11 +520,11 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 		depthMap = W3DShaderManager::getClipToTargetMapping((Real)desc.Width, (Real)desc.Height);
 	}
 
-	const HeadlightShaderTuning &tuning = TheGlobalData->m_headlightTuning;
-	const Bool drawBeams = tuning.beamIntensity > 0.0f && tuning.beamLength > 0.0f && tuning.beamWidth > 0.0f;
-	const Bool drawPools = depthTexture != nullptr && tuning.poolIntensity > 0.0f && tuning.poolRange > 0.0f;
-	const Real poolAngle = min(max(tuning.poolAngle, 0.01f), 1.4f);
-	const Real poolSpread = tan(poolAngle);
+	// The light arrives divided by the scene's light, so a dark night lights up as much as a dim one.
+	const RGBColor &ambient = TheGlobalData->m_terrainAmbient[0];
+	const RGBColor &diffuse = TheGlobalData->m_terrainDiffuse[0];
+	const Vector3 sceneLight(min(max(ambient.red + diffuse.red, 0.1f), 1.0f), min(max(ambient.green + diffuse.green, 0.1f), 1.0f),
+		min(max(ambient.blue + diffuse.blue, 0.1f), 1.0f));
 
 	// Cleared through the wrapper, so its record of the stage matches the device once it is unbound below.
 	DX8Wrapper::Set_Texture(0, nullptr);
@@ -540,9 +543,19 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 		VertexFormatXYZNDUV2 *verts = lock.Get_Formatted_Vertex_Array();
 
 		// The beams' quads come first, in world space.
-		for (Int i = 0; drawBeams && i < count; i++)
+		for (Int i = 0; i < count; i++)
 		{
 			const Light &light = m_lights[i];
+			HeadlightShaderTuning tuning = TheGlobalData->m_headlightTuning;
+			if (light.own != nullptr)
+			{
+				light.own->resolve(tuning);
+			}
+			if (tuning.beamIntensity <= 0.0f || tuning.beamLength <= 0.0f || tuning.beamWidth <= 0.0f)
+			{
+				continue;
+			}
+
 			Vector3 along = light.end - light.start;
 			const Real length = along.Length();
 			if (length < 0.01f)
@@ -574,23 +587,34 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 				verts->x = at.X;
 				verts->y = at.Y;
 				verts->z = at.Z;
-				verts->nx = 0.0f;
-				verts->ny = 0.0f;
-				verts->nz = 1.0f;
+				// The beam's own settings ride in the vertex, so beams of every model share one draw.
+				verts->nx = tuning.color.red * tuning.beamIntensity;
+				verts->ny = tuning.color.green * tuning.beamIntensity;
+				verts->nz = tuning.color.blue * tuning.beamIntensity;
 				verts->diffuse = 0xff000000u | (grey << 16) | (grey << 8) | grey;
 				verts->u1 = (corner & 2) ? 1.0f : 0.0f;
 				verts->v1 = across;
-				verts->u2 = 0.0f;
-				verts->v2 = 0.0f;
+				verts->u2 = tuning.beamFalloff;
+				verts->v2 = 1.0f / max(tuning.beamSoftness, 0.01f);
 				verts++;
 			}
 			beamCount++;
 		}
 
 		// The pools' quads follow, in clip space over each light's place on screen.
-		for (Int i = 0; drawPools && i < count; i++)
+		for (Int i = 0; depthTexture != nullptr && i < count; i++)
 		{
 			const Light &light = m_lights[i];
+			HeadlightShaderTuning tuning = TheGlobalData->m_headlightTuning;
+			if (light.own != nullptr)
+			{
+				light.own->resolve(tuning);
+			}
+			if (tuning.poolIntensity <= 0.0f || tuning.poolRange <= 0.0f)
+			{
+				continue;
+			}
+
 			Vector3 aim = light.end - light.start;
 			const Real length = aim.Length();
 			if (length < 0.01f)
@@ -609,9 +633,12 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 			pool.origin = light.start;
 			pool.aim = aim;
 			pool.range = length * tuning.poolRange;
+			pool.spread = tan(min(max(tuning.poolAngle, 0.01f), 1.4f));
+			pool.color.Set(tuning.color.red * tuning.poolIntensity / sceneLight.X, tuning.color.green * tuning.poolIntensity / sceneLight.Y,
+				tuning.color.blue * tuning.poolIntensity / sceneLight.Z, tuning.poolFalloff);
 
 			// A sphere around the cone's middle that reaches its far rim.
-			const Real reach = pool.range * sqrt(0.25f + poolSpread * poolSpread);
+			const Real reach = pool.range * sqrt(0.25f + pool.spread * pool.spread);
 			if (!Screen_Rect(clip, pool.origin + aim * (pool.range * 0.5f), reach, pool.rect))
 			{
 				continue;
@@ -683,28 +710,20 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_ZENABLE, FALSE);
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);
 
-		// The light arrives divided by the scene's light, so a dark night lights up as much as a dim one.
-		const RGBColor &ambient = TheGlobalData->m_terrainAmbient[0];
-		const RGBColor &diffuse = TheGlobalData->m_terrainDiffuse[0];
-		const Vector4 color(
-			tuning.color.red * tuning.poolIntensity / min(max(ambient.red + diffuse.red, 0.1f), 1.0f),
-			tuning.color.green * tuning.poolIntensity / min(max(ambient.green + diffuse.green, 0.1f), 1.0f),
-			tuning.color.blue * tuning.poolIntensity / min(max(ambient.blue + diffuse.blue, 0.1f), 1.0f),
-			tuning.poolFalloff);
 		const Vector4 eyePosition(eye.X, eye.Y, eye.Z, 0.0f);
 		const Vector4 params(projection.m[2][3], 0.0f, 0.0f, 0.0f);
 		DX8Wrapper::Set_Pixel_Shader_Constant(0, &eyePosition, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(1, &linearize, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(2, &params, 1);
-		DX8Wrapper::Set_Pixel_Shader_Constant(5, &color, 1);
 
 		for (Int i = 0; i < poolCount; i++)
 		{
 			const PoolDraw &pool = pools[i];
 			const Vector4 origin(pool.origin.X, pool.origin.Y, pool.origin.Z, 1.0f / pool.range);
-			const Vector4 aim(pool.aim.X, pool.aim.Y, pool.aim.Z, poolSpread);
+			const Vector4 aim(pool.aim.X, pool.aim.Y, pool.aim.Z, pool.spread);
 			DX8Wrapper::Set_Pixel_Shader_Constant(3, &origin, 1);
 			DX8Wrapper::Set_Pixel_Shader_Constant(4, &aim, 1);
+			DX8Wrapper::Set_Pixel_Shader_Constant(5, &pool.color, 1);
 			DX8Wrapper::Draw_Triangles((unsigned short)((beamCount + i) * 6), 2, (unsigned short)((beamCount + i) * 4), 4);
 		}
 	}
@@ -727,11 +746,8 @@ void W3DHeadlightManager::render(RenderInfoClass &rinfo)
 				clipColumns[column][row] = clip.m[row][column];
 			}
 		}
-		const Vector4 color(tuning.color.red * tuning.beamIntensity, tuning.color.green * tuning.beamIntensity,
-			tuning.color.blue * tuning.beamIntensity, tuning.beamFalloff);
-		const Vector4 params(projection.m[2][3], (depthTexture != nullptr) ? 1.0f : 0.0f, 1.0f / max(tuning.beamSoftness, 0.01f), 0.0f);
+		const Vector4 params(projection.m[2][3], (depthTexture != nullptr) ? 1.0f : 0.0f, 0.0f, 0.0f);
 		DX8Wrapper::Set_Vertex_Shader_Constant(0, clipColumns, 4);
-		DX8Wrapper::Set_Pixel_Shader_Constant(4, &color, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(5, &linearize, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(6, &params, 1);
 		DX8Wrapper::Set_Pixel_Shader_Constant(7, &depthMap, 1);

@@ -88,9 +88,8 @@ float4 ClipY     : register(c1);
 float4 ClipZ     : register(c2);
 float4 ClipW     : register(c3);
 
-float4 Color     : register(c4);   // rgb = beam colour times intensity, a = falloff power
 float4 Linearize : register(c5);
-float4 Params    : register(c6);   // x = sign of depth along the view, y = 1 with scene depth bound, z = 1 / softness
+float4 Params    : register(c6);   // x = sign of depth along the view, y = 1 with scene depth bound
 float4 DepthMap  : register(c7);   // clip space to depth texcoords: xy scale, zw offset
 
 // The beam's half width at the lamp, as a share of its half width at the far end.
@@ -99,16 +98,19 @@ static const float LampWidth = 0.15f;
 struct VsIn
 {
     float3 Position : POSITION;    // world space
+    float3 Color    : NORMAL;      // beam colour times intensity
     float4 Level    : COLOR0;      // dims a beam seen end on
     float2 Along    : TEXCOORD0;   // x = 0 at the lamp to 1 at the far end, y = -1 to 1 across
+    float2 Shape    : TEXCOORD1;   // x = falloff power, y = 1 / softness
 };
 
 struct VsOut
 {
     float4 Position : POSITION;
     float4 Level    : COLOR0;
-    float2 Along    : TEXCOORD0;
+    float4 Along    : TEXCOORD0;   // xy as the vertex has them, zw = its shape
     float3 Clip     : TEXCOORD1;   // clip-space x, y and w
+    float3 Color    : TEXCOORD2;
 };
 
 VsOut mainVS(VsIn input)
@@ -117,16 +119,18 @@ VsOut mainVS(VsIn input)
     float4 position = float4(input.Position, 1.0f);
     output.Position = float4(dot(position, ClipX), dot(position, ClipY), dot(position, ClipZ), dot(position, ClipW));
     output.Level = input.Level;
-    output.Along = input.Along;
+    output.Along = float4(input.Along, input.Shape);
     output.Clip = output.Position.xyw;
+    output.Color = input.Color;
     return output;
 }
 
 struct PsIn
 {
     float4 Level : COLOR0;
-    float2 Along : TEXCOORD0;
+    float4 Along : TEXCOORD0;
     float3 Clip  : TEXCOORD1;
+    float3 Color : TEXCOORD2;
 };
 
 float4 mainPS(PsIn input) : COLOR
@@ -134,13 +138,13 @@ float4 mainPS(PsIn input) : COLOR
     // The quad is as wide as the far end all along, and the cone is cut out of it here.
     float across = abs(input.Along.y) / lerp(LampWidth, 1.0f, input.Along.x);
     float edge = saturate(1.0f - across * across);
-    float reach = pow(saturate(1.0f - input.Along.x), Color.a);
+    float reach = pow(saturate(1.0f - input.Along.x), input.Along.z);
 
     float2 uv = input.Clip.xy / input.Clip.z * DepthMap.xy + DepthMap.zw;
     float gap = SceneDepth(uv, Linearize, Params.x) - input.Clip.z;
-    float soft = lerp(1.0f, saturate(gap * Params.z), Params.y);
+    float soft = lerp(1.0f, saturate(gap * input.Along.w), Params.y);
 
-    return float4(Color.rgb * (edge * edge * reach * soft * input.Level.r), 0.0f);
+    return float4(input.Color * (edge * edge * reach * soft * input.Level.r), 0.0f);
 }
 
 #endif
