@@ -760,8 +760,18 @@ public:
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
 
-	/// Renders the map straight down into size*size BGRA pixels, top row north. aboveGround adds roads, bridges and objects.
-	Bool captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra);
+	/// What captureTopView draws. The rectangle is in border-relative world units.
+	struct TopViewCapture
+	{
+		Real x0, y0, x1, y1;
+		Bool objects;
+		Bool trees;
+		Bool roads;
+		Bool colorGrade;
+		Int timeOfDay;	///< TIME_OF_DAY_INVALID keeps the current one
+	};
+	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
+	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);
 
 	virtual void setCenterInView(Real x, Real y) override;
 

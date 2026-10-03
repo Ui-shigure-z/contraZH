@@ -4886,7 +4886,7 @@ void WbView3d::redraw(void)
 	m_time = ::GetTickCount();
 }
 
-Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
+Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra)
 {
 	WorldHeightMapEdit *pMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
 	if (!m_ww3dInited || pMap == NULL || m_heightMapRenderObj == NULL || bgra == NULL || size <= 0)
@@ -4894,10 +4894,8 @@ Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
 		return false;
 	}
 
-	// Terrain is drawn border-relative, so the playable area spans 0 to the non-border extent.
-	const Int border = pMap->getBorderSize();
-	const Real worldX = (pMap->getXExtent() - 2*border) * MAP_XY_FACTOR;
-	const Real worldY = (pMap->getYExtent() - 2*border) * MAP_XY_FACTOR;
+	const Real worldX = capture.x1 - capture.x0;
+	const Real worldY = capture.y1 - capture.y0;
 	if (worldX <= 0.0f || worldY <= 0.0f)
 	{
 		return false;
@@ -4922,10 +4920,22 @@ Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
 
 	++m_updateCount;
 
+	const TimeOfDay oldTimeOfDay = TheGlobalData->m_timeOfDay;
+	if (capture.timeOfDay > TIME_OF_DAY_INVALID && capture.timeOfDay < TIME_OF_DAY_COUNT && capture.timeOfDay != oldTimeOfDay)
+	{
+		TheWritableGlobalData->m_timeOfDay = (TimeOfDay)capture.timeOfDay;
+		updateLights();
+	}
+
 	m_heightMapRenderObj->removeAllRoads();
-	if (aboveGround)
+	if (aboveGround && capture.roads)
 	{
 		m_heightMapRenderObj->loadRoadsAndBridges(NULL, FALSE);
+	}
+	const Bool removeTrees = !(aboveGround && capture.trees);
+	if (removeTrees)
+	{
+		m_heightMapRenderObj->removeAllTrees();
 	}
 	std::vector<RenderObjClass *> objects;
 	std::vector<Bool> wasHidden;
@@ -4936,20 +4946,20 @@ Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
 		{
 			objects.push_back(robj);
 			wasHidden.push_back(robj->Is_Hidden() != 0);
-			robj->Set_Hidden(aboveGround ? 0 : 1);
+			robj->Set_Hidden((aboveGround && capture.objects) ? 0 : 1);
 		}
 	}
 
 	CameraClass *camera = NEW_REF(CameraClass, ());
 	const Real camZ = maxZ + 200.0f;
 	Matrix3D camTran(1);
-	camTran.Set_Translation(Vector3(worldX*0.5f, worldY*0.5f, camZ));
+	camTran.Set_Translation(Vector3((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, camZ));
 	camera->Set_Transform(camTran);
 	camera->Set_Projection_Type(CameraClass::ORTHO);
 	camera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
 	camera->Set_Clip_Planes(1.0f, camZ + 1000.0f);
 
-	Vector3 center(worldX*0.5f, worldY*0.5f, 0.0f);
+	Vector3 center((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, 0.0f);
 	RefRenderObjListIterator lightListIt(&m_lightList);
 	m_heightMapRenderObj->setDrawEntireMap(true);
 	m_heightMapRenderObj->updateCenter(camera, &center, &lightListIt);
@@ -4964,6 +4974,10 @@ Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
 	if (WW3D::Begin_Render(true, true, Vector3(0.0f, 0.0f, 0.0f)) == WW3D_ERROR_OK)
 	{
 		WW3D::Render(m_scene, camera);
+		if (capture.colorGrade && TheW3DColorLut != nullptr)
+		{
+			TheW3DColorLut->render(*camera);
+		}
 		WW3D::End_Render(false);
 		ok = true;
 	}
@@ -5019,6 +5033,15 @@ Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
 	}
 	m_needToLoadRoads = false;
 	m_heightMapRenderObj->setDrawEntireMap(m_showEntireMap);
+	if (removeTrees)
+	{
+		updateTrees();
+	}
+	if (TheGlobalData->m_timeOfDay != oldTimeOfDay)
+	{
+		TheWritableGlobalData->m_timeOfDay = oldTimeOfDay;
+		updateLights();
+	}
 
 	--m_updateCount;
 	Invalidate(false);

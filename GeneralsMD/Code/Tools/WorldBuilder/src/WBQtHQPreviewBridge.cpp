@@ -4,6 +4,7 @@
 #ifdef RTS_HAS_QT
 
 #include "Lib/BaseType.h"
+#include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
 #include "wbview3d.h"
 #include "MapPreview.h"
@@ -14,6 +15,7 @@
 static const char *HQ_PREVIEW_SECTION = "HQMapPreview";
 
 static MapPreview *s_preview = NULL;
+static WbView3d *s_view = NULL;
 static CString s_mapPath;
 
 static void toParams(const WBQtHQPreviewParams *in, HQPreviewParams *out)
@@ -26,6 +28,22 @@ static void toParams(const WBQtHQPreviewParams *in, HQPreviewParams *out)
 		out->shallow[k] = in->shallow[k];
 		out->deep[k] = in->deep[k];
 	}
+}
+
+static void toCapture(const WBQtHQCaptureParams *in, HQCaptureParams *out)
+{
+	out->objects = in->objects != 0;
+	out->trees = in->trees != 0;
+	out->roads = in->roads != 0;
+	out->colorGrade = in->colorGrade != 0;
+	out->timeOfDay = in->timeOfDay;
+	out->area = in->area;
+	out->customX0 = in->customX0;
+	out->customY0 = in->customY0;
+	out->customX1 = in->customX1;
+	out->customY1 = in->customY1;
+	out->supersample = in->supersample;
+	out->size = in->size;
 }
 
 static Real getProfileReal(const char *key, Real fallback)
@@ -42,10 +60,20 @@ static void writeProfileReal(const char *key, Real value)
 	::AfxGetApp()->WriteProfileString(HQ_PREVIEW_SECTION, key, text);
 }
 
-// Colours are stored as 0xRRGGBB.
-static void getProfileColor(const char *key, Int rgb[3])
+static int getProfileInt(const char *key, int fallback)
 {
-	const Int packed = ::AfxGetApp()->GetProfileInt(HQ_PREVIEW_SECTION, key, -1);
+	return ::AfxGetApp()->GetProfileInt(HQ_PREVIEW_SECTION, key, fallback);
+}
+
+static void writeProfileInt(const char *key, int value)
+{
+	::AfxGetApp()->WriteProfileInt(HQ_PREVIEW_SECTION, key, value);
+}
+
+// Colours are stored as 0xRRGGBB.
+static void getProfileColor(const char *key, int rgb[3])
+{
+	const Int packed = getProfileInt(key, -1);
 	if (packed >= 0)
 	{
 		rgb[0] = (packed >> 16) & 0xff;
@@ -56,36 +84,108 @@ static void getProfileColor(const char *key, Int rgb[3])
 
 static void writeProfileColor(const char *key, const int rgb[3])
 {
-	::AfxGetApp()->WriteProfileInt(HQ_PREVIEW_SECTION, key, (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]);
+	writeProfileInt(key, (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]);
 }
 
 int WBQtHQPreview_Size(void)
 {
-	return HQ_PREVIEW_SIZE;
+	return s_preview ? s_preview->getHQSize() : HQ_PREVIEW_SIZE;
 }
 
-void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *out)
+int WBQtHQPreview_Supersample(void)
 {
-	HQPreviewParams params;
-	MapPreview::getDefaultHQParams(&params);
-	out->relief = params.relief;
-	out->elevation = params.elevation;
-	out->waterFalloff = params.waterFalloff;
-	for (Int k = 0; k < 3; k++)
+	return s_preview ? s_preview->getHQSupersample() : HQ_SUPERSAMPLE;
+}
+
+int WBQtHQPreview_MaxCapture(void)
+{
+	return HQ_MAX_CAPTURE;
+}
+
+void WBQtHQPreview_GetMapCells(int *width, int *height, int *playableWidth, int *playableHeight)
+{
+	*width = 0;
+	*height = 0;
+	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
+	if (pMap != NULL)
 	{
-		out->shallow[k] = params.shallow[k];
-		out->deep[k] = params.deep[k];
+		*width = pMap->getXExtent() - 2*pMap->getBorderSize();
+		*height = pMap->getYExtent() - 2*pMap->getBorderSize();
+	}
+	*playableWidth = *width;
+	*playableHeight = *height;
+	if (pMap != NULL && pMap->getNumBoundaries() > 0)
+	{
+		ICoord2D bound;
+		pMap->getBoundary(0, &bound);
+		if (bound.x > 0 && bound.y > 0)
+		{
+			*playableWidth = bound.x;
+			*playableHeight = bound.y;
+		}
 	}
 }
 
-void WBQtHQPreview_GetLast(WBQtHQPreviewParams *out)
+void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture)
 {
-	WBQtHQPreview_GetDefaults(out);
-	out->relief = getProfileReal("Relief", out->relief);
-	out->elevation = getProfileReal("Elevation", out->elevation);
-	out->waterFalloff = getProfileReal("WaterFalloff", out->waterFalloff);
-	getProfileColor("ShallowWater", out->shallow);
-	getProfileColor("DeepWater", out->deep);
+	HQPreviewParams p;
+	MapPreview::getDefaultHQParams(&p);
+	params->relief = p.relief;
+	params->elevation = p.elevation;
+	params->waterFalloff = p.waterFalloff;
+	for (Int k = 0; k < 3; k++)
+	{
+		params->shallow[k] = p.shallow[k];
+		params->deep[k] = p.deep[k];
+	}
+
+	HQCaptureParams c;
+	MapPreview::getDefaultHQCapture(&c);
+	capture->objects = c.objects ? 1 : 0;
+	capture->trees = c.trees ? 1 : 0;
+	capture->roads = c.roads ? 1 : 0;
+	capture->colorGrade = c.colorGrade ? 1 : 0;
+	capture->timeOfDay = c.timeOfDay;
+	capture->area = c.area;
+	capture->supersample = c.supersample;
+	capture->size = c.size;
+
+	// A custom area starts as the whole map.
+	int playableWidth = 0;
+	int playableHeight = 0;
+	capture->customX0 = 0;
+	capture->customY0 = 0;
+	WBQtHQPreview_GetMapCells(&capture->customX1, &capture->customY1, &playableWidth, &playableHeight);
+}
+
+void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture)
+{
+	WBQtHQPreview_GetDefaults(params, capture);
+	params->relief = getProfileReal("Relief", params->relief);
+	params->elevation = getProfileReal("Elevation", params->elevation);
+	params->waterFalloff = getProfileReal("WaterFalloff", params->waterFalloff);
+	getProfileColor("ShallowWater", params->shallow);
+	getProfileColor("DeepWater", params->deep);
+
+	// The area is per map, so it is not remembered.
+	capture->objects = getProfileInt("Objects", capture->objects);
+	capture->trees = getProfileInt("Trees", capture->trees);
+	capture->roads = getProfileInt("Roads", capture->roads);
+	capture->colorGrade = getProfileInt("ColorGrade", capture->colorGrade);
+	capture->timeOfDay = getProfileInt("TimeOfDay", capture->timeOfDay);
+	capture->supersample = getProfileInt("Supersample", capture->supersample);
+	capture->size = getProfileInt("Size", capture->size);
+}
+
+int WBQtHQPreview_Render(const WBQtHQCaptureParams *capture)
+{
+	if (s_preview == NULL || s_view == NULL || capture == NULL)
+	{
+		return 0;
+	}
+	HQCaptureParams c;
+	toCapture(capture, &c);
+	return s_preview->prepareHQ(s_view, c) ? 1 : 0;
 }
 
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra)
@@ -99,15 +199,16 @@ void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgr
 	s_preview->composeHQ(p, bgra);
 }
 
-int WBQtHQPreview_Save(const WBQtHQPreviewParams *params)
+int WBQtHQPreview_Save(const WBQtHQPreviewParams *params, const WBQtHQCaptureParams *capture)
 {
-	if (s_preview == NULL || params == NULL)
+	if (s_preview == NULL || params == NULL || capture == NULL)
 	{
 		return 0;
 	}
-	std::vector<UnsignedByte> pixels(HQ_PREVIEW_SIZE*HQ_PREVIEW_SIZE*4);
+	const Int size = s_preview->getHQSize();
+	std::vector<UnsignedByte> pixels(size*size*4);
 	WBQtHQPreview_Compose(params, &pixels[0]);
-	if (!MapPreview::writeHQ(s_mapPath, &pixels[0]))
+	if (!MapPreview::writeHQ(s_mapPath, &pixels[0], size))
 	{
 		return 0;
 	}
@@ -116,24 +217,40 @@ int WBQtHQPreview_Save(const WBQtHQPreviewParams *params)
 	writeProfileReal("WaterFalloff", params->waterFalloff);
 	writeProfileColor("ShallowWater", params->shallow);
 	writeProfileColor("DeepWater", params->deep);
+	writeProfileInt("Objects", capture->objects);
+	writeProfileInt("Trees", capture->trees);
+	writeProfileInt("Roads", capture->roads);
+	writeProfileInt("ColorGrade", capture->colorGrade);
+	writeProfileInt("TimeOfDay", capture->timeOfDay);
+	writeProfileInt("Supersample", capture->supersample);
+	writeProfileInt("Size", capture->size);
 	return 1;
 }
 
 int WBQtHQPreview_Run(void *view, const char *mapPath)
 {
-	MapPreview preview;
-	if (view == NULL || mapPath == NULL || !preview.prepareHQ((WbView3d *)view))
+	if (view == NULL || mapPath == NULL)
 	{
 		return -1;
 	}
-	CString tgaPath = mapPath;
-	tgaPath.Replace(".map", ".tga");
-
+	MapPreview preview;
 	s_preview = &preview;
+	s_view = (WbView3d *)view;
 	s_mapPath = mapPath;
-	const int saved = WBQtHQPreview_Show(tgaPath);
+
+	WBQtHQPreviewParams params;
+	WBQtHQCaptureParams capture;
+	WBQtHQPreview_GetLast(&params, &capture);
+	int result = -1;
+	if (WBQtHQPreview_Render(&capture) != 0)
+	{
+		CString tgaPath = mapPath;
+		tgaPath.Replace(".map", ".tga");
+		result = WBQtHQPreview_Show(tgaPath);
+	}
 	s_preview = NULL;
-	return saved;
+	s_view = NULL;
+	return result;
 }
 
 #endif // RTS_HAS_QT

@@ -62,6 +62,16 @@ enum
 	MAP_PREVIEW_WIDTH = 128,//256,
 	HQ_PREVIEW_SIZE = 256,
 	HQ_SUPERSAMPLE = 4,
+	HQ_MIN_SIZE = 128,
+	HQ_MAX_SIZE = 512,
+	HQ_MAX_CAPTURE = 2048,	///< largest supersampled render, which bounds memory in the 32-bit editor
+};
+
+enum HQPreviewArea
+{
+	HQ_AREA_MAP = 0,	///< the whole map without its border, which the lobby places start positions on
+	HQ_AREA_PLAYABLE,
+	HQ_AREA_CUSTOM,
 };
 
 class WbView3d;
@@ -76,6 +86,23 @@ struct HQPreviewParams
 	Int deep[3];
 };
 
+/// What the HQ preview renders. Changing any of it needs a new render.
+struct HQCaptureParams
+{
+	Bool objects;
+	Bool trees;
+	Bool roads;			///< roads and bridges
+	Bool colorGrade;	///< the map.ini colour grade
+	Int timeOfDay;		///< TIME_OF_DAY_INVALID keeps the current one
+	Int area;			///< HQPreviewArea
+	Int customX0;		///< HQ_AREA_CUSTOM corners in border-relative cells
+	Int customY0;
+	Int customX1;
+	Int customY1;
+	Int supersample;	///< reduced so size * supersample stays within HQ_MAX_CAPTURE
+	Int size;			///< output pixels per side
+};
+
 class MapPreview
 {
 public:
@@ -83,12 +110,15 @@ public:
 	void save( CString mapName );
 
 	static void getDefaultHQParams( HQPreviewParams *params );
+	static void getDefaultHQCapture( HQCaptureParams *capture );
 	/// Renders the map from above and caches what composeHQ needs.
-	Bool prepareHQ( WbView3d *view );
-	/// Shades the cached render into HQ_PREVIEW_SIZE^2 BGRA pixels, top row north.
+	Bool prepareHQ( WbView3d *view, const HQCaptureParams &capture );
+	Int getHQSize() const { return m_hqSize; }
+	Int getHQSupersample() const { return m_hqSuper; }
+	/// Shades the cached render into getHQSize()^2 BGRA pixels, top row north.
 	void composeHQ( const HQPreviewParams &params, UnsignedByte *bgra );
-	/// Writes the pixels as <map>.tga.
-	static Bool writeHQ( CString mapName, const UnsignedByte *bgra );
+	/// Writes the pixels as <map>.tga, tagged so saving the map keeps them.
+	static Bool writeHQ( CString mapName, const UnsignedByte *bgra, Int size );
 private:
 	void interpolateColorForHeight( RGBColor *color, Real height, Real hiZ, Real midZ, Real loZ );
 	Bool mapPreviewToWorld(const ICoord2D *radar, Coord3D *world);
@@ -102,6 +132,8 @@ private:
 	std::vector<Real> m_hqLight;
 	std::vector<Real> m_hqHeight;
 	std::vector<Real> m_hqDepth;
+	Int m_hqSize;
+	Int m_hqSuper;
 
 
 };

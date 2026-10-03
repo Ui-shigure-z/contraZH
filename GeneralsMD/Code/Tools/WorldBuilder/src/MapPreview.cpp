@@ -70,9 +70,15 @@
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 Bool localIsUnderwater( Real x, Real y);
+// Marks a tga written by writeHQ, so saving the map leaves it alone.
+static const char HQ_TGA_ID[] = "WBHQ";
+enum { HQ_TGA_ID_LENGTH = 4 };
+
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 MapPreview::MapPreview()
+	: m_hqSize(HQ_PREVIEW_SIZE)
+	, m_hqSuper(HQ_SUPERSAMPLE)
 {
 	memset(m_pixelBuffer, 0xffffffff, sizeof(m_pixelBuffer));
 }
@@ -86,10 +92,11 @@ void MapPreview::save( CString mapName )
 	FILE *fp = fopen(newStr, "rb");
 	if (fp != NULL)
 	{
-		unsigned char header[18];
-		const Bool haveHeader = fread(header, 1, sizeof(header), fp) == sizeof(header);
+		unsigned char header[18 + HQ_TGA_ID_LENGTH];
+		const size_t got = fread(header, 1, sizeof(header), fp);
 		fclose(fp);
-		if (haveHeader && (header[12] | (header[13] << 8)) > MAP_PREVIEW_WIDTH)
+		const Bool tagged = got == sizeof(header) && header[0] == HQ_TGA_ID_LENGTH && memcmp(header + 18, HQ_TGA_ID, HQ_TGA_ID_LENGTH) == 0;
+		if (tagged || (got >= 18 && (header[12] | (header[13] << 8)) > MAP_PREVIEW_WIDTH))
 		{
 			return;
 		}
@@ -145,7 +152,23 @@ void MapPreview::getDefaultHQParams( HQPreviewParams *params )
 	params->deep[2] = 95;
 }
 
-Bool MapPreview::prepareHQ( WbView3d *view )
+void MapPreview::getDefaultHQCapture( HQCaptureParams *capture )
+{
+	capture->objects = true;
+	capture->trees = true;
+	capture->roads = true;
+	capture->colorGrade = false;
+	capture->timeOfDay = TIME_OF_DAY_INVALID;
+	capture->area = HQ_AREA_MAP;
+	capture->customX0 = 0;
+	capture->customY0 = 0;
+	capture->customX1 = 0;
+	capture->customY1 = 0;
+	capture->supersample = HQ_SUPERSAMPLE;
+	capture->size = HQ_PREVIEW_SIZE;
+}
+
+Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 {
 	const Int ABOVE_GROUND_DIFF = 24;	// colour change that marks a bridge or object over the ground
 
@@ -155,19 +178,62 @@ Bool MapPreview::prepareHQ( WbView3d *view )
 		return false;
 	}
 
-	const Int big = HQ_PREVIEW_SIZE * HQ_SUPERSAMPLE;
+	const Int border = pMap->getBorderSize();
+	const Int mapW = pMap->getXExtent() - 2*border;
+	const Int mapH = pMap->getYExtent() - 2*border;
+
+	// The area in border-relative cells.
+	Int cx0 = 0;
+	Int cy0 = 0;
+	Int cx1 = mapW;
+	Int cy1 = mapH;
+	if (capture.area == HQ_AREA_PLAYABLE && pMap->getNumBoundaries() > 0)
+	{
+		ICoord2D bound;
+		pMap->getBoundary(0, &bound);
+		if (bound.x > 0 && bound.y > 0)
+		{
+			cx1 = min(bound.x, mapW);
+			cy1 = min(bound.y, mapH);
+		}
+	}
+	else if (capture.area == HQ_AREA_CUSTOM)
+	{
+		cx0 = max(0, min(capture.customX0, capture.customX1));
+		cy0 = max(0, min(capture.customY0, capture.customY1));
+		cx1 = min(mapW, max(capture.customX0, capture.customX1));
+		cy1 = min(mapH, max(capture.customY0, capture.customY1));
+	}
+	if (cx1 - cx0 < 1 || cy1 - cy0 < 1)
+	{
+		return false;
+	}
+
+	WbView3d::TopViewCapture view3d;
+	view3d.x0 = cx0 * MAP_XY_FACTOR;
+	view3d.y0 = cy0 * MAP_XY_FACTOR;
+	view3d.x1 = cx1 * MAP_XY_FACTOR;
+	view3d.y1 = cy1 * MAP_XY_FACTOR;
+	view3d.objects = capture.objects;
+	view3d.trees = capture.trees;
+	view3d.roads = capture.roads;
+	view3d.colorGrade = capture.colorGrade;
+	view3d.timeOfDay = capture.timeOfDay;
+
+	m_hqSize = max((Int)HQ_MIN_SIZE, min(capture.size, (Int)HQ_MAX_SIZE));
+	m_hqSuper = max(1, min(capture.supersample, HQ_MAX_CAPTURE / m_hqSize));
+	const Int big = m_hqSize * m_hqSuper;
 	const Int count = big*big;
 	m_hqScene.resize(count*4);
 	std::vector<UnsignedByte> ground(count*4);
-	if (!view->captureTopView(big, true, &m_hqScene[0]) || !view->captureTopView(big, false, &ground[0]))
+	if (!view->captureTopView(big, view3d, true, &m_hqScene[0]) || !view->captureTopView(big, view3d, false, &ground[0]))
 	{
 		m_hqScene.clear();
 		return false;
 	}
 
-	const Int border = pMap->getBorderSize();
-	const Real worldX = (pMap->getXExtent() - 2*border) * MAP_XY_FACTOR;
-	const Real worldY = (pMap->getYExtent() - 2*border) * MAP_XY_FACTOR;
+	const Real worldX = view3d.x1 - view3d.x0;
+	const Real worldY = view3d.y1 - view3d.y0;
 	Real minZ = FLT_MAX;
 	Real maxZ = -FLT_MAX;
 	for (Int j = border; j < pMap->getYExtent() - border; j++)
@@ -196,10 +262,10 @@ Bool MapPreview::prepareHQ( WbView3d *view )
 	const Real step = MAP_XY_FACTOR;
 	for (Int py = 0; py < big; py++)
 	{
-		const Real y = worldY * (1.0f - (py + 0.5f) / big);
+		const Real y = view3d.y0 + worldY * (1.0f - (py + 0.5f) / big);
 		for (Int px = 0; px < big; px++)
 		{
-			const Real x = worldX * (px + 0.5f) / big;
+			const Real x = view3d.x0 + worldX * (px + 0.5f) / big;
 			const Int n = py*big + px;
 			const UnsignedByte *s = &m_hqScene[n*4];
 			const UnsignedByte *g = &ground[n*4];
@@ -232,24 +298,24 @@ Bool MapPreview::prepareHQ( WbView3d *view )
 
 void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
 {
-	const Int big = HQ_PREVIEW_SIZE * HQ_SUPERSAMPLE;
+	const Int big = m_hqSize * m_hqSuper;
 	if (m_hqScene.empty())
 	{
-		memset(bgra, 0, HQ_PREVIEW_SIZE*HQ_PREVIEW_SIZE*4);
+		memset(bgra, 0, m_hqSize*m_hqSize*4);
 		return;
 	}
 	const Real falloff = max(params.waterFalloff, 1.0f);
 
-	for (Int oy = 0; oy < HQ_PREVIEW_SIZE; oy++)
+	for (Int oy = 0; oy < m_hqSize; oy++)
 	{
-		for (Int ox = 0; ox < HQ_PREVIEW_SIZE; ox++)
+		for (Int ox = 0; ox < m_hqSize; ox++)
 		{
 			Real sum[3] = { 0.0f, 0.0f, 0.0f };
-			for (Int sy = 0; sy < HQ_SUPERSAMPLE; sy++)
+			for (Int sy = 0; sy < m_hqSuper; sy++)
 			{
-				for (Int sx = 0; sx < HQ_SUPERSAMPLE; sx++)
+				for (Int sx = 0; sx < m_hqSuper; sx++)
 				{
-					const Int n = (oy*HQ_SUPERSAMPLE + sy)*big + ox*HQ_SUPERSAMPLE + sx;
+					const Int n = (oy*m_hqSuper + sy)*big + ox*m_hqSuper + sx;
 					const UnsignedByte *s = &m_hqScene[n*4];
 					Real c[3] = { (Real)s[0], (Real)s[1], (Real)s[2] };
 					if (m_hqLight[n] >= 0.0f)
@@ -280,17 +346,17 @@ void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
 					}
 				}
 			}
-			UnsignedByte *o = &bgra[(oy*HQ_PREVIEW_SIZE + ox)*4];
+			UnsignedByte *o = &bgra[(oy*m_hqSize + ox)*4];
 			for (Int k = 0; k < 3; k++)
 			{
-				o[k] = (UnsignedByte)(sum[k] / (HQ_SUPERSAMPLE*HQ_SUPERSAMPLE) + 0.5f);
+				o[k] = (UnsignedByte)(sum[k] / (m_hqSuper*m_hqSuper) + 0.5f);
 			}
 			o[3] = 255;
 		}
 	}
 }
 
-Bool MapPreview::writeHQ( CString mapName, const UnsignedByte *bgra )
+Bool MapPreview::writeHQ( CString mapName, const UnsignedByte *bgra, Int size )
 {
 	CString tgaName = mapName;
 	tgaName.Replace(".map", ".tga");
@@ -301,19 +367,21 @@ Bool MapPreview::writeHQ( CString mapName, const UnsignedByte *bgra )
 	}
 	unsigned char header[18];
 	memset(header, 0, sizeof(header));
+	header[0] = HQ_TGA_ID_LENGTH;
 	header[2] = 2;
-	header[12] = HQ_PREVIEW_SIZE & 0xff;
-	header[13] = HQ_PREVIEW_SIZE >> 8;
-	header[14] = HQ_PREVIEW_SIZE & 0xff;
-	header[15] = HQ_PREVIEW_SIZE >> 8;
+	header[12] = size & 0xff;
+	header[13] = size >> 8;
+	header[14] = size & 0xff;
+	header[15] = size >> 8;
 	header[16] = 32;
 	header[17] = 8;
-	Bool written = fwrite(header, 1, sizeof(header), fp) == sizeof(header);
+	Bool written = fwrite(header, 1, sizeof(header), fp) == sizeof(header)
+		&& fwrite(HQ_TGA_ID, 1, HQ_TGA_ID_LENGTH, fp) == HQ_TGA_ID_LENGTH;
 
 	// TGA rows run bottom-up, so the south edge is written first.
-	for (Int y = HQ_PREVIEW_SIZE - 1; y >= 0 && written; y--)
+	for (Int y = size - 1; y >= 0 && written; y--)
 	{
-		written = fwrite(bgra + y*HQ_PREVIEW_SIZE*4, 1, HQ_PREVIEW_SIZE*4, fp) == HQ_PREVIEW_SIZE*4;
+		written = fwrite(bgra + y*size*4, 1, size*4, fp) == (size_t)(size*4);
 	}
 	fclose(fp);
 	return written;

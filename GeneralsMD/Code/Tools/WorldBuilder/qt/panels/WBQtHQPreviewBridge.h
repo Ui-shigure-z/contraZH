@@ -2,7 +2,7 @@
 // Generate HQ tga).
 //
 // The MFC side holds the captured render and shades it. The Qt side shows the result and the
-// shading controls, and asks for a new image whenever a control changes.
+// controls. Shading controls ask for a new image at once; capture controls need a new render.
 #ifndef WB_QT_HQ_PREVIEW_BRIDGE_H
 #define WB_QT_HQ_PREVIEW_BRIDGE_H
 
@@ -20,16 +20,47 @@ typedef struct WBQtHQPreviewParams
 	int deep[3];
 } WBQtHQPreviewParams;
 
+enum
+{
+	WBQT_HQ_AREA_MAP = 0,
+	WBQT_HQ_AREA_PLAYABLE = 1,
+	WBQT_HQ_AREA_CUSTOM = 2
+};
+
+typedef struct WBQtHQCaptureParams
+{
+	int objects;
+	int trees;
+	int roads;
+	int colorGrade;
+	int timeOfDay;		// 0 keeps the current one, 1 to 4 morning to night
+	int area;			// WBQT_HQ_AREA_*
+	int customX0;		// custom area corners in cells, without the border
+	int customY0;
+	int customX1;
+	int customY1;
+	int supersample;
+	int size;
+} WBQtHQCaptureParams;
+
 // ====== Qt -> MFC (implemented in src/WBQtHQPreviewBridge.cpp) ======
 
+// The size and supersampling of the current render, after any reduction.
 int  WBQtHQPreview_Size(void);
-void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *out);
+int  WBQtHQPreview_Supersample(void);
+int  WBQtHQPreview_MaxCapture(void);
+// The map without its border, and the playable boundary, in cells.
+void WBQtHQPreview_GetMapCells(int *width, int *height, int *playableWidth, int *playableHeight);
+
+void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture);
 // The settings last saved with, or the defaults.
-void WBQtHQPreview_GetLast(WBQtHQPreviewParams *out);
+void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture);
+// Renders the map again. Returns 1 on success.
+int  WBQtHQPreview_Render(const WBQtHQCaptureParams *capture);
 // Fills Size()^2 BGRA pixels, top row north.
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra);
 // Writes the tga and remembers the settings. Returns 1 on success.
-int  WBQtHQPreview_Save(const WBQtHQPreviewParams *params);
+int  WBQtHQPreview_Save(const WBQtHQPreviewParams *params, const WBQtHQCaptureParams *capture);
 
 // ====== MFC only (implemented in src/WBQtHQPreviewBridge.cpp) ======
 
