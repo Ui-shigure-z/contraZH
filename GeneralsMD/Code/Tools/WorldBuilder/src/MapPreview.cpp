@@ -57,6 +57,11 @@
 #include "Common/FileSystem.h"
 #include "WWLib/TARGA.h"
 #include "Common/DataChunk.h"
+#include "GameLogic/PolygonTrigger.h"
+#include "wbview3d.h"
+#include <float.h>
+#include <math.h>
+#include <vector>
 //-----------------------------------------------------------------------------
 // DEFINES ////////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
@@ -76,6 +81,19 @@ void MapPreview::save( CString mapName )
 {
 	CString newStr = mapName;
 	newStr.Replace(".map", ".tga");
+
+	// An HQ preview is only replaced by generating it again.
+	FILE *fp = fopen(newStr, "rb");
+	if (fp != NULL)
+	{
+		unsigned char header[18];
+		const Bool haveHeader = fread(header, 1, sizeof(header), fp) == sizeof(header);
+		fclose(fp);
+		if (haveHeader && (header[12] | (header[13] << 8)) > MAP_PREVIEW_WIDTH)
+		{
+			return;
+		}
+	}
 	buildMapPreviewTexture( newStr );
 
 /*
@@ -94,6 +112,211 @@ void MapPreview::save( CString mapName )
 	chunkWriter.closeDataChunk();
 	DEBUG_LOG(("EndMapPreviewInfo"));
 */
+}
+
+// Highest water surface over a border-relative world point, or -FLT_MAX when none covers it.
+static Real waterLevelAt(Real x, Real y)
+{
+	ICoord3D iLoc;
+	iLoc.x = (Int)floor(x + 0.5f);
+	iLoc.y = (Int)floor(y + 0.5f);
+	iLoc.z = 0;
+	Real level = -FLT_MAX;
+	for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext())
+	{
+		if (pTrig->isWaterArea() && pTrig->pointInTrigger(iLoc))
+		{
+			level = max(level, (Real)pTrig->getPoint(0)->z);
+		}
+	}
+	return level;
+}
+
+void MapPreview::getDefaultHQParams( HQPreviewParams *params )
+{
+	params->relief = 0.8f;
+	params->elevation = 0.35f;
+	params->waterFalloff = 40.0f;
+	params->shallow[0] = 70;
+	params->shallow[1] = 140;
+	params->shallow[2] = 160;
+	params->deep[0] = 20;
+	params->deep[1] = 55;
+	params->deep[2] = 95;
+}
+
+Bool MapPreview::prepareHQ( WbView3d *view )
+{
+	const Int ABOVE_GROUND_DIFF = 24;	// colour change that marks a bridge or object over the ground
+
+	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
+	if (view == NULL || pMap == NULL || TheTerrainRenderObject == NULL)
+	{
+		return false;
+	}
+
+	const Int big = HQ_PREVIEW_SIZE * HQ_SUPERSAMPLE;
+	const Int count = big*big;
+	m_hqScene.resize(count*4);
+	std::vector<UnsignedByte> ground(count*4);
+	if (!view->captureTopView(big, true, &m_hqScene[0]) || !view->captureTopView(big, false, &ground[0]))
+	{
+		m_hqScene.clear();
+		return false;
+	}
+
+	const Int border = pMap->getBorderSize();
+	const Real worldX = (pMap->getXExtent() - 2*border) * MAP_XY_FACTOR;
+	const Real worldY = (pMap->getYExtent() - 2*border) * MAP_XY_FACTOR;
+	Real minZ = FLT_MAX;
+	Real maxZ = -FLT_MAX;
+	for (Int j = border; j < pMap->getYExtent() - border; j++)
+	{
+		for (Int i = border; i < pMap->getXExtent() - border; i++)
+		{
+			const Real z = pMap->getHeight(i, j) * MAP_HEIGHT_SCALE;
+			minZ = min(minZ, z);
+			maxZ = max(maxZ, z);
+		}
+	}
+	const Real rangeZ = max(maxZ - minZ, 1.0f);
+
+	// Light from the north-west, as on most maps' sun.
+	Real lx = -1.0f;
+	Real ly = 1.0f;
+	Real lz = 1.4f;
+	const Real lLen = sqrt(lx*lx + ly*ly + lz*lz);
+	lx /= lLen;
+	ly /= lLen;
+	lz /= lLen;
+
+	m_hqLight.resize(count);
+	m_hqHeight.resize(count);
+	m_hqDepth.resize(count);
+	const Real step = MAP_XY_FACTOR;
+	for (Int py = 0; py < big; py++)
+	{
+		const Real y = worldY * (1.0f - (py + 0.5f) / big);
+		for (Int px = 0; px < big; px++)
+		{
+			const Real x = worldX * (px + 0.5f) / big;
+			const Int n = py*big + px;
+			const UnsignedByte *s = &m_hqScene[n*4];
+			const UnsignedByte *g = &ground[n*4];
+			const Bool aboveGround = (abs(s[0] - g[0]) + abs(s[1] - g[1]) + abs(s[2] - g[2])) > ABOVE_GROUND_DIFF;
+
+			const Real z = TheTerrainRenderObject->getHeightMapHeight(x, y, NULL);
+			const Real level = waterLevelAt(x, y);
+			m_hqDepth[n] = level > z ? level - z : 0.0f;
+
+			// Bridges and objects over water keep their own colour.
+			if (aboveGround && level > z)
+			{
+				m_hqLight[n] = -1.0f;
+				continue;
+			}
+			if (aboveGround)
+			{
+				m_hqDepth[n] = 0.0f;
+			}
+
+			const Real dzdx = (TheTerrainRenderObject->getHeightMapHeight(x + step, y, NULL) - TheTerrainRenderObject->getHeightMapHeight(x - step, y, NULL)) / (2.0f*step);
+			const Real dzdy = (TheTerrainRenderObject->getHeightMapHeight(x, y + step, NULL) - TheTerrainRenderObject->getHeightMapHeight(x, y - step, NULL)) / (2.0f*step);
+			const Real nLen = sqrt(dzdx*dzdx + dzdy*dzdy + 1.0f);
+			m_hqLight[n] = (-dzdx*lx - dzdy*ly + lz) / (nLen*lz);
+			m_hqHeight[n] = (z - minZ) / rangeZ;
+		}
+	}
+	return true;
+}
+
+void MapPreview::composeHQ( const HQPreviewParams &params, UnsignedByte *bgra )
+{
+	const Int big = HQ_PREVIEW_SIZE * HQ_SUPERSAMPLE;
+	if (m_hqScene.empty())
+	{
+		memset(bgra, 0, HQ_PREVIEW_SIZE*HQ_PREVIEW_SIZE*4);
+		return;
+	}
+	const Real falloff = max(params.waterFalloff, 1.0f);
+
+	for (Int oy = 0; oy < HQ_PREVIEW_SIZE; oy++)
+	{
+		for (Int ox = 0; ox < HQ_PREVIEW_SIZE; ox++)
+		{
+			Real sum[3] = { 0.0f, 0.0f, 0.0f };
+			for (Int sy = 0; sy < HQ_SUPERSAMPLE; sy++)
+			{
+				for (Int sx = 0; sx < HQ_SUPERSAMPLE; sx++)
+				{
+					const Int n = (oy*HQ_SUPERSAMPLE + sy)*big + ox*HQ_SUPERSAMPLE + sx;
+					const UnsignedByte *s = &m_hqScene[n*4];
+					Real c[3] = { (Real)s[0], (Real)s[1], (Real)s[2] };
+					if (m_hqLight[n] >= 0.0f)
+					{
+						Real shade = 1.0f + params.relief * (m_hqLight[n] - 1.0f);
+						shade *= 1.0f + params.elevation * (m_hqHeight[n] - 0.5f);
+						shade = max(0.3f, min(shade, 1.8f));
+						for (Int k = 0; k < 3; k++)
+						{
+							c[k] *= shade;
+						}
+						if (m_hqDepth[n] > 0.0f)
+						{
+							const Real m = 1.0f - exp(-m_hqDepth[n] / falloff);
+							const Real alpha = 0.55f + 0.35f*m;
+							for (Int k = 0; k < 3; k++)
+							{
+								// Colours are RGB and the pixels BGR.
+								const Real shallow = params.shallow[2 - k];
+								const Real water = shallow + (params.deep[2 - k] - shallow)*m;
+								c[k] += (water - c[k])*alpha;
+							}
+						}
+					}
+					for (Int k = 0; k < 3; k++)
+					{
+						sum[k] += max(0.0f, min(c[k], 255.0f));
+					}
+				}
+			}
+			UnsignedByte *o = &bgra[(oy*HQ_PREVIEW_SIZE + ox)*4];
+			for (Int k = 0; k < 3; k++)
+			{
+				o[k] = (UnsignedByte)(sum[k] / (HQ_SUPERSAMPLE*HQ_SUPERSAMPLE) + 0.5f);
+			}
+			o[3] = 255;
+		}
+	}
+}
+
+Bool MapPreview::writeHQ( CString mapName, const UnsignedByte *bgra )
+{
+	CString tgaName = mapName;
+	tgaName.Replace(".map", ".tga");
+	FILE *fp = fopen(tgaName, "wb");
+	if (fp == NULL)
+	{
+		return false;
+	}
+	unsigned char header[18];
+	memset(header, 0, sizeof(header));
+	header[2] = 2;
+	header[12] = HQ_PREVIEW_SIZE & 0xff;
+	header[13] = HQ_PREVIEW_SIZE >> 8;
+	header[14] = HQ_PREVIEW_SIZE & 0xff;
+	header[15] = HQ_PREVIEW_SIZE >> 8;
+	header[16] = 32;
+	header[17] = 8;
+	Bool written = fwrite(header, 1, sizeof(header), fp) == sizeof(header);
+
+	// TGA rows run bottom-up, so the south edge is written first.
+	for (Int y = HQ_PREVIEW_SIZE - 1; y >= 0 && written; y--)
+	{
+		written = fwrite(bgra + y*HQ_PREVIEW_SIZE*4, 1, HQ_PREVIEW_SIZE*4, fp) == HQ_PREVIEW_SIZE*4;
+	}
+	fclose(fp);
+	return written;
 }
 
 void MapPreview::interpolateColorForHeight( RGBColor *color,

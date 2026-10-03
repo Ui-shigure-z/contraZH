@@ -74,6 +74,7 @@
 #include "qt/panels/WBQtMapIniEditorBridge.h"
 #include "qt/panels/WBQtMapGenBridge.h"
 #include "qt/panels/WBQtWaterTuningBridge.h"
+#include "qt/panels/WBQtHQPreviewBridge.h"
 #endif
 #include "SaveMap.h"
 #include "ScriptDialog.h"
@@ -1172,6 +1173,7 @@ BEGIN_MESSAGE_MAP(CWorldBuilderDoc, CDocument)
 	ON_COMMAND(ID_FILE_OPEN_MAPINI, OnOpenMapIni)
 	ON_COMMAND(ID_FILE_EDIT_MAPINI, OnEditMapIni)
 	ON_COMMAND(ID_FILE_WATERTUNING_MAPINI, OnWaterTuningMapIni)
+	ON_COMMAND(ID_FILE_HQPREVIEW_MAPINI, OnGenerateHQPreview)
 	ON_COMMAND(ID_FILE_RELOAD_MAPINI, OnReloadMapIni)
 	ON_COMMAND(ID_FILE_CHECK_MAPINI, OnCheckMapIni)
 	ON_COMMAND(ID_FILE_WATCH_MAPINI, OnToggleWatchMapIni)
@@ -2080,6 +2082,27 @@ void CWorldBuilderDoc::OnWaterTuningMapIni()
 	WBQtWaterTuning_Open(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, iniPath.str());
 #else
 	AfxMessageBox("Water tuning needs the Qt build of WorldBuilder.", MB_ICONINFORMATION | MB_OK);
+#endif
+}
+
+// File > Map.ini > Generate HQ tga: renders the lobby preview from the 3D view.
+void CWorldBuilderDoc::OnGenerateHQPreview()
+{
+	if (m_strPathName.IsEmpty()) {
+		AfxMessageBox("Save the map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	WbView3d *view = Get3DView();
+	if (view == NULL) {
+		AfxMessageBox("The 3D view is not open.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+#ifdef RTS_HAS_QT
+	if (WBQtHQPreview_Run(view, m_strPathName) < 0) {
+		AfxMessageBox("Couldn't render the map from the 3D view.", MB_ICONEXCLAMATION | MB_OK);
+	}
+#else
+	AfxMessageBox("The HQ preview needs the Qt build of WorldBuilder.", MB_ICONINFORMATION | MB_OK);
 #endif
 }
 

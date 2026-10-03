@@ -4886,6 +4886,145 @@ void WbView3d::redraw(void)
 	m_time = ::GetTickCount();
 }
 
+Bool WbView3d::captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra)
+{
+	WorldHeightMapEdit *pMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
+	if (!m_ww3dInited || pMap == NULL || m_heightMapRenderObj == NULL || bgra == NULL || size <= 0)
+	{
+		return false;
+	}
+
+	// Terrain is drawn border-relative, so the playable area spans 0 to the non-border extent.
+	const Int border = pMap->getBorderSize();
+	const Real worldX = (pMap->getXExtent() - 2*border) * MAP_XY_FACTOR;
+	const Real worldY = (pMap->getYExtent() - 2*border) * MAP_XY_FACTOR;
+	if (worldX <= 0.0f || worldY <= 0.0f)
+	{
+		return false;
+	}
+	Real maxZ = 0.0f;
+	for (Int j = 0; j < pMap->getYExtent(); j++)
+	{
+		for (Int i = 0; i < pMap->getXExtent(); i++)
+		{
+			maxZ = max(maxZ, pMap->getHeight(i, j) * MAP_HEIGHT_SCALE);
+		}
+	}
+
+	TextureClass *target = NULL;
+	ZTextureClass *depth = NULL;
+	DX8Wrapper::Create_Render_Target(size, size, WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D16, &target, &depth);
+	if (target == NULL)
+	{
+		REF_PTR_RELEASE(depth);
+		return false;
+	}
+
+	++m_updateCount;
+
+	m_heightMapRenderObj->removeAllRoads();
+	if (aboveGround)
+	{
+		m_heightMapRenderObj->loadRoadsAndBridges(NULL, FALSE);
+	}
+	std::vector<RenderObjClass *> objects;
+	std::vector<Bool> wasHidden;
+	for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext())
+	{
+		RenderObjClass *robj = pObj->getRenderObj();
+		if (robj != NULL)
+		{
+			objects.push_back(robj);
+			wasHidden.push_back(robj->Is_Hidden() != 0);
+			robj->Set_Hidden(aboveGround ? 0 : 1);
+		}
+	}
+
+	CameraClass *camera = NEW_REF(CameraClass, ());
+	const Real camZ = maxZ + 200.0f;
+	Matrix3D camTran(1);
+	camTran.Set_Translation(Vector3(worldX*0.5f, worldY*0.5f, camZ));
+	camera->Set_Transform(camTran);
+	camera->Set_Projection_Type(CameraClass::ORTHO);
+	camera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
+	camera->Set_Clip_Planes(1.0f, camZ + 1000.0f);
+
+	Vector3 center(worldX*0.5f, worldY*0.5f, 0.0f);
+	RefRenderObjListIterator lightListIt(&m_lightList);
+	m_heightMapRenderObj->setDrawEntireMap(true);
+	m_heightMapRenderObj->updateCenter(camera, &center, &lightListIt);
+	m_heightMapRenderObj->On_Frame_Update();
+
+	// The sun shadow map is fitted to the editor camera.
+	const Bool wantShadowMap = TheGlobalData->m_useShadowMap;
+	TheWritableGlobalData->m_useShadowMap = false;
+
+	Bool ok = false;
+	DX8Wrapper::Set_Render_Target_With_Z(target, depth);
+	if (WW3D::Begin_Render(true, true, Vector3(0.0f, 0.0f, 0.0f)) == WW3D_ERROR_OK)
+	{
+		WW3D::Render(m_scene, camera);
+		WW3D::End_Render(false);
+		ok = true;
+	}
+	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
+	TheWritableGlobalData->m_useShadowMap = wantShadowMap;
+
+	SurfaceClass *surface = target->Get_Surface_Level();
+	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;
+	IDirect3DSurface8 *copy = NULL;
+	if (ok && rt != NULL)
+	{
+		LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
+		D3DSURFACE_DESC desc;
+		rt->GetDesc(&desc);
+#if defined(BUILD_WITH_D3D9)
+		ok = SUCCEEDED(dev->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format, D3DPOOL_SYSTEMMEM, &copy, nullptr))
+			&& SUCCEEDED(dev->GetRenderTargetData(rt, copy));
+#else
+		ok = SUCCEEDED(dev->CreateImageSurface(desc.Width, desc.Height, desc.Format, &copy))
+			&& SUCCEEDED(dev->CopyRects(rt, nullptr, 0, copy, nullptr));
+#endif
+		D3DLOCKED_RECT lrect;
+		if (ok && SUCCEEDED(copy->LockRect(&lrect, nullptr, D3DLOCK_READONLY)))
+		{
+			for (Int y = 0; y < size; y++)
+			{
+				memcpy(bgra + y*size*4, (UnsignedByte *)lrect.pBits + y*lrect.Pitch, size*4);
+			}
+			copy->UnlockRect();
+		}
+		else
+		{
+			ok = false;
+		}
+	}
+	if (copy != NULL)
+	{
+		copy->Release();
+	}
+	REF_PTR_RELEASE(surface);
+	REF_PTR_RELEASE(camera);
+	REF_PTR_RELEASE(depth);
+	REF_PTR_RELEASE(target);
+
+	for (size_t k = 0; k < objects.size(); k++)
+	{
+		objects[k]->Set_Hidden(wasHidden[k] ? 1 : 0);
+	}
+	m_heightMapRenderObj->removeAllRoads();
+	if (m_showRoads)
+	{
+		m_heightMapRenderObj->loadRoadsAndBridges(NULL, FALSE);
+	}
+	m_needToLoadRoads = false;
+	m_heightMapRenderObj->setDrawEntireMap(m_showEntireMap);
+
+	--m_updateCount;
+	Invalidate(false);
+	return ok;
+}
+
 #if defined(BUILD_WITH_D3D9)
 // Full-target quad sampling the label layer 1:1, shifted by (dx, dy) pixels.
 static void drawLabelLayerQuad(IDirect3DDevice8 *dev, Int w, Int h, Real dx, Real dy)

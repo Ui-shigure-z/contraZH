@@ -760,6 +760,9 @@ public:
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
 
+	/// Renders the map straight down into size*size BGRA pixels, top row north. aboveGround adds roads, bridges and objects.
+	Bool captureTopView(Int size, Bool aboveGround, UnsignedByte *bgra);
+
 	virtual void setCenterInView(Real x, Real y) override;
 
 	// Like setCenterInView, but does NOT render synchronously. Updates the camera
