@@ -8,6 +8,7 @@
 #ifdef RTS_HAS_QT
 
 #include "Lib/BaseType.h"
+#include "Common/FileSystem.h"
 #include "Common/GlobalData.h"
 #include "GameClient/Water.h"
 #include "W3DDevice/GameClient/BaseHeightMap.h"
@@ -123,16 +124,19 @@ namespace
 		Real GlobalData::*real;
 		Int GlobalData::*integer;
 		RGBColor GlobalData::*color;
+		AsciiString GlobalData::*text;
 	};
 
 #define RENDER_REAL(group, key, member, lo, hi, step, help) \
-	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, &GlobalData::member, NULL, NULL }
+	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, &GlobalData::member, NULL, NULL, NULL }
 #define RENDER_INT(group, key, member, lo, hi, step, help) \
-	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, NULL, &GlobalData::member, NULL }
+	{ key, group, help, WBQT_WATER_FLOAT, lo, hi, step, NULL, &GlobalData::member, NULL, NULL }
 #define RENDER_COLOR(group, key, member, help) \
-	{ key, group, help, WBQT_WATER_COLOR, 0.0f, 255.0f, 1.0f, NULL, NULL, &GlobalData::member }
+	{ key, group, help, WBQT_WATER_COLOR, 0.0f, 255.0f, 1.0f, NULL, NULL, &GlobalData::member, NULL }
+#define RENDER_TEXT(group, key, member, help) \
+	{ key, group, help, WBQT_WATER_TEXT, 0.0f, 0.0f, 0.0f, NULL, NULL, NULL, &GlobalData::member }
 
-	// The GameData keys of the FX tuner's Glint, Ground, Blend and Sky tabs in its order, ranges and steps.
+	// The GameData keys of the FX tuner's Glint, Ground, Blend, Sky and Colour grade tabs in its order, ranges and steps.
 	const RenderKey s_renderKeys[] =
 	{
 		RENDER_REAL("Glint", "TerrainGlintIntensity", m_terrainGlintIntensity, 0.0f, 2.0f, 0.01f,
@@ -178,17 +182,61 @@ namespace
 			"How far shapes bulge and curl. High values twist them into streaks."),
 		RENDER_REAL("Sky", "SkyCloudDetail", m_skyCloudDetail, 0.0f, 1.0f, 0.01f,
 			"Ragged detail at the edges. 0 gives smooth blobs."),
+
+		RENDER_TEXT("Colour grade", "ColorLut", m_colorLut,
+			"The colour table's file name in Art\\Textures, such as lut_desert.tga. None uses no table."),
+		RENDER_REAL("Colour grade", "ColorLutStrength", m_colorLutStrength, 0.0f, 1.0f, 0.01f,
+			"How much of the table's result is taken. 0 leaves the scene as it is."),
+		RENDER_REAL("Colour grade", "ColorLutChroma", m_colorLutChroma, 0.0f, 1.0f, 0.01f,
+			"How much of the table's hue is taken. 0 takes only its brightness."),
+		RENDER_REAL("Colour grade", "ColorLutLuma", m_colorLutLuma, 0.0f, 1.0f, 0.01f,
+			"How much of the table's brightness is taken. 0 takes only its hues, so units stay as bright as they were."),
+		RENDER_REAL("Colour grade", "ColorLutBrightness", m_colorLutBrightness, 0.0f, 2.0f, 0.01f,
+			"Multiplies the scene, before the table."),
+		RENDER_REAL("Colour grade", "ColorLutContrast", m_colorLutContrast, 0.0f, 2.0f, 0.01f,
+			"Spreads the scene around mid grey, before the table. 0 is flat grey."),
+		RENDER_REAL("Colour grade", "ColorLutSaturation", m_colorLutSaturation, 0.0f, 2.0f, 0.01f,
+			"Colourfulness, before the table. 0 is black and white."),
+		RENDER_COLOR("Colour grade", "ColorLutTint", m_colorLutTint,
+			"Colour the scene is multiplied by, before the table. Unticked leaves the key out, so GameData.ini decides."),
+		RENDER_REAL("Colour grade", "ColorLutVibrance", m_colorLutVibrance, -1.0f, 1.0f, 0.01f,
+			"Saturates dull colours more than vivid ones, so terrain gains colour and team colours hold. Negative mutes them."),
+		RENDER_REAL("Colour grade", "ColorLutTechnicolor", m_colorLutTechnicolor, 0.0f, 1.0f, 0.01f,
+			"Strength of the two-strip Technicolor film look."),
+		RENDER_REAL("Colour grade", "ColorLutBlackPoint", m_colorLutBlackPoint, 0.0f, 0.5f, 0.005f,
+			"Level that becomes black, after the table. Raise it to crush the shadows."),
+		RENDER_REAL("Colour grade", "ColorLutWhitePoint", m_colorLutWhitePoint, 0.5f, 1.0f, 0.005f,
+			"Level that becomes white, after the table. Lower it to brighten the highlights."),
+		RENDER_REAL("Colour grade", "ColorLutGamma", m_colorLutGamma, 0.2f, 3.0f, 0.01f,
+			"Midtone brightness. Above 1 brightens and below 1 darkens."),
+		RENDER_REAL("Colour grade", "ColorLutOutputBlack", m_colorLutOutputBlack, 0.0f, 0.5f, 0.005f,
+			"What black comes out as. Raise it for the lifted, matte look. The shroud lifts with it."),
+		RENDER_REAL("Colour grade", "ColorLutOutputWhite", m_colorLutOutputWhite, 0.5f, 1.0f, 0.005f,
+			"What white comes out as. Lower it to dim the highlights."),
+		RENDER_REAL("Colour grade", "ColorLutVignette", m_colorLutVignette, 0.0f, 1.0f, 0.01f,
+			"How dark the view gets towards its edges."),
+		RENDER_REAL("Colour grade", "ColorLutVignetteRadius", m_colorLutVignetteRadius, 0.5f, 4.0f, 0.05f,
+			"Distance from the view's centre, in half its height, where the vignette reaches full strength. 2 reaches the corners of a 16:9 view."),
+		RENDER_REAL("Colour grade", "ColorLutGrain", m_colorLutGrain, 0.0f, 1.0f, 0.01f,
+			"Film grain over the scene, new every frame. 0.1 to 0.2 is a light grain."),
+		RENDER_REAL("Colour grade", "ColorLutDither", m_colorLutDither, 0.0f, 8.0f, 0.25f,
+			"Noise that breaks up the banding a grade leaves in smooth gradients, in 8 bit colour steps. 0 is off."),
 	};
 
 	const int s_renderKeyCount = sizeof(s_renderKeys) / sizeof(s_renderKeys[0]);
 
 	// The GameData.ini values, taken before the first write. Nothing else in WorldBuilder changes these keys.
 	float s_renderBase[s_renderKeyCount][3];
+	AsciiString s_renderBaseText[s_renderKeyCount];
 	Bool s_renderBaseTaken = FALSE;
 
 	void readRenderKey(const RenderKey &k, const GlobalData *data, float v[3])
 	{
 		v[0] = v[1] = v[2] = 0.0f;
+		if (k.text != NULL)
+		{
+			return;
+		}
 		if (k.color != NULL)
 		{
 			const RGBColor &c = data->*(k.color);
@@ -208,6 +256,10 @@ namespace
 
 	void writeRenderKey(const RenderKey &k, GlobalData *data, const float v[3])
 	{
+		if (k.text != NULL)
+		{
+			return;
+		}
 		if (k.color != NULL)
 		{
 			RGBColor &c = data->*(k.color);
@@ -236,6 +288,10 @@ namespace
 			for (int i = 0; i < s_renderKeyCount; ++i)
 			{
 				readRenderKey(s_renderKeys[i], TheWritableGlobalData, s_renderBase[i]);
+				if (s_renderKeys[i].text != NULL)
+				{
+					s_renderBaseText[i] = TheWritableGlobalData->*(s_renderKeys[i].text);
+				}
 			}
 			s_renderBaseTaken = TRUE;
 		}
@@ -254,6 +310,19 @@ namespace
 			++rest;
 		}
 		return rest;
+	}
+
+	// The value's first word, which is all a file name or None is.
+	AsciiString firstWord(const char *text)
+	{
+		AsciiString word(text);
+		word.trim();
+		const char *blank = strpbrk(word.str(), " \t");
+		if (blank != NULL)
+		{
+			word.truncateTo(blank - word.str());
+		}
+		return word;
 	}
 
 	Bool parseRenderValue(const RenderKey &k, const char *text, float v[3])
@@ -456,6 +525,85 @@ extern "C" void WBQtWaterTuning_SetLive(int i, const float v[3])
 	view->Invalidate(false);
 }
 
+extern "C" int WBQtWaterTuning_GetBaseText(int i, char *buf, int size)
+{
+	if (buf == NULL || size <= 0)
+	{
+		return 0;
+	}
+	buf[0] = 0;
+	if (i < s_keyCount || i >= s_keyCount + s_renderKeyCount || s_renderKeys[i - s_keyCount].text == NULL || !takeRenderBase())
+	{
+		return 0;
+	}
+	strlcpy(buf, s_renderBaseText[i - s_keyCount].str(), size);
+	return 1;
+}
+
+extern "C" void WBQtWaterTuning_SetLiveText(int i, const char *text)
+{
+	if (i < s_keyCount || i >= s_keyCount + s_renderKeyCount || text == NULL || !takeRenderBase())
+	{
+		return;
+	}
+	const RenderKey &k = s_renderKeys[i - s_keyCount];
+	if (k.text == NULL)
+	{
+		return;
+	}
+	TheWritableGlobalData->*(k.text) = firstWord(text);
+
+	WbView3d *view = CWorldBuilderDoc::GetActive3DView();
+	if (view != NULL)
+	{
+		view->Invalidate(false);
+	}
+}
+
+extern "C" int WBQtWaterTuning_ListTables(char *buf, int size)
+{
+	if (buf == NULL || size <= 0)
+	{
+		return 0;
+	}
+	buf[0] = 0;
+	if (TheFileSystem == NULL)
+	{
+		return 0;
+	}
+
+	FilenameList files;
+	TheFileSystem->getFileListInDirectory(AsciiString(TGA_DIR_PATH), AsciiString("lut_*.tga"), files, FALSE);
+
+	int count = 0;
+	int used = 0;
+	for (FilenameList::const_iterator it = files.begin(); it != files.end(); ++it)
+	{
+		// The list carries the directory, and the key names the file alone.
+		const char *name = it->reverseFind('/');
+		const char *backslash = it->reverseFind('\\');
+		if (backslash != NULL && (name == NULL || backslash > name))
+		{
+			name = backslash;
+		}
+		name = (name != NULL) ? name + 1 : it->str();
+
+		const int length = (int)strlen(name);
+		if (used + length + 2 > size)
+		{
+			break;
+		}
+		if (used > 0)
+		{
+			buf[used++] = '\n';
+		}
+		memcpy(buf + used, name, length + 1);
+		used += length;
+		++count;
+	}
+	return count;
+}
+
 extern "C" void WBQtWaterTuning_NoteSaved(void)
 {
 	CWorldBuilderDoc *doc = CWorldBuilderDoc::GetActiveDoc();
@@ -474,6 +622,10 @@ extern "C" void WBQtWaterTuning_RestoreGameData(void)
 	for (int i = 0; i < s_renderKeyCount; ++i)
 	{
 		writeRenderKey(s_renderKeys[i], TheWritableGlobalData, s_renderBase[i]);
+		if (s_renderKeys[i].text != NULL)
+		{
+			TheWritableGlobalData->*(s_renderKeys[i].text) = s_renderBaseText[i];
+		}
 	}
 }
 
@@ -537,12 +689,21 @@ extern "C" void WBQtWaterTuning_ApplyGameData(const char *iniPath)
 		}
 		for (int i = 0; i < s_renderKeyCount; ++i)
 		{
-			float v[3];
-			if (strcmp(key, s_renderKeys[i].key) == 0 && parseRenderValue(s_renderKeys[i], value, v))
+			if (strcmp(key, s_renderKeys[i].key) != 0)
 			{
-				writeRenderKey(s_renderKeys[i], TheWritableGlobalData, v);
+				continue;
+			}
+			if (s_renderKeys[i].text != NULL)
+			{
+				TheWritableGlobalData->*(s_renderKeys[i].text) = firstWord(value);
 				break;
 			}
+			float v[3];
+			if (parseRenderValue(s_renderKeys[i], value, v))
+			{
+				writeRenderKey(s_renderKeys[i], TheWritableGlobalData, v);
+			}
+			break;
 		}
 	}
 	fclose(fp);

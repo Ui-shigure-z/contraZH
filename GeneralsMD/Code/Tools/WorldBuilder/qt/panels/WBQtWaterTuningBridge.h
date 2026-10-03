@@ -15,7 +15,8 @@ enum
 {
 	WBQT_WATER_FLOAT = 0,
 	WBQT_WATER_BOOL = 1,
-	WBQT_WATER_COLOR = 2
+	WBQT_WATER_COLOR = 2,
+	WBQT_WATER_TEXT = 3
 };
 
 typedef struct WBQtWaterTuningDesc
@@ -40,6 +41,13 @@ int  WBQtWaterTuning_GetDesc(int i, WBQtWaterTuningDesc *out);
 // GetBase reads the Water.ini or GameData.ini value under any map override.
 void WBQtWaterTuning_GetBase(int i, float v[3]);
 void WBQtWaterTuning_SetLive(int i, const float v[3]);
+
+// A text key's value. Returns 0 when i is not a text key.
+int  WBQtWaterTuning_GetBaseText(int i, char *buf, int size);
+void WBQtWaterTuning_SetLiveText(int i, const char *text);
+
+// The colour tables in the game's Art/Textures, one file name per line. Returns the count.
+int  WBQtWaterTuning_ListTables(char *buf, int size);
 
 // The window saved map.ini itself, so the auto-reload watch must not treat it as an outside edit.
 void WBQtWaterTuning_NoteSaved(void);

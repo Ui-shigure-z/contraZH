@@ -98,6 +98,7 @@ extern "C" int WBQtObject_GetRenderParticles(void);
 #include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DSkyClouds.h"
+#include "W3DDevice/GameClient/W3DColorLut.h"
 #include "DrawObject.h"
 #include "RulerTool.h"
 #include "TracingOverlayOptions.h"
@@ -812,6 +813,8 @@ WbView3d::~WbView3d()
 	TheW3DSoftParticles = nullptr;
 	delete TheW3DSkyClouds;
 	TheW3DSkyClouds = nullptr;
+	delete TheW3DColorLut;
+	TheW3DColorLut = nullptr;
 	shutdownWW3D();
 }
 // ----------------------------------------------------------------------------
@@ -5381,6 +5384,12 @@ void WbView3d::render()
 			TheWritableGlobalData->m_showSoftWaterEdge = savedSoftWater;
 		}
 
+		// The map.ini grade goes over the scene as in the game, and under the icons so they stay readable.
+		if (TheW3DColorLut != nullptr)
+		{
+			TheW3DColorLut->render(*m_camera);
+		}
+
 		// Draw the 3d obj icons on top of the rest of the data.
 		WW3D::Render(m_overlayScene,m_camera);
 		TheWritableGlobalData->m_useShadowMap = wantShadowMap;
@@ -5781,6 +5790,10 @@ void WbView3d::initWW3D()
 		if (TheW3DSkyClouds == nullptr)
 		{
 			TheW3DSkyClouds = new W3DSkyClouds;
+		}
+		if (TheW3DColorLut == nullptr)
+		{
+			TheW3DColorLut = new W3DColorLut;
 		}
 		init3dScene();
 		m_layer = new LayerClass( m_scene, m_camera );
