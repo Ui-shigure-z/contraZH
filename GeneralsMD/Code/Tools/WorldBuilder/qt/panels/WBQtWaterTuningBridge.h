@@ -41,6 +41,8 @@ int  WBQtWaterTuning_GetDesc(int i, WBQtWaterTuningDesc *out);
 // GetBase reads the Water.ini or GameData.ini value under any map override.
 void WBQtWaterTuning_GetBase(int i, float v[3]);
 void WBQtWaterTuning_SetLive(int i, const float v[3]);
+// The value in effect now, with any map override.
+void WBQtWaterTuning_GetLive(int i, float v[3]);
 
 // A text key's value. Returns 0 when i is not a text key.
 int  WBQtWaterTuning_GetBaseText(int i, char *buf, int size);

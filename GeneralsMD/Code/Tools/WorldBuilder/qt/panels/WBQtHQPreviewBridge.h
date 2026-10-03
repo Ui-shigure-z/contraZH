@@ -65,6 +65,10 @@ void WBQtHQPreview_GetLast(WBQtHQPreviewParams *params, WBQtHQCaptureParams *cap
 int  WBQtHQPreview_Render(const WBQtHQCaptureParams *capture);
 // Why the last render failed.
 void WBQtHQPreview_GetError(char *buf, int size);
+// The live view: Begin sets the scene up, Frame draws it into size^2 BGRA pixels, top row north, and End puts the editor back.
+int  WBQtHQPreview_LiveBegin(const WBQtHQCaptureParams *capture);
+int  WBQtHQPreview_LiveFrame(unsigned char *bgra, int size);
+void WBQtHQPreview_LiveEnd(void);
 // Fills Size()^2 BGRA pixels, top row north.
 void WBQtHQPreview_Compose(const WBQtHQPreviewParams *params, unsigned char *bgra);
 // Writes the tga and remembers the settings. Returns 1 on success.
@@ -72,7 +76,7 @@ int  WBQtHQPreview_Save(const WBQtHQPreviewParams *params, const WBQtHQCapturePa
 
 // ====== MFC only (implemented in src/WBQtHQPreviewBridge.cpp) ======
 
-// Renders the map and runs the dialog. Returns 1 when saved, 0 when cancelled, -1 on failure.
+// Runs the dialog over the map. Returns 1 when saved, 0 when cancelled, -1 on failure.
 int  WBQtHQPreview_Run(void *view, const char *mapPath);
 
 // ====== MFC -> Qt (implemented in qt/panels/WBQtHQPreviewDialog.cpp) ======

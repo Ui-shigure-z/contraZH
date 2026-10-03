@@ -42,6 +42,7 @@
 #include "WBFontAtlas.h"
 
 #include <map>
+#include <vector>
 
 //#include "GameLogic/Module/BodyModule.h" -- Yikes... not necessary to include this! (KM)
 enum BodyDamageType CPP_11(: Int); //Ahhhh much better!
@@ -783,6 +784,37 @@ public:
 	};
 	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
 	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);
+	/// Sets the scene up for a run of renderTopView frames, holding the editor view still until endTopView.
+	Bool beginTopView(const TopViewCapture &capture, Bool aboveGround);
+	Bool renderTopView(Int size, UnsignedByte *bgra);
+	void endTopView();
+	Bool isTopViewActive() const { return m_topView.active; }
+private:
+	/// What beginTopView changed, for endTopView to put back.
+	struct TopViewSession
+	{
+		TopViewSession() : active(false), aboveGround(false), camZ(0.0f), camera(NULL), target(NULL), depth(NULL), targetSize(0),
+			oldTimeOfDay(TIME_OF_DAY_INVALID), removedTrees(false), wantShadowVolumes(false), wantClouds(false), wantMacroTexture(false), paint(NULL) {}
+		Bool active;
+		TopViewCapture capture;
+		Bool aboveGround;
+		Real camZ;
+		CameraClass *camera;
+		TextureClass *target;
+		ZTextureClass *depth;
+		Int targetSize;
+		TimeOfDay oldTimeOfDay;
+		Bool removedTrees;
+		std::vector<RenderObjClass *> objects;
+		std::vector<Bool> wasHidden;
+		Bool wantShadowVolumes;
+		Bool wantClouds;
+		Bool wantMacroTexture;
+		std::vector<UnsignedByte> paintEverywhere;
+		UnsignedByte *paint;
+	};
+	TopViewSession								m_topView;
+public:
 	/// Why the last captureTopView failed.
 	const char *getTopViewError() const { return m_topViewError; }
 

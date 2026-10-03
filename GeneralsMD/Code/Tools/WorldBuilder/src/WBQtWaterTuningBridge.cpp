@@ -476,6 +476,28 @@ extern "C" void WBQtWaterTuning_GetBase(int i, float v[3])
 	readKey(s_keys[i], base, v);
 }
 
+extern "C" void WBQtWaterTuning_GetLive(int i, float v[3])
+{
+	if (v == NULL)
+	{
+		return;
+	}
+	v[0] = v[1] = v[2] = 0.0f;
+	if (i >= s_keyCount && i < s_keyCount + s_renderKeyCount)
+	{
+		if (TheGlobalData != NULL)
+		{
+			readRenderKey(s_renderKeys[i - s_keyCount], TheGlobalData, v);
+		}
+		return;
+	}
+	const WaterTransparencySetting *now = TheWaterTransparency;
+	if (i >= 0 && i < s_keyCount && now != NULL)
+	{
+		readKey(s_keys[i], now, v);
+	}
+}
+
 extern "C" void WBQtWaterTuning_SetLive(int i, const float v[3])
 {
 	if (i < 0 || i >= s_keyCount + s_renderKeyCount || v == NULL)

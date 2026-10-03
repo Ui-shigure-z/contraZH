@@ -18,6 +18,8 @@ static MapPreview *s_preview = NULL;
 static WbView3d *s_view = NULL;
 static CString s_mapPath;
 static CString s_error;
+static WbView3d::TopViewCapture s_liveView;
+static Real s_liveArea[4];
 
 static void toParams(const WBQtHQPreviewParams *in, HQPreviewParams *out)
 {
@@ -217,6 +219,62 @@ int WBQtHQPreview_Render(const WBQtHQCaptureParams *capture)
 	return 0;
 }
 
+int WBQtHQPreview_LiveBegin(const WBQtHQCaptureParams *capture)
+{
+	if (s_view == NULL || capture == NULL)
+	{
+		return 0;
+	}
+	HQCaptureParams c;
+	toCapture(capture, &c);
+	if (!MapPreview::getHQTopView(c, &s_liveView, s_liveArea))
+	{
+		s_error = "the area is empty";
+		return 0;
+	}
+	if (!s_view->beginTopView(s_liveView, TRUE))
+	{
+		s_error = s_view->getTopViewError();
+		return 0;
+	}
+	return 1;
+}
+
+int WBQtHQPreview_LiveFrame(unsigned char *bgra, int size)
+{
+	if (s_view == NULL || bgra == NULL || !s_view->renderTopView(size, bgra))
+	{
+		s_error = (s_view != NULL) ? s_view->getTopViewError() : "the 3D view is not ready";
+		return 0;
+	}
+
+	// The bars around a map that is not square stay black, as the saved preview has them.
+	const Real width = s_liveView.x1 - s_liveView.x0;
+	const Real height = s_liveView.y1 - s_liveView.y0;
+	for (int py = 0; py < size; ++py)
+	{
+		const Real y = s_liveView.y1 - height * (py + 0.5f) / size;
+		for (int px = 0; px < size; ++px)
+		{
+			const Real x = s_liveView.x0 + width * (px + 0.5f) / size;
+			if (x < s_liveArea[0] || x > s_liveArea[2] || y < s_liveArea[1] || y > s_liveArea[3])
+			{
+				unsigned char *p = bgra + (py*size + px)*4;
+				p[0] = p[1] = p[2] = 0;
+			}
+		}
+	}
+	return 1;
+}
+
+void WBQtHQPreview_LiveEnd(void)
+{
+	if (s_view != NULL)
+	{
+		s_view->endTopView();
+	}
+}
+
 void WBQtHQPreview_GetError(char *buf, int size)
 {
 	if (buf != NULL && size > 0)
@@ -277,21 +335,20 @@ int WBQtHQPreview_Run(void *view, const char *mapPath)
 	{
 		return -1;
 	}
+	// The dialogs would share one top view, so a second one waits for the first to close.
+	if (s_preview != NULL)
+	{
+		return 0;
+	}
 	MapPreview preview;
 	s_preview = &preview;
 	s_view = (WbView3d *)view;
 	s_mapPath = mapPath;
 
-	WBQtHQPreviewParams params;
-	WBQtHQCaptureParams capture;
-	WBQtHQPreview_GetLast(&params, &capture);
-	int result = -1;
-	if (WBQtHQPreview_Render(&capture) != 0)
-	{
-		CString tgaPath = mapPath;
-		tgaPath.Replace(".map", ".tga");
-		result = WBQtHQPreview_Show(tgaPath);
-	}
+	CString tgaPath = mapPath;
+	tgaPath.Replace(".map", ".tga");
+	const int result = WBQtHQPreview_Show(tgaPath);
+	s_view->endTopView();
 	s_preview = NULL;
 	s_view = NULL;
 	return result;

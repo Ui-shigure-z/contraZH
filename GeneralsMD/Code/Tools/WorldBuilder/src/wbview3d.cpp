@@ -4888,16 +4888,16 @@ void WbView3d::redraw(void)
 	m_time = ::GetTickCount();
 }
 
-Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra)
+Bool WbView3d::beginTopView(const TopViewCapture &capture, Bool aboveGround)
 {
+	endTopView();
 	m_topViewError = "";
 	WorldHeightMapEdit *pMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
-	if (!m_ww3dInited || pMap == NULL || m_heightMapRenderObj == NULL || bgra == NULL || size <= 0)
+	if (!m_ww3dInited || pMap == NULL || m_heightMapRenderObj == NULL)
 	{
 		m_topViewError = "the 3D view is not ready";
 		return false;
 	}
-
 	const Real worldX = capture.x1 - capture.x0;
 	const Real worldY = capture.y1 - capture.y0;
 	if (worldX <= 0.0f || worldY <= 0.0f)
@@ -4905,6 +4905,15 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 		m_topViewError = "the area is empty";
 		return false;
 	}
+
+	TopViewSession &s = m_topView;
+	s.active = true;
+	s.capture = capture;
+	s.aboveGround = aboveGround;
+
+	// The editor view stays still while the session owns the terrain and the lights.
+	++m_updateCount;
+
 	Real maxZ = 0.0f;
 	for (Int j = 0; j < pMap->getYExtent(); j++)
 	{
@@ -4913,22 +4922,10 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 			maxZ = max(maxZ, pMap->getHeight(i, j) * MAP_HEIGHT_SCALE);
 		}
 	}
+	s.camZ = maxZ + 200.0f;
 
-	TextureClass *target = NULL;
-	ZTextureClass *depth = NULL;
-	// The shadow pass ends with a back-buffer-sized quad masked by the stencil, so the depth needs stencil bits.
-	DX8Wrapper::Create_Render_Target(size, size, WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D24S8, &target, &depth);
-	if (target == NULL)
-	{
-		REF_PTR_RELEASE(depth);
-		m_topViewError = "couldn't create the render target";
-		return false;
-	}
-
-	++m_updateCount;
-
-	const TimeOfDay oldTimeOfDay = TheGlobalData->m_timeOfDay;
-	if (capture.timeOfDay > TIME_OF_DAY_INVALID && capture.timeOfDay < TIME_OF_DAY_COUNT && capture.timeOfDay != oldTimeOfDay)
+	s.oldTimeOfDay = TheGlobalData->m_timeOfDay;
+	if (capture.timeOfDay > TIME_OF_DAY_INVALID && capture.timeOfDay < TIME_OF_DAY_COUNT && capture.timeOfDay != s.oldTimeOfDay)
 	{
 		TheWritableGlobalData->m_timeOfDay = (TimeOfDay)capture.timeOfDay;
 		updateLights();
@@ -4939,67 +4936,95 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	{
 		m_heightMapRenderObj->loadRoadsAndBridges(NULL, FALSE);
 	}
-	const Bool removeTrees = !(aboveGround && capture.trees);
-	if (removeTrees)
+	s.removedTrees = !(aboveGround && capture.trees);
+	if (s.removedTrees)
 	{
 		m_heightMapRenderObj->removeAllTrees();
 	}
-	std::vector<RenderObjClass *> objects;
-	std::vector<Bool> wasHidden;
+	s.objects.clear();
+	s.wasHidden.clear();
 	for (MapObject *pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext())
 	{
 		RenderObjClass *robj = pObj->getRenderObj();
 		if (robj != NULL)
 		{
-			objects.push_back(robj);
-			wasHidden.push_back(robj->Is_Hidden() != 0);
+			s.objects.push_back(robj);
+			s.wasHidden.push_back(robj->Is_Hidden() != 0);
 			robj->Set_Hidden((aboveGround && capture.objects) ? 0 : 1);
 		}
 	}
 
-	CameraClass *camera = NEW_REF(CameraClass, ());
-	const Real camZ = maxZ + 200.0f;
+	// Volume shadows resolve only inside a back-buffer-sized quad, which a render larger than the window overruns.
+	s.wantShadowVolumes = TheGlobalData->m_useShadowVolumes;
+	s.wantClouds = TheGlobalData->m_useCloudMap;
+	s.wantMacroTexture = TheGlobalData->m_useLightMap;
+	TheWritableGlobalData->m_useShadowVolumes = false;
+	TheWritableGlobalData->m_useCloudMap = capture.clouds;
+	TheWritableGlobalData->m_useLightMap = capture.macroTexture;
+
+	// The terrain reads the paint on every render, so painting every cell covers all the ground.
+	s.paintEverywhere.clear();
+	s.paint = NULL;
+	if (capture.stochastic)
+	{
+		s.paintEverywhere.resize(pMap->getStochasticBytes());
+		for (size_t k = 0; k + 2 < s.paintEverywhere.size(); k += 3)
+		{
+			s.paintEverywhere[k] = 255;
+			s.paintEverywhere[k + 1] = 1;
+			s.paintEverywhere[k + 2] = 128;
+		}
+		s.paint = pMap->swapStochastic(&s.paintEverywhere[0]);
+	}
+
+	s.camera = NEW_REF(CameraClass, ());
 	Matrix3D camTran(1);
-	camTran.Set_Translation(Vector3((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, camZ));
-	camera->Set_Transform(camTran);
-	camera->Set_Projection_Type(CameraClass::ORTHO);
-	camera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
-	camera->Set_Clip_Planes(1.0f, camZ + 1000.0f);
+	camTran.Set_Translation(Vector3((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, s.camZ));
+	s.camera->Set_Transform(camTran);
+	s.camera->Set_Projection_Type(CameraClass::ORTHO);
+	s.camera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
+	s.camera->Set_Clip_Planes(1.0f, s.camZ + 1000.0f);
+	return true;
+}
+
+Bool WbView3d::renderTopView(Int size, UnsignedByte *bgra)
+{
+	TopViewSession &s = m_topView;
+	if (!s.active || bgra == NULL || size <= 0)
+	{
+		m_topViewError = "no top view is set up";
+		return false;
+	}
+	const TopViewCapture &capture = s.capture;
+	const Real worldX = capture.x1 - capture.x0;
+	const Real worldY = capture.y1 - capture.y0;
+
+	if (s.target == NULL || s.targetSize != size)
+	{
+		REF_PTR_RELEASE(s.depth);
+		REF_PTR_RELEASE(s.target);
+		// The shadow pass ends with a back-buffer-sized quad masked by the stencil, so the depth needs stencil bits.
+		DX8Wrapper::Create_Render_Target(size, size, WW3D_FORMAT_X8R8G8B8, WW3D_ZFORMAT_D24S8, &s.target, &s.depth);
+		s.targetSize = size;
+		if (s.target == NULL)
+		{
+			REF_PTR_RELEASE(s.depth);
+			m_topViewError = "couldn't create the render target";
+			return false;
+		}
+	}
 
 	Vector3 center((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, 0.0f);
 	RefRenderObjListIterator lightListIt(&m_lightList);
 	m_heightMapRenderObj->setDrawEntireMap(true);
-	m_heightMapRenderObj->updateCenter(camera, &center, &lightListIt);
+	m_heightMapRenderObj->updateCenter(s.camera, &center, &lightListIt);
 	m_heightMapRenderObj->On_Frame_Update();
 
-	// Volume shadows resolve only inside that quad, which a render larger than the window overruns.
-	const Bool wantShadowVolumes = TheGlobalData->m_useShadowVolumes;
-	TheWritableGlobalData->m_useShadowVolumes = false;
-	const Bool wantClouds = TheGlobalData->m_useCloudMap;
-	const Bool wantMacroTexture = TheGlobalData->m_useLightMap;
-	TheWritableGlobalData->m_useCloudMap = capture.clouds;
-	TheWritableGlobalData->m_useLightMap = capture.macroTexture;
-
-	// The terrain reads the paint on every render, so painting every cell for this one covers all the ground.
-	std::vector<UnsignedByte> paintEverywhere;
-	UnsignedByte *paint = NULL;
-	if (capture.stochastic)
-	{
-		paintEverywhere.resize(pMap->getStochasticBytes());
-		for (size_t k = 0; k + 2 < paintEverywhere.size(); k += 3)
-		{
-			paintEverywhere[k] = 255;
-			paintEverywhere[k + 1] = 1;
-			paintEverywhere[k + 2] = 128;
-		}
-		paint = pMap->swapStochastic(&paintEverywhere[0]);
-	}
-
 	Bool ok = false;
-	DX8Wrapper::Set_Render_Target_With_Z(target, depth);
+	DX8Wrapper::Set_Render_Target_With_Z(s.target, s.depth);
 	if (WW3D::Begin_Render(true, true, Vector3(0.0f, 0.0f, 0.0f)) == WW3D_ERROR_OK)
 	{
-		WW3D::Render(m_scene, camera);
+		WW3D::Render(m_scene, s.camera);
 
 		// Water draws in both passes, so it does not count as something above the ground.
 		if (capture.water != TOP_VIEW_WATER_NONE && TheWaterRenderObj != nullptr)
@@ -5008,11 +5033,11 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 			const Real raise = 100000.0f;
 			CameraClass *waterCamera = NEW_REF(CameraClass, ());
 			Matrix3D waterTran(1);
-			waterTran.Set_Translation(Vector3((capture.x0 + capture.x1)*0.5f, (capture.y0 + capture.y1)*0.5f, camZ + raise));
+			waterTran.Set_Translation(Vector3(center.X, center.Y, s.camZ + raise));
 			waterCamera->Set_Transform(waterTran);
 			waterCamera->Set_Projection_Type(CameraClass::ORTHO);
 			waterCamera->Set_View_Plane(Vector2(-worldX*0.5f, -worldY*0.5f), Vector2(worldX*0.5f, worldY*0.5f));
-			waterCamera->Set_Clip_Planes(1.0f + raise, camZ + 1000.0f + raise);
+			waterCamera->Set_Clip_Planes(1.0f + raise, s.camZ + 1000.0f + raise);
 			waterCamera->Apply();
 
 			// Without soft edges the water takes its flat path, blended by its own alpha.
@@ -5028,7 +5053,7 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 
 		if (capture.colorGrade && TheW3DColorLut != nullptr)
 		{
-			TheW3DColorLut->render(*camera);
+			TheW3DColorLut->render(*s.camera);
 		}
 		WW3D::End_Render(false);
 		ok = true;
@@ -5038,15 +5063,8 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 		m_topViewError = "WW3D refused to begin a frame";
 	}
 	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
-	TheWritableGlobalData->m_useShadowVolumes = wantShadowVolumes;
-	TheWritableGlobalData->m_useCloudMap = wantClouds;
-	TheWritableGlobalData->m_useLightMap = wantMacroTexture;
-	if (capture.stochastic)
-	{
-		pMap->swapStochastic(paint);
-	}
 
-	SurfaceClass *surface = target->Get_Surface_Level();
+	SurfaceClass *surface = s.target->Get_Surface_Level();
 	IDirect3DSurface8 *rt = surface ? surface->Peek_D3D_Surface() : NULL;
 	IDirect3DSurface8 *copy = NULL;
 	if (ok && rt != NULL)
@@ -5081,14 +5099,42 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 		copy->Release();
 	}
 	REF_PTR_RELEASE(surface);
-	REF_PTR_RELEASE(camera);
-	REF_PTR_RELEASE(depth);
-	REF_PTR_RELEASE(target);
+	return ok;
+}
 
-	for (size_t k = 0; k < objects.size(); k++)
+void WbView3d::endTopView()
+{
+	TopViewSession &s = m_topView;
+	if (!s.active)
 	{
-		objects[k]->Set_Hidden(wasHidden[k] ? 1 : 0);
+		return;
 	}
+	s.active = false;
+	REF_PTR_RELEASE(s.camera);
+	REF_PTR_RELEASE(s.depth);
+	REF_PTR_RELEASE(s.target);
+	s.targetSize = 0;
+
+	TheWritableGlobalData->m_useShadowVolumes = s.wantShadowVolumes;
+	TheWritableGlobalData->m_useCloudMap = s.wantClouds;
+	TheWritableGlobalData->m_useLightMap = s.wantMacroTexture;
+	if (s.capture.stochastic)
+	{
+		WorldHeightMapEdit *pMap = WbDoc() ? WbDoc()->GetHeightMap() : NULL;
+		if (pMap != NULL)
+		{
+			pMap->swapStochastic(s.paint);
+		}
+		s.paint = NULL;
+		s.paintEverywhere.clear();
+	}
+
+	for (size_t k = 0; k < s.objects.size(); k++)
+	{
+		s.objects[k]->Set_Hidden(s.wasHidden[k] ? 1 : 0);
+	}
+	s.objects.clear();
+	s.wasHidden.clear();
 	m_heightMapRenderObj->removeAllRoads();
 	if (m_showRoads)
 	{
@@ -5096,18 +5142,28 @@ Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool abov
 	}
 	m_needToLoadRoads = false;
 	m_heightMapRenderObj->setDrawEntireMap(m_showEntireMap);
-	if (removeTrees)
+	if (s.removedTrees)
 	{
 		updateTrees();
 	}
-	if (TheGlobalData->m_timeOfDay != oldTimeOfDay)
+	if (TheGlobalData->m_timeOfDay != s.oldTimeOfDay)
 	{
-		TheWritableGlobalData->m_timeOfDay = oldTimeOfDay;
+		TheWritableGlobalData->m_timeOfDay = s.oldTimeOfDay;
 		updateLights();
 	}
 
 	--m_updateCount;
 	Invalidate(false);
+}
+
+Bool WbView3d::captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra)
+{
+	if (!beginTopView(capture, aboveGround))
+	{
+		return false;
+	}
+	const Bool ok = renderTopView(size, bgra);
+	endTopView();
 	return ok;
 }
 

@@ -1,6 +1,7 @@
-// WBQtHQPreviewDialog.cpp -- shows the HQ map preview and its controls before the tga is
-// written. See WBQtHQPreviewBridge.h.
+// WBQtHQPreviewDialog.cpp -- shows the HQ map preview, live from above, with its controls and the
+// water, macro texture and sky values before the tga is written. See WBQtHQPreviewBridge.h.
 #include "WBQtHQPreviewBridge.h"
+#include "WBQtWaterTuningBridge.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -8,6 +9,8 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -16,11 +19,16 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
+#include <QTabWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
+#include <math.h>
+#include <string.h>
 #include <vector>
 
 // Modal-dialog parent (active modal if nested, else main window). WBQtBridge.cpp.
@@ -30,6 +38,20 @@ namespace
 {
 
 const int kDisplaySize = 512;
+const int kLiveIntervalMs = 100;
+
+// One water, macro texture or sky key, with the value it had when the dialog opened.
+struct TunedKey
+{
+	int index;
+	WBQtWaterTuningDesc desc;
+	float original[3];
+	float value[3];
+	QDoubleSpinBox *spin;
+	QSlider *slider;
+	QCheckBox *check;
+	QPushButton *swatch;
+};
 
 class WBQtHQPreviewDialog : public QDialog
 {
@@ -43,38 +65,55 @@ public:
 		m_image->setFixedSize(kDisplaySize, kDisplaySize);
 		m_image->setAlignment(Qt::AlignCenter);
 		m_image->setFrameShape(QFrame::Box);
+		m_status = new QLabel(this);
+		m_status->setWordWrap(true);
+		m_status->setMaximumWidth(kDisplaySize);
 
-		QVBoxLayout *controls = new QVBoxLayout();
-		controls->addWidget(buildShadingBox());
-		controls->addWidget(buildRenderBox());
-
-		QPushButton *resetBtn = new QPushButton(tr("Defaults"), this);
-		resetBtn->setToolTip(tr("Puts every control back to its default. Render settings that change need a new render."));
-		connect(resetBtn, &QPushButton::clicked, this, [this]()
+		m_renderBtn = new QPushButton(tr("Render"), this);
+		m_renderBtn->setToolTip(tr("Freezes the view with a full-quality render and the shading, as Save writes it."));
+		connect(m_renderBtn, &QPushButton::clicked, this, [this]()
 		{
-			WBQtHQPreviewParams params;
-			WBQtHQCaptureParams capture;
-			WBQtHQPreview_GetDefaults(&params, &capture);
-			loadCapture(capture);
-			loadShading(params);
-			updateRenderState();
+			render();
 		});
-		controls->addWidget(resetBtn, 0, Qt::AlignLeft);
-		controls->addStretch(1);
+		m_liveBtn = new QPushButton(tr("Live"), this);
+		m_liveBtn->setToolTip(tr("Goes back to the live view."));
+		connect(m_liveBtn, &QPushButton::clicked, this, [this]()
+		{
+			goLive();
+		});
+		QHBoxLayout *viewButtons = new QHBoxLayout();
+		viewButtons->addWidget(m_renderBtn);
+		viewButtons->addWidget(m_liveBtn);
+		viewButtons->addStretch(1);
+
+		QVBoxLayout *viewColumn = new QVBoxLayout();
+		viewColumn->addWidget(m_image);
+		viewColumn->addLayout(viewButtons);
+		viewColumn->addWidget(m_status);
+		viewColumn->addStretch(1);
+
+		m_tabs = new QTabWidget(this);
+		m_tabs->addTab(buildPreviewTab(), tr("Preview"));
+		m_tabs->addTab(buildKeyTab(tr("Water"), NULL, true), tr("Water"));
+		m_tabs->addTab(buildKeyTab(tr("Macro texture"), "Ground", false), tr("Macro texture"));
+		m_tabs->addTab(buildKeyTab(tr("Sky"), "Sky", false), tr("Sky"));
 
 		QLabel *pathLabel = new QLabel(tgaPath, this);
 		pathLabel->setWordWrap(true);
 		pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+		QVBoxLayout *controls = new QVBoxLayout();
+		controls->addWidget(m_tabs, 1);
 		controls->addWidget(pathLabel);
 
 		QHBoxLayout *body = new QHBoxLayout();
-		body->addWidget(m_image, 0, Qt::AlignTop);
+		body->addLayout(viewColumn, 0);
 		body->addLayout(controls, 1);
 
 		QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
 		connect(buttons, &QDialogButtonBox::accepted, this, [this]()
 		{
-			if (m_renderDirty && !render())
+			if (needsRender() && !render())
 			{
 				return;
 			}
@@ -95,20 +134,68 @@ public:
 		root->addLayout(body);
 		root->addWidget(buttons);
 
-		// The bridge rendered with the last settings before the dialog opened.
 		WBQtHQPreviewParams params;
 		WBQtHQCaptureParams capture;
 		WBQtHQPreview_GetLast(&params, &capture);
 		loadCapture(capture);
-		m_rendered = capture;
 		loadShading(params);
-		updateRenderState();
+
+		m_timer = new QTimer(this);
+		connect(m_timer, &QTimer::timeout, this, [this]()
+		{
+			liveFrame();
+		});
+		goLive();
+	}
+
+	// Every way out ends the live view and puts the water, macro texture and sky values back.
+	void done(int result) override
+	{
+		m_timer->stop();
+		WBQtHQPreview_LiveEnd();
+		for (size_t i = 0; i < m_keys.size(); ++i)
+		{
+			const TunedKey &k = m_keys[i];
+			if (k.value[0] != k.original[0] || k.value[1] != k.original[1] || k.value[2] != k.original[2])
+			{
+				WBQtWaterTuning_SetLive(k.index, k.original);
+			}
+		}
+		QDialog::done(result);
 	}
 
 private:
+	QWidget *buildPreviewTab()
+	{
+		QWidget *page = new QWidget(this);
+		QVBoxLayout *layout = new QVBoxLayout(page);
+		layout->addWidget(buildShadingBox());
+		layout->addWidget(buildRenderBox());
+
+		QPushButton *resetBtn = new QPushButton(tr("Defaults"), page);
+		resetBtn->setToolTip(tr("Puts the shading and render settings back to their defaults."));
+		connect(resetBtn, &QPushButton::clicked, this, [this]()
+		{
+			WBQtHQPreviewParams params;
+			WBQtHQCaptureParams capture;
+			WBQtHQPreview_GetDefaults(&params, &capture);
+			loadCapture(capture);
+			loadShading(params);
+			captureChanged();
+		});
+		layout->addWidget(resetBtn, 0, Qt::AlignLeft);
+		layout->addStretch(1);
+
+		QScrollArea *scroll = new QScrollArea(this);
+		scroll->setWidget(page);
+		scroll->setWidgetResizable(true);
+		scroll->setFrameShape(QFrame::NoFrame);
+		return scroll;
+	}
+
 	QGroupBox *buildShadingBox()
 	{
-		QGroupBox *box = new QGroupBox(tr("Shading"), this);
+		QGroupBox *box = new QGroupBox(tr("Shading (rendered frames)"), this);
 		QGridLayout *grid = new QGridLayout(box);
 		m_relief = addSlider(grid, 0, tr("Relief"), 0, 200, 1000, true,
 			tr("Strength of the hillshade that lights slopes from the north-west. Type past the slider for more."));
@@ -223,34 +310,206 @@ private:
 		m_renderInfo = new QLabel(box);
 		m_renderInfo->setWordWrap(true);
 		grid->addWidget(m_renderInfo, row, 0, 1, 2);
-		row++;
-
-		m_renderBtn = new QPushButton(tr("Render"), box);
-		connect(m_renderBtn, &QPushButton::clicked, this, [this]()
-		{
-			render();
-		});
-		grid->addWidget(m_renderBtn, row, 0, 1, 2, Qt::AlignLeft);
 
 		QCheckBox *checks[] = { m_objects, m_trees, m_roads, m_colorGrade, m_renderedWater, m_shaderWater, m_clouds, m_macroTexture, m_stochastic };
 		for (int i = 0; i < 9; i++)
 		{
-			connect(checks[i], &QCheckBox::toggled, this, [this]() { updateRenderState(); });
+			connect(checks[i], &QCheckBox::toggled, this, [this]() { captureChanged(); });
 		}
 		QComboBox *combos[] = { m_timeOfDay, m_area, m_size, m_supersample };
 		for (int i = 0; i < 4; i++)
 		{
-			connect(combos[i], QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { updateRenderState(); });
+			connect(combos[i], QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { captureChanged(); });
 		}
 		QSpinBox *spins[] = { m_x0, m_y0, m_x1, m_y1 };
 		for (int i = 0; i < 4; i++)
 		{
-			connect(spins[i], QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { updateRenderState(); });
+			connect(spins[i], QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { captureChanged(); });
 		}
 		return box;
 	}
 
-	// The spin box holds the value and takes typed values past the slider's range, which the slider then pins at its end.
+	// A tab of tuning keys: the water keys when group is NULL, else the GameData keys of that group.
+	QWidget *buildKeyTab(const QString &title, const char *group, bool water)
+	{
+		QWidget *page = new QWidget(this);
+		QVBoxLayout *layout = new QVBoxLayout(page);
+		QFormLayout *form = new QFormLayout();
+		layout->addLayout(form);
+
+		const size_t first = m_keys.size();
+		const int count = WBQtWaterTuning_Count();
+		for (int i = 0; i < count; ++i)
+		{
+			WBQtWaterTuningDesc desc;
+			if (WBQtWaterTuning_GetDesc(i, &desc) == 0 || desc.kind == WBQT_WATER_TEXT)
+			{
+				continue;
+			}
+			const bool isWater = desc.group == NULL;
+			if (water != isWater || (!water && (desc.group == NULL || strcmp(desc.group, group) != 0)))
+			{
+				continue;
+			}
+			TunedKey k;
+			k.index = i;
+			k.desc = desc;
+			WBQtWaterTuning_GetLive(i, k.original);
+			memcpy(k.value, k.original, sizeof(k.value));
+			k.spin = NULL;
+			k.slider = NULL;
+			k.check = NULL;
+			k.swatch = NULL;
+			m_keys.push_back(k);
+		}
+		for (size_t n = first; n < m_keys.size(); ++n)
+		{
+			form->addRow(QString::fromLatin1(m_keys[n].desc.key), buildKeyEditor(n, page));
+		}
+
+		QPushButton *revertBtn = new QPushButton(tr("Revert %1").arg(title), page);
+		revertBtn->setToolTip(tr("Puts this tab's values back to what they were when the dialog opened."));
+		const size_t last = m_keys.size();
+		connect(revertBtn, &QPushButton::clicked, this, [this, first, last]()
+		{
+			for (size_t n = first; n < last; ++n)
+			{
+				setKey(n, m_keys[n].original);
+				loadKeyEditor(n);
+			}
+		});
+		layout->addWidget(revertBtn, 0, Qt::AlignLeft);
+		layout->addStretch(1);
+
+		QScrollArea *scroll = new QScrollArea(this);
+		scroll->setWidget(page);
+		scroll->setWidgetResizable(true);
+		scroll->setFrameShape(QFrame::NoFrame);
+		return scroll;
+	}
+
+	QWidget *buildKeyEditor(size_t n, QWidget *parent)
+	{
+		TunedKey &k = m_keys[n];
+		const QString help = QString::fromLatin1(k.desc.help ? k.desc.help : "");
+		QWidget *editor = new QWidget(parent);
+		QHBoxLayout *row = new QHBoxLayout(editor);
+		row->setContentsMargins(0, 0, 0, 0);
+		editor->setToolTip(help);
+
+		if (k.desc.kind == WBQT_WATER_BOOL)
+		{
+			k.check = new QCheckBox(editor);
+			k.check->setToolTip(help);
+			row->addWidget(k.check);
+			row->addStretch(1);
+			connect(k.check, &QCheckBox::toggled, this, [this, n](bool on)
+			{
+				float v[3] = { on ? 1.0f : 0.0f, 0.0f, 0.0f };
+				setKey(n, v);
+			});
+		}
+		else if (k.desc.kind == WBQT_WATER_COLOR)
+		{
+			k.swatch = new QPushButton(editor);
+			k.swatch->setFixedSize(60, 22);
+			k.swatch->setToolTip(help);
+			row->addWidget(k.swatch);
+			row->addStretch(1);
+			connect(k.swatch, &QPushButton::clicked, this, [this, n]()
+			{
+				TunedKey &key = m_keys[n];
+				const bool unset = key.value[0] < 0.0f;
+				const QColor start = unset ? QColor(128, 128, 128) : QColor((int)key.value[0], (int)key.value[1], (int)key.value[2]);
+				const QColor picked = QColorDialog::getColor(start, this, QString::fromLatin1(key.desc.key));
+				if (picked.isValid())
+				{
+					float v[3] = { (float)picked.red(), (float)picked.green(), (float)picked.blue() };
+					setKey(n, v);
+					loadKeyEditor(n);
+				}
+			});
+		}
+		else
+		{
+			const float step = (k.desc.step > 0.0f) ? k.desc.step : 0.01f;
+			const int decimals = (step >= 1.0f) ? 0 : qBound(1, (int)ceil(-log10(step) - 1e-4), 4);
+			k.slider = new QSlider(Qt::Horizontal, editor);
+			k.slider->setRange(0, 1000);
+			k.slider->setMinimumWidth(120);
+			k.slider->setToolTip(help);
+			k.spin = new QDoubleSpinBox(editor);
+			k.spin->setDecimals(decimals);
+			k.spin->setSingleStep(step);
+			k.spin->setRange(k.desc.lo, k.desc.hi);
+			k.spin->setMinimumWidth(80);
+			k.spin->setToolTip(help);
+			row->addWidget(k.slider, 1);
+			row->addWidget(k.spin);
+			QSlider *slider = k.slider;
+			QDoubleSpinBox *spin = k.spin;
+			const float lo = k.desc.lo;
+			const float hi = k.desc.hi;
+			connect(slider, &QSlider::valueChanged, this, [spin, lo, hi](int v)
+			{
+				spin->setValue(lo + (hi - lo) * v / 1000.0f);
+			});
+			connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, n, slider, lo, hi](double v)
+			{
+				const QSignalBlocker block(slider);
+				slider->setValue((hi > lo) ? (int)((v - lo) / (hi - lo) * 1000.0 + 0.5) : 0);
+				float value[3] = { (float)v, 0.0f, 0.0f };
+				setKey(n, value);
+			});
+		}
+		loadKeyEditor(n);
+		return editor;
+	}
+
+	void loadKeyEditor(size_t n)
+	{
+		TunedKey &k = m_keys[n];
+		m_loadingKey = true;
+		if (k.check != NULL)
+		{
+			k.check->setChecked(k.value[0] >= 0.5f);
+		}
+		if (k.spin != NULL)
+		{
+			k.spin->setValue(k.value[0]);
+		}
+		if (k.swatch != NULL)
+		{
+			if (k.value[0] < 0.0f)
+			{
+				k.swatch->setText(tr("unset"));
+				k.swatch->setStyleSheet(QString());
+			}
+			else
+			{
+				k.swatch->setText(QString());
+				paintSwatch(k.swatch, QColor((int)k.value[0], (int)k.value[1], (int)k.value[2]));
+			}
+		}
+		m_loadingKey = false;
+	}
+
+	void setKey(size_t n, const float v[3])
+	{
+		if (m_loadingKey)
+		{
+			return;
+		}
+		TunedKey &k = m_keys[n];
+		memcpy(k.value, v, sizeof(k.value));
+		WBQtWaterTuning_SetLive(k.index, k.value);
+		m_keysChangedSinceRender = true;
+		if (m_frozen)
+		{
+			goLive();
+		}
+	}
+
 	QSpinBox *addSlider(QGridLayout *grid, int row, const QString &label, int lo, int hi, int typedMax, bool percent, const QString &help)
 	{
 		QLabel *name = new QLabel(label, this);
@@ -362,6 +621,7 @@ private:
 		selectData(m_size, capture.size);
 		selectData(m_supersample, capture.supersample);
 		m_loading = false;
+		updateRenderState();
 	}
 
 	WBQtHQPreviewParams shading() const
@@ -413,6 +673,21 @@ private:
 			&& a.timeOfDay == b.timeOfDay && a.area == b.area && sameCustom && a.size == b.size && a.supersample == b.supersample;
 	}
 
+	// A render setting changed, so the live view sets the scene up again with it.
+	void captureChanged()
+	{
+		if (m_loading)
+		{
+			return;
+		}
+		updateRenderState();
+		m_liveStarted = false;
+		if (m_frozen)
+		{
+			goLive();
+		}
+	}
+
 	void updateRenderState()
 	{
 		if (m_loading)
@@ -428,24 +703,76 @@ private:
 		m_areaWarning->setVisible(capture.area != WBQT_HQ_AREA_MAP);
 		m_renderedWater->setEnabled(!m_shaderWater->isChecked());
 
-		m_renderDirty = !sameCapture(capture, m_rendered);
-
 		const int maxCapture = WBQtHQPreview_MaxCapture();
 		const int effective = qMax(1, qMin(capture.supersample, maxCapture / qMax(1, capture.size)));
-		QString info = tr("Renders %1 x %1 pixels.").arg(capture.size*effective);
+		QString info = tr("Render draws %1 x %1 pixels.").arg(capture.size*effective);
 		if (effective < capture.supersample)
 		{
 			info += " " + tr("Supersampling is reduced to %1x to stay within %2 pixels.").arg(effective).arg(maxCapture);
 		}
-		if (m_renderDirty)
-		{
-			info += " " + tr("Settings changed. Press Render to update the image.");
-		}
 		m_renderInfo->setText(info);
+	}
+
+	bool needsRender() const
+	{
+		return !m_frozen || m_keysChangedSinceRender || !sameCapture(captureSettings(), m_rendered);
+	}
+
+	void goLive()
+	{
+		m_frozen = false;
+		m_liveStarted = false;
+		m_liveBtn->setEnabled(false);
+		m_status->setText(tr("Live view, without supersampling or shading. Render freezes a full-quality frame."));
+		m_timer->start(kLiveIntervalMs);
+		liveFrame();
+	}
+
+	void liveFrame()
+	{
+		if (m_frozen)
+		{
+			return;
+		}
+		if (!m_liveStarted)
+		{
+			const WBQtHQCaptureParams capture = captureSettings();
+			if (WBQtHQPreview_LiveBegin(&capture) == 0)
+			{
+				showError(tr("Couldn't start the live view"));
+				return;
+			}
+			m_liveStarted = true;
+		}
+		m_live.resize(kDisplaySize*kDisplaySize*4);
+		if (WBQtHQPreview_LiveFrame(&m_live[0], kDisplaySize) == 0)
+		{
+			// A full render ends the session, so set it up once more before giving up.
+			const WBQtHQCaptureParams capture = captureSettings();
+			if (WBQtHQPreview_LiveBegin(&capture) == 0 || WBQtHQPreview_LiveFrame(&m_live[0], kDisplaySize) == 0)
+			{
+				showError(tr("Couldn't draw the live view"));
+				return;
+			}
+		}
+		QImage image(&m_live[0], kDisplaySize, kDisplaySize, kDisplaySize*4, QImage::Format_RGB32);
+		m_image->setPixmap(QPixmap::fromImage(image.copy()));
+	}
+
+	void showError(const QString &what)
+	{
+		m_timer->stop();
+		char reason[256];
+		WBQtHQPreview_GetError(reason, sizeof(reason));
+		m_status->setText(QString("%1: %2.").arg(what).arg(QString::fromLocal8Bit(reason)));
 	}
 
 	bool render()
 	{
+		m_timer->stop();
+		WBQtHQPreview_LiveEnd();
+		m_liveStarted = false;
+
 		const WBQtHQCaptureParams capture = captureSettings();
 		QApplication::setOverrideCursor(Qt::WaitCursor);
 		const int ok = WBQtHQPreview_Render(&capture);
@@ -455,17 +782,21 @@ private:
 			char reason[256];
 			WBQtHQPreview_GetError(reason, sizeof(reason));
 			QMessageBox::warning(this, windowTitle(), tr("Couldn't render the map: %1.").arg(QString::fromLocal8Bit(reason)));
+			goLive();
 			return false;
 		}
 		m_rendered = capture;
-		updateRenderState();
+		m_frozen = true;
+		m_keysChangedSinceRender = false;
+		m_liveBtn->setEnabled(true);
+		m_status->setText(tr("Rendered at full quality with the shading. Save writes this frame; Live goes back to the live view."));
 		refresh();
 		return true;
 	}
 
 	void refresh()
 	{
-		if (m_loading)
+		if (m_loading || !m_frozen)
 		{
 			return;
 		}
@@ -479,13 +810,21 @@ private:
 	}
 
 	std::vector<unsigned char> m_pixels;
+	std::vector<unsigned char> m_live;
+	std::vector<TunedKey> m_keys;
 	QLabel *m_image;
+	QLabel *m_status;
+	QPushButton *m_renderBtn;
+	QPushButton *m_liveBtn;
+	QTabWidget *m_tabs;
+	QTimer *m_timer;
 
 	QSpinBox *m_relief;
 	QSpinBox *m_elevation;
 	QSpinBox *m_falloff;
 	QPushButton *m_shallowBtn;
 	QPushButton *m_deepBtn;
+	QCheckBox *m_depthTint;
 	QColor m_shallow;
 	QColor m_deep;
 
@@ -498,7 +837,6 @@ private:
 	QCheckBox *m_clouds;
 	QCheckBox *m_macroTexture;
 	QCheckBox *m_stochastic;
-	QCheckBox *m_depthTint;
 	QComboBox *m_timeOfDay;
 	QComboBox *m_area;
 	QSpinBox *m_x0;
@@ -509,11 +847,13 @@ private:
 	QComboBox *m_size;
 	QComboBox *m_supersample;
 	QLabel *m_renderInfo;
-	QPushButton *m_renderBtn;
 
 	WBQtHQCaptureParams m_rendered;
-	bool m_renderDirty = false;
+	bool m_frozen = false;
+	bool m_liveStarted = false;
+	bool m_keysChangedSinceRender = false;
 	bool m_loading = true;
+	bool m_loadingKey = false;
 };
 
 }

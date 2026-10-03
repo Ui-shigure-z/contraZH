@@ -175,16 +175,13 @@ void MapPreview::getDefaultHQCapture( HQCaptureParams *capture )
 	capture->size = HQ_PREVIEW_SIZE;
 }
 
-Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
+Bool MapPreview::getHQTopView( const HQCaptureParams &capture, WbView3d::TopViewCapture *view3d, Real area[4] )
 {
-	const Int ABOVE_GROUND_DIFF = 24;	// colour change that marks a bridge or object over the ground
-
 	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
-	if (view == NULL || pMap == NULL || TheTerrainRenderObject == NULL)
+	if (pMap == NULL)
 	{
 		return false;
 	}
-
 	const Int border = pMap->getBorderSize();
 	const Int mapW = pMap->getXExtent() - 2*border;
 	const Int mapH = pMap->getYExtent() - 2*border;
@@ -217,26 +214,46 @@ Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
 	}
 
 	// The lobby fits the map into its square preview at the map's own proportions, so the render is a square around the area.
-	const Real areaX0 = cx0 * MAP_XY_FACTOR;
-	const Real areaY0 = cy0 * MAP_XY_FACTOR;
-	const Real areaX1 = cx1 * MAP_XY_FACTOR;
-	const Real areaY1 = cy1 * MAP_XY_FACTOR;
-	const Real half = max(areaX1 - areaX0, areaY1 - areaY0) * 0.5f;
-	WbView3d::TopViewCapture view3d;
-	view3d.x0 = (areaX0 + areaX1)*0.5f - half;
-	view3d.y0 = (areaY0 + areaY1)*0.5f - half;
-	view3d.x1 = (areaX0 + areaX1)*0.5f + half;
-	view3d.y1 = (areaY0 + areaY1)*0.5f + half;
-	view3d.objects = capture.objects;
-	view3d.trees = capture.trees;
-	view3d.roads = capture.roads;
-	view3d.colorGrade = capture.colorGrade;
-	view3d.timeOfDay = capture.timeOfDay;
-	view3d.clouds = capture.clouds;
-	view3d.macroTexture = capture.macroTexture;
-	view3d.stochastic = capture.stochastic;
-	view3d.water = capture.shaderWater ? WbView3d::TOP_VIEW_WATER_SHADER
+	area[0] = cx0 * MAP_XY_FACTOR;
+	area[1] = cy0 * MAP_XY_FACTOR;
+	area[2] = cx1 * MAP_XY_FACTOR;
+	area[3] = cy1 * MAP_XY_FACTOR;
+	const Real half = max(area[2] - area[0], area[3] - area[1]) * 0.5f;
+	view3d->x0 = (area[0] + area[2])*0.5f - half;
+	view3d->y0 = (area[1] + area[3])*0.5f - half;
+	view3d->x1 = (area[0] + area[2])*0.5f + half;
+	view3d->y1 = (area[1] + area[3])*0.5f + half;
+	view3d->objects = capture.objects;
+	view3d->trees = capture.trees;
+	view3d->roads = capture.roads;
+	view3d->colorGrade = capture.colorGrade;
+	view3d->timeOfDay = capture.timeOfDay;
+	view3d->clouds = capture.clouds;
+	view3d->macroTexture = capture.macroTexture;
+	view3d->stochastic = capture.stochastic;
+	view3d->water = capture.shaderWater ? WbView3d::TOP_VIEW_WATER_SHADER
 		: (capture.renderedWater ? WbView3d::TOP_VIEW_WATER_FLAT : WbView3d::TOP_VIEW_WATER_NONE);
+	return true;
+}
+
+Bool MapPreview::prepareHQ( WbView3d *view, const HQCaptureParams &capture )
+{
+	const Int ABOVE_GROUND_DIFF = 24;	// colour change that marks a bridge or object over the ground
+
+	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
+	WbView3d::TopViewCapture view3d;
+	Real area[4];
+	if (view == NULL || pMap == NULL || TheTerrainRenderObject == NULL || !getHQTopView(capture, &view3d, area))
+	{
+		return false;
+	}
+	const Real areaX0 = area[0];
+	const Real areaY0 = area[1];
+	const Real areaX1 = area[2];
+	const Real areaY1 = area[3];
+	const Int border = pMap->getBorderSize();
+	const Int mapW = pMap->getXExtent() - 2*border;
+	const Int mapH = pMap->getYExtent() - 2*border;
 
 	m_hqSize = max((Int)HQ_MIN_SIZE, min(capture.size, (Int)HQ_MAX_SIZE));
 	m_hqSuper = max(1, min(capture.supersample, HQ_MAX_CAPTURE / m_hqSize));

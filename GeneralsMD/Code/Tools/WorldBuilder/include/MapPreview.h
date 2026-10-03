@@ -74,7 +74,7 @@ enum HQPreviewArea
 	HQ_AREA_CUSTOM,
 };
 
-class WbView3d;
+#include "wbview3d.h"
 
 /// Shading for the HQ preview. Colours are RGB, 0 to 255.
 struct HQPreviewParams
@@ -117,6 +117,8 @@ public:
 
 	static void getDefaultHQParams( HQPreviewParams *params );
 	static void getDefaultHQCapture( HQCaptureParams *capture );
+	/// The square top view an HQ preview renders, and the area inside it as world x0, y0, x1, y1.
+	static Bool getHQTopView( const HQCaptureParams &capture, WbView3d::TopViewCapture *view3d, Real area[4] );
 	/// Renders the map from above and caches what composeHQ needs.
 	Bool prepareHQ( WbView3d *view, const HQCaptureParams &capture );
 	Int getHQSize() const { return m_hqSize; }
