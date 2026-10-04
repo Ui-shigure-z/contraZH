@@ -175,31 +175,54 @@ void MapPreview::getDefaultHQCapture( HQCaptureParams *capture )
 	capture->size = HQ_PREVIEW_SIZE;
 }
 
-Bool MapPreview::getHQTopView( const HQCaptureParams &capture, WbView3d::TopViewCapture *view3d, Real area[4] )
+Bool MapPreview::getHQMapCells( Int *width, Int *height, Int *playableWidth, Int *playableHeight )
 {
+	*width = 0;
+	*height = 0;
+	*playableWidth = 0;
+	*playableHeight = 0;
 	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
 	if (pMap == NULL)
 	{
 		return false;
 	}
-	const Int border = pMap->getBorderSize();
-	const Int mapW = pMap->getXExtent() - 2*border;
-	const Int mapH = pMap->getYExtent() - 2*border;
+	*width = pMap->getXExtent() - 2*pMap->getBorderSize();
+	*height = pMap->getYExtent() - 2*pMap->getBorderSize();
+	*playableWidth = *width;
+	*playableHeight = *height;
+	if (pMap->getNumBoundaries() > 0)
+	{
+		ICoord2D bound;
+		pMap->getBoundary(0, &bound);
+		if (bound.x > 0 && bound.y > 0)
+		{
+			*playableWidth = min(bound.x, *width);
+			*playableHeight = min(bound.y, *height);
+		}
+	}
+	return true;
+}
+
+Bool MapPreview::getHQTopView( const HQCaptureParams &capture, WbView3d::TopViewCapture *view3d, Real area[4] )
+{
+	Int mapW = 0;
+	Int mapH = 0;
+	Int playableW = 0;
+	Int playableH = 0;
+	if (!getHQMapCells(&mapW, &mapH, &playableW, &playableH))
+	{
+		return false;
+	}
 
 	// The area in border-relative cells.
 	Int cx0 = 0;
 	Int cy0 = 0;
 	Int cx1 = mapW;
 	Int cy1 = mapH;
-	if (capture.area == HQ_AREA_PLAYABLE && pMap->getNumBoundaries() > 0)
+	if (capture.area == HQ_AREA_PLAYABLE)
 	{
-		ICoord2D bound;
-		pMap->getBoundary(0, &bound);
-		if (bound.x > 0 && bound.y > 0)
-		{
-			cx1 = min(bound.x, mapW);
-			cy1 = min(bound.y, mapH);
-		}
+		cx1 = playableW;
+		cy1 = playableH;
 	}
 	else if (capture.area == HQ_AREA_CUSTOM)
 	{

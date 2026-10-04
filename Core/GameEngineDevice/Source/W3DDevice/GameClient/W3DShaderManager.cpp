@@ -4723,8 +4723,7 @@ Bool RoadShaderPixelShader::setPixelPath()
 	const Bool lightMapReplaced = (anyLightMap && groundCapable);
 	const Bool glintable = Terrain_Glint_Wanted();
 
-	// Blend tiles draw the terrain atlas, so they read its normal atlas, and roads their own texture's _nrm.dds.
-	// Roads without one take bumps from their brightness. The mirror stays flat.
+	// Blend tiles read the terrain normal atlas, roads their _nrm.dds or else their brightness, and the mirror stays flat.
 	TextureClass *roadTexture = W3DShaderManager::getShaderTexture(0);
 	const Bool bumpAllowed = TerrainBumpEnabled && !ShaderClass::Is_Backface_Culling_Inverted();
 	TextureClass *normalMap = nullptr;

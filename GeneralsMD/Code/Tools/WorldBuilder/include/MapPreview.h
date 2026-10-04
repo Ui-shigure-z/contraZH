@@ -117,6 +117,8 @@ public:
 
 	static void getDefaultHQParams( HQPreviewParams *params );
 	static void getDefaultHQCapture( HQCaptureParams *capture );
+	/// The map without its border, and its playable boundary within that, in cells.
+	static Bool getHQMapCells( Int *width, Int *height, Int *playableWidth, Int *playableHeight );
 	/// The square top view an HQ preview renders, and the area inside it as world x0, y0, x1, y1.
 	static Bool getHQTopView( const HQCaptureParams &capture, WbView3d::TopViewCapture *view3d, Real area[4] );
 	/// Renders the map from above and caches what composeHQ needs.

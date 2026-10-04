@@ -1232,8 +1232,7 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 		W3DShaderManager::resetShader(W3DShaderManager::ST_SHADOW_MULTIPLY);
 	}
 
-	// Bridges catch the sun's highlight and bumps as structures do, from the pass structures take, but derive bumps
-	// as roads do. The mirror stays flat.
+	// Bridges take the structures' highlight and bumps but derive bumps as roads do, and the mirror stays flat.
 	if (!wireframe && m_numBridges > 0 && W3DShaderManager::getSpecularPass() != nullptr && !ShaderClass::Is_Backface_Culling_Inverted())
 	{
 		DX8Wrapper::Invalidate_Cached_Render_States();

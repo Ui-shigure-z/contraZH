@@ -4,7 +4,6 @@
 #ifdef RTS_HAS_QT
 
 #include "Lib/BaseType.h"
-#include "WHeightMapEdit.h"
 #include "WorldBuilderDoc.h"
 #include "wbview3d.h"
 #include "MapPreview.h"
@@ -113,26 +112,15 @@ int WBQtHQPreview_MaxCapture(void)
 
 void WBQtHQPreview_GetMapCells(int *width, int *height, int *playableWidth, int *playableHeight)
 {
-	*width = 0;
-	*height = 0;
-	WorldHeightMapEdit *pMap = CWorldBuilderDoc::GetActiveDoc() ? CWorldBuilderDoc::GetActiveDoc()->GetHeightMap() : NULL;
-	if (pMap != NULL)
-	{
-		*width = pMap->getXExtent() - 2*pMap->getBorderSize();
-		*height = pMap->getYExtent() - 2*pMap->getBorderSize();
-	}
-	*playableWidth = *width;
-	*playableHeight = *height;
-	if (pMap != NULL && pMap->getNumBoundaries() > 0)
-	{
-		ICoord2D bound;
-		pMap->getBoundary(0, &bound);
-		if (bound.x > 0 && bound.y > 0)
-		{
-			*playableWidth = bound.x;
-			*playableHeight = bound.y;
-		}
-	}
+	Int w = 0;
+	Int h = 0;
+	Int pw = 0;
+	Int ph = 0;
+	MapPreview::getHQMapCells(&w, &h, &pw, &ph);
+	*width = w;
+	*height = h;
+	*playableWidth = pw;
+	*playableHeight = ph;
 }
 
 void WBQtHQPreview_GetDefaults(WBQtHQPreviewParams *params, WBQtHQCaptureParams *capture)
