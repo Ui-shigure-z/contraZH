@@ -253,7 +253,7 @@ public:
 	Real m_unitSpecularIntensity;	///< GameData UnitSpecularIntensity: brightness of the sun highlight on vehicles and structures, 0 for none
 	Real m_unitSpecularPower;		///< GameData UnitSpecularPower: tightness of that highlight, higher is smaller and sharper
 	Real m_unitBumpHeight;			///< GameData UnitBumpHeight: rise, in world units, of full brightness on textures without a normal map, 0 for flat
-	Real m_roadBumpHeight;			///< GameData RoadBumpHeight: the same for road textures without a normal map
+	Real m_roadBumpHeight;			///< GameData RoadBumpHeight: the same for road and bridge textures without a normal map
 	Real m_unitNormalMapStrength;	///< GameData UnitNormalMapStrength: scales the tilt of authored _nrm normal maps
 	Real m_terrainNormalMapStrength;	///< GameData TerrainNormalMapStrength: scales the tilt of terrain _nrm normal maps
 	Real m_terrainGlintIntensity;	///< GameData TerrainGlintIntensity: brightness of the sun's glint on the ground, 0 for none

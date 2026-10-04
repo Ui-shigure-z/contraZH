@@ -2192,7 +2192,7 @@ public:
 		BUMP_COUNT
 	};
 
-	SpecularShader() : m_shadowed(FALSE), m_lit(FALSE), m_lightsOnly(FALSE)
+	SpecularShader() : m_shadowed(FALSE), m_lit(FALSE), m_lightsOnly(FALSE), m_bumpHeight(0.0f)
 	{
 		for (Int i = 0; i < BUMP_COUNT; i++)
 		{
@@ -2210,6 +2210,8 @@ public:
 
 	/// Binds one polygon group's texture, and its normal map and shader when it is bumped.
 	void setTexture(TextureClass *texture);
+	/// Sets the rise of full brightness the derived bumps take, for the rest of the pass.
+	void setBumpHeight(Real height);
 
 protected:
 
@@ -2220,6 +2222,7 @@ protected:
 	Bool m_shadowed;							///<which of the two the current pass uses
 	Bool m_lit;									///<whether it adds its object's point lights
 	Bool m_lightsOnly;							///<whether it adds nothing else
+	Real m_bumpHeight;							///<the derived bumps' rise of full brightness in the current pass
 } specularShader;
 
 W3DShaderInterface *SpecularShaderList[]=
@@ -2392,7 +2395,8 @@ Int SpecularShader::set(Int pass)
 	Vector4 sunDirection(toSun.X, toSun.Y, toSun.Z, 0.0f);
 	Vector4 sunColor(SpecularColor.X * highlightScale, SpecularColor.Y * highlightScale, SpecularColor.Z * highlightScale, 0.0f);
 	Vector4 gloss(SpecularPower, (SpecularDebug && !m_lightsOnly) ? 1.0f : 0.0f, 0.0f, 0.0f);
-	Vector4 bump(BumpHeight, BumpNormalMapStrength, BumpAmbient, 0.0f);
+	m_bumpHeight = BumpHeight;
+	Vector4 bump(m_bumpHeight, BumpNormalMapStrength, BumpAmbient, 0.0f);
 	Vector4 sunDiffuse(SpecularSunDiffuse.X, SpecularSunDiffuse.Y, SpecularSunDiffuse.Z, 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(1, &sunDirection, 1);
 	DX8Wrapper::Set_Pixel_Shader_Constant(2, &sunColor, 1);
@@ -2478,7 +2482,7 @@ void SpecularShader::setTexture(TextureClass *texture)
 		{
 			bump = BUMP_NORMAL_MAP;
 		}
-		else if (BumpHeight > 0.0f)
+		else if (m_bumpHeight > 0.0f)
 		{
 			bump = BUMP_DERIVED;
 		}
@@ -2526,6 +2530,13 @@ void SpecularShader::setTexture(TextureClass *texture)
 	{
 		++BumpNormalMapCount;
 	}
+}
+
+void SpecularShader::setBumpHeight(Real height)
+{
+	m_bumpHeight = height;
+	Vector4 bump(m_bumpHeight, BumpNormalMapStrength, BumpAmbient, 0.0f);
+	DX8Wrapper::Set_Pixel_Shader_Constant(6, &bump, 1);
 }
 
 void SpecularShader::reset()
@@ -3081,6 +3092,15 @@ void W3DShaderManager::setSpecularTexture(TextureClass *texture)
 	specularShader.setTexture(texture);
 #else
 	DX8Wrapper::Set_Texture(0, texture);
+#endif
+}
+
+void W3DShaderManager::setSpecularBumpHeight(Real height)
+{
+#if defined(BUILD_WITH_D3D9)
+	specularShader.setBumpHeight(height);
+#else
+	(void)height;
 #endif
 }
 

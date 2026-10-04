@@ -191,6 +191,8 @@ public:
 	static const MaterialPassClass *getSpecularPassKey();
 	/// Binds the texture, and its normal map and glow mask, for geometry drawn through ST_SPECULAR outside the mesh renderer.
 	static void setSpecularTexture(TextureClass *texture);
+	/// Overrides, until ST_SPECULAR is next set, the rise of full brightness on textures without a normal map.
+	static void setSpecularBumpHeight(Real height);
 	/// Whether the device runs ps_2_a shaders, which have gradients and 512 instruction slots.
 	static Bool supportsPixelShader2a();
 	/// The <name>_nrm.dds beside a texture, or null when there is none. Not reference counted.

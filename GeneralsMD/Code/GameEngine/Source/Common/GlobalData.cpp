@@ -1057,7 +1057,7 @@ GlobalData::GlobalData()
 	m_unitSpecularIntensity = 0.35f;
 	m_unitSpecularPower = 24.0f;
 	m_unitBumpHeight = 0.15f;
-	m_roadBumpHeight = 8.0f;
+	m_roadBumpHeight = 1.1f;
 	m_unitNormalMapStrength = 1.0f;
 	m_terrainNormalMapStrength = 2.0f;
 	m_terrainGlintIntensity = 0.25f;
