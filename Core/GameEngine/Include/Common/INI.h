@@ -187,6 +187,10 @@ public:
 	/// data (WorldBuilder only; valid until the next loadWB). Lets the editor report what it
 	/// dropped instead of silently losing it.
 	static const std::vector<AsciiString>& friend_getWBSkippedBlocks(void);
+	/// True when token names a top-level block the game's INI loader parses.
+	static Bool friend_isBlockType(const char *token);
+	/// True when loadWB parses this block type; it skips every other block.
+	static Bool friend_isWBBlockType(const char *token);
 
 	static Bool isDeclarationOfType( AsciiString blockType, AsciiString blockName, char *bufferToCheck );
 	static Bool isEndOfBlock( char *bufferToCheck );

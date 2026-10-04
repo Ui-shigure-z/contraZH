@@ -412,6 +412,16 @@ const std::vector<AsciiString>& INI::friend_getWBSkippedBlocks(void)
     return s_wbSkippedBlocks;
 }
 
+Bool INI::friend_isBlockType(const char *token)
+{
+    return findBlockParse(token) != nullptr;
+}
+
+Bool INI::friend_isWBBlockType(const char *token)
+{
+    return findWBBlockParse(token) != nullptr;
+}
+
 void INI::loadWB(AsciiString filename, INILoadType loadType, Xfer* pXfer)
 {
     setFPMode();

@@ -66,11 +66,11 @@
 #include "MainFrm.h"
 #include "MinimapDialog.h"
 #include "NewHeightMap.h"
+#include "qt/panels/WBQtMapIniReport.h"
 #ifdef RTS_HAS_QT
 #include "qt/panels/WBQtMiscModalsBridge.h"
 #include "qt/panels/WBQtMapFileBridge.h"
 #include "qt/panels/WBQtPickUnitBridge.h"
-#include "qt/panels/WBQtMapIniReport.h"
 #include "qt/panels/WBQtMapIniEditorBridge.h"
 #include "qt/panels/WBQtMapGenBridge.h"
 #include "qt/panels/WBQtWaterTuningBridge.h"
@@ -328,6 +328,19 @@ struct MapIniObjectDetail
 	MapIniObjectDetail() : isNew(false), wasDropped(false) {}
 };
 
+// One top-level map.ini block, verbatim, for the report's code view.
+struct MapIniBlockSource
+{
+	AsciiString store;						// block keyword: Object, Weapon, ParticleSystem, ...
+	AsciiString name;
+	Int firstLine;							// 1-based line in map.ini
+	Int objectIndex;						// into MapIniScanResult::objects, or -1
+	std::vector<AsciiString> lines;			// as written, line ends stripped
+	std::vector<Bool> lineBlanked;			// the sanitizer blanked this line
+	Int lastEnd;							// index of the last End line, or -1
+	MapIniBlockSource() : firstLine(0), objectIndex(-1), lastEnd(-1) {}
+};
+
 struct MapIniScanResult
 {
 	AsciiString loadPath;						// iniPath, or a sanitized temp copy
@@ -335,6 +348,7 @@ struct MapIniScanResult
 	std::vector<AsciiString> overriddenNames;	// existing objects the map.ini overrides
 	std::vector<AsciiString> newNames;			// brand-new objects the map.ini defines
 	std::vector<MapIniObjectDetail> objects;	// per-object detail, in file order (verbose)
+	std::vector<MapIniBlockSource> blocks;		// every top-level block, in file order
 	std::vector<std::pair<AsciiString, Int> > storeCounts;	// non-Object block type -> count
 	Int moduleEdits;							// Add/Remove/Replace module directives seen
 	Bool hasUntearableOverrides;				// FXList/OCL/Armor/ParticleSystem block present
@@ -357,6 +371,73 @@ struct MapIniScanResult
 			}
 		}
 		storeCounts.push_back(std::make_pair(AsciiString(type), 1));
+	}
+};
+
+// Close a captured block. Text after its last End (comments ahead of the next block) is
+// dropped; a block with no End loses only its trailing blank and comment lines.
+static void finishMapIniBlock(MapIniBlockSource &block, MapIniScanResult &result)
+{
+	if (block.lines.empty())
+	{
+		return;
+	}
+	size_t keep = block.lines.size();
+	if (block.lastEnd >= 0)
+	{
+		keep = (size_t)block.lastEnd + 1;
+	}
+	else
+	{
+		while (keep > 1)
+		{
+			AsciiString trimmed = block.lines[keep - 1];
+			trimmed.trim();
+			if (!trimmed.isEmpty() && !trimmed.startsWith(";") && !trimmed.startsWith("//"))
+			{
+				break;
+			}
+			--keep;
+		}
+	}
+	block.lines.resize(keep);
+	block.lineBlanked.resize(keep);
+	result.blocks.push_back(block);
+}
+
+// The report as the dialogs show it: plain text (Copy, MFC fallback) plus the structured
+// summary, notes and blocks the Qt viewer lays out.
+struct MapIniReportMessage
+{
+	Int kind;							// WBQT_MAPINI_MSG_*
+	AsciiString title;
+	AsciiString body;					// '\n'-separated lines
+};
+
+struct MapIniReportBlock
+{
+	AsciiString store;
+	AsciiString name;
+	Int status;							// WBQT_MAPINI_BLOCK_*
+	Int firstLine;
+	AsciiString source;					// '\n'-separated lines
+	std::vector<Int> blanked;			// 0-based source lines the sanitizer blanked
+};
+
+struct MapIniReport
+{
+	CString text;
+	std::vector<AsciiString> summary;
+	std::vector<MapIniReportMessage> messages;
+	std::vector<MapIniReportBlock> blocks;
+
+	void addMessage(Int kind, const char *title, const AsciiString &body)
+	{
+		MapIniReportMessage message;
+		message.kind = kind;
+		message.title = title;
+		message.body = body;
+		messages.push_back(message);
 	}
 };
 
@@ -388,6 +469,9 @@ static void sanitizeMapIni(const AsciiString &iniPath, MapIniScanResult &result)
 
 	// When >0 we are inside a module block being blanked; blank lines through its End.
 	Int blankingModuleDepth = 0;
+
+	MapIniBlockSource block;				// the top-level block being captured
+	Bool inBlock = false;
 	ModuleType curModuleType = MODULETYPE_BEHAVIOR;	// filled by isModuleHeader per line
 
 	char line[4096];
@@ -411,6 +495,12 @@ static void sanitizeMapIni(const AsciiString &iniPath, MapIniScanResult &result)
 		const char *tok3 = tok2 ? strtok(NULL, seps) : NULL;
 
 		Bool keep = true;
+
+		// A top-level block header starts the next captured block. A nameless ParticleSystem
+		// is an FXList nugget, not a block.
+		const Bool isBlockHeader = (blankingModuleDepth == 0 && tok1 != NULL && !hasEquals
+			&& INI::friend_isBlockType(tok1)
+			&& (tok2 != NULL || strcmp(tok1, "ParticleSystem") != 0));
 
 		// Blanking a doomed module block: swallow everything up to and including its End.
 		if (blankingModuleDepth > 0)
@@ -546,6 +636,30 @@ static void sanitizeMapIni(const AsciiString &iniPath, MapIniScanResult &result)
 			}
 		}
 
+		if (isBlockHeader)
+		{
+			finishMapIniBlock(block, result);
+			block = MapIniBlockSource();
+			block.store = tok1;
+			block.name = (tok2 != NULL) ? tok2 : "";
+			block.firstLine = lineNum;
+			block.objectIndex = (strcmp(tok1, "Object") == 0) ? curObjectIndex : -1;
+			inBlock = true;
+		}
+		if (inBlock)
+		{
+			AsciiString text(line);
+			text.trimEnd('\n');
+			text.trimEnd('\r');
+			// The parser takes End in any case.
+			if (tok1 != NULL && stricmp(tok1, "End") == 0)
+			{
+				block.lastEnd = (Int)block.lines.size();
+			}
+			block.lines.push_back(text);
+			block.lineBlanked.push_back(!keep);
+		}
+
 		if (keep)
 		{
 			output += line;
@@ -557,6 +671,7 @@ static void sanitizeMapIni(const AsciiString &iniPath, MapIniScanResult &result)
 		}
 	}
 	fclose(fp);
+	finishMapIniBlock(block, result);
 
 	if (!modified)
 		return;
@@ -639,11 +754,28 @@ static void dlgAlign4(std::vector<BYTE> &buf)
 // Show the map.ini report. applyMode: false = informational (Check) with just a Close;
 // true = OK/Cancel so the caller applies on OK. Returns 2 if the user accepted (OK / closed
 // an informational report), 1 if the user cancelled an apply-mode report.
-static int showScrollableInfoDialog(const char *title, const char *text, bool applyMode = false)
+static int showScrollableInfoDialog(const char *title, const MapIniReport &report, bool applyMode = false)
 {
+	const char *text = report.text;
 #ifdef RTS_HAS_QT
-	// Prefer the native Qt report viewer (resizable, filter, collapsible sections, Copy,
-	// and OK/Cancel in apply mode). Falls through to the MFC path only when Qt is not up.
+	// Prefer the native Qt report viewer (summary, notes, collapsible code blocks, filter,
+	// Copy, and OK/Cancel in apply mode). Falls through to the MFC path only when Qt is not up.
+	WBQtMapIniReport_Clear();
+	for (size_t i = 0; i < report.summary.size(); ++i)
+	{
+		WBQtMapIniReport_AddSummary(report.summary[i].str());
+	}
+	for (size_t i = 0; i < report.messages.size(); ++i)
+	{
+		const MapIniReportMessage &message = report.messages[i];
+		WBQtMapIniReport_AddMessage(message.kind, message.title.str(), message.body.str());
+	}
+	for (size_t i = 0; i < report.blocks.size(); ++i)
+	{
+		const MapIniReportBlock &b = report.blocks[i];
+		WBQtMapIniReport_AddBlock(b.store.str(), b.name.str(), b.status, b.firstLine, b.source.str(),
+			b.blanked.empty() ? NULL : &b.blanked[0], (int)b.blanked.size());
+	}
 	int qrc = WBQtMapIniReport_Show(title, text, applyMode ? 1 : 0);
 	if (qrc != 0) {
 		return qrc;	// 2 = accepted, 1 = cancelled
@@ -916,6 +1048,154 @@ static void markDroppedBlocks(MapIniScanResult &scan)
 	}
 }
 
+// Fill the report's structured half from the reconciled scan: the headline, the notes, and
+// every block with what became of it.
+static void buildMapIniReportModel(const MapIniScanResult &scan, const char *banner,
+	bool installOverrides, MapIniReport &report)
+{
+	report.summary.push_back(AsciiString(banner));
+	AsciiString counts;
+	counts.format("%d object(s) overridden, %d new object(s) defined, %d module edit(s)",
+		scan.objectsOverridden(), scan.objectsNew(), scan.moduleEdits);
+	report.summary.push_back(counts);
+
+	// Match the non-Object blocks loadWB dropped by header, one block per drop as
+	// markDroppedBlocks does for Objects (which carry their own wasDropped).
+	const std::vector<AsciiString> &badBlocks = INI::friend_getWBSkippedBlocks();
+	std::vector<Bool> dropped(scan.blocks.size(), false);
+	for (size_t b = 0; b < badBlocks.size(); ++b)
+	{
+		char work[1024];
+		strncpy(work, badBlocks[b].str(), sizeof(work) - 1);
+		work[sizeof(work) - 1] = 0;
+		char *semi = strchr(work, ';');
+		if (semi != NULL)
+		{
+			*semi = 0;
+		}
+		static const char *seps = " \t\n\r=";
+		const char *tok1 = strtok(work, seps);
+		const char *tok2 = (tok1 != NULL) ? strtok(NULL, seps) : NULL;
+		if (tok1 == NULL || strcmp(tok1, "Object") == 0)
+		{
+			continue;
+		}
+		const AsciiString name = (tok2 != NULL) ? tok2 : "";
+		for (size_t i = 0; i < scan.blocks.size(); ++i)
+		{
+			const MapIniBlockSource &block = scan.blocks[i];
+			if (!dropped[i] && block.objectIndex < 0 && block.store == tok1 && block.name == name)
+			{
+				dropped[i] = true;
+				break;
+			}
+		}
+	}
+
+	Int droppedCount = 0;
+	std::vector<std::pair<AsciiString, Int> > ignored;	// block type -> count
+	for (size_t i = 0; i < scan.blocks.size(); ++i)
+	{
+		const MapIniBlockSource &src = scan.blocks[i];
+		MapIniReportBlock block;
+		block.store = src.store;
+		block.name = src.name;
+		block.firstLine = src.firstLine;
+		if (src.objectIndex >= 0)
+		{
+			const MapIniObjectDetail &o = scan.objects[src.objectIndex];
+			block.status = o.wasDropped ? WBQT_MAPINI_BLOCK_DROPPED
+				: (o.isNew ? WBQT_MAPINI_BLOCK_NEW : WBQT_MAPINI_BLOCK_OVERRIDDEN);
+		}
+		else if (!INI::friend_isWBBlockType(src.store.str()))
+		{
+			block.status = WBQT_MAPINI_BLOCK_IGNORED;
+		}
+		else if (dropped[i])
+		{
+			block.status = WBQT_MAPINI_BLOCK_DROPPED;
+		}
+		else
+		{
+			block.status = WBQT_MAPINI_BLOCK_LOADED;
+		}
+
+		for (size_t l = 0; l < src.lines.size(); ++l)
+		{
+			if (l > 0)
+			{
+				block.source.concat('\n');
+			}
+			block.source.concat(src.lines[l]);
+			if (src.lineBlanked[l])
+			{
+				block.blanked.push_back((Int)l);
+			}
+		}
+		report.blocks.push_back(block);
+
+		if (block.status == WBQT_MAPINI_BLOCK_DROPPED)
+		{
+			++droppedCount;
+		}
+		else if (block.status == WBQT_MAPINI_BLOCK_IGNORED)
+		{
+			size_t t = 0;
+			while (t < ignored.size() && ignored[t].first != src.store)
+			{
+				++t;
+			}
+			if (t == ignored.size())
+			{
+				ignored.push_back(std::make_pair(src.store, 0));
+			}
+			ignored[t].second++;
+		}
+	}
+
+	if (!scan.skipped.empty())
+	{
+		AsciiString body;
+		for (size_t i = 0; i < scan.skipped.size(); ++i)
+		{
+			body.concat(scan.skipped[i]);
+			body.concat('\n');
+		}
+		body.concat("The game itself would refuse to load this map.ini.");
+		report.addMessage(WBQT_MAPINI_MSG_WARNING, "Directives skipped -- they don't match the installed game data", body);
+	}
+	if (droppedCount > 0)
+	{
+		AsciiString title;
+		title.format("%d block(s) dropped -- a field in them isn't in the installed data", droppedCount);
+		report.addMessage(WBQT_MAPINI_MSG_WARNING, title.str(),
+			AsciiString("They did NOT apply, so each keeps its installed definition. The rest of the map.ini loaded.\n"
+				"This is normal for a map.ini written against different game data."));
+	}
+	if (!ignored.empty())
+	{
+		Int total = 0;
+		AsciiString types;
+		for (size_t t = 0; t < ignored.size(); ++t)
+		{
+			AsciiString entry;
+			entry.format("%s%s (%d)", t > 0 ? ", " : "", ignored[t].first.str(), ignored[t].second);
+			types.concat(entry);
+			total += ignored[t].second;
+		}
+		AsciiString title;
+		title.format("%d block(s) WorldBuilder doesn't load", total);
+		AsciiString body = types;
+		body.concat("\nThe game applies them in a match; WorldBuilder's loader skips these block types.");
+		report.addMessage(WBQT_MAPINI_MSG_INFO, title.str(), body);
+	}
+	if (installOverrides && scan.hasUntearableOverrides)
+	{
+		report.addMessage(WBQT_MAPINI_MSG_INFO, "Reopen the map to fully reset some overrides",
+			AsciiString("FXList / ObjectCreationList / Armor / ParticleSystem overrides can't be cleanly reloaded."));
+	}
+}
+
 // How doLoadMapIni finishes after a successful parse (which always creates overrides):
 enum MapIniLoadMode {
 	MAPINI_INSTALL,		// keep overrides + refresh the viewport now (no confirm dialog)
@@ -929,14 +1209,14 @@ enum MapIniLoadMode {
 // caller's dialog. Returns true if the map.ini parsed (even if directives were skipped),
 // false on a hard parse error. In MAPINI_CONFIRM the overrides are left installed for the
 // caller to keep (refreshMapIniViewport) or discard (unloadMapIniOverrides).
-static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, CString &reportOut)
+static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, MapIniReport &reportOut)
 {
 	const bool installOverrides = (mode != MAPINI_DRYRUN);
 	MapIniScanResult scan;
 	sanitizeMapIni(iniPath, scan);
 
 	bool ok = false;
-	reportOut.Empty();
+	reportOut = MapIniReport();
 
 	try {
 		INI ini;
@@ -1052,21 +1332,29 @@ static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, CStrin
 			msg += "\r\n; Note: FXList / ObjectCreationList / Armor / ParticleSystem overrides\r\n"
 				";   can't be cleanly reloaded -- reopen the map to fully reset them.\r\n";
 		}
-		reportOut = msg;
+		reportOut.text = msg;
+		buildMapIniReportModel(scan, banner, installOverrides, reportOut);
 	}
 	catch (const INIException &e) {
 		// A hard parse error must not take down the editor: strip any partial overrides.
 		g_mapiniloaded = true;	// so the teardown actually runs
 		unloadMapIniOverrides();
-		reportOut.Format("The map.ini could not be loaded and has been skipped:\r\n\r\n%s\r\n"
-			"The map will open without its map.ini overrides.",
-			e.mFailureMessage ? e.mFailureMessage : "Unknown INI error.");
+		const char *failure = e.mFailureMessage ? e.mFailureMessage : "Unknown INI error.";
+		reportOut.text.Format("The map.ini could not be loaded and has been skipped:\r\n\r\n%s\r\n"
+			"The map will open without its map.ini overrides.", failure);
+		reportOut.summary.push_back(AsciiString("map.ini could not be loaded"));
+		AsciiString body(failure);
+		body.concat("\nThe map will open without its map.ini overrides.");
+		reportOut.addMessage(WBQT_MAPINI_MSG_ERROR, "The map.ini was skipped", body);
 	}
 	catch (...) {
 		g_mapiniloaded = true;
 		unloadMapIniOverrides();
-		reportOut = "The map.ini could not be loaded and has been skipped (unknown INI error).\r\n"
+		reportOut.text = "The map.ini could not be loaded and has been skipped (unknown INI error).\r\n"
 			"The map will open without its map.ini overrides.";
+		reportOut.summary.push_back(AsciiString("map.ini could not be loaded"));
+		reportOut.addMessage(WBQT_MAPINI_MSG_ERROR, "The map.ini was skipped",
+			AsciiString("Unknown INI error.\nThe map will open without its map.ini overrides."));
 	}
 
 	// Clean up the sanitized temp copy, if one was made.
@@ -1119,7 +1407,7 @@ static bool confirmAndLoadMapIni(const AsciiString &iniPath, const char *title)
 				refreshMapIniViewport();
 				return false;
 			}
-			CString report;
+			MapIniReport report;
 			bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
 			showScrollableInfoDialog(title, report, /*applyMode=*/false);
 			if (!ok) {
@@ -1129,7 +1417,7 @@ static bool confirmAndLoadMapIni(const AsciiString &iniPath, const char *title)
 		}
 	}
 
-	CString report;
+	MapIniReport report;
 	bool parsed = doLoadMapIni(iniPath, MAPINI_CONFIRM, report);
 	if (!parsed) {
 		// Hard error: doLoadMapIni already unloaded the partial overrides. Show why, and
@@ -2152,7 +2440,7 @@ void CWorldBuilderDoc::OnCheckMapIni()
 	// Overrides may already be live from the open-time load; drop them so the dry run
 	// starts clean and leaves nothing changed afterward.
 	unloadMapIniOverrides();
-	CString report;
+	MapIniReport report;
 	doLoadMapIni(iniPath, MAPINI_DRYRUN, report);
 	showScrollableInfoDialog("Check map.ini", report, /*applyMode=*/false);
 #ifdef RTS_HAS_QT
@@ -2230,7 +2518,7 @@ void CWorldBuilderDoc::pollMapIniWatch()
 	// Auto-reload applies straight away (no confirm dialog -- the mapper's own save is the
 	// intent); only interrupt them on a hard parse error.
 	unloadMapIniOverrides();
-	CString report;
+	MapIniReport report;
 	bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
 	if (!ok) {
 		showScrollableInfoDialog("Auto-reload map.ini", report, /*applyMode=*/false);
@@ -3797,7 +4085,7 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 		// silently; any other map is previewed in the report dialog first.
 		if (isMapIniAlwaysLoad(lpszPathName)) {
 			DEBUG_LOG(("Loading map.ini from [%s] (in the always-load list)\n", iniPath.str()));
-			CString report;
+			MapIniReport report;
 			bool ok = doLoadMapIni(iniPath, MAPINI_INSTALL, report);
 			if (!ok) {	// only surface a hard error
 				showScrollableInfoDialog("Map.ini Loader (Beta)", report, /*applyMode=*/false);
