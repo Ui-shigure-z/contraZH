@@ -13,6 +13,7 @@
 #include "GameLogic/PolygonTrigger.h"	// PolygonTrigger (ditto)
 #include "GameLogic/Scripts.h"
 #include "ScriptDialog.h"			// updateScriptWarning + SCRIPT_DIALOG_SECTION
+#include "EditParameter.h"			// getWarningText, for the row warnings
 #include "qt/panels/WBQtScriptEditBridge.h"
 #include "qt/panels/WBQtCondActBridge.h"
 
@@ -345,6 +346,37 @@ extern "C" int WBQtScriptEditData_GetConditionRow(void *script, int row, char *b
 		pOr = pOr->getNextOrCondition();
 	}
 	return -1;
+}
+
+// Whether any parameter of a condition or action has a warning; the flags updateScriptWarning
+// keeps cover only the true actions, so this checks the parameters directly.
+template <class T>
+static int qtHasParameterWarning(T *item, Bool isAction)
+{
+	if (item == NULL)
+	{
+		return 0;
+	}
+	for (Int i = 0; i < item->getNumParameters(); ++i)
+	{
+		Parameter *param = item->getParameter(i);
+		if (param != NULL && !EditParameter::getWarningText(param, isAction).isEmpty())
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
+extern "C" int WBQtScriptEditData_GetConditionRowWarning(void *script, int row)
+{
+	OrCondition *pOr = NULL;
+	Condition *pCond = NULL;
+	if (!qtResolveConditionRow(static_cast<Script *>(script), row, &pOr, &pCond))
+	{
+		return 0;
+	}
+	return qtHasParameterWarning(pCond, FALSE);
 }
 
 // Does this parameter carry `value` as an OBJECT_TYPE? "???" (the ui placeholder the [Missing]
@@ -867,6 +899,11 @@ extern "C" void WBQtScriptEditData_GetActionLabel(void *script, int isFalse, int
 		}
 		copyOut(astr, buf, cap);
 	}
+}
+
+extern "C" int WBQtScriptEditData_GetActionWarning(void *script, int isFalse, int index)
+{
+	return qtHasParameterWarning(qtActionAt(static_cast<Script *>(script), isFalse, index), TRUE);
 }
 
 // == loadList()'s index clamp: keep the requested index inside the rebuilt list.

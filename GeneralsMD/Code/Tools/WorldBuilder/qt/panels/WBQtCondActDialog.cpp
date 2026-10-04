@@ -1,37 +1,31 @@
-// WBQtCondActDialog.cpp -- see WBQtCondActDialog.h. Layout and behavior mirror the MFC
-// IDD_ScriptCondition / IDD_ScriptAction dialogs: top command row (search / Compress Script /
-// OK / Cancel), template tree left, sentence + warnings + developer notes right. The parameter
-// links pop the (still MFC) EditParameter modals through the bridge; the sentence and warnings
-// re-render when they return.
+// WBQtCondActDialog.cpp -- see WBQtCondActDialog.h. Parameter chips pop the MFC EditParameter
+// modals through the bridge; the sentence and warnings re-render when they return.
 #include "WBQtCondActDialog.h"
 #include "ui_WBQtCondActDialog.h"
 #include "WBQtCondActBridge.h"
 #include "WBQtTreeStyle.h"
 
-// NewSearch toggle (WBQtObjectBridge.cpp): live-filter search when on.
-extern "C" int WBQtConfig_GetNewSearch(void);
-
 #include <QApplication>
-#include <QCheckBox>
 #include <QEvent>
-#include <QGroupBox>
-#include <QHash>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
-#include <QMessageBox>
+#include <QMenu>
+#include <QPainter>
 #include <QPushButton>
-#include <QTextBrowser>
+#include <QStyledItemDelegate>
+#include <QToolButton>
 #include <QTreeWidget>
-#include <QUrl>
 
 namespace
 {
 	const int kNameCap = 512;
 	const int kTextCap = 1024;
 	const int kBigCap = 4096;
+	const int kRecentMax = 10;
 
-	// Item data role holding the template index on leaves (-1 on category folders).
+	// Item data role holding the template index on leaves (-1 on folders).
 	const int kTemplateRole = Qt::UserRole;
 
 	QString templateName(int isAction, int i)
@@ -58,6 +52,157 @@ namespace
 		// == ParseHelpText: the help strings carry literal "\n" escapes.
 		return QString::fromLocal8Bit(buf).replace("\\n", "\n");
 	}
+
+	QColor familyColour(int family)
+	{
+		switch (family)
+		{
+			case WBQT_PARAM_THING:	return QColor(55, 105, 165);
+			case WBQT_PARAM_PLAYER:	return QColor(160, 100, 40);
+			case WBQT_PARAM_PLACE:	return QColor(55, 130, 75);
+			case WBQT_PARAM_NUMBER:	return QColor(70, 110, 120);
+			case WBQT_PARAM_TEXT:	return QColor(125, 85, 165);
+			case WBQT_PARAM_LOGIC:	return QColor(140, 115, 35);
+			default:				return QColor(95, 95, 95);
+		}
+	}
+
+	// Lays its widgets out left to right and wraps, centring each line's items vertically.
+	class FlowLayout : public QLayout
+	{
+	public:
+		FlowLayout(QWidget *parent, int spacing) : QLayout(parent), m_spacing(spacing)
+		{
+			setContentsMargins(8, 8, 8, 8);
+		}
+
+		virtual ~FlowLayout()
+		{
+			QLayoutItem *item;
+			while ((item = takeAt(0)) != NULL)
+			{
+				delete item;
+			}
+		}
+
+		virtual void addItem(QLayoutItem *item) { m_items.append(item); }
+		virtual int count() const { return m_items.size(); }
+		virtual QLayoutItem *itemAt(int index) const { return m_items.value(index); }
+		virtual QLayoutItem *takeAt(int index)
+		{
+			return (index >= 0 && index < m_items.size()) ? m_items.takeAt(index) : NULL;
+		}
+		virtual Qt::Orientations expandingDirections() const { return 0; }
+		virtual bool hasHeightForWidth() const { return true; }
+		virtual int heightForWidth(int width) const { return doLayout(QRect(0, 0, width, 0), true); }
+		virtual void setGeometry(const QRect &rect)
+		{
+			QLayout::setGeometry(rect);
+			doLayout(rect, false);
+		}
+		virtual QSize sizeHint() const { return minimumSize(); }
+		virtual QSize minimumSize() const
+		{
+			QSize size;
+			for (int i = 0; i < m_items.size(); ++i)
+			{
+				size = size.expandedTo(m_items.at(i)->minimumSize());
+			}
+			int left, top, right, bottom;
+			getContentsMargins(&left, &top, &right, &bottom);
+			return size + QSize(left + right, top + bottom);
+		}
+
+	private:
+		int doLayout(const QRect &rect, bool testOnly) const
+		{
+			int left, top, right, bottom;
+			getContentsMargins(&left, &top, &right, &bottom);
+			const QRect area = rect.adjusted(left, top, -right, -bottom);
+			int x = area.x();
+			int y = area.y();
+			int lineHeight = 0;
+			int lineStart = 0;
+			for (int i = 0; i <= m_items.size(); ++i)
+			{
+				const bool last = (i == m_items.size());
+				const QSize hint = last ? QSize() : m_items.at(i)->sizeHint();
+				const bool wrap = !last && x > area.x() && x + hint.width() > area.right() + 1;
+				if (last || wrap)
+				{
+					// Place the finished line, centred on its tallest item.
+					if (!testOnly)
+					{
+						int lx = area.x();
+						for (int j = lineStart; j < i; ++j)
+						{
+							const QSize h = m_items.at(j)->sizeHint();
+							m_items.at(j)->setGeometry(QRect(QPoint(lx, y + (lineHeight - h.height()) / 2), h));
+							lx += h.width() + m_spacing;
+						}
+					}
+					if (last)
+					{
+						break;
+					}
+					x = area.x();
+					y += lineHeight + m_spacing;
+					lineHeight = 0;
+					lineStart = i;
+				}
+				x += hint.width() + m_spacing;
+				lineHeight = qMax(lineHeight, hint.height());
+			}
+			return y + lineHeight - rect.y() + bottom;
+		}
+
+		QList<QLayoutItem *> m_items;
+		int m_spacing;
+	};
+
+	// Draws the part of an item's text that matches the filter on a highlight.
+	class MatchDelegate : public QStyledItemDelegate
+	{
+	public:
+		explicit MatchDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
+
+		void setNeedle(const QString &needle) { m_needle = needle; }
+
+		virtual void paint(QPainter *painter, const QStyleOptionViewItem &option,
+			const QModelIndex &index) const
+		{
+			QStyledItemDelegate::paint(painter, option, index);
+			if (m_needle.isEmpty())
+			{
+				return;
+			}
+			QStyleOptionViewItem opt(option);
+			initStyleOption(&opt, index);
+			const int at = opt.text.indexOf(m_needle, 0, Qt::CaseInsensitive);
+			if (at < 0)
+			{
+				return;
+			}
+			const QWidget *widget = option.widget;
+			QStyle *style = widget ? widget->style() : QApplication::style();
+			const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
+			const QFontMetrics metrics(opt.font);
+			const int textMargin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, 0, widget) + 1;
+			const int x = textRect.left() + textMargin + metrics.horizontalAdvance(opt.text.left(at));
+			const QString match = opt.text.mid(at, m_needle.length());
+			const QRect box(x, textRect.top() + (textRect.height() - metrics.height()) / 2,
+				metrics.horizontalAdvance(match), metrics.height());
+			painter->save();
+			painter->fillRect(box, QColor(215, 160, 60));
+			painter->setPen(Qt::black);
+			painter->setFont(opt.font);
+			painter->drawText(box, Qt::AlignLeft | Qt::AlignVCenter, match);
+			painter->restore();
+		}
+
+	private:
+		QString m_needle;
+	};
 }
 
 WBQtCondActDialog::WBQtCondActDialog(void *item, bool isAction, QWidget *parent)
@@ -65,50 +210,49 @@ WBQtCondActDialog::WBQtCondActDialog(void *item, bool isAction, QWidget *parent)
 	m_ui(new Ui::WBQtCondActDialog),
 	m_item(item),
 	m_isAction(isAction ? 1 : 0),
-	m_updating(false)
+	m_updating(false),
+	m_flow(NULL)
 {
-	// The static widget tree lives in WBQtCondActDialog.ui; bind the members the
-	// logic below uses, then wire what Designer can't express.
 	m_ui->setupUi(this);
 	setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-	setWindowTitle(isAction ? "Edit Action:" : "Edit Condition:");
+	setWindowTitle(isAction ? "Edit Action" : "Edit Condition");
+	m_ui->searchEdit->setPlaceholderText(isAction ? "Filter actions..." : "Filter conditions...");
 
-	m_searchEdit = m_ui->searchEdit;
-	m_compressCheck = m_ui->compressCheck;
-	m_tree = m_ui->tree;
-	m_sentence = m_ui->sentence;
-	m_warningsBox = m_ui->warningsBox;
-	m_warningsLabel = m_ui->warningsLabel;
-	m_helpLabel = m_ui->helpLabel;
-
-	m_searchEdit->installEventFilter(this);
-	WBQtTreeStyle::applyTreeLines(m_tree);
-
-	connect(m_tree, SIGNAL(currentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)),
-			this, SLOT(onCurrentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)));
-	connect(m_sentence, SIGNAL(anchorClicked(QUrl)), this, SLOT(onLinkClicked(QUrl)));
-	connect(m_ui->findBtn, SIGNAL(clicked()), this, SLOT(onSearch()));
-	connect(m_ui->resetBtn, SIGNAL(clicked()), this, SLOT(onReset()));
-	if (WBQtConfig_GetNewSearch() != 0)
+	const int count = WBQtCondActData_GetTemplateCount(m_isAction);
+	for (int i = 0; i < count; i++)
 	{
-		// NewSearch: filter live as the user types (Find button still works).
-		connect(m_searchEdit, SIGNAL(textChanged(QString)), this, SLOT(onSearchLive(QString)));
+		m_pathIndex.insert(templateName(m_isAction, i), i);
 	}
-	connect(m_compressCheck, SIGNAL(toggled(bool)), this, SLOT(onCompressToggled(bool)));
-	connect(m_ui->okBtn, SIGNAL(clicked()), this, SLOT(accept()));
-	connect(m_ui->cancelBtn, SIGNAL(clicked()), this, SLOT(reject()));
 
-	m_updating = true;
-	m_compressCheck->setChecked(WBQtCondAct_GetCompress() != 0);
-	m_updating = false;
+	m_flow = new FlowLayout(m_ui->sentenceHost, 5);
+	QFont sentenceFont = m_ui->sentenceHost->font();
+	sentenceFont.setPointSizeF(sentenceFont.pointSizeF() + 1.0);
+	m_ui->sentenceHost->setFont(sentenceFont);
+
+	m_ui->searchEdit->installEventFilter(this);
+	WBQtTreeStyle::applyTreeLines(m_ui->tree);
+	m_ui->tree->setItemDelegate(new MatchDelegate(m_ui->tree));
+	m_ui->split->setStretchFactor(0, 3);
+	m_ui->split->setStretchFactor(1, 2);
+
+	connect(m_ui->tree, SIGNAL(currentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)),
+			this, SLOT(onCurrentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)));
+	connect(m_ui->tree, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(onTreeContextMenu(QPoint)));
+	connect(m_ui->searchEdit, SIGNAL(textChanged(QString)), this, SLOT(onFilterChanged(QString)));
+	connect(m_ui->notesToggle, SIGNAL(toggled(bool)), this, SLOT(onNotesToggled(bool)));
+	connect(m_ui->buttonBox, SIGNAL(accepted()), this, SLOT(accept()));
+	connect(m_ui->buttonBox, SIGNAL(rejected()), this, SLOT(reject()));
+
+	m_ui->notesToggle->setChecked(WBQtCondAct_GetNotesOpen() != 0);
+	onNotesToggled(m_ui->notesToggle->isChecked());
 	applyTreeFont();
 
-	populateTree();
+	buildTree(QString());
 	renderSentence();
 	showHelpForType(WBQtCondActData_GetType(m_item, m_isAction));
-	m_tree->setFocus();
+	m_ui->tree->setFocus();
 
-	resize(900, 560);
+	resize(960, 600);
 }
 
 WBQtCondActDialog::~WBQtCondActDialog()
@@ -116,63 +260,89 @@ WBQtCondActDialog::~WBQtCondActDialog()
 	delete m_ui;
 }
 
+void WBQtCondActDialog::accept()
+{
+	const int type = WBQtCondActData_GetType(m_item, m_isAction);
+	if (type >= 0 && type < WBQtCondActData_GetTemplateCount(m_isAction))
+	{
+		const QString path = templateName(m_isAction, type);
+		QStringList recent = savedList(false);
+		recent.removeAll(path);
+		recent.prepend(path);
+		while (recent.size() > kRecentMax)
+		{
+			recent.removeLast();
+		}
+		setSavedList(false, recent);
+	}
+	QDialog::accept();
+}
+
 bool WBQtCondActDialog::eventFilter(QObject *watched, QEvent *event)
 {
-	// == the MFC OnOK special case: Enter in the search box searches instead of closing.
-	if (watched == m_searchEdit && event->type() == QEvent::KeyPress)
+	if (watched == m_ui->searchEdit && event->type() == QEvent::KeyPress)
 	{
 		QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+		// Enter takes the first match instead of closing the dialog.
 		if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter)
 		{
-			onSearch();
+			selectFirstMatch();
+			return true;
+		}
+		if (keyEvent->key() == Qt::Key_Down)
+		{
+			m_ui->tree->setFocus();
 			return true;
 		}
 	}
 	return QDialog::eventFilter(watched, event);
 }
 
-void WBQtCondActDialog::populateTree()
+QStringList WBQtCondActDialog::savedList(bool favorites) const
 {
-	buildTree(QString());	// empty filter == the full catalog
+	char buf[kBigCap];
+	buf[0] = 0;
+	WBQtCondAct_GetSavedList(m_isAction, favorites ? 1 : 0, buf, sizeof(buf));
+	return QString::fromLocal8Bit(buf).split('|', QString::SkipEmptyParts);
 }
 
-// Build the category tree from the templates' '/'-separated name paths (== the MFC
-// OnInitDialog/OnReset walk): each path builds sorted category folders with the leaf at the end,
-// and name2 (if any) adds a second leaf. When filter is non-empty, only templates whose name or
-// name2 contains it are included -- folders with no surviving leaf are never created, so the
-// result keeps the SAME nested tree design as the full list, just pruned to the matches (rather
-// than a flat list of full-path leaves). Returns the number of matching templates. This builds
-// structure only; the caller sets expansion (a filtered result expands so nested matches show).
-int WBQtCondActDialog::buildTree(const QString &filter)
+void WBQtCondActDialog::setSavedList(bool favorites, const QStringList &paths)
+{
+	WBQtCondAct_SetSavedList(m_isAction, favorites ? 1 : 0, paths.join("|").toLocal8Bit().constData());
+}
+
+// The category tree from the templates' '/'-separated paths; name2 adds a second leaf. A filter
+// keeps only templates whose name or name2 contains it, pruning empty folders.
+void WBQtCondActDialog::buildTree(const QString &filter)
 {
 	m_updating = true;
-	m_tree->clear();
+	QTreeWidget *tree = m_ui->tree;
+	tree->clear();
 
+	const QStringList favorites = savedList(true);
 	QHash<QString, QTreeWidgetItem *> folders;
 	QTreeWidgetItem *selLeaf = NULL;
-	int curType = WBQtCondActData_GetType(m_item, m_isAction);
-	int count = WBQtCondActData_GetTemplateCount(m_isAction);
-	int matchCount = 0;
+	const int curType = WBQtCondActData_GetType(m_item, m_isAction);
+	const int count = WBQtCondActData_GetTemplateCount(m_isAction);
 	for (int i = 0; i < count; i++)
 	{
-		QString name = templateName(m_isAction, i);
-		QString name2 = templateName2(m_isAction, i);
+		const QString name = templateName(m_isAction, i);
+		const QString name2 = templateName2(m_isAction, i);
 		if (!filter.isEmpty()
-			&& !name.toLower().contains(filter)
-			&& !name2.toLower().contains(filter))
+			&& !name.contains(filter, Qt::CaseInsensitive)
+			&& !name2.contains(filter, Qt::CaseInsensitive))
 		{
 			continue;
 		}
-		matchCount++;
 		for (int pass = 0; pass < 2; pass++)
 		{
-			QString path = (pass == 0) ? name : name2;
+			const QString path = (pass == 0) ? name : name2;
 			if (path.isEmpty())
 			{
 				continue;
 			}
 			QStringList parts = path.split('/');
-			QString leafLabel = parts.takeLast();
+			const QString leafLabel = parts.takeLast();
 			QTreeWidgetItem *parent = NULL;
 			QString key;
 			for (int p = 0; p < parts.size(); p++)
@@ -184,7 +354,7 @@ int WBQtCondActDialog::buildTree(const QString &filter)
 				{
 					if (parent == NULL)
 					{
-						folder = new QTreeWidgetItem(m_tree, QStringList(parts[p]));
+						folder = new QTreeWidgetItem(tree, QStringList(parts[p]));
 					}
 					else
 					{
@@ -198,23 +368,72 @@ int WBQtCondActDialog::buildTree(const QString &filter)
 			QTreeWidgetItem *leaf;
 			if (parent == NULL)
 			{
-				leaf = new QTreeWidgetItem(m_tree, QStringList(leafLabel));
+				leaf = new QTreeWidgetItem(tree, QStringList(leafLabel));
 			}
 			else
 			{
 				leaf = new QTreeWidgetItem(parent, QStringList(leafLabel));
 			}
 			leaf->setData(0, kTemplateRole, i);
+			if (favorites.contains(name))
+			{
+				QFont f = leaf->font(0);
+				f.setItalic(true);
+				leaf->setFont(0, f);
+				leaf->setToolTip(0, "In Favorites");
+			}
 			if (pass == 0 && i == curType)
 			{
 				selLeaf = leaf;
 			}
 		}
 	}
-	m_tree->sortItems(0, Qt::AscendingOrder);
+	tree->sortItems(0, Qt::AscendingOrder);
+
+	// Saved folders go on top of the sorted catalog: Favorites first, then Recent.
+	addSavedFolder("Recent", savedList(false), filter);
+	addSavedFolder("Favorites", favorites, filter);
+
+	if (!filter.isEmpty())
+	{
+		tree->expandAll();
+	}
+	static_cast<MatchDelegate *>(tree->itemDelegate())->setNeedle(filter);
+	tree->viewport()->update();
 	m_updating = false;
 	selectCurrentType(selLeaf);
-	return matchCount;
+}
+
+void WBQtCondActDialog::addSavedFolder(const QString &title, const QStringList &paths, const QString &filter)
+{
+	QTreeWidgetItem *folder = NULL;
+	for (int p = 0; p < paths.size(); ++p)
+	{
+		const QHash<QString, int>::const_iterator it = m_pathIndex.constFind(paths.at(p));
+		if (it == m_pathIndex.constEnd())
+		{
+			continue;	// a template this data set no longer has
+		}
+		if (!filter.isEmpty() && !paths.at(p).contains(filter, Qt::CaseInsensitive))
+		{
+			continue;
+		}
+		if (folder == NULL)
+		{
+			folder = new QTreeWidgetItem(QStringList(title));
+			folder->setData(0, kTemplateRole, -1);
+			QFont bold = folder->font(0);
+			bold.setBold(true);
+			folder->setFont(0, bold);
+			m_ui->tree->insertTopLevelItem(0, folder);
+		}
+		QTreeWidgetItem *leaf = new QTreeWidgetItem(folder, QStringList(QString(paths.at(p)).replace("/", " / ")));
+		leaf->setData(0, kTemplateRole, it.value());
+	}
+	if (folder != NULL)
+	{
+		folder->setExpanded(true);
+	}
 }
 
 void WBQtCondActDialog::selectCurrentType(QTreeWidgetItem *leaf)
@@ -222,9 +441,23 @@ void WBQtCondActDialog::selectCurrentType(QTreeWidgetItem *leaf)
 	if (leaf != NULL)
 	{
 		m_updating = true;
-		m_tree->setCurrentItem(leaf);
-		m_tree->scrollToItem(leaf, QAbstractItemView::PositionAtTop);
+		m_ui->tree->setCurrentItem(leaf);
+		m_ui->tree->scrollToItem(leaf, QAbstractItemView::PositionAtTop);
 		m_updating = false;
+	}
+}
+
+void WBQtCondActDialog::selectFirstMatch()
+{
+	for (QTreeWidgetItemIterator it(m_ui->tree); *it; ++it)
+	{
+		if ((*it)->data(0, kTemplateRole).toInt() >= 0)
+		{
+			m_ui->tree->setCurrentItem(*it);
+			m_ui->tree->scrollToItem(*it);
+			m_ui->tree->setFocus();
+			return;
+		}
 	}
 }
 
@@ -235,7 +468,7 @@ void WBQtCondActDialog::onCurrentItemChanged(QTreeWidgetItem *current, QTreeWidg
 	{
 		return;
 	}
-	int type = current->data(0, kTemplateRole).toInt();
+	const int type = current->data(0, kTemplateRole).toInt();
 	if (type < 0)
 	{
 		return;
@@ -249,22 +482,67 @@ void WBQtCondActDialog::onCurrentItemChanged(QTreeWidgetItem *current, QTreeWidg
 	}
 }
 
+void WBQtCondActDialog::onTreeContextMenu(const QPoint &pos)
+{
+	QTreeWidgetItem *item = m_ui->tree->itemAt(pos);
+	if (item == NULL)
+	{
+		return;
+	}
+	const int type = item->data(0, kTemplateRole).toInt();
+	if (type < 0)
+	{
+		return;
+	}
+	const QString path = templateName(m_isAction, type);
+	QStringList favorites = savedList(true);
+	const bool isFavorite = favorites.contains(path);
+
+	QMenu menu(this);
+	QAction *toggle = menu.addAction(isFavorite ? "Remove from Favorites" : "Add to Favorites");
+	if (menu.exec(m_ui->tree->viewport()->mapToGlobal(pos)) != toggle)
+	{
+		return;
+	}
+	if (isFavorite)
+	{
+		favorites.removeAll(path);
+	}
+	else
+	{
+		favorites.append(path);
+	}
+	setSavedList(true, favorites);
+	buildTree(m_ui->searchEdit->text().trimmed());
+}
+
 void WBQtCondActDialog::renderSentence()
 {
-	// The sentence interleaves uiStrings[0], param[0], uiStrings[1], param[1], ... with each
-	// parameter as a link (== the rich edit's blue CFE_LINK ranges).
-	int numStrings = WBQtCondActData_GetUiStringCount(m_item, m_isAction);
-	int numParams = WBQtCondActData_GetParameterCount(m_item, m_isAction);
+	// Drop the previous sentence; later, since a chip's own click lands here.
+	QLayoutItem *old;
+	while ((old = m_flow->takeAt(0)) != NULL)
+	{
+		old->widget()->hide();
+		old->widget()->deleteLater();
+		delete old;
+	}
+
+	// The sentence interleaves uiStrings[0], param[0], uiStrings[1], param[1], ...
+	const int numStrings = WBQtCondActData_GetUiStringCount(m_item, m_isAction);
+	const int numParams = WBQtCondActData_GetParameterCount(m_item, m_isAction);
+	const int total = (numStrings > numParams) ? numStrings : numParams;
 	char buf[kTextCap];
-	QString html;
-	int total = (numStrings > numParams) ? numStrings : numParams;
 	for (int i = 0; i < total; i++)
 	{
 		if (i < numStrings)
 		{
 			buf[0] = 0;
 			WBQtCondActData_GetUiString(m_item, m_isAction, i, buf, sizeof(buf));
-			html += QString::fromLocal8Bit(buf).toHtmlEscaped();
+			const QStringList words = QString::fromLocal8Bit(buf).split(' ', QString::SkipEmptyParts);
+			for (int w = 0; w < words.size(); ++w)
+			{
+				m_flow->addWidget(new QLabel(words.at(w), m_ui->sentenceHost));
+			}
 		}
 		if (i < numParams)
 		{
@@ -275,73 +553,34 @@ void WBQtCondActDialog::renderSentence()
 			{
 				text = "???";
 			}
-			// A parameter the warning panel is complaining about renders red rather than the
-			// normal link colour, so the offending one is obvious without matching the warning
-			// text up by name. The inner <span> is needed because Qt paints <a> with the palette
-			// link colour and ignores a colour set on the anchor itself.
-			const QString escaped = text.toHtmlEscaped();
-			if (WBQtCondActData_ParameterHasWarning(m_item, m_isAction, i))
-			{
-				html += QString("<a href=\"%1\"><span style=\"color:#c00000;\">%2</span></a>")
-					.arg(i).arg(escaped);
-			}
-			else
-			{
-				html += QString("<a href=\"%1\">%2</a>").arg(i).arg(escaped);
-			}
+			char warnBuf[kBigCap];
+			warnBuf[0] = 0;
+			WBQtCondActData_GetParameterWarning(m_item, m_isAction, i, warnBuf, sizeof(warnBuf));
+			const QString warning = QString::fromLocal8Bit(warnBuf);
+
+			const QColor colour = warning.isEmpty()
+				? familyColour(WBQtCondActData_GetParameterFamily(m_item, m_isAction, i))
+				: QColor(175, 55, 55);
+			QToolButton *chip = new QToolButton(m_ui->sentenceHost);
+			chip->setText(warning.isEmpty() ? text : text + "  !");
+			chip->setCursor(Qt::PointingHandCursor);
+			chip->setToolTip(warning.isEmpty() ? "Click to change" : warning);
+			chip->setProperty("paramIndex", i);
+			chip->setStyleSheet(QString(
+				"QToolButton { background-color: %1; color: white; border: none; border-radius: 4px; padding: 2px 8px; }"
+				"QToolButton:hover { background-color: %2; }")
+				.arg(colour.name()).arg(colour.lighter(125).name()));
+			connect(chip, SIGNAL(clicked()), this, SLOT(onChipClicked()));
+			m_flow->addWidget(chip);
 		}
 	}
-	m_sentence->setHtml(html);
 	updateWarnings();
 }
 
-void WBQtCondActDialog::updateWarnings()
-{
-	// == the formatConditionText/formatActionText warning panel logic (captions from the
-	// IDS_SCRIPT_* string table).
-	char warnBuf[kBigCap];
-	char infoBuf[kBigCap];
-	warnBuf[0] = 0;
-	infoBuf[0] = 0;
-	WBQtCondActData_GetWarnings(m_item, m_isAction, warnBuf, sizeof(warnBuf), infoBuf, sizeof(infoBuf));
-	QString warnings = QString::fromLocal8Bit(warnBuf);
-	QString information = QString::fromLocal8Bit(infoBuf);
-	if (!warnings.isEmpty())
-	{
-		m_warningsBox->setTitle("Warnings:");
-		m_warningsBox->setEnabled(true);
-		m_warningsLabel->setText(warnings);
-	}
-	else if (!information.isEmpty())
-	{
-		m_warningsBox->setTitle("Information:");
-		m_warningsBox->setEnabled(true);
-		m_warningsLabel->setText(information);
-	}
-	else
-	{
-		m_warningsBox->setTitle("No Warnings");
-		m_warningsBox->setEnabled(false);
-		m_warningsLabel->setText("");
-	}
-}
-
-void WBQtCondActDialog::showHelpForType(int type)
-{
-	if (type >= 0 && type < WBQtCondActData_GetTemplateCount(m_isAction))
-	{
-		m_helpLabel->setText(templateHelp(m_isAction, type));
-	}
-	else
-	{
-		m_helpLabel->setText("");
-	}
-}
-
-void WBQtCondActDialog::onLinkClicked(const QUrl &url)
+void WBQtCondActDialog::onChipClicked()
 {
 	bool ok = false;
-	int index = url.toString().toInt(&ok);
+	const int index = sender()->property("paramIndex").toInt(&ok);
 	if (!ok)
 	{
 		return;
@@ -351,68 +590,56 @@ void WBQtCondActDialog::onLinkClicked(const QUrl &url)
 	renderSentence();
 }
 
-// NewSearch: filter live as the user types -- empty box restores the full tree, no
-// beep and no "No matches" box (both are jarring on every keystroke).
-void WBQtCondActDialog::onSearchLive(const QString &text)
+void WBQtCondActDialog::updateWarnings()
 {
-	if (text.trimmed().isEmpty())
+	char warnBuf[kBigCap];
+	char infoBuf[kBigCap];
+	warnBuf[0] = 0;
+	infoBuf[0] = 0;
+	WBQtCondActData_GetWarnings(m_item, m_isAction, warnBuf, sizeof(warnBuf), infoBuf, sizeof(infoBuf));
+	const QString warnings = QString::fromLocal8Bit(warnBuf).trimmed();
+	const QString information = QString::fromLocal8Bit(infoBuf).trimmed();
+
+	QLabel *label = m_ui->warningsLabel;
+	if (warnings.isEmpty() && information.isEmpty())
 	{
-		populateTree();
+		label->hide();
 		return;
 	}
-	applyFilter(text.toLower(), false);
+	const bool warn = !warnings.isEmpty();
+	const QColor accent = warn ? QColor(200, 70, 70) : QColor(80, 140, 210);
+	label->setStyleSheet(QString("QLabel { border-left: 4px solid %1; background-color: rgba(%2, %3, %4, 40); padding: 6px 8px; }")
+		.arg(accent.name()).arg(accent.red()).arg(accent.green()).arg(accent.blue()));
+	label->setText(QString("<b>%1</b><br>%2")
+		.arg(warn ? "Warnings" : "Information")
+		.arg((warn ? warnings : information).toHtmlEscaped().replace("\n", "<br>")));
+	label->show();
 }
 
-void WBQtCondActDialog::onSearch()
+void WBQtCondActDialog::showHelpForType(int type)
 {
-	// == the MFC OnSearch: flatten the catalog to full-path leaves matching the search text
-	// (in name or name2, case-insensitive).
-	QString searchText = m_searchEdit->text().toLower();
-	if (searchText.isEmpty())
-	{
-		QApplication::beep();
-		onReset();
-		return;
-	}
-	applyFilter(searchText, true);
+	const bool valid = (type >= 0 && type < WBQtCondActData_GetTemplateCount(m_isAction));
+	m_ui->helpLabel->setText(valid ? templateHelp(m_isAction, type) : QString());
 }
 
-void WBQtCondActDialog::applyFilter(const QString &searchText, bool announce)
+void WBQtCondActDialog::onNotesToggled(bool open)
 {
-	// Rebuild the tree restricted to matches -- same nested category design as the full list, just
-	// pruned (not a flat full-path leaf list).
-	int matchCount = buildTree(searchText);
-	// A filtered tree starts collapsed, which would hide matches nested in folders -- expand it so
-	// every match is visible (the full unfiltered list keeps its default collapsed state).
-	m_tree->expandAll();
-	if (matchCount == 0 && announce)
-	{
-		QMessageBox::information(this, "Search", "No matches found.");
-	}
+	m_ui->notesToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+	m_ui->helpLabel->setVisible(open);
+	WBQtCondAct_SetNotesOpen(open ? 1 : 0);
 }
 
-void WBQtCondActDialog::onReset()
+void WBQtCondActDialog::onFilterChanged(const QString &text)
 {
-	m_searchEdit->clear();
-	populateTree();
-	m_tree->setFocus();
-}
-
-void WBQtCondActDialog::onCompressToggled(bool checked)
-{
-	if (!m_updating)
-	{
-		WBQtCondAct_SetCompress(checked ? 1 : 0);
-	}
-	applyTreeFont();
+	buildTree(text.trimmed());
 }
 
 void WBQtCondActDialog::applyTreeFont()
 {
-	// == OnCompress: a tree-density toggle done via font height (14px compressed, 16px not).
-	QFont font = m_tree->font();
-	font.setPixelSize(m_compressCheck->isChecked() ? 14 : 16);
-	m_tree->setFont(font);
+	// The script window's Compress Script setting: 14px compressed, 16px not.
+	QFont font = m_ui->tree->font();
+	font.setPixelSize(WBQtCondAct_GetCompress() ? 14 : 16);
+	m_ui->tree->setFont(font);
 }
 
 // ===================== the modal entry point =====================
@@ -428,6 +655,6 @@ extern "C" int WBQtCondAct_Run(void *item, int isAction)
 	// Parent to the active Qt modal (the script-edit dialog); exec() is application-modal, and
 	// the MFC frame is already disabled by the outer WBQtScriptEdit_Run.
 	WBQtCondActDialog dlg(item, isAction != 0, QApplication::activeModalWidget());
-	int rc = dlg.exec();
+	const int rc = dlg.exec();
 	return (rc == QDialog::Accepted) ? 1 : 0;
 }

@@ -235,16 +235,121 @@ extern "C" int WBQtCondActData_ParameterHasWarning(void *item, int isAction, int
 	return EditParameter::getWarningText(param, false).isEmpty() ? 0 : 1;
 }
 
-// ================= the Compress Script setting =================
+extern "C" void WBQtCondActData_GetParameterWarning(void *item, int isAction, int i, char *buf, int cap)
+{
+	Parameter *param = qtParameterAt(item, isAction, i);
+	copyOut((param != NULL) ? EditParameter::getWarningText(param, false) : AsciiString::TheEmptyString,
+		buf, cap);
+}
+
+extern "C" int WBQtCondActData_GetParameterFamily(void *item, int isAction, int i)
+{
+	Parameter *param = qtParameterAt(item, isAction, i);
+	if (param == NULL)
+	{
+		return WBQT_PARAM_OTHER;
+	}
+	switch (param->getParameterType())
+	{
+		case Parameter::TEAM:
+		case Parameter::UNIT:
+		case Parameter::OBJECT_TYPE:
+		case Parameter::OBJECT_TYPE_LIST:
+		case Parameter::KIND_OF_PARAM:
+		case Parameter::BRIDGE:
+		case Parameter::BUILDABLE:
+		case Parameter::SPECIAL_POWER:
+		case Parameter::SCIENCE:
+		case Parameter::SCIENCE_AVAILABILITY:
+		case Parameter::UPGRADE:
+		case Parameter::COMMAND_BUTTON:
+		case Parameter::COMMANDBUTTON_ABILITY:
+		case Parameter::COMMANDBUTTON_ALL_ABILITIES:
+		case Parameter::ATTACK_PRIORITY_SET:
+		case Parameter::OBJECT_STATUS:
+		case Parameter::OBJECT_PANEL_FLAG:
+		case Parameter::REVEALNAME:
+		case Parameter::EMOTICON:
+		case Parameter::FACTION_NAME:
+			return WBQT_PARAM_THING;
+		case Parameter::SIDE:
+		case Parameter::RELATION:
+		case Parameter::TEAM_STATE:
+		case Parameter::AI_MOOD:
+			return WBQT_PARAM_PLAYER;
+		case Parameter::WAYPOINT:
+		case Parameter::WAYPOINT_PATH:
+		case Parameter::SKIRMISH_WAYPOINT_PATH:
+		case Parameter::TRIGGER_AREA:
+		case Parameter::COORD3D:
+		case Parameter::BOUNDARY:
+		case Parameter::SURFACES_ALLOWED:
+			return WBQT_PARAM_PLACE;
+		case Parameter::INT:
+		case Parameter::REAL:
+		case Parameter::ANGLE:
+		case Parameter::PERCENT:
+		case Parameter::COMPARISON:
+		case Parameter::BOOLEAN:
+		case Parameter::SHAKE_INTENSITY:
+		case Parameter::COLOR:
+		case Parameter::LEFT_OR_RIGHT:
+			return WBQT_PARAM_NUMBER;
+		case Parameter::TEXT_STRING:
+		case Parameter::LOCALIZED_TEXT:
+		case Parameter::SOUND:
+		case Parameter::DIALOG:
+		case Parameter::MUSIC:
+		case Parameter::MOVIE:
+		case Parameter::FONT_NAME:
+		case Parameter::RADAR_EVENT_TYPE:
+			return WBQT_PARAM_TEXT;
+		case Parameter::SCRIPT:
+		case Parameter::SCRIPT_SUBROUTINE:
+		case Parameter::COUNTER:
+		case Parameter::FLAG:
+			return WBQT_PARAM_LOGIC;
+		default:
+			return WBQT_PARAM_OTHER;
+	}
+}
+
+// ================= picker preferences =================
 
 extern "C" int WBQtCondAct_GetCompress(void)
 {
 	return ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", 1) ? 1 : 0;
 }
 
-extern "C" void WBQtCondAct_SetCompress(int enabled)
+static const char *savedListKey(int isAction, int favorites)
 {
-	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", enabled ? 1 : 0);
+	if (favorites)
+	{
+		return isAction ? "FavoriteActions" : "FavoriteConditions";
+	}
+	return isAction ? "RecentActions" : "RecentConditions";
+}
+
+extern "C" void WBQtCondAct_GetSavedList(int isAction, int favorites, char *buf, int cap)
+{
+	CString value = ::AfxGetApp()->GetProfileString(SCRIPT_DIALOG_SECTION, savedListKey(isAction, favorites), "");
+	copyOut(AsciiString((const char *)value), buf, cap);
+}
+
+extern "C" void WBQtCondAct_SetSavedList(int isAction, int favorites, const char *paths)
+{
+	::AfxGetApp()->WriteProfileString(SCRIPT_DIALOG_SECTION, savedListKey(isAction, favorites),
+		paths != NULL ? paths : "");
+}
+
+extern "C" int WBQtCondAct_GetNotesOpen(void)
+{
+	return ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "PickerNotesOpen", 1) ? 1 : 0;
+}
+
+extern "C" void WBQtCondAct_SetNotesOpen(int open)
+{
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "PickerNotesOpen", open ? 1 : 0);
 }
 
 #endif // RTS_HAS_QT

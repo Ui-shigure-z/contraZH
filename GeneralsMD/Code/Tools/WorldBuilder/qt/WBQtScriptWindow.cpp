@@ -21,6 +21,7 @@
 #include <QLineEdit>
 #include <QList>
 #include <QMenu>
+#include <QRegExp>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -205,7 +206,7 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 
 	m_findBtn = m_ui->findBtn;
 
-	// --- Middle: tree | (description over comment) ---
+	// --- Middle: tree | the selected script's card ---
 	// The tree's ctor needs this window (no setter), so it stays created here and is
 	// inserted into the .ui splitter in front of the detail pane.
 	m_tree = new WBQtScriptTree(this);
@@ -226,10 +227,10 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 	m_ui->split->setStretchFactor(0, 1);
 	m_ui->split->setStretchFactor(1, 2);
 
-	m_description = m_ui->description;
 	// Browser (not edit) so the "[Referenced in]" script names render as clickable links
 	// that jump the tree to the referencing script. Read-only by default.
 	m_comment = m_ui->comment;
+	m_comment->document()->setDocumentMargin(10);
 
 	// --- Command button rows ---
 	m_newFolder = m_ui->newFolder;
@@ -357,6 +358,38 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 	QShortcut *dupSc = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_D), m_tree);
 	dupSc->setContext(Qt::WidgetShortcut);
 	connect(dupSc, SIGNAL(activated()), this, SLOT(onDuplicateShortcut()));
+
+	m_ui->optBox->hide();
+	QToolButton *optionsButton = new QToolButton(this);
+	optionsButton->setText("Options");
+	optionsButton->setPopupMode(QToolButton::InstantPopup);
+	QMenu *optionsMenu = new QMenu(optionsButton);
+	optionsMenu->setToolTipsVisible(true);
+	QCheckBox *optionBoxes[] = { m_ckCompress, m_ckNewIcons, m_ckCleanName, m_ckAutoVerify, m_ckSmartCopy,
+		m_ckFastLoad, m_ckScriptMerge, m_ckRefByParam, m_ckDisableRef };
+	for (int i = 0; i < 9; ++i)
+	{
+		QAction *action = optionsMenu->addAction(optionBoxes[i]->text());
+		action->setCheckable(true);
+		action->setToolTip(optionBoxes[i]->toolTip());
+		action->setEnabled(optionBoxes[i]->isEnabled());
+		connect(action, SIGNAL(triggered()), optionBoxes[i], SLOT(click()));
+		m_optionActions.append(qMakePair(action, optionBoxes[i]));
+	}
+	connect(optionsMenu, SIGNAL(aboutToShow()), this, SLOT(onOptionsMenuAboutToShow()));
+	optionsButton->setMenu(optionsMenu);
+	m_ui->searchRow->addWidget(optionsButton);
+
+	// The Show filters read as toggle chips.
+	QCheckBox *filterBoxes[] = { m_filterWarnings, m_filterActive, m_filterInactive, m_filterEasy,
+		m_filterNormal, m_filterHard };
+	for (int i = 0; i < 6; ++i)
+	{
+		filterBoxes[i]->setStyleSheet(
+			"QCheckBox { border: 1px solid palette(mid); border-radius: 9px; padding: 1px 9px; }"
+			"QCheckBox::indicator { width: 0px; height: 0px; }"
+			"QCheckBox:checked { background-color: #37699f; border-color: #37699f; color: white; }");
+	}
 
 	connect(m_ckCompress, SIGNAL(clicked()), this, SLOT(onCheckboxToggled()));
 	connect(m_ckNewIcons, SIGNAL(clicked()), this, SLOT(onCheckboxToggled()));
@@ -784,12 +817,184 @@ static QString wbLinkifyReferences(const QString &comment)
 	return lines.join("<br>");
 }
 
+// The selected script as a card: name and badges, its comment, the IF / THEN / ELSE lists from
+// Script::getUiText, the condition and action notes, and the reference tags as links.
+static QString wbScriptCardHtml(int listType, const QString &label, int flags, const QString &description,
+	const QString &comment)
+{
+	// ListType's top nibble: 1 player, 2 folder, 3/4 script.
+	const int objType = (listType >> 28) & 0xF;
+	const bool isScript = (objType == 3 || objType == 4);
+
+	// The tree label carries "[S A D] [E N H] name <5s>"; the badges below say the same things.
+	QString name = label;
+	name.remove(QRegExp("^(\\[[^\\]]*\\]\\s*)+"));
+	QString delay;
+	QRegExp delayTag("\\s*<(\\d+)s>$");
+	if (delayTag.indexIn(name) >= 0)
+	{
+		delay = delayTag.cap(1);
+		name = name.left(delayTag.pos(0));
+	}
+
+	QString badges;
+	struct Badge { bool on; const char *text; const char *colour; };
+	const bool easy = (flags & 8) != 0;
+	const bool normal = (flags & 16) != 0;
+	const bool hard = (flags & 32) != 0;
+	QString difficulty;
+	if (!description.isEmpty() && !(easy && normal && hard))
+	{
+		difficulty = QString("%1%2%3").arg(easy ? "E " : "").arg(normal ? "N " : "").arg(hard ? "H" : "").trimmed();
+		if (difficulty.isEmpty())
+		{
+			difficulty = "no difficulty";
+		}
+	}
+	const Badge list[] = {
+		{ (flags & 1) != 0, "Active", "#37824b" },
+		{ (flags & 1) == 0, "Inactive", "#696969" },
+		{ (flags & 4) != 0, "Subroutine", "#7d55a5" },
+		{ (flags & 2) != 0, "Warnings", "#af3737" }
+	};
+	for (int b = 0; b < 4 && objType != 1; ++b)
+	{
+		if (list[b].on)
+		{
+			badges += QString("<span style=\"background-color:%1; color:white;\">&nbsp;%2&nbsp;</span> ")
+				.arg(list[b].colour).arg(list[b].text);
+		}
+	}
+	if (!difficulty.isEmpty())
+	{
+		badges += QString("<span style=\"background-color:#37699f; color:white;\">&nbsp;%1&nbsp;</span> ").arg(difficulty);
+	}
+	if (!delay.isEmpty())
+	{
+		badges += QString("<span style=\"background-color:#466e78; color:white;\">&nbsp;every %1s&nbsp;</span> ").arg(delay);
+	}
+
+	// Split the comment into the script's own text, the two list notes and the reference tags.
+	static const char *const kTags[] = { "[Condition Comment] : ", "[Action Comment] : ", "[Referenced in] : ",
+		"[Uses] : ", "[Units] : ", "[Waypoints] : ", "[Missing] : ", "[Warnings] : " };
+	QString own;
+	QString conditionNote;
+	QString actionNote;
+	QStringList refLines;
+	int current = -1;
+	const QStringList commentLines = QString(comment).remove('\r').split('\n');
+	for (int i = 0; i < commentLines.size(); ++i)
+	{
+		const QString &line = commentLines.at(i);
+		int tag = -1;
+		for (int t = 0; t < 8 && tag < 0; ++t)
+		{
+			if (line.startsWith(kTags[t]))
+			{
+				tag = t;
+			}
+		}
+		if (tag >= 0)
+		{
+			current = tag;
+		}
+		if (current < 0)
+		{
+			own += line + "\n";
+		}
+		else if (current == 0)
+		{
+			conditionNote += (tag == 0 ? line.mid(strlen(kTags[0])) : line) + "\n";
+		}
+		else if (current == 1)
+		{
+			actionNote += (tag == 1 ? line.mid(strlen(kTags[1])) : line) + "\n";
+		}
+		else if (!line.trimmed().isEmpty())
+		{
+			refLines.append(line);
+		}
+	}
+
+	// IF / OR / AND / THEN / ELSE, as Script::getUiText writes them.
+	QString sections[3];
+	int section = -1;
+	const QStringList descLines = QString(description).remove('\r').split('\n');
+	for (int i = 0; i < descLines.size(); ++i)
+	{
+		const QString line = descLines.at(i).trimmed();
+		if (line.isEmpty())
+		{
+			continue;
+		}
+		if (line == "*** IF ***")
+		{
+			section = 0;
+		}
+		else if (line == "*** THEN ***")
+		{
+			section = 1;
+		}
+		else if (line == "*** ELSE ***")
+		{
+			section = 2;
+		}
+		else if (line == "*** OR ***")
+		{
+			sections[0] += "<b style=\"color:#d08c46;\">OR</b><br>";
+		}
+		else if (section >= 0)
+		{
+			QString text = line;
+			QString prefix;
+			if (section == 0 && text.startsWith("*AND* "))
+			{
+				prefix = "<span style=\"color:gray;\">AND&nbsp;</span>";
+				text = text.mid(6);
+			}
+			sections[section] += prefix + text.toHtmlEscaped() + "<br>";
+		}
+	}
+
+	QString html = QString("<div style=\"font-size:large; font-weight:bold;\">%1</div>").arg(name.toHtmlEscaped());
+	if (!badges.isEmpty())
+	{
+		html += "<p>" + badges + "</p>";
+	}
+	if (!own.trimmed().isEmpty())
+	{
+		html += "<p>" + own.trimmed().toHtmlEscaped().replace("\n", "<br>") + "</p>";
+	}
+	static const char *const kTitles[] = { "IF", "THEN", "ELSE" };
+	static const char *const kColours[] = { "#37699f", "#37824b", "#a0642a" };
+	const QString notes[3] = { conditionNote.trimmed(), actionNote.trimmed(), QString() };
+	for (int s = 0; s < 3 && isScript; ++s)
+	{
+		if (sections[s].isEmpty() && s == 2)
+		{
+			continue;	// no ELSE list
+		}
+		QString body = sections[s].isEmpty() ? QString("<span style=\"color:gray;\">(none)</span>") : sections[s];
+		if (!notes[s].isEmpty())
+		{
+			body += "<i style=\"color:gray;\">" + notes[s].toHtmlEscaped().replace("\n", "<br>") + "</i>";
+		}
+		html += QString("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"4\" style=\"margin-top:6px;\">"
+			"<tr><td width=\"4\" bgcolor=\"%1\"></td><td><b style=\"color:%1;\">%2</b><br>%3</td></tr></table>")
+			.arg(kColours[s]).arg(kTitles[s]).arg(body);
+	}
+	if (!refLines.isEmpty())
+	{
+		html += "<p><b>References</b><br>" + wbLinkifyReferences(refLines.join("\n")) + "</p>";
+	}
+	return html;
+}
+
 void WBQtScriptWindow::updateDetail()
 {
 	int lt = selectedListType();
 	if (lt == -1)
 	{
-		m_description->clear();
 		m_comment->clear();
 		return;
 	}
@@ -799,8 +1004,10 @@ void WBQtScriptWindow::updateDetail()
 	descBuf[0] = 0;
 	commentBuf[0] = 0;
 	WBQtScript_GetDetail(lt, descBuf, cap, commentBuf, cap);
-	m_description->setPlainText(QString::fromLatin1(descBuf));
-	m_comment->setHtml(wbLinkifyReferences(QString::fromLatin1(commentBuf)));
+	QTreeWidgetItem *item = m_tree->currentItem();
+	const QString label = (item != NULL) ? item->text(0) : QString();
+	const int flags = (item != NULL) ? item->data(0, kFlagsRole).toInt() : 0;
+	m_comment->setHtml(wbScriptCardHtml(lt, label, flags, QString::fromLatin1(descBuf), QString::fromLatin1(commentBuf)));
 }
 
 void WBQtScriptWindow::onReferenceClicked(const QUrl &url)
@@ -1192,6 +1399,14 @@ void WBQtScriptWindow::onCheckboxToggled()
 	updateDetail();
 }
 
+void WBQtScriptWindow::onOptionsMenuAboutToShow()
+{
+	for (int i = 0; i < m_optionActions.size(); ++i)
+	{
+		m_optionActions.at(i).first->setChecked(m_optionActions.at(i).second->isChecked());
+	}
+}
+
 void WBQtScriptWindow::onTreeContextMenu(const QPoint &pos)
 {
 	QTreeWidgetItem *item = m_tree->itemAt(pos);
@@ -1286,9 +1501,8 @@ void WBQtScriptWindow::onFind()
 
 void WBQtScriptWindow::onSearchTextChanged(const QString &text)
 {
-	// Live filter, only when NewSearch is on (same toggle as the tree pickers). Off = the classic
-	// find-next-on-Enter behaviour, so text does nothing here (the Show: chips still work).
-	if (m_updating || WBQtConfig_GetNewSearch() == 0)
+	// The tree filters as you type; Enter and Find Next still step through the matches.
+	if (m_updating)
 	{
 		return;
 	}
@@ -1564,9 +1778,7 @@ void WBQtScriptWindow::onFilterChanged()
 
 bool WBQtScriptWindow::textFilterActive() const
 {
-	// The text box only filters when NewSearch is on (else it's the classic find-next behaviour).
-	return (WBQtConfig_GetNewSearch() != 0)
-		&& m_search != NULL && !m_search->text().trimmed().isEmpty();
+	return m_search != NULL && !m_search->text().trimmed().isEmpty();
 }
 
 bool WBQtScriptWindow::filterActive() const

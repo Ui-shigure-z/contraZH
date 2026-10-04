@@ -488,7 +488,6 @@ if(RTS_ENABLE_WORLDBUILDER_QT)
         "qt/panels/WBQtMinimapBridge.h"
         "qt/panels/WBQtScriptEditDialog.cpp"
         "qt/panels/WBQtScriptEditDialog.h"
-        "qt/panels/WBQtScriptEditListTab.ui"
         "qt/panels/WBQtScriptEditDialog.ui"
         "qt/panels/WBQtScriptEditBridge.h"
         "qt/panels/WBQtCondActDialog.cpp"
