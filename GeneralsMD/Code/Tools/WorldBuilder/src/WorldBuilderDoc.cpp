@@ -2296,6 +2296,13 @@ static AsciiString currentMapIniPath(const CString &mapPathName)
 	return iniPath;
 }
 
+// Asks the disk, since TheFileSystem caches a miss and never learns of a map.ini made with fopen or another program.
+static bool mapIniExists(const AsciiString &iniPath)
+{
+	const DWORD attributes = ::GetFileAttributesA(iniPath.str());
+	return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 // File > Map.ini > Open map.ini: open the map's map.ini in whatever program Windows has
 // registered for .ini files (pairs with Auto-reload for an edit-save-see loop). Offers to
 // create an empty map.ini first if the map doesn't have one yet.
@@ -2306,7 +2313,7 @@ void CWorldBuilderDoc::OnOpenMapIni()
 		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
 		return;
 	}
-	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+	if (!mapIniExists(iniPath)) {
 		if (AfxMessageBox("This map has no map.ini yet. Create an empty one and open it?",
 				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
 			return;
@@ -2332,7 +2339,7 @@ void CWorldBuilderDoc::OnEditMapIni()
 		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
 		return;
 	}
-	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+	if (!mapIniExists(iniPath)) {
 		if (AfxMessageBox("This map has no map.ini yet. Create an empty one and open it?",
 				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
 			return;
@@ -2363,7 +2370,7 @@ void CWorldBuilderDoc::OnWaterTuningMapIni()
 		return;
 	}
 #ifdef RTS_HAS_QT
-	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+	if (!mapIniExists(iniPath)) {
 		if (AfxMessageBox("This map has no map.ini yet. Create one for water tuning?",
 				MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1) != IDYES) {
 			return;
@@ -2415,7 +2422,7 @@ void CWorldBuilderDoc::OnReloadMapIni()
 		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
 		return;
 	}
-	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+	if (!mapIniExists(iniPath)) {
 		AfxMessageBox("This map has no map.ini file to reload.", MB_ICONINFORMATION | MB_OK);
 		return;
 	}
@@ -2433,7 +2440,7 @@ void CWorldBuilderDoc::OnCheckMapIni()
 		AfxMessageBox("Save or open a map first.", MB_ICONEXCLAMATION | MB_OK);
 		return;
 	}
-	if (!TheFileSystem->doesFileExist(iniPath.str())) {
+	if (!mapIniExists(iniPath)) {
 		AfxMessageBox("This map has no map.ini file to check.", MB_ICONINFORMATION | MB_OK);
 		return;
 	}
@@ -2504,7 +2511,7 @@ void CWorldBuilderDoc::pollMapIniWatch()
 		return;
 	}
 	AsciiString iniPath = currentMapIniPath(m_strPathName);
-	if (iniPath.isEmpty() || !TheFileSystem->doesFileExist(iniPath.str())) {
+	if (iniPath.isEmpty() || !mapIniExists(iniPath)) {
 		return;
 	}
 	FILETIME now;
@@ -4074,7 +4081,7 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 		iniPath.removeLastChar();
 	iniPath.concat("map.ini");
 	
-	if (TheFileSystem->doesFileExist(iniPath.str())) {
+	if (mapIniExists(iniPath)) {
 		DEBUG_LOG(("Map.ini file detected at [%s]\n", iniPath.str()));
 
 		// The whole block runs before MFC's SetPathName, so m_strPathName still holds the
