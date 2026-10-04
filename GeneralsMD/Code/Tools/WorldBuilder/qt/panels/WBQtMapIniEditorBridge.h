@@ -36,6 +36,9 @@ void WBQtMapIniEditorData_GetTemplate(int i, char *bufOut, int cap);
 // linear walk of the catalog, since the check runs over every line of the file.
 int  WBQtMapIniEditorData_IsTemplate(const char *name);
 
+// 1 when `keyword` starts a top-level block the game's INI loader parses (Object, Weapon, ...).
+int  WBQtMapIniEditorData_IsBlockType(const char *keyword);
+
 // The other two name kinds the editor checks, each with the same Build/Get/Is trio:
 //   UPGRADE  -- the Upgrade = name of an upgrade module, against TheUpgradeCenter
 //   COMMAND  -- the Command = entries of a CommandSet block, against TheControlBar

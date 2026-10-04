@@ -24,6 +24,9 @@ class QListWidget;
 class QMenu;
 class QListWidgetItem;
 class QPlainTextEdit;
+class QTreeWidget;
+class QTreeWidgetItem;
+class WBQtMapIniCodeEditor;
 class QSplitter;
 class QTimer;
 
@@ -229,6 +232,13 @@ private slots:
 	void onCompletionChosen(const QString &completion);
 	// Selecting a listed line moves the cursor to it in the editor above; the pane stays open.
 	void onErrorRowChanged(QListWidgetItem *item, QListWidgetItem *previous);
+	// The block outline beside the text.
+	void onOutlineFilterChanged(const QString &text);
+	void onOutlineItemClicked(QTreeWidgetItem *item, int column);
+	void onOutlineItemDoubleClicked(QTreeWidgetItem *item, int column);
+	void onOutlineContextMenu(const QPoint &pos);
+	void onFoldAll();
+	void onUnfoldAll();
 	void onUndo();
 	void onRedo();
 
@@ -254,7 +264,35 @@ private:
 	// Ctrl+Space: the searchable picker over those candidates.
 	void openValuePicker();
 	// Refill the flagged-line list from the current text (only while the filter is showing).
-	void rebuildErrorList();
+	// One flagged line, as the error list shows it.
+	struct LineIssue
+	{
+		int line;
+		QString text;
+		bool syntax;	///< red syntax problem, else an orange unknown name
+	};
+	// One top-level block, as the outline shows it.
+	struct OutlineBlock
+	{
+		int header;			///< 0-based line of the block's header
+		int last;			///< 0-based line of its End, or the file's last line when unclosed
+		QString store;
+		QString name;
+		int status;			///< WBQT_MAPINI_BLOCK_*, or -1 for no badge
+		int issues;
+	};
+
+	// Walk the whole file for the flagged lines the error list and the outline badges share,
+	// so the two can never disagree.
+	QList<LineIssue> collectIssues() const;
+	QList<OutlineBlock> collectBlocks(const QList<LineIssue> &issues) const;
+	// Re-run the checks, then refresh the outline, the fold ranges and (when shown) the error list.
+	void refreshAnalysis();
+	void rebuildErrorList(const QList<LineIssue> &issues);
+	void rebuildOutline(const QList<OutlineBlock> &blocks);
+	// Select the outline row of the block holding the cursor.
+	void syncOutlineToCursor();
+	const OutlineBlock *outlineBlockForItem(QTreeWidgetItem *item) const;
 	void updateTitle();
 	void updateStatus(const QString &message);
 	// Replace the token at [start,length) of `blockNumber` with `replacement`, as one undo step.
@@ -274,9 +312,13 @@ private:
 	Ui::WBQtMapIniEditorDialog *m_ui;	// owns the static widget tree
 	// The editor and its companions, created by createEditor and owned by the widget tree.
 	WBQtMapIniHighlighter *m_highlighter;
-	QPlainTextEdit *m_editor;
+	WBQtMapIniCodeEditor *m_editor;
 	QListWidget *m_errorList;
 	QSplitter *m_split;
+	QSplitter *m_outlineSplit;	// outline | editor
+	QLineEdit *m_outlineFilter;
+	QTreeWidget *m_outline;
+	QList<OutlineBlock> m_blocks;	// the outline's rows, in file order
 	QString m_path;
 	QTimer *m_rescanTimer;
 	QCompleter *m_completer;	// autocomplete over the catalogs; model swapped per line

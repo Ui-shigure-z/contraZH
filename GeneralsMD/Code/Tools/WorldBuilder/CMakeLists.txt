@@ -529,6 +529,8 @@ if(RTS_ENABLE_WORLDBUILDER_QT)
         "qt/panels/WBQtMapFileDialogs.h"
         "qt/panels/WBQtSaveMapDialog.ui"
         "qt/panels/WBQtOpenMapDialog.ui"
+        "qt/panels/WBQtMapIniCodeEditor.cpp"
+        "qt/panels/WBQtMapIniCodeEditor.h"
         "qt/panels/WBQtMapIniReport.cpp"
         "qt/panels/WBQtMapIniReport.h"
         "qt/panels/WBQtMapIniReportPrivate.h"

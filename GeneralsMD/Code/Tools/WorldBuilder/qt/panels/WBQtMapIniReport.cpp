@@ -10,7 +10,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
-#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
@@ -19,6 +18,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "WBQtMapIniCodeEditor.h"
 #include "WBQtMapIniEditorDialog.h"	// WBQtMapIniHighlighter, shared with the map.ini editor
 
 // Stage 1 phase 3: the parent for a modal Qt dialog (active modal if nested, else the
@@ -47,81 +47,25 @@ namespace
 	// Taller blocks scroll inside their card; the pop-out shows them whole.
 	const int kMaxInlineLines = 24;
 
-	QString statusText(int status)
+	// A read-only view of one block: map.ini line numbers, editor colours, blanked lines in red.
+	WBQtMapIniCodeEditor *makeCodeView(const WBQtMapIniBlockData &data, QWidget *parent)
 	{
-		switch (status)
-		{
-			case WBQT_MAPINI_BLOCK_OVERRIDDEN:	return "overridden";
-			case WBQT_MAPINI_BLOCK_NEW:			return "new";
-			case WBQT_MAPINI_BLOCK_DROPPED:		return "dropped -- not applied";
-			case WBQT_MAPINI_BLOCK_IGNORED:		return "not loaded in WorldBuilder";
-			default:							return "loaded";
-		}
-	}
-
-	QColor statusColour(int status)
-	{
-		switch (status)
-		{
-			case WBQT_MAPINI_BLOCK_OVERRIDDEN:	return QColor(55, 105, 165);
-			case WBQT_MAPINI_BLOCK_NEW:			return QColor(125, 85, 165);
-			case WBQT_MAPINI_BLOCK_DROPPED:		return QColor(175, 55, 55);
-			case WBQT_MAPINI_BLOCK_IGNORED:		return QColor(105, 105, 105);
-			default:							return QColor(55, 130, 75);
-		}
-	}
-
-	// Read-only code view with the block's real map.ini line numbers in a gutter.
-	class CodeView : public QPlainTextEdit
-	{
-	public:
-		CodeView(const WBQtMapIniBlockData &data, QWidget *parent);
-
-		int gutterWidth() const;
-		void paintGutter(QPaintEvent *event);
-		void fitHeight(int maxLines);
-
-	protected:
-		virtual void resizeEvent(QResizeEvent *event);
-
-	private:
-		class Gutter : public QWidget
-		{
-		public:
-			explicit Gutter(CodeView *view) : QWidget(view), m_view(view) {}
-			virtual QSize sizeHint() const { return QSize(m_view->gutterWidth(), 0); }
-
-		protected:
-			virtual void paintEvent(QPaintEvent *event) { m_view->paintGutter(event); }
-
-		private:
-			CodeView *m_view;
-		};
-
-		Gutter *m_gutter;
-		int m_firstLine;
-	};
-
-	CodeView::CodeView(const WBQtMapIniBlockData &data, QWidget *parent)
-		: QPlainTextEdit(parent),
-		  m_gutter(NULL),
-		  m_firstLine(data.firstLine)
-	{
-		setReadOnly(true);
-		setLineWrapMode(QPlainTextEdit::NoWrap);
-		setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+		WBQtMapIniCodeEditor *view = new WBQtMapIniCodeEditor(parent);
+		view->setReadOnly(true);
+		view->setLineWrapMode(QPlainTextEdit::NoWrap);
+		view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+		view->setFirstLineNumber(data.firstLine);
 
 		// Checks go off before the text arrives, so the first highlight pass skips them too.
-		WBQtMapIniHighlighter *highlighter = new WBQtMapIniHighlighter(document());
+		WBQtMapIniHighlighter *highlighter = new WBQtMapIniHighlighter(view->document());
 		highlighter->setCheckNames(false);
 		highlighter->setCheckSyntax(false);
-		setPlainText(data.source);
+		view->setPlainText(data.source);
 
-		// Lines the loader blanked keep a red band, so the code shows what did not apply.
 		QList<QTextEdit::ExtraSelection> marks;
 		for (int i = 0; i < data.blanked.size(); ++i)
 		{
-			QTextBlock block = document()->findBlockByNumber(data.blanked.at(i));
+			QTextBlock block = view->document()->findBlockByNumber(data.blanked.at(i));
 			if (!block.isValid())
 			{
 				continue;
@@ -132,71 +76,22 @@ namespace
 			mark.cursor = QTextCursor(block);
 			marks.append(mark);
 		}
-		setExtraSelections(marks);
-
-		m_gutter = new Gutter(this);
-		setViewportMargins(gutterWidth(), 0, 0, 0);
-		connect(this, &QPlainTextEdit::updateRequest, this, [this](const QRect &rect, int dy)
-		{
-			if (dy != 0)
-			{
-				m_gutter->scroll(0, dy);
-			}
-			else
-			{
-				m_gutter->update(0, rect.y(), m_gutter->width(), rect.height());
-			}
-		});
+		view->setExtraSelections(marks);
+		return view;
 	}
 
-	int CodeView::gutterWidth() const
+	// Size a card's view to its text, up to maxLines; taller blocks scroll.
+	void fitHeight(QPlainTextEdit *view, int maxLines)
 	{
-		const int lastLine = m_firstLine + document()->blockCount() - 1;
-		const int digits = QString::number(lastLine > 0 ? lastLine : 1).length();
-		return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
-	}
-
-	void CodeView::paintGutter(QPaintEvent *event)
-	{
-		QPainter painter(m_gutter);
-		painter.fillRect(event->rect(), palette().color(QPalette::Window));
-		painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
-
-		QTextBlock block = firstVisibleBlock();
-		int number = block.blockNumber();
-		int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
-		int bottom = top + qRound(blockBoundingRect(block).height());
-		while (block.isValid() && top <= event->rect().bottom())
-		{
-			if (block.isVisible() && bottom >= event->rect().top())
-			{
-				painter.drawText(0, top, m_gutter->width() - 6, fontMetrics().height(),
-					Qt::AlignRight, QString::number(m_firstLine + number));
-			}
-			block = block.next();
-			top = bottom;
-			bottom = top + qRound(blockBoundingRect(block).height());
-			++number;
-		}
-	}
-
-	void CodeView::fitHeight(int maxLines)
-	{
-		int lines = document()->blockCount();
+		int lines = view->document()->blockCount();
 		if (lines > maxLines)
 		{
 			lines = maxLines;
 		}
-		const int textHeight = lines * fontMetrics().lineSpacing()
-			+ qRound(document()->documentMargin() * 2.0);
-		setFixedHeight(textHeight + frameWidth() * 2 + horizontalScrollBar()->sizeHint().height() + 2);
-	}
-
-	void CodeView::resizeEvent(QResizeEvent *event)
-	{
-		QPlainTextEdit::resizeEvent(event);
-		const QRect area = contentsRect();
-		m_gutter->setGeometry(QRect(area.left(), area.top(), gutterWidth(), area.height()));
+		const int textHeight = lines * view->fontMetrics().lineSpacing()
+			+ qRound(view->document()->documentMargin() * 2.0);
+		view->setFixedHeight(textHeight + view->frameWidth() * 2
+			+ view->horizontalScrollBar()->sizeHint().height() + 2);
 	}
 
 	QString blockTitle(const WBQtMapIniBlockData &data)
@@ -232,9 +127,9 @@ WBQtMapIniBlockCard::WBQtMapIniBlockCard(const WBQtMapIniBlockData &data, QWidge
 	title->setFont(titleFont);
 	header->addWidget(title);
 
-	QLabel *badge = new QLabel(statusText(data.status), this);
+	QLabel *badge = new QLabel(WBQtMapIniStatusText(data.status), this);
 	badge->setStyleSheet(QString("background-color: %1; color: white; border-radius: 3px; padding: 1px 6px;")
-		.arg(statusColour(data.status).name()));
+		.arg(WBQtMapIniStatusColour(data.status).name()));
 	header->addWidget(badge);
 
 	if (!data.blanked.isEmpty())
@@ -264,10 +159,9 @@ WBQtMapIniBlockCard::WBQtMapIniBlockCard(const WBQtMapIniBlockData &data, QWidge
 
 	layout->addLayout(header);
 
-	CodeView *code = new CodeView(data, this);
-	code->fitHeight(kMaxInlineLines);
-	m_code = code;
-	layout->addWidget(code);
+	m_code = makeCodeView(data, this);
+	fitHeight(m_code, kMaxInlineLines);
+	layout->addWidget(m_code);
 
 	connect(m_toggle, SIGNAL(clicked()), this, SLOT(onToggle()));
 	connect(copy, SIGNAL(clicked()), this, SLOT(onCopy()));
@@ -323,7 +217,7 @@ void WBQtMapIniBlockCard::onPopOut()
 
 	QVBoxLayout *layout = new QVBoxLayout(window);
 	layout->setContentsMargins(4, 4, 4, 4);
-	layout->addWidget(new CodeView(m_data, window));
+	layout->addWidget(makeCodeView(m_data, window));
 
 	window->resize(900, 640);
 	window->show();
