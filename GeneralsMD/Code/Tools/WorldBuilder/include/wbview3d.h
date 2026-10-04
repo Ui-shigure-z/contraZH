@@ -520,6 +520,7 @@ protected:
 	Int  m_fpsCap;							///< repaint cap in frames per second, 0 = uncapped
 	Bool m_fpsCapTimerSet;					///< a deferred repaint is scheduled on the cap timer
 	Bool deferPaintForFpsCap();				///< TRUE when this paint comes too soon and was rescheduled
+	double fpsCapWaitMs();					///< ms until the cap allows the next frame, 0 when it allows one now
 	Int  m_labelCull;						///< viewport-label cull: 0 = Off, 1 = Near, 2 = Medium, 3 = Far (ground distance from look-at target; zoom-independent)
 	void setMSAA(D3DMULTISAMPLE_TYPE type);
 	void setTextureFilter(int mode);
@@ -833,6 +834,11 @@ public:
 	// from another window's message handler (e.g. the Minimap dialog) without
 	// driving the D3D device from a foreign context.
 	void setCenterInViewDeferred(Real x, Real y);
+
+	// Paints through this view's own WM_PAINT when the FPS cap allows a frame, and
+	// returns TRUE when it did. A drag in another window needs it, because WM_PAINT
+	// waits behind that window's stream of mouse moves.
+	Bool paintNowIfDue();
 
 	// (getShowTerrain is WbView's inline accessor -- there was a bodiless redeclaration here that
 	// shadowed it with no definition, so the first caller got an unresolved external.)

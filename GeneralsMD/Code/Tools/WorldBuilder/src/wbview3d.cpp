@@ -7618,10 +7618,10 @@ static const UINT WB_FPSCAP_TIMER = 0xF9C;
 // Repaints requested faster than the cap (mouse moves invalidate on every event) are
 // folded into one repaint at the end of the current frame slot. Nothing sleeps, so
 // input stays responsive and the last presented frame stays on screen meanwhile.
-Bool WbView3d::deferPaintForFpsCap()
+double WbView3d::fpsCapWaitMs()
 {
 	if (m_fpsCap <= 0 || m_lastAnimTick == 0) {
-		return false;
+		return 0.0;
 	}
 	LARGE_INTEGER freq;
 	LARGE_INTEGER now;
@@ -7631,16 +7631,34 @@ Bool WbView3d::deferPaintForFpsCap()
 	const double slotMs = 1000.0 / (double)m_fpsCap;
 	// Timers fire late, so a repaint within 10% of its slot goes through, or the cap undershoots.
 	if (elapsedMs >= slotMs * 0.9) {
+		return 0.0;
+	}
+	return slotMs - elapsedMs;
+}
+
+Bool WbView3d::deferPaintForFpsCap()
+{
+	const double waitMs = fpsCapWaitMs();
+	if (waitMs <= 0.0) {
 		return false;
 	}
 	if (!m_fpsCapTimerSet) {
-		UINT waitMs = (UINT)(slotMs - elapsedMs + 0.5);
-		if (waitMs < 1) {
-			waitMs = 1;
+		UINT timerMs = (UINT)(waitMs + 0.5);
+		if (timerMs < 1) {
+			timerMs = 1;
 		}
-		SetTimer(WB_FPSCAP_TIMER, waitMs, NULL);
+		SetTimer(WB_FPSCAP_TIMER, timerMs, NULL);
 		m_fpsCapTimerSet = true;
 	}
+	return true;
+}
+
+Bool WbView3d::paintNowIfDue()
+{
+	if (fpsCapWaitMs() > 0.0) {
+		return false;
+	}
+	UpdateWindow();
 	return true;
 }
 

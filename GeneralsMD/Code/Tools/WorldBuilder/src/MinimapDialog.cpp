@@ -499,8 +499,10 @@ Bool MinimapDialog::createDeviceResources()
 		D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties();
 		props.dpiX = 96.0f;
 		props.dpiY = 96.0f;
+		// Present immediately; a vsync wait here would stall the UI thread on every camera move.
 		D2D1_HWND_RENDER_TARGET_PROPERTIES hwndProps = D2D1::HwndRenderTargetProperties(
-			m_hWnd, D2D1::SizeU(clientRect.Width(), clientRect.Height()));
+			m_hWnd, D2D1::SizeU(clientRect.Width(), clientRect.Height()),
+			D2D1_PRESENT_OPTIONS_IMMEDIATELY);
 		if (FAILED(m_d2dFactory->CreateHwndRenderTarget(props, hwndProps, &m_d2dTarget)))
 		{
 			m_d2dTarget = NULL;
@@ -651,7 +653,14 @@ void MinimapDialog::centerViewAtClient(CPoint point)
 	// than re-entrantly from this control bar's message handler.
 	WbView3d *p3d = pDoc->Get3DView();
 	if (p3d)
+	{
 		p3d->setCenterInViewDeferred(worldX, worldY);
+
+		// Mid-drag, both views' WM_PAINT waits behind the mouse moves, so paint them now,
+		// once per frame the FPS cap allows.
+		if (m_dragging && p3d->paintNowIfDue())
+			UpdateWindow();
+	}
 }
 
 void MinimapDialog::OnLButtonDown(UINT nFlags, CPoint point)
