@@ -76,6 +76,9 @@ int  WBQtTeamsData_HasMissingUnits(void);
 void WBQtTeamsData_GetTeamField(int row, const char *key, char *buf, int cap);
 // How many teams player i owns.
 int  WBQtTeamsData_GetPlayerTeamCount(int i);
+// The "New design" setting: 1 opens the redesigned Team Builder and sheet, 0 the originals.
+int  WBQtTeams_GetNewDesign(void);
+void WBQtTeams_SetNewDesign(int on);
 // 1 when `name` is an object template the game data defines.
 int  WBQtTeamsData_IsTemplate(const char *name);
 // The working copy's script named `name` as its IF / THEN / ELSE text; empty when there is none.

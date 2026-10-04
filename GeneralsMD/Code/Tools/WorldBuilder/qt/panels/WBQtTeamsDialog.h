@@ -43,6 +43,7 @@ private slots:
 	void onExportTeams();
 	void onImportTeams();
 	void onFixMissingUnits();
+	void onNewDesignToggled(bool on);
 
 private:
 	void refreshAll();

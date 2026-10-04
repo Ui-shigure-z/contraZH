@@ -3,6 +3,10 @@
 #include "ui_WBQtScriptEditDialog.h"
 #include "WBQtScriptEditBridge.h"
 #include "WBQtScriptWindow.h"
+#include "WBQtScriptEditDialogClassic.h"
+
+// The script editor's "New design" setting (WBQtScriptBridge.cpp).
+extern "C" int WBQtScript_GetNewDesign(void);
 
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
@@ -828,6 +832,19 @@ extern "C" int WBQtScriptEdit_Run(void *script, void * /*frameHwnd*/)
 	if (owner == NULL || !owner->isVisible())
 	{
 		owner = WBQt_DialogParent();
+	}
+	if (WBQtScript_GetNewDesign() == 0)
+	{
+		WBQtScriptEditDialogClassic classic(script, owner);
+		classic.setWindowModality(Qt::ApplicationModal);
+		if (initialTab >= 0)
+		{
+			classic.applyInitialFocus(initialTab, initialRow);
+		}
+		WBQtScriptEdit_SetModalOwner(reinterpret_cast<void *>(classic.winId()));
+		const int classicRc = classic.exec();
+		WBQtScriptEdit_SetModalOwner(NULL);
+		return (classicRc == QDialog::Accepted) ? 1 : 0;
 	}
 	WBQtScriptEditDialog dlg(script, owner);
 	dlg.setWindowModality(Qt::ApplicationModal);

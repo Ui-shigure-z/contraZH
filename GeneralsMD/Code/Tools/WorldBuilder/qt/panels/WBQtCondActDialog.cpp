@@ -3,6 +3,10 @@
 #include "ui_WBQtCondActDialog.h"
 #include "WBQtCondActBridge.h"
 #include "WBQtTreeStyle.h"
+#include "WBQtCondActDialogClassic.h"
+
+// The script editor's "New design" setting (WBQtScriptBridge.cpp).
+extern "C" int WBQtScript_GetNewDesign(void);
 
 #include <QApplication>
 #include <QEvent>
@@ -657,6 +661,11 @@ extern "C" int WBQtCondAct_Run(void *item, int isAction)
 	WBQtCondActData_ClearWarningFlag(item, isAction);
 	// Parent to the active Qt modal (the script-edit dialog); exec() is application-modal, and
 	// the MFC frame is already disabled by the outer WBQtScriptEdit_Run.
+	if (WBQtScript_GetNewDesign() == 0)
+	{
+		WBQtCondActDialogClassic classic(item, isAction != 0, QApplication::activeModalWidget());
+		return (classic.exec() == QDialog::Accepted) ? 1 : 0;
+	}
 	WBQtCondActDialog dlg(item, isAction != 0, QApplication::activeModalWidget());
 	const int rc = dlg.exec();
 	return (rc == QDialog::Accepted) ? 1 : 0;

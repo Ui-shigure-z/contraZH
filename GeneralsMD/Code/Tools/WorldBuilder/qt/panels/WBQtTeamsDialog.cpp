@@ -4,10 +4,12 @@
 #include "ui_WBQtTeamsDialog.h"
 #include "WBQtTeamsBridge.h"
 #include "WBQtTeamSheetDialog.h"
+#include "WBQtTeamsDialogClassic.h"
 #include "WBQtPickUnitBridge.h"		// the shared "replaced missing" report
 #include "../WBQtWindowPos.h"
 #include "resource.h"				// IDC_TEAM_NAME, for the inline rename
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDropEvent>
 #include <QHeaderView>
@@ -149,12 +151,19 @@ WBQtTeamsDialog::WBQtTeamsDialog(QWidget *parent)
 	connect(exportAction, SIGNAL(triggered()), this, SLOT(onExportTeams()));
 	connect(importAction, SIGNAL(triggered()), this, SLOT(onImportTeams()));
 	connect(m_ui->buttonBox, SIGNAL(accepted()), this, SLOT(accept()));
+	m_ui->newDesignCheck->setChecked(WBQtTeams_GetNewDesign() != 0);
+	connect(m_ui->newDesignCheck, SIGNAL(toggled(bool)), this, SLOT(onNewDesignToggled(bool)));
 	connect(m_ui->buttonBox, SIGNAL(rejected()), this, SLOT(reject()));
 
 	refreshAll();
 	resize(1180, 640);	// default only: a saved size overrides this on show
 	// Modal, so size only -- it keeps centering fresh on each open.
-	WBQtWindowPos_TrackSize(this, "TeamBuilder");
+	WBQtWindowPos_TrackSize(this, "TeamBuilderNew");
+}
+
+void WBQtTeamsDialog::onNewDesignToggled(bool on)
+{
+	WBQtTeams_SetNewDesign(on ? 1 : 0);
 }
 
 WBQtTeamsDialog::~WBQtTeamsDialog()
@@ -674,10 +683,21 @@ extern "C" int WBQtTeams_Run(void * /*frameHwnd*/)
 {
 	// Open may pop fix-team-owner modals (== the MFC OnInitDialog) before the window shows.
 	WBQtTeamsData_Open();
-	// Parented to the main window, ApplicationModal so the viewport is fenced too.
-	WBQtTeamsDialog dlg(WBQt_DialogParent());
-	dlg.setWindowModality(Qt::ApplicationModal);
-	const int rc = (dlg.exec() == QDialog::Accepted) ? 1 : 0;
+	// Parented to the main window, ApplicationModal so the viewport is fenced too. The
+	// "New design" setting picks the redesigned dialog or the original.
+	int rc = 0;
+	if (WBQtTeams_GetNewDesign() != 0)
+	{
+		WBQtTeamsDialog dlg(WBQt_DialogParent());
+		dlg.setWindowModality(Qt::ApplicationModal);
+		rc = (dlg.exec() == QDialog::Accepted) ? 1 : 0;
+	}
+	else
+	{
+		WBQtTeamsDialogClassic dlg(WBQt_DialogParent());
+		dlg.setWindowModality(Qt::ApplicationModal);
+		rc = (dlg.exec() == QDialog::Accepted) ? 1 : 0;
+	}
 	WBQtTeamsData_Close(rc);
 	return rc;
 }

@@ -68,6 +68,7 @@ int  WBQtCondActData_GetParameterFamily(void *item, int isAction, int i);
 
 // --- the "Compress Script" tree-density setting (registry-backed, "CompressScripts") ---
 int  WBQtCondAct_GetCompress(void);
+void WBQtCondAct_SetCompress(int enabled);
 
 // --- picker preferences, per mode: '|'-separated template paths, newest first ---
 void WBQtCondAct_GetSavedList(int isAction, int favorites, char *buf, int cap);

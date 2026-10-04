@@ -150,7 +150,7 @@ WBQtTeamSheetDialog::WBQtTeamSheetDialog(QWidget *parent)
 	updateWarnings();
 	resize(820, 760);	// default only: a saved size overrides this on show
 	// Modal, so size only; the tracker clamps a stored size up to the layout minimum.
-	WBQtWindowPos_TrackSize(this, "TeamSheet");
+	WBQtWindowPos_TrackSize(this, "TeamSheetNew");
 }
 
 WBQtTeamSheetDialog::~WBQtTeamSheetDialog()

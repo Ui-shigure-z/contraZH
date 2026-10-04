@@ -321,6 +321,11 @@ extern "C" int WBQtCondAct_GetCompress(void)
 	return ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", 1) ? 1 : 0;
 }
 
+extern "C" void WBQtCondAct_SetCompress(int enabled)
+{
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "CompressScripts", enabled ? 1 : 0);
+}
+
 static const char *savedListKey(int isAction, int favorites)
 {
 	if (favorites)

@@ -2030,6 +2030,16 @@ extern "C" int WBQtTeamsData_GetPlayerTeamCount(int i)
 	return count;
 }
 
+extern "C" int WBQtTeams_GetNewDesign(void)
+{
+	return ::AfxGetApp()->GetProfileInt("TeamBuilder", "NewDesign", 0) ? 1 : 0;
+}
+
+extern "C" void WBQtTeams_SetNewDesign(int on)
+{
+	::AfxGetApp()->WriteProfileInt("TeamBuilder", "NewDesign", on ? 1 : 0);
+}
+
 extern "C" int WBQtTeamsData_IsTemplate(const char *name)
 {
 	if (name == NULL || name[0] == 0 || TheThingFactory == NULL)

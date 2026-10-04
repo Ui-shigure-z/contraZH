@@ -1683,6 +1683,16 @@ void WBQtScript_GetDetail(int listTypeInt, char *descOut, int descCap, char *com
 	}
 }
 
+int WBQtScript_GetNewDesign(void)
+{
+	return ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "NewDesign", 0) ? 1 : 0;
+}
+
+void WBQtScript_SetNewDesign(int on)
+{
+	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "NewDesign", on ? 1 : 0);
+}
+
 int WBQtScript_GetCheckbox(int which)
 {
 	ScriptDialog *dlg = ScriptDialog::qtInstance();

@@ -130,6 +130,7 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 	// instead of the search / rename fields. A real top-level owns its own focus. It still gets
 	// the dark title bar (WBQtTheme targets all top-level windows). owner is now unused.
 	(void)owner;
+	m_newDesign = (WBQtScript_GetNewDesign() != 0);
 	// The static widget tree lives in WBQtScriptWindow.ui; bind the members the logic
 	// below uses, then wire what Designer can't express.
 	m_ui->setupUi(this);
@@ -230,7 +231,7 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 	// Browser (not edit) so the "[Referenced in]" script names render as clickable links
 	// that jump the tree to the referencing script. Read-only by default.
 	m_comment = m_ui->comment;
-	m_comment->document()->setDocumentMargin(10);
+	m_description = m_ui->description;
 
 	// --- Command button rows ---
 	m_newFolder = m_ui->newFolder;
@@ -359,11 +360,10 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 	dupSc->setContext(Qt::WidgetShortcut);
 	connect(dupSc, SIGNAL(activated()), this, SLOT(onDuplicateShortcut()));
 
-	m_ui->optBox->hide();
-	QToolButton *optionsButton = new QToolButton(this);
-	optionsButton->setText("Options");
-	optionsButton->setPopupMode(QToolButton::InstantPopup);
-	QMenu *optionsMenu = new QMenu(optionsButton);
+	m_optionsButton = new QToolButton(this);
+	m_optionsButton->setText("Options");
+	m_optionsButton->setPopupMode(QToolButton::InstantPopup);
+	QMenu *optionsMenu = new QMenu(m_optionsButton);
 	optionsMenu->setToolTipsVisible(true);
 	QCheckBox *optionBoxes[] = { m_ckCompress, m_ckNewIcons, m_ckCleanName, m_ckAutoVerify, m_ckSmartCopy,
 		m_ckFastLoad, m_ckScriptMerge, m_ckRefByParam, m_ckDisableRef };
@@ -377,19 +377,15 @@ WBQtScriptWindow::WBQtScriptWindow(QWidget *owner)
 		m_optionActions.append(qMakePair(action, optionBoxes[i]));
 	}
 	connect(optionsMenu, SIGNAL(aboutToShow()), this, SLOT(onOptionsMenuAboutToShow()));
-	optionsButton->setMenu(optionsMenu);
-	m_ui->searchRow->addWidget(optionsButton);
+	m_optionsButton->setMenu(optionsMenu);
+	m_ui->searchRow->addWidget(m_optionsButton);
 
-	// The Show filters read as toggle chips.
-	QCheckBox *filterBoxes[] = { m_filterWarnings, m_filterActive, m_filterInactive, m_filterEasy,
-		m_filterNormal, m_filterHard };
-	for (int i = 0; i < 6; ++i)
-	{
-		filterBoxes[i]->setStyleSheet(
-			"QCheckBox { border: 1px solid palette(mid); border-radius: 9px; padding: 1px 9px; }"
-			"QCheckBox::indicator { width: 0px; height: 0px; }"
-			"QCheckBox:checked { background-color: #37699f; border-color: #37699f; color: white; }");
-	}
+	m_newDesignCheck = new QCheckBox("New design", this);
+	m_newDesignCheck->setToolTip("Use the redesigned script editor, edit dialog and condition/action picker.");
+	m_newDesignCheck->setChecked(m_newDesign);
+	m_ui->searchRow->addWidget(m_newDesignCheck);
+	connect(m_newDesignCheck, SIGNAL(toggled(bool)), this, SLOT(onNewDesignToggled(bool)));
+	applyDesign();
 
 	connect(m_ckCompress, SIGNAL(clicked()), this, SLOT(onCheckboxToggled()));
 	connect(m_ckNewIcons, SIGNAL(clicked()), this, SLOT(onCheckboxToggled()));
@@ -994,6 +990,7 @@ void WBQtScriptWindow::updateDetail()
 	int lt = selectedListType();
 	if (lt == -1)
 	{
+		m_description->clear();
 		m_comment->clear();
 		return;
 	}
@@ -1003,6 +1000,12 @@ void WBQtScriptWindow::updateDetail()
 	descBuf[0] = 0;
 	commentBuf[0] = 0;
 	WBQtScript_GetDetail(lt, descBuf, cap, commentBuf, cap);
+	if (!m_newDesign)
+	{
+		m_description->setPlainText(QString::fromLatin1(descBuf));
+		m_comment->setHtml(wbLinkifyReferences(QString::fromLatin1(commentBuf)));
+		return;
+	}
 	QTreeWidgetItem *item = m_tree->currentItem();
 	const QString label = (item != NULL) ? item->text(0) : QString();
 	const int flags = (item != NULL) ? item->data(0, kFlagsRole).toInt() : 0;
@@ -1398,6 +1401,40 @@ void WBQtScriptWindow::onCheckboxToggled()
 	updateDetail();
 }
 
+void WBQtScriptWindow::applyDesign()
+{
+	m_ui->optBox->setVisible(!m_newDesign);
+	m_optionsButton->setVisible(m_newDesign);
+
+	// The new design's Show filters read as toggle chips.
+	const QString chip = m_newDesign ? QString(
+		"QCheckBox { border: 1px solid palette(mid); border-radius: 9px; padding: 1px 9px; }"
+		"QCheckBox::indicator { width: 0px; height: 0px; }"
+		"QCheckBox:checked { background-color: #37699f; border-color: #37699f; color: white; }") : QString();
+	QCheckBox *filterBoxes[] = { m_filterWarnings, m_filterActive, m_filterInactive, m_filterEasy,
+		m_filterNormal, m_filterHard };
+	for (int i = 0; i < 6; ++i)
+	{
+		filterBoxes[i]->setStyleSheet(chip);
+	}
+
+	// The card fills the detail pane; the original shows the breakdown over a short comment.
+	m_description->setVisible(!m_newDesign);
+	m_comment->setMaximumHeight(m_newDesign ? QWIDGETSIZE_MAX : 140);
+	m_ui->detailLay->setStretch(0, m_newDesign ? 0 : 1);
+	m_ui->detailLay->setStretch(1, m_newDesign ? 1 : 0);
+	m_comment->document()->setDocumentMargin(m_newDesign ? 10 : 4);
+}
+
+void WBQtScriptWindow::onNewDesignToggled(bool on)
+{
+	m_newDesign = on;
+	WBQtScript_SetNewDesign(on ? 1 : 0);
+	applyDesign();
+	updateDetail();
+	applyFilters();
+}
+
 void WBQtScriptWindow::onOptionsMenuAboutToShow()
 {
 	for (int i = 0; i < m_optionActions.size(); ++i)
@@ -1500,8 +1537,8 @@ void WBQtScriptWindow::onFind()
 
 void WBQtScriptWindow::onSearchTextChanged(const QString &text)
 {
-	// The tree filters as you type; Enter and Find Next still step through the matches.
-	if (m_updating)
+	// The new design always filters as you type; the original only with NewSearch on.
+	if (m_updating || !textSearchFilters())
 	{
 		return;
 	}
@@ -1775,9 +1812,14 @@ void WBQtScriptWindow::onFilterChanged()
 	applyFilters();
 }
 
+bool WBQtScriptWindow::textSearchFilters() const
+{
+	return m_newDesign || WBQtConfig_GetNewSearch() != 0;
+}
+
 bool WBQtScriptWindow::textFilterActive() const
 {
-	return m_search != NULL && !m_search->text().trimmed().isEmpty();
+	return textSearchFilters() && m_search != NULL && !m_search->text().trimmed().isEmpty();
 }
 
 bool WBQtScriptWindow::filterActive() const

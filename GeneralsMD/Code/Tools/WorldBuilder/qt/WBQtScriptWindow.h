@@ -94,6 +94,7 @@ private slots:
 	void onSaveNow();
 	void onCheckboxToggled();
 	void onOptionsMenuAboutToShow();	// tick the Options menu items from their checkboxes
+	void onNewDesignToggled(bool on);
 	void onFind();
 	void onSearchTextChanged(const QString &text);	// live filter when NewSearch is on (debounced)
 	void onSearchDebounce();						// the debounce timer fired -> apply the filter
@@ -130,6 +131,9 @@ private:
 	// filtering. filterActive() is true iff any filter is in effect; textFilterActive() iff the
 	// search box (NewSearch on, non-empty) is contributing.
 	void applyFilters();
+	// Show the redesigned layout (options menu, filter chips, live search, detail card) or the original.
+	void applyDesign();
+	bool textSearchFilters() const;	// whether typing in the search box filters the tree
 	bool filterActive() const;
 	bool textFilterActive() const;
 
@@ -157,7 +161,11 @@ private:
 	Ui::WBQtScriptWindow *m_ui;	// owns the static widget tree (WBQtScriptWindow.ui)
 
 	WBQtScriptTree *m_tree;
+	QPlainTextEdit *m_description;	// the original design's script breakdown
 	QTextBrowser *m_comment;	// browser, not edit: the "[Referenced in]" names are links
+	QToolButton *m_optionsButton;	// the new design's Options menu
+	QCheckBox *m_newDesignCheck;
+	bool m_newDesign;
 	QLineEdit   *m_search;
 	QPushButton *m_findBtn;
 	QTimer      *m_searchDebounce;	// coalesces keystrokes so the live filter scans once per pause
