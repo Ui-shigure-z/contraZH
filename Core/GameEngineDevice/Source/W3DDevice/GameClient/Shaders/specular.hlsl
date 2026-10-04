@@ -90,7 +90,7 @@ float3 BumpNormal(float3 normal, float3 position, float2 uv)
     float3 r2 = cross(normal, dpdx);
     float det = dot(dpdx, r1);
 
-    float2 slope = (tex2D(SlopeMap, uv).rg - 0.5f) * TextureInfo.yz;
+    float2 slope = (tex2D(SlopeMap, uv).rg - 128.0f / 255.0f) * TextureInfo.yz;
     float dhdx = dot(slope, ddx(uv));
     float dhdy = dot(slope, ddy(uv));
 

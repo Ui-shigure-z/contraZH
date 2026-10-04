@@ -35,6 +35,6 @@ public:
 	/// Builds the slope maps asked for since, a few a frame, and drops long unused ones. Runs once a frame, outside any draw.
 	static void update(RenderInfoClass &rinfo);
 
-	/// Drops every slope map and the shader before a device reset; they are built again on demand.
+	/// Drops every slope map and the shader before a device reset or an asset purge; they are built again on demand.
 	static void releaseResources();
 };

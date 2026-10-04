@@ -149,7 +149,7 @@ float3 BumpNormal(float3 normal, float3 position, float2 uv)
     float3 r2 = cross(normal, dpdx);
     float det = dot(dpdx, r1);
 
-    float2 slope = (tex2D(SlopeMap, uv).rg - 0.5f) * HeightBlend.yz;
+    float2 slope = (tex2D(SlopeMap, uv).rg - 128.0f / 255.0f) * HeightBlend.yz;
     float3 gradient = sign(det) * (dot(slope, ddx(uv)) * r1 + dot(slope, ddy(uv)) * r2) * HeightBlend.x;
     float3 bumped = abs(det) * normal - gradient;
     return (dot(bumped, bumped) > 1e-20f) ? normalize(bumped) : normal;

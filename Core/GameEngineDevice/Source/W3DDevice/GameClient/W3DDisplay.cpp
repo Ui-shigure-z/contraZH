@@ -80,6 +80,7 @@ static void drawFramerateBar();
 #include "W3DDevice/GameClient/W3DVideoBuffer.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DSlopeMap.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
 #include "W3DDevice/GameClient/W3DDisruption.h"
 #include "W3DDevice/GameClient/W3DStorm.h"
@@ -3389,6 +3390,9 @@ void W3DDisplay::doSmartAssetPurgeAndPreload(const char* usageFileName)
 	}
 
 	releaseImageTextures();
+
+	// The slope maps hold their textures, which would otherwise outlive the purge.
+	W3DSlopeMap::releaseResources();
 
 	// just free everything if there's no exclusion list file (send in an empty list)
 	m_assetManager->Free_Assets_With_Exclusion_List(names);

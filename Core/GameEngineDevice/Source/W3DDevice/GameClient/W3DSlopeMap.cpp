@@ -42,15 +42,19 @@
 // CONTRA_SLOPEMAP bisects faults: 0 no slope maps, so no derived bumps, 1 slope maps.
 static const Int SlopeMapMode = (getenv("CONTRA_SLOPEMAP") != nullptr) ? atoi(getenv("CONTRA_SLOPEMAP")) : 1;
 
-// Large jumps soften as hard as the derived bumps always have, and the softened change fills a third of the stored range either side.
+// Softening keeps a change under 1/SOFTENING, so the scaled slope stays inside the stored range either side of the centre.
 static const Real SOFTENING = 6.0f;
 static const Real ENCODE_SCALE = 3.0f;
+
+// Eight bits hold this centre exactly, and the specular and road shaders decode with the same value.
+static const Real ENCODE_CENTRE = 128.0f / 255.0f;
 
 // Enough builds a frame to cover a new map's textures within a second, few enough not to hitch.
 static const Int MAX_BUILDS_PER_FRAME = 32;
 
-// A texture unseen this long lets go of its slope map and the hold on the texture.
+// A texture unseen this long lets go of its slope map and the hold on the texture, checked this often.
 static const UnsignedInt UNUSED_MS = 30000;
+static const UnsignedInt SWEEP_MS = 1000;
 
 struct SlopeEntry
 {
@@ -72,6 +76,8 @@ static D3DFORMAT Format = D3DFMT_UNKNOWN;
 static Bool Acquired = FALSE;
 static Bool Failed = FALSE;
 static UnsignedInt UpdateFrame = 0xffffffffu;
+static UnsignedInt UpdateTime = 0;
+static UnsignedInt SweepTime = 0;
 
 static void Release_Entry(SlopeEntry &entry)
 {
@@ -135,11 +141,16 @@ static Bool Acquire(IDirect3DDevice8 *device)
 
 static void Drop_Unused()
 {
-	const UnsignedInt now = timeGetTime();
+	if (UpdateTime - SweepTime < SWEEP_MS)
+	{
+		return;
+	}
+	SweepTime = UpdateTime;
+
 	SlopeMapCache::iterator it = Cache.begin();
 	while (it != Cache.end())
 	{
-		if (!it->second.queued && now - it->second.lastUsed > UNUSED_MS)
+		if (!it->second.queued && UpdateTime - it->second.lastUsed > UNUSED_MS)
 		{
 			Release_Entry(it->second);
 			it->first->Release_Ref();
@@ -189,7 +200,9 @@ static void Build(IDirect3DDevice8 *device, TextureClass *texture, SlopeEntry &e
 	}
 	if (target == nullptr)
 	{
-		if (FAILED(device->CreateTexture(width, height, 0, D3DUSAGE_RENDERTARGET, Format, D3DPOOL_DEFAULT, &target, nullptr)))
+		// Cards with conditional non-power-of-two support take such a size only without mips.
+		if (FAILED(device->CreateTexture(width, height, 0, D3DUSAGE_RENDERTARGET, Format, D3DPOOL_DEFAULT, &target, nullptr)) &&
+			FAILED(device->CreateTexture(width, height, 1, D3DUSAGE_RENDERTARGET, Format, D3DPOOL_DEFAULT, &target, nullptr)))
 		{
 			RENDER_LOG(("W3DSlopeMap: could not make a %ux%u slope map for %s", width, height, (const char *)texture->Get_Texture_Name()));
 			return;
@@ -199,11 +212,19 @@ static void Build(IDirect3DDevice8 *device, TextureClass *texture, SlopeEntry &e
 		entry.slopeMap->Get_Filter().Set_Min_Filter(TextureFilterClass::FILTER_TYPE_BEST);
 		entry.slopeMap->Get_Filter().Set_Mag_Filter(TextureFilterClass::FILTER_TYPE_BEST);
 		entry.slopeMap->Get_Filter().Set_Mip_Mapping(TextureFilterClass::FILTER_TYPE_BEST);
-		entry.slopeMap->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
-		entry.slopeMap->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
 	}
 	entry.scaleU = (Real)width / ENCODE_SCALE;
 	entry.scaleV = (Real)height / ENCODE_SCALE;
+
+	// The reads and the map repeat or clamp as the texture does.
+	const TextureFilterClass::TxtAddrMode addressU = texture->Get_Filter().Get_U_Addr_Mode();
+	const TextureFilterClass::TxtAddrMode addressV = texture->Get_Filter().Get_V_Addr_Mode();
+	entry.slopeMap->Get_Filter().Set_U_Addr_Mode(addressU);
+	entry.slopeMap->Get_Filter().Set_V_Addr_Mode(addressV);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSU,
+		(addressU == TextureFilterClass::TEXTURE_ADDRESS_CLAMP) ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSV,
+		(addressV == TextureFilterClass::TEXTURE_ADDRESS_CLAMP) ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP);
 
 	DX8Wrapper::Set_DX8_Texture(0, source);
 	const DWORD levels = target->GetLevelCount();
@@ -250,7 +271,7 @@ TextureClass *W3DSlopeMap::find(TextureClass *texture, Real &scaleU, Real &scale
 
 	// A map built from the texture's thumbnail or an earlier reduction serves until the rebuild.
 	SlopeEntry &entry = it->second;
-	entry.lastUsed = timeGetTime();
+	entry.lastUsed = UpdateTime;
 	if (entry.builtFrom != texture->Peek_D3D_Texture() && !entry.queued)
 	{
 		entry.queued = TRUE;
@@ -276,6 +297,7 @@ void W3DSlopeMap::update(RenderInfoClass &rinfo)
 		return;
 	}
 	UpdateFrame = frame;
+	UpdateTime = timeGetTime();
 
 	Drop_Unused();
 	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
@@ -287,7 +309,11 @@ void W3DSlopeMap::update(RenderInfoClass &rinfo)
 	{
 		for (size_t i = 0; i < Queue.size(); i++)
 		{
-			Cache[Queue[i]].queued = FALSE;
+			SlopeMapCache::iterator it = Cache.find(Queue[i]);
+			if (it != Cache.end())
+			{
+				it->second.queued = FALSE;
+			}
 		}
 		Queue.clear();
 		return;
@@ -336,17 +362,14 @@ void W3DSlopeMap::update(RenderInfoClass &rinfo)
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE, 0x0000000f);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE, FALSE);
 
-	// Textures tile, so the reads wrap.
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MIPFILTER, D3DTEXF_LINEAR);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSU, D3DTADDRESS_WRAP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSV, D3DTADDRESS_WRAP);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_TEXCOORDINDEX, 0);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 
 	DX8Wrapper::Set_Pixel_Shader(Shader);
-	const Vector4 encode(SOFTENING, ENCODE_SCALE, 0.0f, 0.0f);
+	const Vector4 encode(SOFTENING, ENCODE_SCALE, ENCODE_CENTRE, 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(1, &encode, 1);
 
 	size_t next = 0;
