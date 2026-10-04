@@ -1,5 +1,4 @@
-// WBQtCondActDialog.h -- the native Qt condition/action editor, replacing the MFC EditCondition /
-// EditAction modals; one class serves both through the isAction flag. Run via WBQtCondAct_Run().
+// WBQtCondActDialog.h -- the Qt condition/action picker; run it via WBQtCondAct_Run().
 #ifndef WB_QT_CONDACT_DIALOG_H
 #define WB_QT_CONDACT_DIALOG_H
 
@@ -12,8 +11,7 @@ class QTreeWidgetItem;
 
 namespace Ui { class WBQtCondActDialog; }	// generated from WBQtCondActDialog.ui
 
-// Left: the template tree with a live filter, Favorites and Recent on top. Right: the item's
-// sentence with each parameter as a clickable chip, its warnings, and the developer notes.
+// The template tree with a live filter beside the item's sentence, whose parameters are chips.
 class WBQtCondActDialog : public QDialog
 {
 	Q_OBJECT

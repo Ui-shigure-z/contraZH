@@ -1,10 +1,9 @@
-// WBQtScriptEditDialog.h -- the native Qt script editor: one page with the script's properties on
-// top and its IF / THEN / ELSE lists below. It edits a caller-owned Script* through the C facade in
-// WBQtScriptEditBridge.h; all engine access stays MFC-side. Run via WBQtScriptEdit_Run().
+// WBQtScriptEditDialog.h -- the Qt script editor, run via WBQtScriptEdit_Run(); engine access is MFC-side.
 #ifndef WB_QT_SCRIPT_EDIT_DIALOG_H
 #define WB_QT_SCRIPT_EDIT_DIALOG_H
 
 #include <QDialog>
+#include <QList>
 
 class QLabel;
 class QListWidget;
@@ -103,6 +102,7 @@ private slots:
 
 private:
 	void seedProperties();
+	QList<QToolButton *> flagChips() const;	///< the six flag chips, each tagged with its flag
 
 	Ui::WBQtScriptEditDialog *m_ui;	// owns the static widget tree (WBQtScriptEditDialog.ui)
 

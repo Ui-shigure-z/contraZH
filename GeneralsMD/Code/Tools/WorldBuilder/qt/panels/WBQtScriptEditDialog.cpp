@@ -1,5 +1,4 @@
-// WBQtScriptEditDialog.cpp -- see WBQtScriptEditDialog.h. Every list command routes through the
-// bridge, which ports the MFC page handlers and reports back the row to select after the rebuild.
+// WBQtScriptEditDialog.cpp -- see WBQtScriptEditDialog.h.
 #include "WBQtScriptEditDialog.h"
 #include "ui_WBQtScriptEditDialog.h"
 #include "WBQtScriptEditBridge.h"
@@ -58,8 +57,7 @@ namespace
 			+ qRound(note->document()->documentMargin() * 2.0) + note->frameWidth() * 2);
 	}
 
-	// Draws IF/OR headers as dividers, OR groups as alternating tinted bands with a side bar,
-	// an AND or row-number prefix, and warning rows in red.
+	// IF/OR headers as dividers, OR groups as tinted bands, AND or number prefixes, warnings in red.
 	class RowDelegate : public QStyledItemDelegate
 	{
 	public:
@@ -612,19 +610,20 @@ WBQtScriptEditDialog::WBQtScriptEditDialog(void *script, QWidget *parent)
 	m_ui->setupUi(this);
 
 	// The flag chips: checkable, outlined when off and filled when on.
-	QToolButton *chips[] = { m_ui->activeChip, m_ui->subroutineChip, m_ui->oneShotChip,
-		m_ui->easyChip, m_ui->normalChip, m_ui->hardChip };
-	const int flags[] = { WB_QT_SCRIPTEDIT_FLAG_ACTIVE, WB_QT_SCRIPTEDIT_FLAG_SUBROUTINE,
-		WB_QT_SCRIPTEDIT_FLAG_ONE_SHOT, WB_QT_SCRIPTEDIT_FLAG_EASY, WB_QT_SCRIPTEDIT_FLAG_NORMAL,
-		WB_QT_SCRIPTEDIT_FLAG_HARD };
-	for (int i = 0; i < 6; ++i)
+	m_ui->activeChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_ACTIVE);
+	m_ui->subroutineChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_SUBROUTINE);
+	m_ui->oneShotChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_ONE_SHOT);
+	m_ui->easyChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_EASY);
+	m_ui->normalChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_NORMAL);
+	m_ui->hardChip->setProperty("scriptFlag", WB_QT_SCRIPTEDIT_FLAG_HARD);
+	const QList<QToolButton *> chips = flagChips();
+	for (int i = 0; i < chips.size(); ++i)
 	{
-		chips[i]->setCheckable(true);
-		chips[i]->setProperty("scriptFlag", flags[i]);
-		chips[i]->setStyleSheet(
+		chips.at(i)->setCheckable(true);
+		chips.at(i)->setStyleSheet(
 			"QToolButton { border: 1px solid palette(mid); border-radius: 10px; padding: 2px 10px; }"
 			"QToolButton:checked { background-color: #37699f; border-color: #37699f; color: white; }");
-		connect(chips[i], SIGNAL(toggled(bool)), this, SLOT(onFlagToggled(bool)));
+		connect(chips.at(i), SIGNAL(toggled(bool)), this, SLOT(onFlagToggled(bool)));
 	}
 
 	m_conditions = new WBQtScriptEditSection(m_script, WBQtScriptEditSection::ModeConditions, m_ui->sectionsHost);
@@ -690,11 +689,10 @@ void WBQtScriptEditDialog::seedProperties()
 	fitNote(m_ui->commentEdit, 2, 5);
 	fitNote(m_ui->actionNoteEdit, 1, 6);
 
-	QToolButton *chips[] = { m_ui->activeChip, m_ui->subroutineChip, m_ui->oneShotChip,
-		m_ui->easyChip, m_ui->normalChip, m_ui->hardChip };
-	for (int i = 0; i < 6; ++i)
+	const QList<QToolButton *> chips = flagChips();
+	for (int i = 0; i < chips.size(); ++i)
 	{
-		chips[i]->setChecked(WBQtScriptEditData_GetFlag(m_script, chips[i]->property("scriptFlag").toInt()) != 0);
+		chips.at(i)->setChecked(WBQtScriptEditData_GetFlag(m_script, chips.at(i)->property("scriptFlag").toInt()) != 0);
 	}
 
 	const int delay = WBQtScriptEditData_GetDelaySeconds(m_script);
@@ -706,6 +704,14 @@ void WBQtScriptEditDialog::seedProperties()
 	m_ui->secondsSpin->setEnabled(delay > 0);
 	m_ui->smartCopyCheck->setChecked(WBQtScriptEdit_GetSmartCopy() != 0);
 	m_updating = false;
+}
+
+QList<QToolButton *> WBQtScriptEditDialog::flagChips() const
+{
+	QList<QToolButton *> chips;
+	chips << m_ui->activeChip << m_ui->subroutineChip << m_ui->oneShotChip
+		<< m_ui->easyChip << m_ui->normalChip << m_ui->hardChip;
+	return chips;
 }
 
 void WBQtScriptEditDialog::onFlagToggled(bool on)

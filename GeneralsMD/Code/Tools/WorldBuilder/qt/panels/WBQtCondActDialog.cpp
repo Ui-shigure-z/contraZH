@@ -1,5 +1,4 @@
-// WBQtCondActDialog.cpp -- see WBQtCondActDialog.h. Parameter chips pop the MFC EditParameter
-// modals through the bridge; the sentence and warnings re-render when they return.
+// WBQtCondActDialog.cpp -- see WBQtCondActDialog.h.
 #include "WBQtCondActDialog.h"
 #include "ui_WBQtCondActDialog.h"
 #include "WBQtCondActBridge.h"
@@ -24,6 +23,7 @@ namespace
 	const int kTextCap = 1024;
 	const int kBigCap = 4096;
 	const int kRecentMax = 10;
+	const int kSavedListCap = 65536;
 
 	// Item data role holding the template index on leaves (-1 on folders).
 	const int kTemplateRole = Qt::UserRole;
@@ -283,10 +283,13 @@ bool WBQtCondActDialog::eventFilter(QObject *watched, QEvent *event)
 	if (watched == m_ui->searchEdit && event->type() == QEvent::KeyPress)
 	{
 		QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
-		// Enter takes the first match instead of closing the dialog.
+		// Enter takes the first match instead of closing the dialog; with no filter it does nothing.
 		if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter)
 		{
-			selectFirstMatch();
+			if (!m_ui->searchEdit->text().trimmed().isEmpty())
+			{
+				selectFirstMatch();
+			}
 			return true;
 		}
 		if (keyEvent->key() == Qt::Key_Down)
@@ -300,7 +303,7 @@ bool WBQtCondActDialog::eventFilter(QObject *watched, QEvent *event)
 
 QStringList WBQtCondActDialog::savedList(bool favorites) const
 {
-	char buf[kBigCap];
+	static char buf[kSavedListCap];
 	buf[0] = 0;
 	WBQtCondAct_GetSavedList(m_isAction, favorites ? 1 : 0, buf, sizeof(buf));
 	return QString::fromLocal8Bit(buf).split('|', QString::SkipEmptyParts);

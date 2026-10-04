@@ -348,8 +348,7 @@ extern "C" int WBQtScriptEditData_GetConditionRow(void *script, int row, char *b
 	return -1;
 }
 
-// Whether any parameter of a condition or action has a warning; the flags updateScriptWarning
-// keeps cover only the true actions, so this checks the parameters directly.
+// Whether any parameter of an action has a warning, for the false list updateScriptWarning skips.
 template <class T>
 static int qtHasParameterWarning(T *item, Bool isAction)
 {
@@ -376,7 +375,8 @@ extern "C" int WBQtScriptEditData_GetConditionRowWarning(void *script, int row)
 	{
 		return 0;
 	}
-	return qtHasParameterWarning(pCond, FALSE);
+	// GetConditionRowCount's updateScriptWarning has just set the flag.
+	return (pCond != NULL && pCond->hasWarnings()) ? 1 : 0;
 }
 
 // Does this parameter carry `value` as an OBJECT_TYPE? "???" (the ui placeholder the [Missing]
@@ -903,7 +903,13 @@ extern "C" void WBQtScriptEditData_GetActionLabel(void *script, int isFalse, int
 
 extern "C" int WBQtScriptEditData_GetActionWarning(void *script, int isFalse, int index)
 {
-	return qtHasParameterWarning(qtActionAt(static_cast<Script *>(script), isFalse, index), TRUE);
+	ScriptAction *pAction = qtActionAt(static_cast<Script *>(script), isFalse, index);
+	if (!isFalse)
+	{
+		// GetActionCount's updateScriptWarning has just set the flag for the true list.
+		return (pAction != NULL && pAction->hasWarnings()) ? 1 : 0;
+	}
+	return qtHasParameterWarning(pAction, TRUE);
 }
 
 // == loadList()'s index clamp: keep the requested index inside the rebuilt list.

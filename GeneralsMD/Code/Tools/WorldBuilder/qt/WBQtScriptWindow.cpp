@@ -817,8 +817,7 @@ static QString wbLinkifyReferences(const QString &comment)
 	return lines.join("<br>");
 }
 
-// The selected script as a card: name and badges, its comment, the IF / THEN / ELSE lists from
-// Script::getUiText, the condition and action notes, and the reference tags as links.
+// The selected script as a card: badges, comment, IF / THEN / ELSE, notes and reference links.
 static QString wbScriptCardHtml(int listType, const QString &label, int flags, const QString &description,
 	const QString &comment)
 {
@@ -826,9 +825,9 @@ static QString wbScriptCardHtml(int listType, const QString &label, int flags, c
 	const int objType = (listType >> 28) & 0xF;
 	const bool isScript = (objType == 3 || objType == 4);
 
-	// The tree label carries "[S A D] [E N H] name <5s>"; the badges below say the same things.
+	// Only the label's own "[S A D] [E N H]" markers go, so a name like [UNNAMED_SCRIPT_1] stays.
 	QString name = label;
-	name.remove(QRegExp("^(\\[[^\\]]*\\]\\s*)+"));
+	name.remove(QRegExp("^\\[[SAD ]*\\]\\s*(\\[[ENH ]*\\]\\s*)?"));
 	QString delay;
 	QRegExp delayTag("\\s*<(\\d+)s>$");
 	if (delayTag.indexIn(name) >= 0)
