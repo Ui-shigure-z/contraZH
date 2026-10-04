@@ -4047,57 +4047,53 @@ static void qtWalkModel(SidesList &sides, Bool cleanNames, QtNodeVisitor &v)
 }
 
 namespace {
-	// Counts nodes.
-	struct QtCountVisitor : public QtNodeVisitor {
-		int count;
-		QtCountVisitor() : count(0) {}
-		virtual void visit(int, int, int, const AsciiString &) { count++; }
-	};
-	// Captures node #target into out-params.
-	struct QtPickVisitor : public QtNodeVisitor {
-		int target; int cur; int depth; int listType; int flags; AsciiString label; Bool found;
-		QtPickVisitor(int t) : target(t), cur(0), depth(0), listType(0), flags(0), found(false) {}
+	struct QtNode { int depth; int listType; int flags; AsciiString label; };
+
+	struct QtSnapshotVisitor : public QtNodeVisitor {
+		std::vector<QtNode> *nodes;
 		virtual void visit(int d, int lt, int fl, const AsciiString &l)
 		{
-			if (cur == target)
-			{
-				depth = d; listType = lt; flags = fl; label = l; found = true;
-			}
-			cur++;
+			QtNode n;
+			n.depth = d; n.listType = lt; n.flags = fl; n.label = l;
+			nodes->push_back(n);
 		}
 	};
+
+	// One walk per tree rebuild; a walk per qtGetNode made the rebuild quadratic in script count.
+	std::vector<QtNode> s_qtNodes;
 }
 
 int ScriptDialog::qtGetNodeCount(void)
 {
-	QtCountVisitor cv;
-	qtWalkModel(m_sides, m_bCleanScriptName, cv);
-	return cv.count;
+	s_qtNodes.clear();
+	QtSnapshotVisitor sv;
+	sv.nodes = &s_qtNodes;
+	qtWalkModel(m_sides, m_bCleanScriptName, sv);
+	return (int)s_qtNodes.size();
 }
 
 int ScriptDialog::qtGetNode(int i, int *depthOut, int *listTypeOut, int *flagsOut, char *labelOut, int cap)
 {
-	QtPickVisitor pv(i);
-	qtWalkModel(m_sides, m_bCleanScriptName, pv);
-	if (!pv.found)
+	if (i < 0 || i >= (int)s_qtNodes.size())
 	{
 		return 0;
 	}
+	const QtNode &node = s_qtNodes[i];
 	if (depthOut != NULL)
 	{
-		*depthOut = pv.depth;
+		*depthOut = node.depth;
 	}
 	if (listTypeOut != NULL)
 	{
-		*listTypeOut = pv.listType;
+		*listTypeOut = node.listType;
 	}
 	if (flagsOut != NULL)
 	{
-		*flagsOut = pv.flags;
+		*flagsOut = node.flags;
 	}
 	if (labelOut != NULL && cap > 0)
 	{
-		strncpy(labelOut, pv.label.str(), cap - 1);
+		strncpy(labelOut, node.label.str(), cap - 1);
 		labelOut[cap - 1] = 0;
 	}
 	return 1;
