@@ -2078,9 +2078,7 @@ void WBQtMapIniEditorDialog::onOutlineItemClicked(QTreeWidgetItem *item, int col
 	{
 		return;
 	}
-	QTextCursor cursor(m_editor->document()->findBlockByNumber(outline->header));
-	m_editor->setTextCursor(cursor);
-	m_editor->centerCursor();
+	m_editor->scrollLineToTop(outline->header);
 	// Focus stays on the outline, so the arrow keys keep stepping through the blocks.
 }
 

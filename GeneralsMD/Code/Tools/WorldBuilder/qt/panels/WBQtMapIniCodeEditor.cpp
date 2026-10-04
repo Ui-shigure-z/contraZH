@@ -5,6 +5,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QScrollBar>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QVector>
@@ -261,6 +262,20 @@ void WBQtMapIniCodeEditor::revealLine(int line)
 			setFolded(header, false);
 		}
 	}
+}
+
+void WBQtMapIniCodeEditor::scrollLineToTop(int line)
+{
+	const QTextBlock block = document()->findBlockByNumber(line);
+	if (!block.isValid())
+	{
+		return;
+	}
+	setTextCursor(QTextCursor(block));
+	// From the end of the document, bringing the cursor into view scrolls up just far enough to
+	// show it on the top line.
+	verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+	ensureCursorVisible();
 }
 
 void WBQtMapIniCodeEditor::paintGutter(QPaintEvent *event)

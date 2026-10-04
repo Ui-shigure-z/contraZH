@@ -33,6 +33,8 @@ public:
 	void setAllFolded(bool folded);
 	// Unfold whatever hides this line.
 	void revealLine(int line);
+	// Put the cursor on this line and scroll it to the top of the view.
+	void scrollLineToTop(int line);
 
 	int gutterWidth() const;
 	void paintGutter(QPaintEvent *event);
