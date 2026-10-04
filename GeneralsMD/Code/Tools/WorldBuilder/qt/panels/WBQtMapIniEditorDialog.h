@@ -282,8 +282,7 @@ private:
 		int issues;
 	};
 
-	// Walk the whole file for the flagged lines the error list and the outline badges share,
-	// so the two can never disagree.
+	// The flagged lines, shared by the error list and the outline badges so the two always agree.
 	QList<LineIssue> collectIssues() const;
 	QList<OutlineBlock> collectBlocks(const QList<LineIssue> &issues) const;
 	// Re-run the checks, then refresh the outline, the fold ranges and (when shown) the error list.

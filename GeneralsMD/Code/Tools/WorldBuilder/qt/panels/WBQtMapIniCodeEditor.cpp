@@ -1,14 +1,16 @@
 // WBQtMapIniCodeEditor.cpp -- see WBQtMapIniCodeEditor.h.
 #include "WBQtMapIniCodeEditor.h"
+#include "WBQtMapIniEditorDialog.h"	// WBQtMapIniHighlighter
 #include "WBQtMapIniReport.h"
 
+#include <QEvent>
+#include <QFontDatabase>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QTextLayout>
-#include <QVector>
 
 #include <algorithm>
 
@@ -64,35 +66,62 @@ WBQtMapIniCodeEditor::WBQtMapIniCodeEditor(QWidget *parent)
 	: QPlainTextEdit(parent),
 	  m_gutter(NULL),
 	  m_firstLine(1),
-	  m_folding(false)
+	  m_folding(false),
+	  m_rangesStale(false)
 {
 	m_gutter = new Gutter(this);
 	updateGutterGeometry();
 
-	connect(this, &QPlainTextEdit::blockCountChanged, this, [this](int)
+	connect(this, SIGNAL(blockCountChanged(int)), this, SLOT(onBlockCountChanged(int)));
+	connect(this, SIGNAL(updateRequest(QRect,int)), this, SLOT(onUpdateRequest(QRect,int)));
+	connect(this, SIGNAL(cursorPositionChanged()), this, SLOT(onCursorPositionChanged()));
+}
+
+WBQtMapIniCodeEditor *WBQtMapIniCodeEditor::createReadOnly(const QString &source, int firstLine,
+	QWidget *parent)
+{
+	WBQtMapIniCodeEditor *view = new WBQtMapIniCodeEditor(parent);
+	view->setReadOnly(true);
+	view->setLineWrapMode(QPlainTextEdit::NoWrap);
+	view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+	view->setFirstLineNumber(firstLine);
+
+	// Checks go off before the text arrives, so the first highlight pass skips them too.
+	WBQtMapIniHighlighter *highlighter = new WBQtMapIniHighlighter(view->document());
+	highlighter->setCheckNames(false);
+	highlighter->setCheckSyntax(false);
+	view->setPlainText(source);
+	return view;
+}
+
+void WBQtMapIniCodeEditor::onBlockCountChanged(int count)
+{
+	Q_UNUSED(count);
+	// Fold ranges are line numbers, so they are wrong until the owner sends new ones.
+	m_rangesStale = true;
+	updateGutterGeometry();
+}
+
+void WBQtMapIniCodeEditor::onUpdateRequest(const QRect &rect, int dy)
+{
+	if (dy != 0)
 	{
-		updateGutterGeometry();
-	});
-	connect(this, &QPlainTextEdit::updateRequest, this, [this](const QRect &rect, int dy)
+		m_gutter->scroll(0, dy);
+	}
+	else
 	{
-		if (dy != 0)
-		{
-			m_gutter->scroll(0, dy);
-		}
-		else
-		{
-			m_gutter->update(0, rect.y(), m_gutter->width(), rect.height());
-		}
-	});
+		m_gutter->update(0, rect.y(), m_gutter->width(), rect.height());
+	}
+}
+
+void WBQtMapIniCodeEditor::onCursorPositionChanged()
+{
 	// Find, undo and jumps can put the cursor inside a folded block; open it.
-	connect(this, &QPlainTextEdit::cursorPositionChanged, this, [this]()
+	const QTextBlock block = textCursor().block();
+	if (!block.isVisible())
 	{
-		const QTextBlock block = textCursor().block();
-		if (!block.isVisible())
-		{
-			revealLine(block.blockNumber());
-		}
-	});
+		revealLine(block.blockNumber());
+	}
 }
 
 void WBQtMapIniCodeEditor::setFirstLineNumber(int number)
@@ -128,6 +157,15 @@ void WBQtMapIniCodeEditor::updateGutterGeometry()
 	m_gutter->setGeometry(QRect(area.left(), area.top(), gutterWidth(), area.height()));
 }
 
+void WBQtMapIniCodeEditor::changeEvent(QEvent *event)
+{
+	QPlainTextEdit::changeEvent(event);
+	if (event->type() == QEvent::FontChange)
+	{
+		updateGutterGeometry();
+	}
+}
+
 void WBQtMapIniCodeEditor::resizeEvent(QResizeEvent *event)
 {
 	QPlainTextEdit::resizeEvent(event);
@@ -137,6 +175,10 @@ void WBQtMapIniCodeEditor::resizeEvent(QResizeEvent *event)
 
 int WBQtMapIniCodeEditor::foldRangeAt(int headerLine) const
 {
+	if (m_rangesStale)
+	{
+		return -1;
+	}
 	// The ranges arrive in file order, so the headers are sorted.
 	QList<QPair<int, int> >::const_iterator it =
 		std::lower_bound(m_foldRanges.constBegin(), m_foldRanges.constEnd(), headerLine, headerLess);
@@ -157,9 +199,37 @@ bool WBQtMapIniCodeEditor::isFolded(int headerLine) const
 	return next.isValid() && !next.isVisible();
 }
 
+void WBQtMapIniCodeEditor::setLinesVisible(int first, int last, bool visible)
+{
+	QTextBlock block = document()->findBlockByNumber(first);
+	if (!block.isValid())
+	{
+		return;
+	}
+
+	// The cursor may not stay inside text that is about to vanish; park it on the line above.
+	const int cursorLine = textCursor().blockNumber();
+	if (!visible && first > 0 && cursorLine >= first && cursorLine <= last)
+	{
+		QTextCursor cursor(document()->findBlockByNumber(first - 1));
+		cursor.movePosition(QTextCursor::EndOfBlock);
+		setTextCursor(cursor);
+	}
+
+	const int from = block.position();
+	int to = from;
+	for (; block.isValid() && block.blockNumber() <= last; block = block.next())
+	{
+		block.setVisible(visible);
+		to = block.position() + block.length();
+	}
+	document()->markContentsDirty(from, to - from);
+	viewport()->update();
+	m_gutter->update();
+}
+
 void WBQtMapIniCodeEditor::applyVisibility(const QVector<bool> &visible)
 {
-	// The cursor may not stay inside text that is about to vanish; park it on the header above.
 	const int cursorLine = textCursor().blockNumber();
 	if (cursorLine < visible.size() && !visible.at(cursorLine))
 	{
@@ -173,7 +243,8 @@ void WBQtMapIniCodeEditor::applyVisibility(const QVector<bool> &visible)
 		setTextCursor(cursor);
 	}
 
-	bool changed = false;
+	int from = -1;
+	int to = -1;
 	int line = 0;
 	for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next(), ++line)
 	{
@@ -181,12 +252,16 @@ void WBQtMapIniCodeEditor::applyVisibility(const QVector<bool> &visible)
 		if (block.isVisible() != want)
 		{
 			block.setVisible(want);
-			changed = true;
+			if (from < 0)
+			{
+				from = block.position();
+			}
+			to = block.position() + block.length();
 		}
 	}
-	if (changed)
+	if (from >= 0)
 	{
-		document()->markContentsDirty(0, document()->characterCount());
+		document()->markContentsDirty(from, to - from);
 		viewport()->update();
 		m_gutter->update();
 	}
@@ -211,6 +286,7 @@ void WBQtMapIniCodeEditor::setFoldRanges(const QList<QPair<int, int> > &ranges)
 		}
 	}
 	m_foldRanges = ranges;
+	m_rangesStale = false;
 	applyVisibility(visible);
 	m_gutter->update();
 }
@@ -218,26 +294,18 @@ void WBQtMapIniCodeEditor::setFoldRanges(const QList<QPair<int, int> > &ranges)
 void WBQtMapIniCodeEditor::setFolded(int headerLine, bool folded)
 {
 	const int index = foldRangeAt(headerLine);
-	if (index < 0)
+	if (index >= 0)
 	{
-		return;
+		setLinesVisible(headerLine + 1, m_foldRanges.at(index).second, !folded);
 	}
-	QVector<bool> visible(document()->blockCount(), true);
-	int line = 0;
-	for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next(), ++line)
-	{
-		visible[line] = block.isVisible();
-	}
-	const int last = m_foldRanges.at(index).second;
-	for (int l = headerLine + 1; l <= last && l < visible.size(); ++l)
-	{
-		visible[l] = !folded;
-	}
-	applyVisibility(visible);
 }
 
 void WBQtMapIniCodeEditor::setAllFolded(bool folded)
 {
+	if (m_rangesStale)
+	{
+		return;
+	}
 	QVector<bool> visible(document()->blockCount(), true);
 	if (folded)
 	{
@@ -254,14 +322,22 @@ void WBQtMapIniCodeEditor::setAllFolded(bool folded)
 
 void WBQtMapIniCodeEditor::revealLine(int line)
 {
-	for (int i = 0; i < m_foldRanges.size(); ++i)
+	// The hidden run around the line is its fold; showing it needs no ranges, which may be stale.
+	QTextBlock first = document()->findBlockByNumber(line);
+	if (!first.isValid() || first.isVisible())
 	{
-		const int header = m_foldRanges.at(i).first;
-		if (header < line && line <= m_foldRanges.at(i).second && isFolded(header))
-		{
-			setFolded(header, false);
-		}
+		return;
 	}
+	QTextBlock last = first;
+	while (first.previous().isValid() && !first.previous().isVisible())
+	{
+		first = first.previous();
+	}
+	while (last.next().isValid() && !last.next().isVisible())
+	{
+		last = last.next();
+	}
+	setLinesVisible(first.blockNumber(), last.blockNumber(), true);
 }
 
 void WBQtMapIniCodeEditor::scrollLineToTop(int line)
@@ -272,8 +348,7 @@ void WBQtMapIniCodeEditor::scrollLineToTop(int line)
 		return;
 	}
 	setTextCursor(QTextCursor(block));
-	// From the end of the document, bringing the cursor into view scrolls up just far enough to
-	// show it on the top line.
+	// Scrolling back from the end leaves the cursor's line on the top row.
 	verticalScrollBar()->setValue(verticalScrollBar()->maximum());
 	ensureCursorVisible();
 }
@@ -347,12 +422,12 @@ void WBQtMapIniCodeEditor::gutterPressed(const QPoint &pos)
 void WBQtMapIniCodeEditor::paintEvent(QPaintEvent *event)
 {
 	QPlainTextEdit::paintEvent(event);
-	if (!m_folding || m_foldRanges.isEmpty())
+	if (!m_folding || m_rangesStale || m_foldRanges.isEmpty())
 	{
 		return;
 	}
 
-	// A folded header ends in a "... N lines" tag, so the hidden body stays visible as a count.
+	// A folded header ends in a "... N lines" tag counting its hidden body.
 	QPainter painter(viewport());
 	painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
 	const QFontMetrics metrics = fontMetrics();

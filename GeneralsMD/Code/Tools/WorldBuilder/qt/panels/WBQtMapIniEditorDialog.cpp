@@ -494,8 +494,7 @@ bool WBQtMapIniHighlighter::isEndLine(const QString &line)
 	return iniCodePart(line).compare("End", Qt::CaseInsensitive) == 0;
 }
 
-// Whether `keyword` starts a top-level block in the game's INI loader. Cached: the highlighter
-// asks once per line per repaint.
+// Whether `keyword` starts a top-level block in the game's INI loader, cached for the per-line repaint.
 static bool isEngineBlockType(const QString &keyword)
 {
 	static QHash<QString, bool> s_cache;
@@ -509,17 +508,7 @@ static bool isEngineBlockType(const QString &keyword)
 	return known;
 }
 
-// Whether a line opens a block that an "End" must close. Verified against 33 real map.inis,
-// whose Ends balance under these shapes:
-//
-//   `Object Foo` / `SkillSet1`             -- an engine block keyword with a name, or any bare keyword
-//   `ObjectReskin New Old`                 -- a reskin also names the template it copies
-//   `Behavior = Xyz AnyTag`                -- a module, which despite the '=' is a block
-//   `ConditionState = X` / `TransitionState = A B` -- a Draw module's state blocks
-//
-// Two words without an '=' are not enough on their own: `Scale 1.1` is a field written without
-// its '='. And two words after an '=' are not either: `Locomotor = SET_NORMAL LimoLocomotor`
-// opens nothing.
+// Whether a line opens a block that an "End" must close; these shapes balance 33 real map.inis.
 bool WBQtMapIniHighlighter::opensBlock(const QString &line)
 {
 	const QString scan = iniCodePart(line);
@@ -543,7 +532,7 @@ bool WBQtMapIniHighlighter::opensBlock(const QString &line)
 		{
 			return false;
 		}
-		// A module key takes any tag name; elsewhere only the ModuleTag convention marks one.
+		// A module key takes any tag name; `Locomotor = SET_NORMAL Foo` and the like open nothing.
 		static const char *const kModuleKeys[] = {
 			"Behavior", "Draw", "Body", "ClientUpdate", "ClientBehavior", NULL
 		};
@@ -562,15 +551,26 @@ bool WBQtMapIniHighlighter::opensBlock(const QString &line)
 	{
 		return false;
 	}
+	// `ObjectReskin New Old` also names the template it copies.
 	if (tokens.size() == 3)
 	{
 		return tokens.at(0).compare("ObjectReskin", Qt::CaseInsensitive) == 0;
 	}
-	if (tokens.size() == 2 && !isEngineBlockType(tokens.at(0))
-		&& tokens.at(0).compare("ReplaceModule", Qt::CaseInsensitive) != 0
-		&& tokens.at(0).compare("SideInfo", Qt::CaseInsensitive) != 0)
+	// Two words need a block keyword, since `Scale 1.1` is a field written without its '='.
+	static const char *const kNestedHeaders[] = {
+		"ReplaceModule", "SideInfo", "SkirmishBuildList", "Structure", "Mission", NULL
+	};
+	if (tokens.size() == 2 && !isEngineBlockType(tokens.at(0)))
 	{
-		return false;
+		bool nested = false;
+		for (int k = 0; kNestedHeaders[k] != NULL && !nested; ++k)
+		{
+			nested = (tokens.at(0).compare(QLatin1String(kNestedHeaders[k]), Qt::CaseInsensitive) == 0);
+		}
+		if (!nested)
+		{
+			return false;
+		}
 	}
 	// One-line directives that take a name but open nothing ("RemoveModule ModuleTag_DIE").
 	static const char *const kOneLiners[] = { "RemoveModule", "InheritableModule", NULL };
@@ -1083,8 +1083,7 @@ namespace
 		}
 	};
 
-	// New or overridden, for the block types whose names the loaded data can answer for; -1 for
-	// the rest, which get no badge.
+	// New or overridden where the loaded data can answer for the name; -1 means no badge.
 	int outlineStatus(const QString &store, const QString &name)
 	{
 		WBQtMapIniHighlighter::NameKind kind = WBQtMapIniHighlighter::KindNone;
@@ -1247,6 +1246,7 @@ void WBQtMapIniEditorDialog::loadFile(const QString &path)
 
 	noteRecentFile(path);
 	refreshAnalysis();
+	m_rescanTimer->stop();		// the local names were seeded from this same text
 	updateStatus(tr("Loaded %1 line(s).").arg(lineCount));
 }
 
@@ -1815,8 +1815,7 @@ void WBQtMapIniEditorDialog::refreshAnalysis()
 	rebuildOutline(blocks);
 }
 
-// The top-level blocks, by the same depth rule the syntax check uses, each with the issues that
-// fall inside it.
+// The top-level blocks by the syntax check's depth rule, each with the issues inside it.
 QList<WBQtMapIniEditorDialog::OutlineBlock> WBQtMapIniEditorDialog::collectBlocks(
 	const QList<LineIssue> &issues) const
 {
@@ -1827,8 +1826,7 @@ QList<WBQtMapIniEditorDialog::OutlineBlock> WBQtMapIniEditorDialog::collectBlock
 	{
 		++i;
 		const QString line = block.text();
-		// A block missing its End would otherwise swallow the rest of the file; an engine block
-		// header in column 0 starts a new one, as it reads to anyone looking at the file.
+		// An engine block header in column 0 starts a new block, so a missing End cannot swallow the file.
 		if (depth > 0 && !line.isEmpty() && !line.at(0).isSpace())
 		{
 			const QString code = WBQtMapIniHighlighter::codePart(line);
@@ -1890,8 +1888,7 @@ QList<WBQtMapIniEditorDialog::OutlineBlock> WBQtMapIniEditorDialog::collectBlock
 
 void WBQtMapIniEditorDialog::rebuildOutline(const QList<OutlineBlock> &blocks)
 {
-	// Same rows as before: only the line numbers moved, so update them in place and keep the
-	// tree (selection, scroll, collapsed groups) untouched.
+	// Same rows as before: only the lines moved, so the tree stays as it is.
 	bool sameShape = (blocks.size() == m_blocks.size());
 	for (int b = 0; sameShape && b < blocks.size(); ++b)
 	{
@@ -1903,6 +1900,19 @@ void WBQtMapIniEditorDialog::rebuildOutline(const QList<OutlineBlock> &blocks)
 	m_blocks = blocks;
 	if (sameShape && m_outline->topLevelItemCount() > 0)
 	{
+		for (int g = 0; g < m_outline->topLevelItemCount(); ++g)
+		{
+			QTreeWidgetItem *group = m_outline->topLevelItem(g);
+			for (int c = 0; c < group->childCount(); ++c)
+			{
+				const OutlineBlock *outline = outlineBlockForItem(group->child(c));
+				if (outline != NULL)
+				{
+					group->child(c)->setToolTip(0, tr("%1 %2 -- line %3").arg(outline->store)
+						.arg(outline->name).arg(outline->header + 1));
+				}
+			}
+		}
 		return;
 	}
 
@@ -2140,15 +2150,8 @@ void WBQtMapIniEditorDialog::onOutlineContextMenu(const QPoint &pos)
 		window->setWindowTitle(tr("%1 -- line %2").arg(title).arg(header + 1));
 		QVBoxLayout *layout = new QVBoxLayout(window);
 		layout->setContentsMargins(4, 4, 4, 4);
-		WBQtMapIniCodeEditor *view = new WBQtMapIniCodeEditor(window);
-		view->setReadOnly(true);
-		view->setLineWrapMode(QPlainTextEdit::NoWrap);
+		WBQtMapIniCodeEditor *view = WBQtMapIniCodeEditor::createReadOnly(source, header + 1, window);
 		view->setFont(m_editor->font());
-		view->setFirstLineNumber(header + 1);
-		WBQtMapIniHighlighter *highlighter = new WBQtMapIniHighlighter(view->document());
-		highlighter->setCheckNames(false);
-		highlighter->setCheckSyntax(false);
-		view->setPlainText(source);
 		layout->addWidget(view);
 		window->resize(900, 640);
 		window->show();

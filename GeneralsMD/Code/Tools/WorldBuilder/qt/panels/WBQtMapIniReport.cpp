@@ -19,7 +19,6 @@
 #include <QVBoxLayout>
 
 #include "WBQtMapIniCodeEditor.h"
-#include "WBQtMapIniEditorDialog.h"	// WBQtMapIniHighlighter, shared with the map.ini editor
 
 // Stage 1 phase 3: the parent for a modal Qt dialog (active modal if nested, else the
 // main window). Defined in WBQtBridge.cpp.
@@ -50,17 +49,7 @@ namespace
 	// A read-only view of one block: map.ini line numbers, editor colours, blanked lines in red.
 	WBQtMapIniCodeEditor *makeCodeView(const WBQtMapIniBlockData &data, QWidget *parent)
 	{
-		WBQtMapIniCodeEditor *view = new WBQtMapIniCodeEditor(parent);
-		view->setReadOnly(true);
-		view->setLineWrapMode(QPlainTextEdit::NoWrap);
-		view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-		view->setFirstLineNumber(data.firstLine);
-
-		// Checks go off before the text arrives, so the first highlight pass skips them too.
-		WBQtMapIniHighlighter *highlighter = new WBQtMapIniHighlighter(view->document());
-		highlighter->setCheckNames(false);
-		highlighter->setCheckSyntax(false);
-		view->setPlainText(data.source);
+		WBQtMapIniCodeEditor *view = WBQtMapIniCodeEditor::createReadOnly(data.source, data.firstLine, parent);
 
 		QList<QTextEdit::ExtraSelection> marks;
 		for (int i = 0; i < data.blanked.size(); ++i)
