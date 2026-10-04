@@ -71,6 +71,16 @@ int  WBQtTeams_ReplaceUnitName(const char *from, const char *to);
 // Fix Missing Units button has something to do.
 int  WBQtTeamsData_HasMissingUnits(void);
 
+// One value of a team row's dictionary by key name ("teamHome", "teamUnitType1", ...), as text;
+// booleans come back as 1/0, and an unset key as an empty string.
+void WBQtTeamsData_GetTeamField(int row, const char *key, char *buf, int cap);
+// How many teams player i owns.
+int  WBQtTeamsData_GetPlayerTeamCount(int i);
+// 1 when `name` is an object template the game data defines.
+int  WBQtTeamsData_IsTemplate(const char *name);
+// The working copy's script named `name` as its IF / THEN / ELSE text; empty when there is none.
+void WBQtTeamsData_GetScriptText(const char *name, char *buf, int cap);
+
 // --- the Qt team property sheet (Tier 3b-3): four HIDDEN Team* pages bound to the current
 // team; the Qt sheet drives their real controls and sends the real WM_COMMAND notifications,
 // so every page handler (live dict writes, rename validation, the PickUnitDialog pops) is

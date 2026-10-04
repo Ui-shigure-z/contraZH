@@ -1965,4 +1965,116 @@ extern "C" int WBQtTeams_ReplaceMissingUnits(void)
 	return (int)missing.size();
 }
 
+extern "C" void WBQtTeamsData_GetTeamField(int row, const char *key, char *buf, int cap)
+{
+	copyOut("", buf, cap);
+	CTeamsDialog *dlg = CTeamsDialog::qtInstance();
+	if (dlg == NULL || key == NULL || row < 0 || row >= (int)s_qtTeamRows.size())
+	{
+		return;
+	}
+	SidesList *sides = static_cast<SidesList *>(dlg->qtSides());
+	const Int teamIndex = s_qtTeamRows[row].teamIndex;
+	if (sides == NULL || teamIndex < 0 || teamIndex >= sides->getNumTeams())
+	{
+		return;
+	}
+	Dict *dict = sides->getTeamInfo(teamIndex)->getDict();
+	const NameKeyType nameKey = TheNameKeyGenerator->nameToKey(AsciiString(key));
+	AsciiString value;
+	switch (dict->getType(nameKey))
+	{
+		case Dict::DICT_BOOL:
+			value = dict->getBool(nameKey) ? "1" : "0";
+			break;
+		case Dict::DICT_INT:
+			value.format("%d", dict->getInt(nameKey));
+			break;
+		case Dict::DICT_REAL:
+			value.format("%g", dict->getReal(nameKey));
+			break;
+		case Dict::DICT_ASCIISTRING:
+			value = dict->getAsciiString(nameKey);
+			break;
+		case Dict::DICT_UNICODESTRING:
+			value.translate(dict->getUnicodeString(nameKey));
+			break;
+		default:
+			break;
+	}
+	copyOut(value.str(), buf, cap);
+}
+
+extern "C" int WBQtTeamsData_GetPlayerTeamCount(int i)
+{
+	CTeamsDialog *dlg = CTeamsDialog::qtInstance();
+	if (dlg == NULL)
+	{
+		return 0;
+	}
+	SidesList *sides = static_cast<SidesList *>(dlg->qtSides());
+	if (sides == NULL || i < 0 || i >= sides->getNumSides())
+	{
+		return 0;
+	}
+	// The same owner match the team rows use.
+	const AsciiString playerName = qtmPlayerNameForUI(*sides, i);
+	int count = 0;
+	for (Int t = 0; t < sides->getNumTeams(); t++)
+	{
+		if (sides->getTeamInfo(t)->getDict()->getAsciiString(TheKey_teamOwner) == playerName.str())
+		{
+			++count;
+		}
+	}
+	return count;
+}
+
+extern "C" int WBQtTeamsData_IsTemplate(const char *name)
+{
+	if (name == NULL || name[0] == 0 || TheThingFactory == NULL)
+	{
+		return 0;
+	}
+	return (TheThingFactory->findTemplate(AsciiString(name)) != NULL) ? 1 : 0;
+}
+
+extern "C" void WBQtTeamsData_GetScriptText(const char *name, char *buf, int cap)
+{
+	copyOut("", buf, cap);
+	CTeamsDialog *dlg = CTeamsDialog::qtInstance();
+	SidesList *sides = (dlg != NULL) ? static_cast<SidesList *>(dlg->qtSides()) : NULL;
+	if (sides == NULL || name == NULL || name[0] == 0)
+	{
+		return;
+	}
+	for (Int s = 0; s < sides->getNumSides(); s++)
+	{
+		ScriptList *list = sides->getSideInfo(s)->getScriptList();
+		if (list == NULL)
+		{
+			continue;
+		}
+		for (Script *script = list->getScript(); script != NULL; script = script->getNext())
+		{
+			if (script->getName() == name)
+			{
+				copyOut(script->getUiText().str(), buf, cap);
+				return;
+			}
+		}
+		for (ScriptGroup *group = list->getScriptGroup(); group != NULL; group = group->getNext())
+		{
+			for (Script *script = group->getScript(); script != NULL; script = script->getNext())
+			{
+				if (script->getName() == name)
+				{
+					copyOut(script->getUiText().str(), buf, cap);
+					return;
+				}
+			}
+		}
+	}
+}
+
 #endif // RTS_HAS_QT
