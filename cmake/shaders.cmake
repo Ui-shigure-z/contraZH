@@ -29,15 +29,14 @@ if(NOT RTS_FXC_EXECUTABLE)
 endif()
 
 if(NOT RTS_FXC_EXECUTABLE)
-    message(STATUS "fxc not found; shadow mapping will be unavailable and the legacy shadows used instead")
     set(RTS_SHADERS_AVAILABLE FALSE CACHE INTERNAL "")
-    return()
+    message(FATAL_ERROR "fxc not found. The D3D9 backend links its compiled shaders into the executables, so it needs fxc from the Windows 10 SDK.")
 endif()
 
 message(STATUS "Shader compiler: ${RTS_FXC_EXECUTABLE}")
 set(RTS_SHADERS_AVAILABLE TRUE CACHE INTERNAL "")
 
-# Shaders land in the build root's shaders folder, which is copied into the game folder with the exe.
+# Shaders land in the build root's shaders folder. The exe carries them all, so a copy in the game folder only overrides them.
 set(RTS_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${RTS_SHADER_OUTPUT_DIR}")
 
@@ -331,4 +330,20 @@ rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      vs_3_0 mainVS headlightpo
 rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightpool.pso          POOL=1)
 rts_add_shader("${RTS_SHADER_DIR}/headlight.hlsl"      ps_3_0 mainPS headlightpoolmax.pso       POOL=2)
 
-add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS})
+# The list file changes only when a shader is added or dropped, which the table must follow too.
+set(RTS_EMBEDDED_SHADERS_LIST "${CMAKE_BINARY_DIR}/generated/EmbeddedShaders.txt")
+string(JOIN "\n" RTS_EMBEDDED_SHADERS_LIST_CONTENT ${RTS_SHADER_OUTPUTS})
+file(CONFIGURE OUTPUT "${RTS_EMBEDDED_SHADERS_LIST}" CONTENT "${RTS_EMBEDDED_SHADERS_LIST_CONTENT}\n" @ONLY)
+
+add_custom_command(
+    OUTPUT "${RTS_EMBEDDED_SHADERS_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DLIST_FILE=${RTS_EMBEDDED_SHADERS_LIST}"
+        "-DOUTPUT_FILE=${RTS_EMBEDDED_SHADERS_SOURCE}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/embed_shaders.cmake"
+    DEPENDS ${RTS_SHADER_OUTPUTS} "${RTS_EMBEDDED_SHADERS_LIST}" "${CMAKE_SOURCE_DIR}/cmake/embed_shaders.cmake"
+    COMMENT "Embedding the compiled shaders"
+    VERBATIM
+)
+
+add_custom_target(rts_shaders ALL DEPENDS ${RTS_SHADER_OUTPUTS} "${RTS_EMBEDDED_SHADERS_SOURCE}")

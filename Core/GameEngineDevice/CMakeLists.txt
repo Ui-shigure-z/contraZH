@@ -80,6 +80,7 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/W3DLaserGlow.h
     Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
     Include/W3DDevice/GameClient/W3DGroundNoise.h
+    Include/W3DDevice/GameClient/W3DEmbeddedShaders.h
     Include/W3DDevice/GameClient/W3DNoiseTexture.h
     Include/W3DDevice/GameClient/W3DSkyClouds.h
 #    Include/W3DDevice/GameClient/W3DStatusCircle.h
@@ -186,6 +187,7 @@ set(GAMEENGINEDEVICE_SRC
 #    Source/W3DDevice/GameClient/W3DScene.cpp
     Source/W3DDevice/GameClient/W3DBloom.cpp
     Source/W3DDevice/GameClient/W3DShaderManager.cpp
+    Source/W3DDevice/GameClient/W3DEmbeddedShaders.cpp
 #    Source/W3DDevice/GameClient/W3DShroud.cpp
     Source/W3DDevice/GameClient/W3DShadowMap.cpp
     Source/W3DDevice/GameClient/W3DSmudge.cpp
@@ -247,6 +249,12 @@ add_library(corei_gameenginedevice_private INTERFACE)
 add_library(corei_gameenginedevice_public INTERFACE)
 
 target_sources(corei_gameenginedevice_private INTERFACE ${GAMEENGINEDEVICE_SRC})
+
+# The shader table travels with W3DShaderManager, so the game and every tool that links it carry the shaders.
+target_sources(corei_gameenginedevice_private INTERFACE "${RTS_EMBEDDED_SHADERS_SOURCE}")
+if(TARGET rts_shaders)
+    add_dependencies(corei_gameenginedevice_private rts_shaders)
+endif()
 
 target_include_directories(corei_gameenginedevice_public INTERFACE
     Include

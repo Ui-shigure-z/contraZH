@@ -59,6 +59,7 @@
 #include "Common/file.h"
 #include "Common/FileSystem.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DEmbeddedShaders.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
@@ -5889,29 +5890,43 @@ HRESULT W3DShaderManager::LoadAndCreateD3DShader(const char* strFilePath, const 
 	{
 		File *file = nullptr;
 		HRESULT hr;
+		void *pFileData = nullptr;
+		const void *pData = nullptr;
+		DWORD dwSize = 0;
 
+		// A loose or archived file overrides the copy linked into the executable.
 		file = TheFileSystem->openFile(strFilePath, File::READ | File::BINARY);
-		if (file == nullptr)
+		if (file != nullptr)
 		{
-			RENDER_LOG(("LoadAndCreateD3DShader: could not open %s", strFilePath));
+			FileInfo fileInfo;
+			TheFileSystem->getFileInfo(AsciiString(strFilePath), &fileInfo);
+			dwSize = fileInfo.sizeLow;
+
+			pFileData = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSize);
+			if (!pFileData)
+			{
+				file->close();
+				RENDER_LOG(("LoadAndCreateD3DShader: out of memory for %s", strFilePath));
+				return E_FAIL;
+			}
+
+			file->read(pFileData, dwSize);
+
+			file->close();
+			file = nullptr;
+			pData = pFileData;
+		}
+		else if (Find_Embedded_Shader(strFilePath, pData, dwSize))
+		{
+			RENDER_LOG(("LoadAndCreateD3DShader: no file for %s, using the embedded copy", strFilePath));
+		}
+		else
+		{
+			RENDER_LOG(("LoadAndCreateD3DShader: could not open %s and none is embedded", strFilePath));
 			return E_FAIL;
 		}
 
-		FileInfo fileInfo;
-		TheFileSystem->getFileInfo(AsciiString(strFilePath), &fileInfo);
-		DWORD dwFileSize = fileInfo.sizeLow;
-
-		const DWORD* pShader = (DWORD*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwFileSize);
-		if (!pShader)
-		{
-			RENDER_LOG(("LoadAndCreateD3DShader: out of memory for %s", strFilePath));
-			return E_FAIL;
-		}
-
-		file->read((void *)pShader, dwFileSize);
-
-		file->close();
-		file = nullptr;
+		const DWORD* pShader = (const DWORD*)pData;
 
 #if defined(BUILD_WITH_D3D9)
 			// D3D9 separates the declaration from the shader and hands back COM objects,
@@ -5965,7 +5980,10 @@ HRESULT W3DShaderManager::LoadAndCreateD3DShader(const char* strFilePath, const 
 			}
 #endif
 
-		HeapFree(GetProcessHeap(), 0, (void*)pShader);
+		if (pFileData)
+		{
+			HeapFree(GetProcessHeap(), 0, pFileData);
+		}
 
 		if (FAILED(hr))
 		{
