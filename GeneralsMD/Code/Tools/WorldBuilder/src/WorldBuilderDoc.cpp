@@ -80,6 +80,7 @@
 #include "ScriptDialog.h"
 #include "TerrainMaterial.h"
 #include "W3DDevice/GameClient/HeightMap.h"
+#include "W3DDevice/GameClient/W3DWater.h"
 #include "wbview3d.h"
 #include "wbview.h"
 #include "WHeightMapEdit.h"
@@ -174,6 +175,12 @@ static void unloadMapIniOverrides(void)
 	// upgrade/module references) -- the same call the WB loader makes after parsing.
 	if (TheThingFactory)
 		TheThingFactory->postProcessLoad();
+
+	// The water object outlives the map, so it drops the map's standing water texture here.
+	if (TheWaterRenderObj != nullptr)
+	{
+		TheWaterRenderObj->updateMapOverrides();
+	}
 }
 
 // Shutdown-only teardown, called from ExitInstance BEFORE Qt is destroyed.
@@ -803,6 +810,10 @@ static void appendIniObjectSection(CString &msg, const char *header,
 static void refreshMapIniViewport(void)
 {
 	ObjectOptions::reprocessObjectList();
+	if (TheWaterRenderObj != nullptr)
+	{
+		TheWaterRenderObj->updateMapOverrides();
+	}
 	WbView3d *p3d = CWorldBuilderDoc::GetActive3DView();
 	if (p3d != NULL) {
 		// A map.ini can change what a model NAME means (editing an object's Draw module), and
