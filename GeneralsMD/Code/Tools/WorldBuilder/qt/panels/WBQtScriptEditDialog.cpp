@@ -815,6 +815,21 @@ extern "C" void WBQtScriptEdit_SetInitialFocus(int tab, int row)
 	s_initialFocusRow = row;
 }
 
+// Either design runs the same way: modal, focused, and owning the MFC sub-modals the bridge pops.
+template <class Dialog>
+static int runScriptEdit(Dialog &dlg, int initialTab, int initialRow)
+{
+	dlg.setWindowModality(Qt::ApplicationModal);
+	if (initialTab >= 0)
+	{
+		dlg.applyInitialFocus(initialTab, initialRow);
+	}
+	WBQtScriptEdit_SetModalOwner(reinterpret_cast<void *>(dlg.winId()));
+	const int rc = dlg.exec();
+	WBQtScriptEdit_SetModalOwner(NULL);
+	return (rc == QDialog::Accepted) ? 1 : 0;
+}
+
 extern "C" int WBQtScriptEdit_Run(void *script, void * /*frameHwnd*/)
 {
 	// Snapshot + clear the one-shot focus first, so it can never leak into a later Run.
@@ -836,25 +851,8 @@ extern "C" int WBQtScriptEdit_Run(void *script, void * /*frameHwnd*/)
 	if (WBQtScript_GetNewDesign() == 0)
 	{
 		WBQtScriptEditDialogClassic classic(script, owner);
-		classic.setWindowModality(Qt::ApplicationModal);
-		if (initialTab >= 0)
-		{
-			classic.applyInitialFocus(initialTab, initialRow);
-		}
-		WBQtScriptEdit_SetModalOwner(reinterpret_cast<void *>(classic.winId()));
-		const int classicRc = classic.exec();
-		WBQtScriptEdit_SetModalOwner(NULL);
-		return (classicRc == QDialog::Accepted) ? 1 : 0;
+		return runScriptEdit(classic, initialTab, initialRow);
 	}
 	WBQtScriptEditDialog dlg(script, owner);
-	dlg.setWindowModality(Qt::ApplicationModal);
-	if (initialTab >= 0)
-	{
-		dlg.applyInitialFocus(initialTab, initialRow);
-	}
-	// Register our HWND so the MFC sub-modals the bridge pops are owned by this dialog.
-	WBQtScriptEdit_SetModalOwner(reinterpret_cast<void *>(dlg.winId()));
-	const int rc = dlg.exec();
-	WBQtScriptEdit_SetModalOwner(NULL);
-	return (rc == QDialog::Accepted) ? 1 : 0;
+	return runScriptEdit(dlg, initialTab, initialRow);
 }
