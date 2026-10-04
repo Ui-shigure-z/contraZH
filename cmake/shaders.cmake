@@ -297,6 +297,7 @@ rts_add_shader("${RTS_SHADER_DIR}/disruption.hlsl"     ps_2_a main disruptionbea
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusion.pso      BLUR=0)
 rts_add_shader("${RTS_SHADER_DIR}/ambientocclusion.hlsl" ps_2_a main ambientocclusionblur.pso  BLUR=1)
 rts_add_shader("${RTS_SHADER_DIR}/skyclouds.hlsl"      ps_2_0 main skyclouds.pso)
+rts_add_shader("${RTS_SHADER_DIR}/slopemap.hlsl"       ps_2_0 main slopemap.pso)
 # The water shaders outgrow ps_2_0's instruction limit.
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderwater.pso              RIVER=0 PACKED=0)
 rts_add_shader("${RTS_SHADER_DIR}/shaderwater.hlsl"    ps_2_a main shaderwaterpacked.pso        RIVER=0 PACKED=1)

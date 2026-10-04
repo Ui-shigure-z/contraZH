@@ -24,7 +24,8 @@
 //
 // BUMP 1 adds a normal map on the stage after the world position, read with the road UVs. Roads
 // read their texture's _nrm.dds and blend tiles the terrain's normal atlas. BUMP 2 takes the
-// road texture's brightness as height instead, for roads without a normal map. As on the terrain,
+// road texture's brightness as height instead, for roads without a normal map, through the slope
+// map W3DSlopeMap builds from it on the normal map's stage. As on the terrain,
 // only the sun's share of the vertex lighting is redone, and the frame comes from derivatives.
 
 #ifndef SHADOWED
@@ -135,29 +136,11 @@ float3 BumpNormal(float3 normal, float3 position, float2 uv)
 #elif BUMP == 2
 
 // Only roads take derived bumps, and their height blend leaves alpha alone, so its register holds
-// x = rise of full brightness in world units, yz = one texel of the road texture in uv, w = 6, how hard large jumps soften.
+// x = rise of full brightness in world units and yz = the slope map's stored texel to height per uv.
 
-// Brightness as height, from one mip blurrier than the pixel needs, so fine texture noise does not sparkle.
-// Green stands in for brightness, since roads are mostly grey and the lit variants have no register for the weights.
-float Height(float2 uv)
-{
-    return tex2Dbias(RoadTexture, float4(uv, 0.0f, 1.0f)).g;
-}
+sampler2D SlopeMap : register(CONCAT(s, NORMAL_INDEX));
 
-// Height change per pixel along one screen axis, the samples at least a texel apart, as on units.
-float HeightSlope(float2 uv, float2 step)
-{
-    float2 texels = step / HeightBlend.yz;
-    float stretch = max(1.0f, rsqrt(max(dot(texels, texels), 1e-20f)));
-    float2 reach = step * stretch;
-    float change = (Height(uv + reach) - Height(uv - reach)) * 0.5f;
-
-    // Paint lines jump far more than surface grain, so large jumps are softened.
-    change /= 1.0f + abs(change) * HeightBlend.w;
-    return change / stretch;
-}
-
-// Mikkelsen's surface gradient.
+// Mikkelsen's surface gradient, with the height change per pixel from the slope map's change per uv.
 float3 BumpNormal(float3 normal, float3 position, float2 uv)
 {
     float3 dpdx = ddx(position);
@@ -166,7 +149,8 @@ float3 BumpNormal(float3 normal, float3 position, float2 uv)
     float3 r2 = cross(normal, dpdx);
     float det = dot(dpdx, r1);
 
-    float3 gradient = sign(det) * (HeightSlope(uv, ddx(uv)) * r1 + HeightSlope(uv, ddy(uv)) * r2) * HeightBlend.x;
+    float2 slope = (tex2D(SlopeMap, uv).rg - 0.5f) * HeightBlend.yz;
+    float3 gradient = sign(det) * (dot(slope, ddx(uv)) * r1 + dot(slope, ddy(uv)) * r2) * HeightBlend.x;
     float3 bumped = abs(det) * normal - gradient;
     return (dot(bumped, bumped) > 1e-20f) ? normalize(bumped) : normal;
 }

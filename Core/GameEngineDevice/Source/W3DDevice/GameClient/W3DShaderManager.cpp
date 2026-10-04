@@ -60,6 +60,7 @@
 #include "Common/FileSystem.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DEmbeddedShaders.h"
+#include "W3DDevice/GameClient/W3DSlopeMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
@@ -2474,49 +2475,40 @@ void SpecularShader::setTexture(TextureClass *texture)
 {
 	DX8Wrapper::Set_Texture(0, texture);
 
-	Int bump = BUMP_NONE;
-	TextureClass *normalMap = nullptr;
-	if (BumpEnabled && texture != nullptr && !m_lightsOnly)
-	{
-		normalMap = Find_Normal_Map(texture);
-		if (normalMap != nullptr)
-		{
-			bump = BUMP_NORMAL_MAP;
-		}
-		else if (m_bumpHeight > 0.0f)
-		{
-			bump = BUMP_DERIVED;
-		}
-	}
-
 	const DWORD *shaders = m_lit
 		? (m_shadowed ? m_dwLitShadowedShaders : m_dwLitUnshadowedShaders)
 		: (m_shadowed ? m_dwShadowedShaders : m_dwUnshadowedShaders);
+
+	// A texture's first draws go flat while its slope map waits for the next frame's build.
+	Int bump = BUMP_NONE;
+	TextureClass *bumpMap = nullptr;
+	Real slopeScaleU = 0.0f;
+	Real slopeScaleV = 0.0f;
+	if (BumpEnabled && texture != nullptr && !m_lightsOnly)
+	{
+		bumpMap = Find_Normal_Map(texture);
+		if (bumpMap != nullptr)
+		{
+			bump = BUMP_NORMAL_MAP;
+		}
+		else if (m_bumpHeight > 0.0f && shaders[BUMP_DERIVED] != 0)
+		{
+			bumpMap = W3DSlopeMap::find(texture, slopeScaleU, slopeScaleV);
+			bump = (bumpMap != nullptr) ? BUMP_DERIVED : BUMP_NONE;
+		}
+	}
 	if (shaders[bump] == 0)
 	{
 		bump = BUMP_NONE;
 	}
 
-	DX8Wrapper::Set_Texture(SPECULAR_NORMAL_MAP_STAGE, (bump == BUMP_NORMAL_MAP) ? normalMap : nullptr);
+	DX8Wrapper::Set_Texture(SPECULAR_NORMAL_MAP_STAGE, (bump != BUMP_NONE) ? bumpMap : nullptr);
 	DX8Wrapper::Set_Pixel_Shader(shaders[bump]);
 
 	TextureClass *emissiveMap = (EmissiveIntensity > 0.0f && texture != nullptr && !m_lightsOnly) ? Find_Emissive_Map(texture) : nullptr;
 	DX8Wrapper::Set_Texture(SPECULAR_EMISSIVE_STAGE, emissiveMap);
 
-	// Derived bumps step at least a texel, so they need its size. The loaded level is read, since the size can still change.
-	Real texelU = 1.0f / 256.0f;
-	Real texelV = 1.0f / 256.0f;
-	IDirect3DTexture8 *meshTexture = (bump == BUMP_DERIVED) ? texture->Peek_D3D_Texture() : nullptr;
-	if (meshTexture != nullptr)
-	{
-		D3DSURFACE_DESC desc;
-		if (SUCCEEDED(meshTexture->GetLevelDesc(0, &desc)) && desc.Width > 0 && desc.Height > 0)
-		{
-			texelU = 1.0f / (Real)desc.Width;
-			texelV = 1.0f / (Real)desc.Height;
-		}
-	}
-	Vector4 textureInfo((emissiveMap != nullptr) ? EmissiveIntensity : 0.0f, texelU, texelV, 0.0f);
+	Vector4 textureInfo((emissiveMap != nullptr) ? EmissiveIntensity : 0.0f, slopeScaleU, slopeScaleV, 0.0f);
 	DX8Wrapper::Set_Pixel_Shader_Constant(7, &textureInfo, 1);
 	if (emissiveMap != nullptr)
 	{
@@ -4734,8 +4726,14 @@ Bool RoadShaderPixelShader::setPixelPath()
 			: W3DShaderManager::findNormalMap(roadTexture);
 	}
 	const Bool bumpable = (normalMap != nullptr && normalMap->Peek_D3D_Texture() != nullptr);
-	const Bool derivable = !bumpable && bumpAllowed && RoadDerivedLoaded && !RoadHeightBlendTiles && RoadBumpHeight > 0.0f &&
-		roadTexture != nullptr && roadTexture->Peek_D3D_Texture() != nullptr;
+	TextureClass *slopeMap = nullptr;
+	Real slopeScaleU = 0.0f;
+	Real slopeScaleV = 0.0f;
+	if (!bumpable && bumpAllowed && RoadDerivedLoaded && !RoadHeightBlendTiles && RoadBumpHeight > 0.0f)
+	{
+		slopeMap = W3DSlopeMap::find(roadTexture, slopeScaleU, slopeScaleV);
+	}
+	const Bool derivable = (slopeMap != nullptr && slopeMap->Peek_D3D_Texture() != nullptr);
 
 	if (!shadowed && !lightable && !lightMapReplaced && !heightBlend && !glintable && !bumpable && !derivable)
 	{
@@ -4769,16 +4767,8 @@ Bool RoadShaderPixelShader::setPixelPath()
 	heightConstants.W = RoadHeightBlendTiles ? 1.0f : 0.0f;
 	if (derived)
 	{
-		// The derived bump leaves alpha alone without the register, so it holds the rise, the road texture's texel and the softening.
-		Real texelU = 1.0f / 256.0f;
-		Real texelV = 1.0f / 256.0f;
-		D3DSURFACE_DESC desc;
-		if (SUCCEEDED(roadTexture->Peek_D3D_Texture()->GetLevelDesc(0, &desc)) && desc.Width > 0 && desc.Height > 0)
-		{
-			texelU = 1.0f / (Real)desc.Width;
-			texelV = 1.0f / (Real)desc.Height;
-		}
-		heightConstants.Set(RoadBumpHeight, texelU, texelV, 6.0f);
+		// The derived bump leaves alpha alone without the register, so it holds the rise and the slope map's scales.
+		heightConstants.Set(RoadBumpHeight, slopeScaleU, slopeScaleV, 0.0f);
 	}
 	DX8Wrapper::Set_Pixel_Shader_Constant(ROAD_HEIGHT_BLEND_REGISTER, &heightConstants, 1);
 
@@ -4868,19 +4858,18 @@ Bool RoadShaderPixelShader::setPixelPath()
 	{
 		unlit = m_dwDerivedPixelShader[shadowed ? 1 : 0][noiseCount];
 		lit = m_dwLitDerivedPixelShader[shadowed ? 1 : 0][noiseCount];
-		++RoadBumpCount;
 	}
 	if (lightable || glint || bump || derived)
 	{
 		m_lightStage = 1 + noiseCount + (shadowed ? 1 : 0);
 		Set_Terrain_World_Position(m_lightStage);
 	}
-	if (bump)
+	if (bump || derived)
 	{
-		// The normal map is read with the road UVs, so its own texcoords go unused. Only roads tile theirs.
+		// The normal or slope map is read with the road UVs, so its own texcoords go unused. Only roads tile theirs.
 		m_normalStage = m_lightStage + 1;
 		const DWORD address = RoadHeightBlendTiles ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP;
-		DX8Wrapper::_Get_D3D_Device8()->SetTexture(m_normalStage, normalMap->Peek_D3D_Texture());
+		DX8Wrapper::_Get_D3D_Device8()->SetTexture(m_normalStage, bump ? normalMap->Peek_D3D_Texture() : slopeMap->Peek_D3D_Texture());
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_TEXCOORDINDEX, 0);
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 		DX8Wrapper::Set_DX8_Texture_Stage_State(m_normalStage, D3DTSS_ADDRESSU, address);
@@ -5438,6 +5427,7 @@ void W3DShaderManager::shutdown()
 	ObjectSpecularPassesUsed = 0;
 
 	W3DGroundNoise::releaseResources();
+	W3DSlopeMap::releaseResources();
 
 #if defined(BUILD_WITH_D3D9)
 	DX8InstancingClass::Set_Main_Shader(nullptr);

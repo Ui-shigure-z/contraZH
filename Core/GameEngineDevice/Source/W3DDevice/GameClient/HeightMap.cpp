@@ -80,6 +80,7 @@
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DSkyClouds.h"
+#include "W3DDevice/GameClient/W3DSlopeMap.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
@@ -2164,6 +2165,7 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			TheW3DSkyClouds->update(rinfo, *this);
 		}
 	}
+	W3DSlopeMap::update(rinfo);
 
 	Matrix3D tm(Transform);
 #if 0 // There is some weirdness sometimes with the dx8 static buffers.
