@@ -155,8 +155,9 @@ public:
 	/// Whether the specular pass draws point lights per pixel, so its meshes must go without fixed-function ones.
 	static Bool supportsUnitPixelLights();
 	/// Sets whether the terrain shaders read the normal atlas in TERRAIN_NORMAL_TEXTURE, and how strongly.
-	/// debug shows only the bump's shading, on grey.
-	static void setTerrainBumps(Bool enabled, Real strength, Bool debug);
+	/// debug shows only the bump's shading, on grey. roadHeight is the rise, in world units, of full
+	/// brightness on road textures without a normal map, and 0 leaves them flat.
+	static void setTerrainBumps(Bool enabled, Real strength, Bool debug, Real roadHeight);
 	/// Whether the terrain shaders will read the normal atlas, so the terrain should build and hand it over.
 	static Bool wantsTerrainNormalAtlas();
 	/// Sets the sun's glint on the ground, once a frame. gloss sharpens it, and albedo is how far it
@@ -176,6 +177,8 @@ public:
 	static void setRoadHeightBlend(Bool blendTiles);
 	/// How many terrain draws used the normal atlas since the last call.
 	static Int takeTerrainBumpCount();
+	/// How many road and blend tile draws read a normal map since the last call.
+	static Int takeRoadBumpCount();
 	/// How many mesh draws the specular pass ran on, and how many polygon groups of those it
 	/// bumped from brightness or from a normal map, or lit with a glow mask, since the last call.
 	static void takeSpecularCounts(Int &meshes, Int &derived, Int &normalMapped, Int &emissive);
@@ -186,6 +189,10 @@ public:
 	static MaterialPassClass *getSpecularPass(const Int *lights, Int lightCount, Bool lightsOnly);
 	/// The pass every specular pass above shares its vertex processing with, or null when it is unsupported.
 	static const MaterialPassClass *getSpecularPassKey();
+	/// Binds the texture, and its normal map and glow mask, for geometry drawn through ST_SPECULAR outside the mesh renderer.
+	static void setSpecularTexture(TextureClass *texture);
+	/// Overrides, until ST_SPECULAR is next set, the rise of full brightness on textures without a normal map.
+	static void setSpecularBumpHeight(Real height);
 	/// Whether the device runs ps_2_a shaders, which have gradients and 512 instruction slots.
 	static Bool supportsPixelShader2a();
 	/// The <name>_nrm.dds beside a texture, or null when there is none. Not reference counted.

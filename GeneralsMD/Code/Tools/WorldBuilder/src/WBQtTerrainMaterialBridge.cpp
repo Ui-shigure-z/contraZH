@@ -456,6 +456,19 @@ int WBQtTerrainMaterial_IsNoMixing(void)
 }
 
 //----------------------------------------------------------------------------------------
+// Water-only painting.
+//----------------------------------------------------------------------------------------
+void WBQtTerrainMaterial_SetPaintWaterOnly(int on)
+{
+	WorldHeightMapEdit::setPaintWaterOnly(on != 0);
+}
+
+int WBQtTerrainMaterial_IsPaintWaterOnly(void)
+{
+	return WorldHeightMapEdit::isPaintWaterOnly() ? 1 : 0;
+}
+
+//----------------------------------------------------------------------------------------
 // Copy mode. Mirrors OnCopyMode / OnCopyModeTerrain / OnRaiseOnly / OnCopySelect / OnCopyApply
 // / OnRotate*.
 //----------------------------------------------------------------------------------------

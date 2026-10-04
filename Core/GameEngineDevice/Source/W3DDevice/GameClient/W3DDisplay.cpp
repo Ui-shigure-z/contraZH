@@ -80,7 +80,10 @@ static void drawFramerateBar();
 #include "W3DDevice/GameClient/W3DVideoBuffer.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShadowMap.h"
+#include "W3DDevice/GameClient/W3DSlopeMap.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
+#include "W3DDevice/GameClient/W3DDisruption.h"
+#include "W3DDevice/GameClient/W3DStorm.h"
 #include "W3DDevice/GameClient/W3DDebugDisplay.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DScreenshot.h"
@@ -2369,6 +2372,22 @@ void W3DDisplay::createShockwave( const Coord3D *pos, Real radius, Real width, R
 	}
 }
 
+void W3DDisplay::createDisruption( const Coord3D *pos, Real radius, const DisruptionShaderInfo *info, UnsignedInt durationFrames, Real fade )
+{
+	if (TheW3DDisruption != nullptr && pos != nullptr)
+	{
+		TheW3DDisruption->add(*pos, radius, info, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL), fade);
+	}
+}
+
+void W3DDisplay::createStorm( const Coord3D *pos, const StormShaderInfo *info, UnsignedInt durationFrames )
+{
+	if (TheW3DStorms != nullptr && pos != nullptr && info != nullptr && durationFrames != 0)
+	{
+		TheW3DStorms->add(*pos, *info, (UnsignedInt)(durationFrames * MSEC_PER_LOGICFRAME_REAL));
+	}
+}
+
 void W3DDisplay::toggleLetterBox()
 {
 	m_letterBoxEnabled = !m_letterBoxEnabled;
@@ -3371,6 +3390,9 @@ void W3DDisplay::doSmartAssetPurgeAndPreload(const char* usageFileName)
 	}
 
 	releaseImageTextures();
+
+	// The slope maps hold their textures, which would otherwise outlive the purge.
+	W3DSlopeMap::releaseResources();
 
 	// just free everything if there's no exclusion list file (send in an empty list)
 	m_assetManager->Free_Assets_With_Exclusion_List(names);

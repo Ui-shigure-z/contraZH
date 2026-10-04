@@ -415,10 +415,10 @@ void StreakLineClass::Set_End_Caps(int onoff)
 	LineRenderer.Set_End_Caps(onoff);
 }
 
-void StreakLineClass::Set_Effects(unsigned int effects)
+void StreakLineClass::Set_Effects(unsigned int effects, const void *effectData)
 {
-	LineRenderer.Set_Effects(effects);
-	StreakRenderer.Set_Effects(effects);
+	LineRenderer.Set_Effects(effects, effectData);
+	StreakRenderer.Set_Effects(effects, effectData);
 }
 
 /*

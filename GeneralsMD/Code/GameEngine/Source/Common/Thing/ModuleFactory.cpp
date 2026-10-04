@@ -44,6 +44,7 @@
 // behavior includes
 #include "GameLogic/Module/AutoHealBehavior.h"
 #include "GameLogic/Module/GrantStealthBehavior.h"
+#include "GameLogic/Module/GrantTemporaryStealthBehavior.h"
 #include "GameLogic/Module/NeutronBlastBehavior.h"
 #include "GameLogic/Module/BehaviorModule.h"
 #include "GameLogic/Module/BridgeBehavior.h"
@@ -368,6 +369,7 @@ void ModuleFactory::init()
 	// behavior modules
 	addModule( AutoHealBehavior );
 	addModule( GrantStealthBehavior );
+	addModule( GrantTemporaryStealthBehavior );
 	addModule( NeutronBlastBehavior );
 	addModule( BridgeBehavior );
 	addModule( BridgeScaffoldBehavior );

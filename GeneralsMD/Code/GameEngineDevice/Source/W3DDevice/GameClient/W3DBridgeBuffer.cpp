@@ -465,9 +465,10 @@ Int W3DBridge::getModelVertices(VertexFormatXYZNDUV1 *destination_vb, Int curVer
 		normal = (normal.X) * vec + normal.Y*vecNormal + normal.Z*vecZ;
 		normal.Normalize();
 		TheTerrainRenderObject->doTheLight(&vb, lightRay, &normal, nullptr, 1.0f);
-		curVb->nx = 0;	//will these to keep AGP write buffer happy.
-		curVb->ny = 0;
-		curVb->nz = 1;
+		// The prelit base pass ignores the normal, but the specular pass shades and bumps by it.
+		curVb->nx = normal.X;
+		curVb->ny = normal.Y;
+		curVb->nz = normal.Z;
 		curVb->diffuse = vb.diffuse | 0xFF000000;
 #endif
 		curVb->u1 = uvs[i].U;
@@ -1229,6 +1230,29 @@ void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureC
 			}
 		}
 		W3DShaderManager::resetShader(W3DShaderManager::ST_SHADOW_MULTIPLY);
+	}
+
+	// Bridges take the structures' highlight and bumps but derive bumps as roads do, and the mirror stays flat.
+	if (!wireframe && m_numBridges > 0 && W3DShaderManager::getSpecularPass() != nullptr && !ShaderClass::Is_Backface_Culling_Inverted())
+	{
+		DX8Wrapper::Invalidate_Cached_Render_States();
+		DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
+		DX8Wrapper::Set_Material(m_vertexMaterial);
+		DX8Wrapper::Set_Index_Buffer(m_indexBridge,0);
+		DX8Wrapper::Set_Vertex_Buffer(m_vertexBridge);
+		DX8Wrapper::Apply_Render_State_Changes();
+		if (W3DShaderManager::setShader(W3DShaderManager::ST_SPECULAR, 0))
+		{
+			W3DShaderManager::setSpecularBumpHeight(TheGlobalData->m_roadBumpHeight);
+			for (curBridge=0; curBridge<m_numBridges; curBridge++) {
+				if (m_bridges[curBridge].isEnabled() && m_bridges[curBridge].isVisible()) {
+					W3DShaderManager::setSpecularTexture(m_bridges[curBridge].peekTexture());
+					//Pretend we're in wireframe so the texture the pass bound stays.
+					m_bridges[curBridge].renderBridge(TRUE);
+				}
+			}
+		}
+		W3DShaderManager::resetShader(W3DShaderManager::ST_SPECULAR);
 	}
 
 	// Bridges bake only the sun into their vertices, so a pass adds the dynamic lights that reach each one.

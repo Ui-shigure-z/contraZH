@@ -53,6 +53,8 @@ public:
 #endif
 #include "Common/SparseMatchFinder.h"
 #include "GameClient/ParticleSys.h"
+#include "GameClient/HeadlightShader.h"
+#include "W3DLaserDraw.h"
 #include "Common/STLTypedefs.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -335,6 +337,16 @@ public:
 
 	Bool															m_keepRecoilAcrossStates;  ///< Don't reset recoil bones when switching states
 
+	HeadlightShaderTuning							m_headlightTuning;  ///< HeadlightShader and the Headlight keys, unset where the model takes GameData.ini's
+
+	DisruptionShaderInfo							m_disruption;  ///< DisruptionShader and its settings, for translucent meshes that bend the scene behind them
+
+	Bool															m_flameShader;  ///< shade the translucent meshes as fire
+	Bool															m_electricShader;  ///< shade them as electricity, unless FlameShader or CryoShader is on
+	Bool															m_cryoShader;  ///< shade them as ice, over either
+	FlameShaderTuning									m_flameTuning;
+	BeamShaderTuning									m_beamTuning;  ///< the electric and cryo settings
+
 	// Bool															m_disableMoveEffectsOverWater;  ///< disable track marks and tread/wheel anims over water
 
 	W3DModelDrawModuleData();
@@ -568,6 +580,18 @@ private:
 	ParticleSystemIDVec						m_particleSystemIDs;							///< The ID numbers of the particle systems currently running.
 	std::vector<ModelConditionInfo::HideShowSubObjInfo>		m_subObjectVec;
 	Bool													m_hideHeadlights;
+
+	// A HEADLIGHT mesh the headlight shader draws for, with its beam in the mesh's own space.
+	struct Headlight
+	{
+		Int subObject;
+		Vector3 start;
+		Vector3 end;
+		Real radius;
+	};
+	std::vector<Headlight>				m_headlights;
+	RenderObjClass*								m_headlightSource;								///< the render object m_headlights was found in, never dereferenced
+
 	Bool													m_pauseAnimation;
 	Int														m_animationMode;
 	Bool													m_isFirstDrawModule;
@@ -589,6 +613,8 @@ private:
 	void adjustAnimSpeedToMovementSpeed();
 	static void hideAllMuzzleFlashes(const ModelConditionInfo* state, RenderObjClass* renderObject);
 	void hideAllHeadlights(Bool hide);
+	void addHeadlight(Int subObject, RenderObjClass* mesh);
+	void submitHeadlights();
 #if defined(RTS_DEBUG)	//art wants to see buildings without flags as a test.
 	void hideGarrisonFlags(Bool hide);
 #endif

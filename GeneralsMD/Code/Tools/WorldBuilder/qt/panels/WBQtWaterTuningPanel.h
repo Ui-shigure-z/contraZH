@@ -1,8 +1,9 @@
 // WBQtWaterTuningPanel.h -- the modeless Water tuning window (File > Map.ini > Water tuning).
 //
-// One row per WaterTransparency key, taken from the bridge's table. A change shows in the 3D
-// view at once and is saved to the WaterTransparency block of the map's map.ini. Only keys the
-// map overrides are written; the rest keep following Water.ini.
+// One row per key of the bridge's table. The WaterTransparency keys sit on the Water tab and the
+// GameData keys on a tab per group. A change shows in the 3D view at once and is saved to
+// the key's block of the map's map.ini. Only keys the map overrides are written; the rest keep
+// following Water.ini and GameData.ini.
 #ifndef WB_QT_WATER_TUNING_PANEL_H
 #define WB_QT_WATER_TUNING_PANEL_H
 
@@ -12,6 +13,8 @@
 #include <QWidget>
 
 class QCheckBox;
+class QComboBox;
+class QGridLayout;
 class QHideEvent;
 class QLabel;
 class QTimer;
@@ -49,6 +52,7 @@ private slots:
 	void onSpinChanged(double value);
 	void onStepClicked();
 	void onCheckToggled(bool on);
+	void onTextChosen();
 	void onResetClicked();
 	void onAdvancedToggled(bool on);
 	void onSaveTimer();
@@ -61,14 +65,17 @@ private:
 		int index;				// the key's index in the bridge table
 		int kind;				// WBQT_WATER_*
 		QString key;
+		QString block;			// map.ini block the key is saved in
 		float lo;				// the - and + buttons stop at lo and hi
 		float hi;
 		float step;
 		bool advanced;
 		bool inFile;			// map.ini sets this key
 		float value[3];
-		QLabel *label;			// float rows
+		QString text;			// text rows
+		QLabel *label;			// float and text rows
 		QCheckBox *check;		// bool rows, and the colour's "set in map.ini" box
+		QComboBox *combo;		// text rows, editable, listing the files the bridge found
 		WBQtScrubSpinBox *spin[3];
 		QToolButton *minus[3];
 		QToolButton *plus[3];
@@ -77,8 +84,11 @@ private:
 	};
 
 	void buildRows();
-	void addStepper(Row &row, int rowIndex, int channel, int gridRow, const QString &tip);
+	QGridLayout *addTab(const QString &title);
+	void addStepper(Row &row, int rowIndex, int channel, QGridLayout *grid, int gridRow, const QString &tip);
 	void showRow(int r);
+	void loadBase(Row &row);		// the Water.ini or GameData.ini value
+	void pushLive(const Row &row);	// into the 3D view
 	void markChanged(int r);
 	void resetRow(int r);
 	QString formatValue(const Row &row) const;

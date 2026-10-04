@@ -51,6 +51,7 @@
 #include "GameClient/GameClient.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/ParticleSys.h"
+#include "GameClient/StormShader.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameClient/Shadow.h"
 #include "../../../GameEngineDevice/Include/W3DDevice/GameClient/Module/W3DModelDraw.h"
@@ -721,6 +722,129 @@ private:
 EMPTY_DTOR(ShockwaveFXNugget)
 
 //-------------------------------------------------------------------------------------------------
+// A disc on the ground that ripples the scene and pulls its colours apart, with no art of its own.
+class DisruptionFXNugget : public FXNugget
+{
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(DisruptionFXNugget, "DisruptionFXNugget")
+public:
+
+	DisruptionFXNugget() : m_radius(0), m_durationFrames(0), m_fade(0.2f), m_info(DisruptionShaderInfo::SHAPE_CENTER)
+	{
+		m_info.mode = DisruptionShaderInfo::MODE_ONLY;
+	}
+
+	virtual void doFXObj(const Object* primary, const Object* /*secondary*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createDisruption(primary->getPosition(), m_radius, &m_info, m_durationFrames, m_fade);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	virtual void doFXPos(const Coord3D *primary, const Matrix3D* /*primaryMtx*/, const Real /*primarySpeed*/, const Coord3D * /*secondary*/, const Real /*overrideRadius*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createDisruption(primary, m_radius, &m_info, m_durationFrames, m_fade);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	static void parse(INI *ini, void *instance, void* /*store*/, const void* /*userData*/)
+	{
+		static const FieldParse myFieldParse[] =
+		{
+			{ "Radius",						INI::parseReal,										nullptr, offsetof( DisruptionFXNugget, m_radius ) },
+			{ "Duration",					INI::parseDurationUnsignedInt,	nullptr, offsetof( DisruptionFXNugget, m_durationFrames ) },
+			{ "Fade",							INI::parsePercentToReal,					nullptr, offsetof( DisruptionFXNugget, m_fade ) },
+			{ nullptr, nullptr, nullptr, 0 }
+		};
+
+		MultiIniFieldParse p;
+		p.add(myFieldParse);
+		p.add(DisruptionShaderInfo::getFieldParse(), offsetof( DisruptionFXNugget, m_info ));
+
+		DisruptionFXNugget* nugget = newInstance( DisruptionFXNugget );
+		ini->initFromINIMulti(nugget, p);
+		// the nugget has no art to keep, whatever DisruptionShader says
+		nugget->m_info.mode = DisruptionShaderInfo::MODE_ONLY;
+		((FXList*)instance)->addFXNugget(nugget);
+	}
+
+private:
+	Real									m_radius;
+	UnsignedInt						m_durationFrames;
+	Real									m_fade;
+	DisruptionShaderInfo	m_info;
+};
+EMPTY_DTOR(DisruptionFXNugget)
+
+//-------------------------------------------------------------------------------------------------
+// A sandstorm or snowstorm that stands on the ground where the effect plays.
+class StormFXNugget : public FXNugget
+{
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(StormFXNugget, "StormFXNugget")
+public:
+
+	StormFXNugget() : m_durationFrames(0)
+	{
+	}
+
+	virtual void doFXObj(const Object* primary, const Object* /*secondary*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createStorm(primary->getPosition(), &m_info, m_durationFrames);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	virtual void doFXPos(const Coord3D *primary, const Matrix3D* /*primaryMtx*/, const Real /*primarySpeed*/, const Coord3D * /*secondary*/, const Real /*overrideRadius*/, FXSurfaceInfo* /*surfaceInfo*/) const
+	{
+		if (primary)
+		{
+			TheDisplay->createStorm(primary, &m_info, m_durationFrames);
+		}
+		else
+		{
+			DEBUG_CRASH(("You must have a primary source for this effect"));
+		}
+	}
+
+	static void parse(INI *ini, void *instance, void* /*store*/, const void* /*userData*/)
+	{
+		static const FieldParse myFieldParse[] =
+		{
+			{ "Duration",					INI::parseDurationUnsignedInt,	nullptr, offsetof( StormFXNugget, m_durationFrames ) },
+			{ nullptr, nullptr, nullptr, 0 }
+		};
+
+		MultiIniFieldParse p;
+		p.add(myFieldParse);
+		p.add(StormShaderInfo::getFieldParse(), offsetof( StormFXNugget, m_info ));
+
+		StormFXNugget* nugget = newInstance( StormFXNugget );
+		ini->initFromINIMulti(nugget, p);
+		((FXList*)instance)->addFXNugget(nugget);
+	}
+
+private:
+	UnsignedInt			m_durationFrames;
+	StormShaderInfo	m_info;
+};
+EMPTY_DTOR(StormFXNugget)
+
+//-------------------------------------------------------------------------------------------------
 class ViewShakeFXNugget : public FXNugget
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(ViewShakeFXNugget, "ViewShakeFXNugget")
@@ -1213,6 +1337,8 @@ static const FieldParse TheFXListFieldParse[] =
 	{ "Tracer",											TracerFXNugget::parse, nullptr, 0},
 	{ "LightPulse",									LightPulseFXNugget::parse, nullptr, 0},
 	{ "Shockwave",									ShockwaveFXNugget::parse, nullptr, 0},
+	{ "Disruption",									DisruptionFXNugget::parse, nullptr, 0},
+	{ "Storm",											StormFXNugget::parse, nullptr, 0},
 	{ "ViewShake",									ViewShakeFXNugget::parse, nullptr, 0},
 	{ "TerrainScorch",							TerrainScorchFXNugget::parse, nullptr, 0},
 	{ "ParticleSystem",							ParticleSystemFXNugget::parse, nullptr, 0},

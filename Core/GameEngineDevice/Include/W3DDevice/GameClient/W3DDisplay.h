@@ -90,6 +90,8 @@ public:
 																 UnsignedInt increaseFrameTime, UnsignedInt decayFrameTime//, Bool donut = FALSE
 																 ) override;
 	virtual void createShockwave( const Coord3D *pos, Real radius, Real width, Real strength, Bool strengthInPixels, UnsignedInt durationFrames ) override;
+	virtual void createDisruption( const Coord3D *pos, Real radius, const DisruptionShaderInfo *info, UnsignedInt durationFrames, Real fade ) override;
+	virtual void createStorm( const Coord3D *pos, const StormShaderInfo *info, UnsignedInt durationFrames ) override;
 	virtual void setTimeOfDay ( TimeOfDay tod ) override;
 
 	/// draw a line on the display in screen coordinates

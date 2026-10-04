@@ -203,6 +203,27 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+// Every storm setting as a GameData key, once per storm type.
+#define STORM_TUNING_FIELDS(prefix, stormType) \
+	{ prefix "Radius",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].radius ) }, \
+	{ prefix "Height",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].height ) }, \
+	{ prefix "EdgeFade",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].edgeFade ) }, \
+	{ prefix "FadeTime",	INI::parseDurationReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].fadeFrames ) }, \
+	{ prefix "HazeColor",	INI::parseRGBColor,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeColor ) }, \
+	{ prefix "HazeDensity",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeDensity ) }, \
+	{ prefix "HazeMaxOpacity",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeMaxOpacity ) }, \
+	{ prefix "HazeNoiseSize",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].hazeNoiseSize ) }, \
+	{ prefix "Gusts",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].gusts ) }, \
+	{ prefix "WindAngle",	INI::parseAngleReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].windAngle ) }, \
+	{ prefix "WindSpeed",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].windSpeed ) }, \
+	{ prefix "FallSpeed",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].fallSpeed ) }, \
+	{ prefix "Turbulence",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].turbulence ) }, \
+	{ prefix "GrainColor",	INI::parseRGBColor,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainColor ) }, \
+	{ prefix "GrainCount",	INI::parseInt,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainCount ) }, \
+	{ prefix "GrainSize",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainSize ) }, \
+	{ prefix "GrainStreak",	INI::parseReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainStreak ) }, \
+	{ prefix "GrainOpacity",	INI::parsePercentToReal,	nullptr,	offsetof( GlobalData, m_stormTuning[stormType].grainOpacity ) },
+
 /*static*/ const FieldParse GlobalData::s_GlobalDataFieldParseTable[] =
 {
 	{ "Windowed",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_windowed ) },
@@ -255,6 +276,7 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "UnitSpecularIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularIntensity ) },
 	{ "UnitSpecularPower",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitSpecularPower ) },
 	{ "UnitBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitBumpHeight ) },
+	{ "RoadBumpHeight",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_roadBumpHeight ) },
 	{ "UnitNormalMapStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_unitNormalMapStrength ) },
 	{ "TerrainNormalMapStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainNormalMapStrength ) },
 	{ "TerrainGlintIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_terrainGlintIntensity ) },
@@ -305,6 +327,33 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "CryoGlintSize",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintSize ) },
 	{ "CryoGlintRate",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_cryoGlintRate ) },
 	{ "CryoParticleScale",				INI::parsePercentToReal,	nullptr,			offsetof( GlobalData, m_cryoParticleScale ) },
+	{ "DisruptionRingStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringStrength ) },
+	{ "DisruptionRingSize",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringSize ) },
+	{ "DisruptionRingSpeed",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.ringSpeed ) },
+	{ "DisruptionWobble",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobble ) },
+	{ "DisruptionWobbleSize",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobbleSize ) },
+	{ "DisruptionWobbleSpeed",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.wobbleSpeed ) },
+	{ "DisruptionGlitch",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitch ) },
+	{ "DisruptionGlitchSize",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitchSize ) },
+	{ "DisruptionGlitchRate",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.glitchRate ) },
+	{ "DisruptionChroma",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chroma ) },
+	{ "DisruptionChromaSpread",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.chromaSpread ) },
+	{ "DisruptionMask",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_disruptionTuning.mask ) },
+	STORM_TUNING_FIELDS("SandStorm", StormShaderInfo::TYPE_SAND)
+	STORM_TUNING_FIELDS("SnowStorm", StormShaderInfo::TYPE_SNOW)
+	{ "HeadlightShader",						INI::parseBool,				nullptr,			offsetof( GlobalData, m_headlightTuning.enabled ) },
+	{ "HeadlightColor",						INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_headlightTuning.color ) },
+	{ "HeadlightBeamIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamIntensity ) },
+	{ "HeadlightBeamLength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamLength ) },
+	{ "HeadlightBeamWidth",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamWidth ) },
+	{ "HeadlightBeamFalloff",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamFalloff ) },
+	{ "HeadlightBeamSoftness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.beamSoftness ) },
+	{ "HeadlightPoolIntensity",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolIntensity ) },
+	{ "HeadlightPoolRange",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolRange ) },
+	{ "HeadlightPoolAngle",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolAngle ) },
+	{ "HeadlightPoolPitch",					INI::parseAngleReal,		nullptr,			offsetof( GlobalData, m_headlightTuning.poolPitch ) },
+	{ "HeadlightPoolFalloff",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolFalloff ) },
+	{ "HeadlightPoolClampBrightness",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_headlightTuning.poolClampBrightness ) },
 	{ "AmbientOcclusionRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionRadius ) },
 	{ "AmbientOcclusionStrength",			INI::parseReal,				nullptr,			offsetof( GlobalData, m_ambientOcclusionStrength ) },
 	{ "GroundNoiseStrength",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_groundNoiseStrength ) },
@@ -324,6 +373,25 @@ const SubdualValue* GlobalData::findSubdualDefault( const ThingTemplate* tmpl, S
 	{ "SkyCloudChurn",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudChurn ) },
 	{ "SkyCloudBillow",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudBillow ) },
 	{ "SkyCloudDetail",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_skyCloudDetail ) },
+	{ "ColorLut",							INI::parseAsciiString,		nullptr,			offsetof( GlobalData, m_colorLut ) },
+	{ "ColorLutStrength",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutStrength ) },
+	{ "ColorLutBrightness",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutBrightness ) },
+	{ "ColorLutContrast",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutContrast ) },
+	{ "ColorLutSaturation",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutSaturation ) },
+	{ "ColorLutTint",						INI::parseRGBColor,			nullptr,			offsetof( GlobalData, m_colorLutTint ) },
+	{ "ColorLutChroma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutChroma ) },
+	{ "ColorLutLuma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutLuma ) },
+	{ "ColorLutVibrance",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVibrance ) },
+	{ "ColorLutTechnicolor",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutTechnicolor ) },
+	{ "ColorLutBlackPoint",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutBlackPoint ) },
+	{ "ColorLutWhitePoint",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutWhitePoint ) },
+	{ "ColorLutGamma",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutGamma ) },
+	{ "ColorLutOutputBlack",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutOutputBlack ) },
+	{ "ColorLutOutputWhite",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutOutputWhite ) },
+	{ "ColorLutVignette",					INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVignette ) },
+	{ "ColorLutVignetteRadius",				INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutVignetteRadius ) },
+	{ "ColorLutGrain",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutGrain ) },
+	{ "ColorLutDither",						INI::parseReal,				nullptr,			offsetof( GlobalData, m_colorLutDither ) },
 	{ "TextureReductionFactor",			INI::parseInt,				nullptr,			offsetof( GlobalData, m_textureReductionFactor ) },
 	{ "UseBehindBuildingMarker",		INI::parseBool,				nullptr,			offsetof( GlobalData, m_enableBehindBuildingMarkers ) },
 	{ "WaterPositionX",							INI::parseReal,				nullptr,			offsetof( GlobalData, m_waterPositionX ) },
@@ -989,6 +1057,7 @@ GlobalData::GlobalData()
 	m_unitSpecularIntensity = 0.35f;
 	m_unitSpecularPower = 24.0f;
 	m_unitBumpHeight = 0.15f;
+	m_roadBumpHeight = 1.1f;
 	m_unitNormalMapStrength = 1.0f;
 	m_terrainNormalMapStrength = 2.0f;
 	m_terrainGlintIntensity = 0.25f;
@@ -1041,6 +1110,21 @@ GlobalData::GlobalData()
 	m_cryoGlintSize = 1.5f;
 	m_cryoGlintRate = 2.0f;
 	m_cryoParticleScale = 1.0f;
+	m_disruptionTuning.ringStrength = 3.0f;
+	m_disruptionTuning.ringSize = 40.0f;
+	m_disruptionTuning.ringSpeed = 60.0f;
+	m_disruptionTuning.wobble = 1.5f;
+	m_disruptionTuning.wobbleSize = 30.0f;
+	m_disruptionTuning.wobbleSpeed = 1.5f;
+	m_disruptionTuning.glitch = 4.0f;
+	m_disruptionTuning.glitchSize = 12.0f;
+	m_disruptionTuning.glitchRate = 12.0f;
+	m_disruptionTuning.chroma = 0.5f;
+	m_disruptionTuning.chromaSpread = 0.5f;
+	m_disruptionTuning.mask = 2.0f;
+	m_stormTuning[StormShaderInfo::TYPE_SAND].setTypeDefaults(StormShaderInfo::TYPE_SAND);
+	m_stormTuning[StormShaderInfo::TYPE_SNOW].setTypeDefaults(StormShaderInfo::TYPE_SNOW);
+	m_headlightTuning.setDefaults();
 	m_ambientOcclusionRadius = 12.0f;
 	m_ambientOcclusionStrength = 1.0f;
 	m_groundNoiseStrength = 0.12f;
@@ -1062,6 +1146,26 @@ GlobalData::GlobalData()
 	m_skyCloudChurn = 0.3f;
 	m_skyCloudBillow = 0.5f;
 	m_skyCloudDetail = 0.4f;
+	m_colorLutStrength = 1.0f;
+	m_colorLutBrightness = 1.0f;
+	m_colorLutContrast = 1.0f;
+	m_colorLutSaturation = 1.0f;
+	m_colorLutTint.red = 1.0f;
+	m_colorLutTint.green = 1.0f;
+	m_colorLutTint.blue = 1.0f;
+	m_colorLutChroma = 1.0f;
+	m_colorLutLuma = 1.0f;
+	m_colorLutVibrance = 0.0f;
+	m_colorLutTechnicolor = 0.0f;
+	m_colorLutBlackPoint = 0.0f;
+	m_colorLutWhitePoint = 1.0f;
+	m_colorLutGamma = 1.0f;
+	m_colorLutOutputBlack = 0.0f;
+	m_colorLutOutputWhite = 1.0f;
+	m_colorLutVignette = 0.0f;
+	m_colorLutVignetteRadius = 2.0f;
+	m_colorLutGrain = 0.0f;
+	m_colorLutDither = 1.0f;
 	m_textureReductionFactor = -1;
 	m_enableBehindBuildingMarkers = TRUE;
 	m_scriptDebug = FALSE;
@@ -1678,10 +1782,14 @@ void GlobalData::reset()
 
 #if defined(RTS_DEBUG) || defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 
+#define STORM_TUNING_KEYS(prefix) \
+	prefix "Radius", prefix "Height", prefix "EdgeFade", prefix "FadeTime", prefix "HazeColor", prefix "HazeDensity", prefix "HazeMaxOpacity", prefix "HazeNoiseSize", prefix "Gusts", \
+	prefix "WindAngle", prefix "WindSpeed", prefix "FallSpeed", prefix "Turbulence", prefix "GrainColor", prefix "GrainCount", prefix "GrainSize", prefix "GrainStreak", prefix "GrainOpacity"
+
 // Keys the renderer reads every frame, so a new value shows at once. The rest are read at load.
 static const char *const LiveGameDataKeys[] =
 {
-	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength",
+	"UnitSpecularIntensity", "UnitSpecularPower", "UnitBumpHeight", "UnitNormalMapStrength", "TerrainNormalMapStrength", "RoadBumpHeight",
 	"TerrainGlintIntensity", "TerrainGlintGloss", "TerrainGlintAlbedo",
 	"UnitEmissiveIntensity", "UnitEmissiveNightIntensity", "SoftParticleDistance",
 	"AmbientOcclusionRadius", "AmbientOcclusionStrength",
@@ -1689,6 +1797,10 @@ static const char *const LiveGameDataKeys[] =
 	"TerrainHeightBlendStrength", "TerrainHeightBlendSharpness", "TerrainAtlasBorder",
 	"SkyCloudSize", "SkyCloudCoverage", "SkyCloudSoftness", "SkyCloudShadowStrength", "SkyCloudShadowTint",
 	"SkyCloudWindSpeed", "SkyCloudWindAngle", "SkyCloudChurn", "SkyCloudBillow", "SkyCloudDetail",
+	"ColorLut", "ColorLutStrength", "ColorLutBrightness", "ColorLutContrast", "ColorLutSaturation", "ColorLutTint",
+	"ColorLutChroma", "ColorLutLuma", "ColorLutVibrance", "ColorLutTechnicolor",
+	"ColorLutBlackPoint", "ColorLutWhitePoint", "ColorLutGamma", "ColorLutOutputBlack", "ColorLutOutputWhite",
+	"ColorLutVignette", "ColorLutVignetteRadius", "ColorLutGrain", "ColorLutDither",
 	"FlameWarp", "FlameHeat", "FlameFlicker", "FlameBreakup", "FlameNoiseSize", "FlameRise",
 	"HazeBend", "HazeSize", "HazeLift", "HazeNoiseSize", "HazeRise", "HazeMask",
 	"ElectricArcs", "ElectricArcSharpness", "ElectricNoiseSize", "ElectricJitter", "ElectricFlicker", "ElectricRate",
@@ -1696,6 +1808,12 @@ static const char *const LiveGameDataKeys[] =
 	"LaserCore", "LaserCoreWidth", "LaserShimmer", "LaserPulse", "LaserPulseSize", "LaserPulseSpeed", "LaserDebug",
 	"CryoTint", "CryoTintStrength", "CryoCore", "CryoCoreWidth", "CryoFrost", "CryoFrostSize", "CryoFrostSpeed",
 	"CryoShards", "CryoShardSize", "CryoGlints", "CryoGlintSize", "CryoGlintRate", "CryoParticleScale",
+	"DisruptionRingStrength", "DisruptionRingSize", "DisruptionRingSpeed", "DisruptionWobble", "DisruptionWobbleSize", "DisruptionWobbleSpeed",
+	"DisruptionGlitch", "DisruptionGlitchSize", "DisruptionGlitchRate", "DisruptionChroma", "DisruptionChromaSpread", "DisruptionMask",
+	STORM_TUNING_KEYS("SandStorm"), STORM_TUNING_KEYS("SnowStorm"),
+	"HeadlightColor", "HeadlightBeamIntensity", "HeadlightBeamLength", "HeadlightBeamWidth", "HeadlightBeamFalloff", "HeadlightBeamSoftness",
+	"HeadlightPoolIntensity", "HeadlightPoolRange", "HeadlightPoolAngle", "HeadlightPoolPitch", "HeadlightPoolFalloff",
+	"HeadlightPoolClampBrightness",
 	"LaserGroundGlowRadius", "LaserGroundGlowFalloff", "LaserGroundGlowWrap", "LaserGroundGlowDebug", "LaserGroundGlowOverlap",
 	nullptr
 };

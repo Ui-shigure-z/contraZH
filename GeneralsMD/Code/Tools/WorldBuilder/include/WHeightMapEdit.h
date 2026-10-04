@@ -69,6 +69,11 @@ protected:
 	static int m_numGlobalTextureClasses;
 	static TGlobalTextureClass m_globalTextureClasses[NUM_TEXTURE_CLASSES];
 
+	// Texture painting skips cells that are not under a water area.
+	static Bool s_paintWaterOnly;
+
+	Bool writeTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile);
+
 protected:
 	static void loadBitmap(char *path, const char *uiName);
 	static void loadDirectoryOfImages(const char *path);
@@ -121,7 +126,13 @@ public: // Editing methods.
 	void setHeight(Int xIndex, Int yIndex, UnsignedByte height);
 	void setCliff(Int xIndex, Int yIndex, Bool impassable) {setCliffState(xIndex, yIndex, impassable);}
 	void setStochastic(Int xIndex, Int yIndex, UnsignedByte strength, UnsignedByte seed, UnsignedByte rate);
+	/// Puts another paint buffer of getStochasticBytes() in place, or none, and returns the one it replaced.
+	UnsignedByte *swapStochastic(UnsignedByte *data) { UnsignedByte *old = m_stochasticData; m_stochasticData = data; m_stochasticTexDirty = true; return old; }
+	Int getStochasticBytes() const { return m_dataSize*STOCHASTIC_BYTES; }
 	Bool setTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile);
+	Bool isWaterCell(Int xIndex, Int yIndex);
+	static void setPaintWaterOnly(Bool on) {s_paintWaterOnly = on;}
+	static Bool isPaintWaterOnly() {return s_paintWaterOnly;}
 	Bool floodFill(Int xIndex, Int yIndex, Int textureClass, Bool doReplace);
 	static Int getNumTexClasses() {return m_numGlobalTextureClasses;};
 	static AsciiString getTexClassName(int ndx) {return m_globalTextureClasses[ndx].name;}

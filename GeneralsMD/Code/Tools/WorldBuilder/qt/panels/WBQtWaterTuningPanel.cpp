@@ -7,14 +7,18 @@
 #include "WBQtWindowPos.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QGridLayout>
 #include <QHideEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QRegularExpression>
+#include <QScrollArea>
 #include <QTimer>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 WBQtWaterTuningPanel *WBQtWaterTuningPanel::s_instance = NULL;
 
@@ -55,7 +59,7 @@ namespace
 	}
 
 	//----------------------------------------------------------------------------------------
-	// The WaterTransparency block of a map.ini, as text.
+	// A WaterTransparency or GameData block of a map.ini, as text.
 	//----------------------------------------------------------------------------------------
 
 	struct Block
@@ -65,11 +69,12 @@ namespace
 		int bodyEnd;	// first character of the End line
 	};
 
-	Block findBlock(const QString &text)
+	Block findBlock(const QString &text, const QString &name)
 	{
-		static const QRegularExpression header("^[ \\t]*WaterTransparency\\b[^\\n]*\\n",
+		const QRegularExpression header("^[ \\t]*" + QRegularExpression::escape(name) + "\\b[^\\n]*\\n",
 			QRegularExpression::MultilineOption);
-		static const QRegularExpression end("^[ \\t]*End\\b", QRegularExpression::MultilineOption);
+		static const QRegularExpression word("^[ \\t]*(\\w+)[ \\t]*(?:;[^\\n]*)?\\r?$",
+			QRegularExpression::MultilineOption);
 
 		Block block = { false, 0, 0 };
 		const QRegularExpressionMatch head = header.match(text);
@@ -77,14 +82,27 @@ namespace
 		{
 			return block;
 		}
-		const QRegularExpressionMatch tail = end.match(text, head.capturedEnd());
-		if (!tail.hasMatch())
+
+		// A line of one word other than End opens a nested block, which has an End of its own.
+		int depth = 0;
+		QRegularExpressionMatchIterator lines = word.globalMatch(text, head.capturedEnd());
+		while (lines.hasNext())
 		{
-			return block;
+			const QRegularExpressionMatch line = lines.next();
+			if (line.captured(1) != "End")
+			{
+				++depth;
+				continue;
+			}
+			if (depth == 0)
+			{
+				block.found = true;
+				block.bodyStart = head.capturedEnd();
+				block.bodyEnd = line.capturedStart();
+				return block;
+			}
+			--depth;
 		}
-		block.found = true;
-		block.bodyStart = head.capturedEnd();
-		block.bodyEnd = tail.capturedStart();
 		return block;
 	}
 
@@ -148,6 +166,52 @@ namespace
 		}
 	}
 
+	// Writes one block's pending keys into the file text. False when the block is absent and no key needs it.
+	bool editBlock(QString &text, const QString &name, const QMap<QString, QString> &pending, const QString &nl)
+	{
+		bool anyWrite = false;
+		QMap<QString, QString>::const_iterator it;
+		for (it = pending.constBegin(); it != pending.constEnd(); ++it)
+		{
+			if (!it.value().isNull())
+			{
+				anyWrite = true;
+			}
+		}
+
+		Block block = findBlock(text, name);
+		if (!block.found)
+		{
+			if (!anyWrite)
+			{
+				return false;
+			}
+			if (!text.isEmpty())
+			{
+				text += text.endsWith('\n') ? nl : nl + nl;
+			}
+			text += name + nl;
+			block.bodyStart = text.size();
+			block.bodyEnd = text.size();
+			text += "End" + nl;
+		}
+
+		QString body = text.mid(block.bodyStart, block.bodyEnd - block.bodyStart);
+		for (it = pending.constBegin(); it != pending.constEnd(); ++it)
+		{
+			if (it.value().isNull())
+			{
+				removeValue(body, it.key());
+			}
+			else
+			{
+				writeValue(body, it.key(), it.value(), nl);
+			}
+		}
+		text.replace(block.bodyStart, block.bodyEnd - block.bodyStart, body);
+		return true;
+	}
+
 	bool parseValue(int kind, const QString &raw, float value[3])
 	{
 		const QString text = raw.trimmed();
@@ -195,6 +259,19 @@ namespace
 		return false;
 	}
 
+	// A text value is its first word, which is all a file name or None is.
+	QString firstWord(const QString &raw)
+	{
+		return raw.trimmed().section(QRegularExpression("\\s"), 0, 0);
+	}
+
+	QStringList tableNames()
+	{
+		char buf[4096];
+		WBQtWaterTuning_ListTables(buf, sizeof(buf));
+		return QString::fromLocal8Bit(buf).split('\n', QString::SkipEmptyParts);
+	}
+
 	QToolButton *makeButton(QWidget *parent, const QString &text, int row)
 	{
 		QToolButton *button = new QToolButton(parent);
@@ -216,6 +293,7 @@ WBQtWaterTuningPanel::Row::Row()
 	  inFile(false),
 	  label(NULL),
 	  check(NULL),
+	  combo(NULL),
 	  reset(NULL)
 {
 	for (int c = 0; c < 3; ++c)
@@ -233,7 +311,7 @@ WBQtWaterTuningPanel::WBQtWaterTuningPanel(QWidget *owner)
 	  m_saveTimer(new QTimer(this)),
 	  m_updating(false)
 {
-	// The shell lives in WBQtWaterTuningPanel.ui; the rows come from the bridge's key table.
+	// The shell and its two tabs live in WBQtWaterTuningPanel.ui; the rows come from the bridge's key table.
 	m_ui->setupUi(this);
 	WBQtWindowPos_Track(this, "WaterTuning");
 
@@ -256,10 +334,9 @@ WBQtWaterTuningPanel::~WBQtWaterTuningPanel()
 	delete m_ui;
 }
 
-void WBQtWaterTuningPanel::addStepper(Row &row, int rowIndex, int channel, int gridRow, const QString &tip)
+void WBQtWaterTuningPanel::addStepper(Row &row, int rowIndex, int channel, QGridLayout *grid, int gridRow, const QString &tip)
 {
-	QWidget *host = m_ui->rowsHost;
-	QGridLayout *grid = m_ui->rowsGrid;
+	QWidget *host = grid->parentWidget();
 
 	QToolButton *minus = makeButton(host, QString(QChar(0x2212)), rowIndex);
 	QToolButton *plus = makeButton(host, "+", rowIndex);
@@ -293,11 +370,31 @@ void WBQtWaterTuningPanel::addStepper(Row &row, int rowIndex, int channel, int g
 	row.widgets << minus << spin << plus;
 }
 
+// A scrolling grid of rows on its own tab, like the Water tab in WBQtWaterTuningPanel.ui.
+QGridLayout *WBQtWaterTuningPanel::addTab(const QString &title)
+{
+	QWidget *page = new QWidget(m_ui->tabs);
+	QVBoxLayout *layout = new QVBoxLayout(page);
+	QScrollArea *scroll = new QScrollArea(page);
+	scroll->setFrameShape(QFrame::NoFrame);
+	scroll->setWidgetResizable(true);
+	QWidget *host = new QWidget(scroll);
+	QGridLayout *grid = new QGridLayout(host);
+	grid->setColumnStretch(COL_LABEL, 1);
+	scroll->setWidget(host);
+	layout->addWidget(scroll);
+	m_ui->tabs->addTab(page, title);
+	return grid;
+}
+
 void WBQtWaterTuningPanel::buildRows()
 {
-	QWidget *host = m_ui->rowsHost;
-	QGridLayout *grid = m_ui->rowsGrid;
-	int gridRow = 0;
+	// The Water tab's grid, then one tab per GameData group as the groups appear.
+	QVector<QGridLayout *> grids;
+	QVector<int> gridRows;
+	grids << m_ui->rowsGrid;
+	gridRows << 0;
+	QString group;
 
 	const int count = WBQtWaterTuning_Count();
 	m_rows.reserve(count);
@@ -315,13 +412,26 @@ void WBQtWaterTuningPanel::buildRows()
 		row.index = i;
 		row.kind = desc.kind;
 		row.key = QString::fromLatin1(desc.key);
+		row.block = QString::fromLatin1(desc.block);
 		row.lo = desc.lo;
 		row.hi = desc.hi;
 		row.step = desc.step;
 		row.advanced = desc.advanced != 0;
 
+		const bool water = (row.block == "WaterTransparency");
+		if (!water && desc.group != NULL && group != desc.group)
+		{
+			group = QString::fromLatin1(desc.group);
+			grids << addTab(group);
+			gridRows << 0;
+		}
+		QGridLayout *grid = water ? grids[0] : grids.last();
+		QWidget *host = grid->parentWidget();
+		int &gridRow = water ? gridRows[0] : gridRows.last();
+
 		row.reset = makeButton(host, QString(QChar(0x21BA)), r);
-		row.reset->setToolTip(tr("Remove the key from map.ini, so the map follows Water.ini"));
+		row.reset->setToolTip(tr("Remove the key from map.ini, so the map follows %1")
+			.arg(water ? "Water.ini" : "GameData.ini"));
 		connect(row.reset, SIGNAL(clicked()), this, SLOT(onResetClicked()));
 		grid->addWidget(row.reset, gridRow, COL_RESET);
 		row.widgets << row.reset;
@@ -333,11 +443,33 @@ void WBQtWaterTuningPanel::buildRows()
 			grid->addWidget(row.label, gridRow, COL_LABEL);
 			row.widgets << row.label;
 
-			addStepper(row, r, 0, gridRow, tip);
+			addStepper(row, r, 0, grid, gridRow, tip);
 			// Wider than lo to hi, so a typed or loaded value is never clamped.
 			row.spin[0]->setRange((desc.lo < 0.0f) ? desc.lo * 10.0 - 10.0 : 0.0, desc.hi * 10.0 + 10.0);
 			row.spin[0]->setSingleStep(desc.step);
 			row.spin[0]->setDecimals(decimalsOf(desc.step));
+			++gridRow;
+		}
+		else if (desc.kind == WBQT_WATER_TEXT)
+		{
+			row.label = new QLabel(row.key, host);
+			row.label->setToolTip(tip);
+			grid->addWidget(row.label, gridRow, COL_LABEL);
+			row.widgets << row.label;
+
+			// Any name can be typed, since the list only has the files found on disk.
+			row.combo = new QComboBox(host);
+			row.combo->setEditable(true);
+			row.combo->setInsertPolicy(QComboBox::NoInsert);
+			row.combo->setToolTip(tip);
+			row.combo->setProperty("row", r);
+			row.combo->lineEdit()->setProperty("row", r);
+			row.combo->addItem("None");
+			row.combo->addItems(tableNames());
+			grid->addWidget(row.combo, gridRow, COL_MINUS, 1, COL_PLUS - COL_MINUS + 1);
+			connect(row.combo, SIGNAL(activated(int)), this, SLOT(onTextChosen()));
+			connect(row.combo->lineEdit(), SIGNAL(editingFinished()), this, SLOT(onTextChosen()));
+			row.widgets << row.combo;
 			++gridRow;
 		}
 		else
@@ -359,7 +491,7 @@ void WBQtWaterTuningPanel::buildRows()
 					grid->addWidget(channel, gridRow, COL_LABEL);
 					row.widgets << channel;
 
-					addStepper(row, r, c, gridRow, tip);
+					addStepper(row, r, c, grid, gridRow, tip);
 					row.spin[c]->setRange(0.0, 255.0);
 					row.spin[c]->setSingleStep(1.0);
 					row.spin[c]->setDecimals(0);
@@ -369,7 +501,10 @@ void WBQtWaterTuningPanel::buildRows()
 		}
 		m_rows.append(row);
 	}
-	grid->setRowStretch(gridRow, 1);
+	for (int g = 0; g < grids.size(); ++g)
+	{
+		grids[g]->setRowStretch(gridRows[g], 1);
+	}
 }
 
 QString WBQtWaterTuningPanel::formatValue(const Row &row) const
@@ -383,6 +518,8 @@ QString WBQtWaterTuningPanel::formatValue(const Row &row) const
 				.arg(qBound(0, qRound(row.value[0]), 255))
 				.arg(qBound(0, qRound(row.value[1]), 255))
 				.arg(qBound(0, qRound(row.value[2]), 255));
+		case WBQT_WATER_TEXT:
+			return row.text.isEmpty() ? QString("None") : row.text;
 		default:
 			return QString::number(row.value[0], 'g', 6);
 	}
@@ -432,9 +569,36 @@ void WBQtWaterTuningPanel::showRow(int r)
 			}
 			break;
 		}
+		case WBQT_WATER_TEXT:
+		{
+			row.combo->setEditText(formatValue(row));
+			break;
+		}
 	}
 
 	m_updating = wasUpdating;
+}
+
+void WBQtWaterTuningPanel::loadBase(Row &row)
+{
+	if (row.kind == WBQT_WATER_TEXT)
+	{
+		char buf[256];
+		WBQtWaterTuning_GetBaseText(row.index, buf, sizeof(buf));
+		row.text = QString::fromLocal8Bit(buf);
+		return;
+	}
+	WBQtWaterTuning_GetBase(row.index, row.value);
+}
+
+void WBQtWaterTuningPanel::pushLive(const Row &row)
+{
+	if (row.kind == WBQT_WATER_TEXT)
+	{
+		WBQtWaterTuning_SetLiveText(row.index, formatValue(row).toLocal8Bit().constData());
+		return;
+	}
+	WBQtWaterTuning_SetLive(row.index, row.value);
 }
 
 // The user changed a row: show it in the 3D view and queue it for map.ini.
@@ -443,7 +607,7 @@ void WBQtWaterTuningPanel::markChanged(int r)
 	Row &row = m_rows[r];
 	row.inFile = true;
 	showRow(r);
-	WBQtWaterTuning_SetLive(row.index, row.value);
+	pushLive(row);
 	m_pending[row.key] = formatValue(row);
 	m_saveTimer->start(kSaveDelayMs);
 }
@@ -452,10 +616,10 @@ void WBQtWaterTuningPanel::markChanged(int r)
 void WBQtWaterTuningPanel::resetRow(int r)
 {
 	Row &row = m_rows[r];
-	WBQtWaterTuning_GetBase(row.index, row.value);
+	loadBase(row);
 	row.inFile = false;
 	showRow(r);
-	WBQtWaterTuning_SetLive(row.index, row.value);
+	pushLive(row);
 	m_pending[row.key] = QString();
 	m_saveTimer->start(kSaveDelayMs);
 }
@@ -474,16 +638,22 @@ void WBQtWaterTuningPanel::openOn(const QString &iniPath)
 
 void WBQtWaterTuningPanel::reseed()
 {
-	QString body;
+	QString text;
 	QFile file(m_path);
 	if (!m_path.isEmpty() && file.open(QIODevice::ReadOnly))
 	{
-		const QString text = QString::fromLatin1(file.readAll());
+		text = QString::fromLatin1(file.readAll());
 		file.close();
-		const Block block = findBlock(text);
-		if (block.found)
+	}
+
+	QMap<QString, QString> bodies;
+	for (int r = 0; r < m_rows.size(); ++r)
+	{
+		const QString &name = m_rows[r].block;
+		if (!bodies.contains(name))
 		{
-			body = text.mid(block.bodyStart, block.bodyEnd - block.bodyStart);
+			const Block block = findBlock(text, name);
+			bodies[name] = block.found ? text.mid(block.bodyStart, block.bodyEnd - block.bodyStart) : QString();
 		}
 	}
 
@@ -491,11 +661,22 @@ void WBQtWaterTuningPanel::reseed()
 	for (int r = 0; r < m_rows.size(); ++r)
 	{
 		Row &row = m_rows[r];
-		WBQtWaterTuning_GetBase(row.index, row.value);
-		const QString raw = m_pending.contains(row.key) ? m_pending.value(row.key) : readValue(body, row.key);
-		row.inFile = !raw.isNull() && parseValue(row.kind, raw, row.value);
+		loadBase(row);
+		const QString raw = m_pending.contains(row.key) ? m_pending.value(row.key) : readValue(bodies.value(row.block), row.key);
+		if (row.kind == WBQT_WATER_TEXT)
+		{
+			row.inFile = !raw.isNull() && !firstWord(raw).isEmpty();
+			if (row.inFile)
+			{
+				row.text = firstWord(raw);
+			}
+		}
+		else
+		{
+			row.inFile = !raw.isNull() && parseValue(row.kind, raw, row.value);
+		}
 		showRow(r);
-		WBQtWaterTuning_SetLive(row.index, row.value);
+		pushLive(row);
 	}
 	if (!m_pending.isEmpty())
 	{
@@ -533,47 +714,30 @@ bool WBQtWaterTuningPanel::flush()
 	}
 	const QString nl = (text.isEmpty() || text.contains("\r\n")) ? "\r\n" : "\n";
 
-	bool anyWrite = false;
-	QMap<QString, QString>::const_iterator it;
-	for (it = m_pending.constBegin(); it != m_pending.constEnd(); ++it)
+	QMap<QString, QMap<QString, QString> > byBlock;
+	for (int r = 0; r < m_rows.size(); ++r)
 	{
-		if (!it.value().isNull())
+		const Row &row = m_rows[r];
+		if (m_pending.contains(row.key))
 		{
-			anyWrite = true;
+			byBlock[row.block][row.key] = m_pending.value(row.key);
 		}
 	}
 
-	Block block = findBlock(text);
-	if (!block.found)
+	bool edited = false;
+	QMap<QString, QMap<QString, QString> >::const_iterator it;
+	for (it = byBlock.constBegin(); it != byBlock.constEnd(); ++it)
 	{
-		if (!anyWrite)
+		if (editBlock(text, it.key(), it.value(), nl))
 		{
-			m_pending.clear();
-			return true;
-		}
-		if (!text.isEmpty())
-		{
-			text += text.endsWith('\n') ? nl : nl + nl;
-		}
-		text += "WaterTransparency" + nl;
-		block.bodyStart = text.size();
-		block.bodyEnd = text.size();
-		text += "End" + nl;
-	}
-
-	QString body = text.mid(block.bodyStart, block.bodyEnd - block.bodyStart);
-	for (it = m_pending.constBegin(); it != m_pending.constEnd(); ++it)
-	{
-		if (it.value().isNull())
-		{
-			removeValue(body, it.key());
-		}
-		else
-		{
-			writeValue(body, it.key(), it.value(), nl);
+			edited = true;
 		}
 	}
-	text.replace(block.bodyStart, block.bodyEnd - block.bodyStart, body);
+	if (!edited)
+	{
+		m_pending.clear();
+		return true;
+	}
 
 	if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
 	{
@@ -663,6 +827,23 @@ void WBQtWaterTuningPanel::onCheckToggled(bool on)
 	{
 		row.value[c] = (float)row.spin[c]->value();
 	}
+	markChanged(r);
+}
+
+void WBQtWaterTuningPanel::onTextChosen()
+{
+	if (m_updating)
+	{
+		return;
+	}
+	const int r = sender()->property("row").toInt();
+	Row &row = m_rows[r];
+	const QString text = firstWord(row.combo->currentText());
+	if (text.isEmpty() || (row.inFile && text == row.text))
+	{
+		return;
+	}
+	row.text = text;
 	markChanged(r);
 }
 

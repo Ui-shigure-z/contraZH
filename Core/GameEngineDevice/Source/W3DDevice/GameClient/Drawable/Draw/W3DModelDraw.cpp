@@ -61,6 +61,7 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
@@ -70,6 +71,7 @@
 #include "WW3D2/rendobj.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
+#include "WW3D2/sortingrenderer.h"
 #include "Common/BitFlagsIO.h"
 
 
@@ -1059,8 +1061,10 @@ W3DModelDrawModuleData::W3DModelDrawModuleData() :
 #endif
 	m_minLODRequired(STATIC_GAME_LOD_LOW),
 	m_defaultState(-1),
-	m_lastRealConditionStateIndex(-1)
+	m_lastRealConditionStateIndex(-1),
+	m_disruption(DisruptionShaderInfo::SHAPE_CENTER)
 {
+	m_headlightTuning.setUnset();
 	const Real MAX_SHIFT = 3.0f;
 	const Real INITIAL_RECOIL_RATE = 2.0f;
 	const Real RECOIL_DAMPING = 0.4f;
@@ -1079,6 +1083,9 @@ W3DModelDrawModuleData::W3DModelDrawModuleData() :
 	m_ignoreRotation = FALSE;
 	m_showForOwnerOnly = FALSE;
 	m_keepRecoilAcrossStates = FALSE;
+	m_flameShader = FALSE;
+	m_electricShader = FALSE;
+	m_cryoShader = FALSE;
 
 	// m_ignoreConditionStates defaults to all zero, which is what we want
 }
@@ -1214,6 +1221,43 @@ const Vector3* W3DModelDrawModuleData::getAttachToDrawableBoneOffset(const Drawa
 #endif
 
 //-------------------------------------------------------------------------------------------------
+// Hands every mesh under the object the module's shader settings, which the module data keeps alive.
+// One shader draws a mesh, so cryo wins over flame and flame over electric, as on a beam.
+static void setShaderEffects(RenderObjClass *robj, const W3DModelDrawModuleData &data)
+{
+	if (robj->Class_ID() == RenderObjClass::CLASSID_MESH)
+	{
+		if (data.m_disruption.isOn())
+		{
+			robj->Set_Disruption(&data.m_disruption, data.m_disruption.hidesArt());
+		}
+
+		if (data.m_cryoShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_MESH, &data.m_beamTuning);
+		}
+		else if (data.m_flameShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_MESH, &data.m_flameTuning);
+		}
+		else if (data.m_electricShader)
+		{
+			robj->Set_Shader_Effects(SoftParticleHookClass::EFFECT_ELECTRIC | SoftParticleHookClass::EFFECT_MESH, &data.m_beamTuning);
+		}
+	}
+
+	for (Int i = 0; i < robj->Get_Num_Sub_Objects(); i++)
+	{
+		RenderObjClass *sub = robj->Get_Sub_Object(i);
+		if (sub != nullptr)
+		{
+			setShaderEffects(sub, data);
+			sub->Release_Ref();
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 enum ParseCondStateType CPP_11(: Int)
 {
 	PARSE_NORMAL,
@@ -1261,10 +1305,17 @@ void W3DModelDrawModuleData::buildFieldParse(MultiIniFieldParse& p)
 		{ "IgnoreRotation", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_ignoreRotation) },
 		{ "OnlyVisibleToOwningPlayer", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_showForOwnerOnly) },
 		{ "KeepRecoilAcrossStates", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_keepRecoilAcrossStates) },
+		{ "FlameShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_flameShader) },
+		{ "ElectricShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_electricShader) },
+		{ "CryoShader", INI::parseBool, nullptr, offsetof(W3DModelDrawModuleData, m_cryoShader) },
 		//{ "DisableMovementEffectsOverWater", INI::parseBool, NULL, offsetof(W3DModelDrawModuleData, m_disableMoveEffectsOverWater) },
 		{ nullptr, nullptr, nullptr, 0 }
 	};
   p.add(dataFieldParse);
+  p.add(DisruptionShaderInfo::getFieldParse(), offsetof(W3DModelDrawModuleData, m_disruption));
+  p.add(HeadlightShaderTuning::getFieldParse(), offsetof(W3DModelDrawModuleData, m_headlightTuning));
+  p.add(ParticleSystemTemplate::getFlameTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_flameTuning));
+  p.add(W3DLaserDrawModuleData::getShaderTuningFieldParse(), offsetof(W3DModelDrawModuleData, m_beamTuning));
 
 }
 
@@ -2004,6 +2055,7 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	int i;
 	m_animationMode = RenderObjClass::ANIM_MODE_LOOP;
 	m_hideHeadlights = true;
+	m_headlightSource = nullptr;
 	m_pauseAnimation = false;
 	m_curState = nullptr;
 	m_hexColor = 0;
@@ -2476,6 +2528,8 @@ void W3DModelDraw::doDrawModule(const Matrix3D* transformMtx)
   handleClientRecoil();
 
 	handleFXEvents();
+
+	submitHeadlights();
 
 	m_prevAnimHelper = getCurrentAnimHelper();
 
@@ -3580,6 +3634,8 @@ void W3DModelDraw::nukeCurrentRender(Matrix3D* xform)
 			W3DDisplay::m_3DScene->Remove_Render_Object(m_renderObject);
 		REF_PTR_RELEASE(m_renderObject);
 		m_renderObject = nullptr;
+		m_headlights.clear();
+		m_headlightSource = nullptr;
 	}
 	else
 	{
@@ -3618,20 +3674,114 @@ void W3DModelDraw::hideGarrisonFlags(Bool hide)
 #endif
 
 //-------------------------------------------------------------------------------------------------
+/** The level of detail a sub-object belongs to, or -1 for one that every level shows. */
+static Int getSubObjectLod(RenderObjClass* renderObject, Int subObject)
+{
+	if (renderObject->Class_ID() != RenderObjClass::CLASSID_HLOD)
+	{
+		return -1;
+	}
+
+	const HLodClass* hlod = (const HLodClass*)renderObject;
+	for (Int lod = 0; lod < hlod->Get_Lod_Count(); lod++)
+	{
+		if (subObject < hlod->Get_Lod_Model_Count(lod))
+		{
+			return lod;
+		}
+		subObject -= hlod->Get_Lod_Model_Count(lod);
+	}
+	return -1;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Hides all subobjects which are headlights.  Used to disable lights on models during the day.*/
 void W3DModelDraw::hideAllHeadlights(Bool hide)
 {
 	if (m_renderObject)
 	{
+		// Where the headlight shader runs it draws the lights, and their meshes stay hidden.
+		const Bool shaded = TheW3DHeadlights != nullptr && TheW3DHeadlights->isActive() && getW3DModelDrawModuleData()->m_headlightTuning.enabled;
+
+		// The lamps are found once for each render object, since every change of state comes through here.
+		const Bool search = shaded && !hide && m_headlightSource != m_renderObject;
+		Int lampLod = -1;
+		if (search)
+		{
+			m_headlights.clear();
+			m_headlightSource = m_renderObject;
+		}
 		for (Int subObj = 0; subObj < m_renderObject->Get_Num_Sub_Objects(); subObj++)
 		{
 			RenderObjClass* test = m_renderObject->Get_Sub_Object(subObj);
 			if (strstr(test->Get_Name(),"HEADLIGHT"))
 			{
-				test->Set_Hidden(hide);
+				test->Set_Hidden(hide || shaded);
+				if (search)
+				{
+					// Each level of detail holds its own copy of the lamps, and one copy is enough.
+					const Int lod = getSubObjectLod(m_renderObject, subObj);
+					if (lod < 0 || lampLod < 0 || lod == lampLod)
+					{
+						const size_t before = m_headlights.size();
+						addHeadlight(subObj, test);
+						if (lod >= 0 && m_headlights.size() > before)
+						{
+							lampLod = lod;
+						}
+					}
+				}
 			}
 			test->Release_Ref();
 		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Finds the lamps a HEADLIGHT mesh holds, for the headlight shader to draw. */
+void W3DModelDraw::addHeadlight(Int subObject, RenderObjClass* mesh)
+{
+	W3DHeadlightManager::Beam beams[8];
+	const Int count = W3DHeadlightManager::findBeams(*mesh, m_renderObject->Get_Position(), beams, ARRAY_SIZE(beams));
+	for (Int i = 0; i < count; i++)
+	{
+		Headlight light;
+		light.subObject = subObject;
+		light.start = beams[i].start;
+		light.end = beams[i].end;
+		light.radius = beams[i].radius;
+		m_headlights.push_back(light);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Hands this frame's headlights to the headlight shader, where the model shows. */
+void W3DModelDraw::submitHeadlights()
+{
+	if (m_hideHeadlights || m_headlights.empty() || TheW3DHeadlights == nullptr || m_renderObject == nullptr ||
+		m_renderObject->Is_Hidden() || m_fullyObscuredByShroud)
+	{
+		return;
+	}
+
+	for (size_t i = 0; i < m_headlights.size(); i++)
+	{
+		const Headlight &light = m_headlights[i];
+		if (light.subObject >= m_renderObject->Get_Num_Sub_Objects())
+		{
+			continue;
+		}
+
+		RenderObjClass* mesh = m_renderObject->Get_Sub_Object(light.subObject);
+		Vector3 start;
+		Vector3 end;
+		Matrix3D::Transform_Vector(mesh->Get_Transform(), light.start, &start);
+		Matrix3D::Transform_Vector(mesh->Get_Transform(), light.end, &end);
+		mesh->Release_Ref();
+
+		// The transform carries the drawable's scale, which the radius has to follow.
+		const Real scale = (end - start).Length() / (light.end - light.start).Length();
+		TheW3DHeadlights->add(start, end, light.radius * scale, &getW3DModelDrawModuleData()->m_headlightTuning);
 	}
 }
 
@@ -3812,6 +3962,11 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 		{
 			m_renderObject = W3DDisplay::m_assetManager->Create_Render_Obj(newState->m_modelName.str(), draw->getScale(), m_hexColor);
 			DEBUG_ASSERTCRASH(m_renderObject, ("*** ASSET ERROR: Model %s not found!",newState->m_modelName.str()));
+			const W3DModelDrawModuleData *shaders = getW3DModelDrawModuleData();
+			if (m_renderObject && (shaders->m_disruption.isOn() || shaders->m_flameShader || shaders->m_electricShader || shaders->m_cryoShader))
+			{
+				setShaderEffects(m_renderObject, *shaders);
+			}
 		}
 
 		//BONEPOS_LOG(("validateStuff() from within W3DModelDraw::setModelState()"));

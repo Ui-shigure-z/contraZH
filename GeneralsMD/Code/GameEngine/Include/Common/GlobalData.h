@@ -35,6 +35,9 @@
 #include "Common/GameMemory.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/Color.h"
+#include "GameClient/DisruptionShader.h"
+#include "GameClient/StormShader.h"
+#include "GameClient/HeadlightShader.h"
 #include "GameClient/TintStatus.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
@@ -250,6 +253,7 @@ public:
 	Real m_unitSpecularIntensity;	///< GameData UnitSpecularIntensity: brightness of the sun highlight on vehicles and structures, 0 for none
 	Real m_unitSpecularPower;		///< GameData UnitSpecularPower: tightness of that highlight, higher is smaller and sharper
 	Real m_unitBumpHeight;			///< GameData UnitBumpHeight: rise, in world units, of full brightness on textures without a normal map, 0 for flat
+	Real m_roadBumpHeight;			///< GameData RoadBumpHeight: the same for road and bridge textures without a normal map
 	Real m_unitNormalMapStrength;	///< GameData UnitNormalMapStrength: scales the tilt of authored _nrm normal maps
 	Real m_terrainNormalMapStrength;	///< GameData TerrainNormalMapStrength: scales the tilt of terrain _nrm normal maps
 	Real m_terrainGlintIntensity;	///< GameData TerrainGlintIntensity: brightness of the sun's glint on the ground, 0 for none
@@ -300,6 +304,9 @@ public:
 	Real m_cryoGlintSize;
 	Real m_cryoGlintRate;
 	Real m_cryoParticleScale;			///< GameData CryoParticleScale: how much larger or smaller cryo-shaded particles draw, 1 unchanged
+	DisruptionShaderTuning m_disruptionTuning;	///< GameData DisruptionRingStrength and the keys beside it: disruption shader defaults
+	HeadlightShaderTuning m_headlightTuning;	///< GameData HeadlightShader and the Headlight keys: headlights drawn in place of HEADLIGHT meshes
+	StormShaderInfo m_stormTuning[StormShaderInfo::TYPE_COUNT];	///< GameData SandStorm and SnowStorm keys: what each storm type takes where its entry sets nothing
 	Real m_ambientOcclusionRadius;		///< GameData AmbientOcclusionRadius: how far, in world units, geometry darkens what is near it
 	Real m_ambientOcclusionStrength;	///< GameData AmbientOcclusionStrength: how dark the occlusion gets, 0 for none
 	Real m_groundNoiseStrength;			///< GameData GroundNoiseStrength and the keys below: the noise that stands in for the light map, see W3DGroundNoise
@@ -319,6 +326,25 @@ public:
 	Real m_skyCloudChurn;
 	Real m_skyCloudBillow;
 	Real m_skyCloudDetail;
+	AsciiString m_colorLut;			///< GameData ColorLut and the keys below: the colour grade over the 3D scene, see W3DColorLut
+	Real m_colorLutStrength;
+	Real m_colorLutBrightness;
+	Real m_colorLutContrast;
+	Real m_colorLutSaturation;
+	RGBColor m_colorLutTint;
+	Real m_colorLutChroma;
+	Real m_colorLutLuma;
+	Real m_colorLutVibrance;
+	Real m_colorLutTechnicolor;
+	Real m_colorLutBlackPoint;
+	Real m_colorLutWhitePoint;
+	Real m_colorLutGamma;
+	Real m_colorLutOutputBlack;
+	Real m_colorLutOutputWhite;
+	Real m_colorLutVignette;
+	Real m_colorLutVignetteRadius;
+	Real m_colorLutGrain;
+	Real m_colorLutDither;
 	Int  m_textureReductionFactor;	//how much to cut texture resolution: 2 is half, 3 is quarter, etc.
 	Bool m_enableBehindBuildingMarkers;
 	Real m_waterPositionX;

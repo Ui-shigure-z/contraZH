@@ -110,6 +110,7 @@ enum AIStateType CPP_11(: Int)
 extern Bool outOfWeaponRangeObject( State *thisState, void* userData );
 extern Bool outOfWeaponRangePosition( State *thisState, void* userData );
 extern Bool wantToSquishTarget( State *thisState, void* userData );
+extern Bool isAttackViewBlockedToPosition( const Object *obj, const Coord3D *pos );
 
 //-----------------------------------------------------------------------------------------------------------
 /**

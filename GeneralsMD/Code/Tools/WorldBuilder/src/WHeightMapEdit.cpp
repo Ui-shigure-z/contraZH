@@ -50,6 +50,7 @@
 
 int WorldHeightMapEdit::m_numGlobalTextureClasses=0;
 TGlobalTextureClass WorldHeightMapEdit::m_globalTextureClasses[NUM_TEXTURE_CLASSES];
+Bool WorldHeightMapEdit::s_paintWaterOnly = false;
 /** Destructor -.
 */
 WorldHeightMapEdit::~WorldHeightMapEdit()
@@ -865,6 +866,51 @@ WorldHeightMapEdit *WorldHeightMapEdit::duplicate()
 
 Bool WorldHeightMapEdit::setTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile)
 {
+	if (s_paintWaterOnly && !isWaterCell(xIndex, yIndex))
+	{
+		return false;
+	}
+	return writeTileNdx(xIndex, yIndex, textureClass, singleTile);
+}
+
+/** True if every corner of the cell lies in a water area below its surface. The auto-blend then fades across the shoreline cells. */
+Bool WorldHeightMapEdit::isWaterCell(Int xIndex, Int yIndex)
+{
+	for (Int corner = 0; corner < 4; corner++)
+	{
+		Int vx = xIndex + (corner & 1);
+		Int vy = yIndex + (corner >> 1);
+		if (vx >= m_width)
+		{
+			vx = m_width - 1;
+		}
+		if (vy >= m_height)
+		{
+			vy = m_height - 1;
+		}
+
+		// Water areas are in world units without the border.
+		ICoord3D iLoc;
+		iLoc.x = (vx - m_borderSize) * MAP_XY_FACTOR;
+		iLoc.y = (vy - m_borderSize) * MAP_XY_FACTOR;
+		iLoc.z = 0;
+		const Real terrainZ = getHeight(vx, vy) * MAP_HEIGHT_SCALE;
+
+		Bool wet = false;
+		for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig && !wet; pTrig = pTrig->getNext())
+		{
+			wet = pTrig->isWaterArea() && pTrig->pointInTrigger(iLoc) && terrainZ < pTrig->getPoint(0)->z;
+		}
+		if (!wet)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+Bool WorldHeightMapEdit::writeTileNdx(Int xIndex, Int yIndex, Int textureClass, Bool singleTile)
+{
 	Int ndx = (yIndex*m_width)+xIndex;
 	Int numClasses = m_numTextureClasses;
 	DEBUG_ASSERTCRASH(ndx>=0 && ndx<this->m_dataSize,("oops"));
@@ -915,7 +961,7 @@ Bool WorldHeightMapEdit::setTextureClass(Int xIndex, Int yIndex, Int textureClas
 	if (xIndex < 0 || yIndex < 0 || xIndex >= m_width || yIndex >= m_height)
 		return false;
 
-	return setTileNdx(xIndex, yIndex, textureClass, true);
+	return writeTileNdx(xIndex, yIndex, textureClass, true);
 }
 
 

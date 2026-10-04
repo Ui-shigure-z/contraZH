@@ -776,7 +776,7 @@ void SlavedUpdate::startSlavedEffects( const Object *slaver )
     StealthUpdate *myStealth = getObject()->getStealth();
     if ( myStealth )
     {
-      myStealth->receiveGrant( true );
+      myStealth->inheritGrant( slaver );
       // note to anyone... once stealth is granted to this drone(or such)
       // let its own stealthupdate govern the allowedtostealth cases
     }

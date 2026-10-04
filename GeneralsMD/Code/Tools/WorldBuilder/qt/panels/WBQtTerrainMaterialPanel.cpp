@@ -73,6 +73,7 @@ WBQtTerrainMaterialPanel::WBQtTerrainMaterialPanel(QWidget *owner)
 	m_density = m_ui->density;
 	m_densityLabel = m_ui->densityLabel;
 	m_noMixing = m_ui->noMixing;
+	m_paintWaterOnly = m_ui->paintWaterOnly;
 	m_copyTexture = m_ui->copyTexture;
 	m_copyTerrain = m_ui->copyTerrain;
 	m_raiseOnly = m_ui->raiseOnly;
@@ -157,6 +158,7 @@ WBQtTerrainMaterialPanel::WBQtTerrainMaterialPanel(QWidget *owner)
 	}
 	m_density->setValue(WBQtTerrainMaterial_GetPaintDensity());
 	m_noMixing->setChecked(WBQtTerrainMaterial_IsNoMixing() != 0);
+	m_paintWaterOnly->setChecked(WBQtTerrainMaterial_IsPaintWaterOnly() != 0);
 	m_copyTexture->setChecked(WBQtTerrainMaterial_IsCopyTextureMode() != 0);
 	m_copyTerrain->setChecked(WBQtTerrainMaterial_IsCopyTerrainMode() != 0);
 	m_raiseOnly->setChecked(WBQtTerrainMaterial_IsRaiseOnly() != 0);
@@ -201,6 +203,7 @@ WBQtTerrainMaterialPanel::WBQtTerrainMaterialPanel(QWidget *owner)
 	connect(m_paintMode, SIGNAL(currentIndexChanged(int)), this, SLOT(onPaintModeChanged(int)));
 	connect(m_density, SIGNAL(valueChanged(int)), this, SLOT(onDensityChanged(int)));
 	connect(m_noMixing, SIGNAL(clicked()), this, SLOT(onNoMixingToggled()));
+	connect(m_paintWaterOnly, SIGNAL(clicked()), this, SLOT(onPaintWaterOnlyToggled()));
 	connect(m_copyTexture, SIGNAL(clicked()), this, SLOT(onCopyTextureToggled()));
 	connect(m_copyTerrain, SIGNAL(clicked()), this, SLOT(onCopyTerrainToggled()));
 	connect(m_raiseOnly, SIGNAL(clicked()), this, SLOT(onRaiseOnlyToggled()));
@@ -707,6 +710,12 @@ void WBQtTerrainMaterialPanel::onNoMixingToggled()
 	WBQtTerrainMaterial_SetNoMixing(m_noMixing->isChecked() ? 1 : 0);
 }
 
+// --- Water-only slot ------------------------------------------------------------------------
+void WBQtTerrainMaterialPanel::onPaintWaterOnlyToggled()
+{
+	WBQtTerrainMaterial_SetPaintWaterOnly(m_paintWaterOnly->isChecked() ? 1 : 0);
+}
+
 // --- Copy mode slots ------------------------------------------------------------------------
 void WBQtTerrainMaterialPanel::onCopyTextureToggled()
 {
@@ -825,6 +834,7 @@ void WBQtTerrainMaterialPanel::refreshToolState()
 	}
 	m_density->setValue(WBQtTerrainMaterial_GetPaintDensity());
 	m_noMixing->setChecked(WBQtTerrainMaterial_IsNoMixing() != 0);
+	m_paintWaterOnly->setChecked(WBQtTerrainMaterial_IsPaintWaterOnly() != 0);
 	m_copyTexture->setChecked(WBQtTerrainMaterial_IsCopyTextureMode() != 0);
 	m_copyTerrain->setChecked(WBQtTerrainMaterial_IsCopyTerrainMode() != 0);
 	m_raiseOnly->setChecked(WBQtTerrainMaterial_IsRaiseOnly() != 0);

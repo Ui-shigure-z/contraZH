@@ -140,6 +140,7 @@ public:
 	Bool isEnabled() {return m_enabled;};
 	void setEnabled(Bool enable) {m_enabled = enable;};
 	void renderBridge(Bool wireframe);
+	TextureClass *peekTexture() const {return m_bridgeTexture;}
 	void getBridgeInfo(BridgeInfo *pInfo);
 };
 

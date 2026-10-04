@@ -40,6 +40,9 @@
 #include "W3DDevice/GameClient/W3DBloom.h"
 #include "W3DDevice/GameClient/W3DSoftParticles.h"
 #include "W3DDevice/GameClient/W3DShockwave.h"
+#include "W3DDevice/GameClient/W3DDisruption.h"
+#include "W3DDevice/GameClient/W3DStorm.h"
+#include "W3DDevice/GameClient/W3DHeadlight.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8renderer.h"
 #include "WW3D2/ww3d.h"
@@ -87,7 +90,7 @@ W3DParticleSystemManager::W3DParticleSystemManager()
 	m_batchBillboard = true;
 	m_batchShaderType = ParticleSystemInfo::INVALID_SHADER;
 	m_batchEffects = 0;
-	m_batchTuning = nullptr;
+	m_batchEffectData = nullptr;
 
 	m_pointGroup = nullptr;
 	m_terrainParticles = nullptr;
@@ -203,6 +206,9 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	// whether the haze pass has anything to draw at all this frame
 	Bool hasFlame = FALSE;
 
+	// whether any particle system masks the disruption pass this frame
+	Bool hasDisruption = FALSE;
+
 	ParticleSystemManager::ParticleSystemList &particleSysList = TheParticleSystemManager->getAllParticleSystems();
 	for( ParticleSystemManager::ParticleSystemListIt it = particleSysList.begin(); it != particleSysList.end(); ++it)
 	{
@@ -254,6 +260,10 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		{
 			hasFlame = TRUE;
 		}
+		if (!hasDisruption && sys->isUsingParticles() && !conformsToTerrain && systemEffects(*sys, DRAW_DISRUPT) != 0)
+		{
+			hasDisruption = TRUE;
+		}
 
 		DrawEntry entry;
 		entry.sys = sys;
@@ -270,6 +280,36 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	if (backToFront)
 	{
 		std::stable_sort(m_drawOrder.begin(), m_drawOrder.end(), isFarther);
+	}
+
+	// headlights light the opaque scene, so they draw before anything translucent and before the copies taken below
+	if (TheW3DHeadlights)
+	{
+		TheW3DHeadlights->render(rinfo);
+	}
+
+	// the disruption bends a copy of the scene taken before anything translucent draws, so its own art and all the rest stay crisp over it
+	const Bool hasFields = TheW3DDisruption != nullptr && TheW3DDisruption->update();
+	if ((hasDisruption || hasFields || SortingRendererClass::Has_Disruption()) && TheW3DSoftParticles != nullptr && TheW3DSoftParticles->beginDisruption())
+	{
+		if (hasDisruption)
+		{
+			m_pointGroup->Set_Flag(PointGroupClass::DISABLE_SORTING, true);
+			drawSystems(rinfo, DRAW_DISRUPT);
+			m_pointGroup->Set_Flag(PointGroupClass::DISABLE_SORTING, false);
+
+			m_onScreenParticleCount = 0;
+			m_fieldParticleCount = 0;
+		}
+
+		// the meshes and beams that disrupt were queued while the scene drew
+		SortingRendererClass::Flush_Disruption();
+
+		if (hasFields)
+		{
+			TheW3DDisruption->render(rinfo);
+		}
+		TheW3DSoftParticles->endDisruption();
 	}
 
 	// the haze bends a copy of the scene taken before any particle draws, so flames stay crisp over it
@@ -310,6 +350,12 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	if (TheSnowManager)
 		((W3DSnowManager *)TheSnowManager)->render(rinfo);
 
+	// storms draw over the particles inside them, and the smudges and shockwaves after bend them with the scene
+	if (TheW3DStorms)
+	{
+		TheW3DStorms->render(rinfo);
+	}
+
 	//Now process screen smudges which are particles that distort the background behind them.
 	if(TheSmudgeManager)
 	{
@@ -332,6 +378,10 @@ unsigned W3DParticleSystemManager::systemEffects(ParticleSystem &system, DrawPas
 	{
 		return 0;
 	}
+	if (pass == DRAW_DISRUPT)
+	{
+		return system.getTemplate()->getDisruption().isOn() ? SoftParticleHookClass::EFFECT_DISRUPT : 0;
+	}
 	if (TheW3DSoftParticles->cryoEnabled() && system.isCryo())
 	{
 		return (pass == DRAW_HAZE) ? 0 : SoftParticleHookClass::EFFECT_CRYO;
@@ -345,6 +395,15 @@ unsigned W3DParticleSystemManager::systemEffects(ParticleSystem &system, DrawPas
 		return SoftParticleHookClass::EFFECT_ELECTRIC;
 	}
 	return 0;
+}
+
+// The pass takes blended sprites alone, and only where the disruption can draw at all.
+Bool W3DParticleSystemManager::disrupts(ParticleSystem &system)
+{
+	const Bool conformsToTerrain = !system.shouldBillboard() && system.getVolumeParticleDepth() == 0 && system.shouldConformToTerrain();
+	const Bool volume = system.isUsingVolumeParticles() && system.getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH;
+	return system.isUsingParticles() && !conformsToTerrain && !volume && systemEffects(system, DRAW_DISRUPT) != 0 &&
+		TheW3DSoftParticles->disruptionEnabled();
 }
 
 void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass)
@@ -366,8 +425,21 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			continue;
 		}
 
+		// a system that only disrupts has no art for the other passes, unless the disruption pass leaves it out
+		const DisruptionShaderInfo &disruption = sys->getTemplate()->getDisruption();
+		if (pass != DRAW_DISRUPT && disruption.hidesArt() && disrupts(*sys))
+		{
+			continue;
+		}
+
 		const unsigned effects = systemEffects(*sys, pass);
-		if (pass == DRAW_HAZE && (effects == 0 || !sys->isUsingParticles()))
+		if ((pass == DRAW_HAZE || pass == DRAW_DISRUPT) && (effects == 0 || !sys->isUsingParticles()))
+		{
+			continue;
+		}
+
+		// volume particles draw without the hook, which in the disruption pass would show their art
+		if (pass == DRAW_DISRUPT && sys->isUsingVolumeParticles() && sys->getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH)
 		{
 			continue;
 		}
@@ -375,6 +447,8 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		// only systems with settings of their own carry them, so the rest keep batching together
 		const Bool flameEffects = (effects & (SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_HAZE)) != 0;
 		const ParticleSystemTemplate *tuning = (flameEffects && sys->getTemplate()->hasFlameTuning()) ? sys->getTemplate() : nullptr;
+		const void *effectData = (pass == DRAW_DISRUPT) ? static_cast<const void *>(&disruption) :
+			(tuning != nullptr) ? static_cast<const void *>(tuning->peekFlameTuning()) : nullptr;
 
 		// Handle smudge type particles
 		if (sys->isUsingSmudge())
@@ -410,13 +484,13 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 				sys->getVolumeParticleDepth() == 0 &&
 				sys->shouldConformToTerrain();
 
-		if (pass == DRAW_HAZE && useTerrainConformingParticles)
+		if ((pass == DRAW_HAZE || pass == DRAW_DISRUPT) && useTerrainConformingParticles)
 		{
 			continue;
 		}
 
 		const Bool canBatch = batchParticles && sys->isUsingParticles() && !useTerrainConformingParticles;
-		if (!canBatch || finishedBatch(*sys, texture, effects, tuning))
+		if (!canBatch || finishedBatch(*sys, texture, effects, effectData))
 		{
 			flushParticleBatch(rinfo, pointCount);
 		}
@@ -424,7 +498,7 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		// the batch state always describes the system being filled, batched or not
 		if (m_batchTexture == nullptr)
 		{
-			initializeBatch(*sys, texture, effects, tuning);
+			initializeBatch(*sys, texture, effects, effectData);
 		}
 
 		// haze spreads wider than the flame and rises above it
@@ -441,11 +515,13 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		else if (!useTerrainConformingParticles &&
 			!(sys->isUsingVolumeParticles() && sys->getVolumeParticleDepth() > DEFAULT_VOLUME_PARTICLE_DEPTH))
 		{
-			if ((effects & SoftParticleHookClass::EFFECT_CRYO) != 0)
+			// the disruption's mask is as large as the art the main pass draws
+			const unsigned artEffects = (pass == DRAW_DISRUPT) ? systemEffects(*sys, DRAW_MAIN) : effects;
+			if ((artEffects & SoftParticleHookClass::EFFECT_CRYO) != 0)
 			{
 				sizeScale = max(sys->getTemplate()->getCryoParticleScale(), 0.0f);
 			}
-			else if ((effects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
+			else if ((artEffects & SoftParticleHookClass::EFFECT_ELECTRIC) != 0 && !sys->isUsingStreak())
 			{
 				sizeScale = max(sys->getTemplate()->getElectricParticleScale(), 0.0f);
 			}
@@ -503,7 +579,7 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 				// This prevents particles being dropped. Bank the stats first as the flush resets count to 0.
 				m_onScreenParticleCount += (pointCount - startCount);
 				flushParticleBatch(rinfo, pointCount);
-				initializeBatch(*sys, texture, effects, tuning);
+				initializeBatch(*sys, texture, effects, effectData);
 				startCount = 0;
 			}
 		}
@@ -524,10 +600,17 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 			// Only a streak carries the beam coordinates the laser and cryo shaders read. A multiplied streak has no light to shade.
 			const Bool shaded = sys->getShaderType() != ParticleSystemInfo::MULTIPLY;
 			const Bool cryo = shaded && sys->isCryo();
-			const Bool laser = shaded && !cryo && sys->isLaser();
+			// a streak burns only when told to, since Auto would turn every trail behind a flame shell to fire
+			const Bool flame = shaded && !cryo && sys->isFlameSet() && TheW3DSoftParticles != nullptr && TheW3DSoftParticles->flameEnabled();
+			const Bool laser = shaded && !cryo && !flame && sys->isLaser();
 			if (cryo)
 			{
 				m_streakLine->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_CRYO | SoftParticleHookClass::EFFECT_BEAM );
+			}
+			else if (flame)
+			{
+				m_streakLine->Set_Effects( SoftParticleHookClass::EFFECT_SOFT | SoftParticleHookClass::EFFECT_FLAME | SoftParticleHookClass::EFFECT_BEAM,
+					sys->getTemplate()->hasFlameTuning() ? sys->getTemplate()->peekFlameTuning() : nullptr );
 			}
 			else
 			{
@@ -562,7 +645,7 @@ void W3DParticleSystemManager::drawSystems(RenderInfoClass &rinfo, DrawPass pass
 		if (sys->isUsingStreak() && (pointCount == 1))
 		{
 			m_onScreenParticleCount += (pointCount - startCount);
-			initializeBatch(*sys, texture, effects, tuning);
+			initializeBatch(*sys, texture, effects, effectData);
 			flushParticleBatch(rinfo, pointCount);
 			startCount = 0;
 		}
@@ -643,22 +726,22 @@ Bool W3DParticleSystemManager::isFarther(const DrawEntry &a, const DrawEntry &b)
 	return a.depth < b.depth;
 }
 
-Bool W3DParticleSystemManager::finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const ParticleSystemTemplate *tuning)
+Bool W3DParticleSystemManager::finishedBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData)
 {
 	return texture.Peek() != m_batchTexture.Peek() ||
 		system.getShaderType() != m_batchShaderType ||
 		system.shouldBillboard() != m_batchBillboard ||
 		effects != m_batchEffects ||
-		tuning != m_batchTuning;
+		effectData != m_batchEffectData;
 }
 
-void W3DParticleSystemManager::initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const ParticleSystemTemplate *tuning)
+void W3DParticleSystemManager::initializeBatch(const ParticleSystem& system, const RefCountPtr<TextureClass>& texture, unsigned effects, const void *effectData)
 {
 	m_batchTexture = texture;
 	m_batchShaderType = system.getShaderType();
 	m_batchBillboard = system.shouldBillboard();
 	m_batchEffects = effects;
-	m_batchTuning = tuning;
+	m_batchEffectData = effectData;
 }
 
 void W3DParticleSystemManager::flushParticleBatch(RenderInfoClass& rinfo, UnsignedInt& pointCount)
@@ -672,7 +755,7 @@ void W3DParticleSystemManager::flushParticleBatch(RenderInfoClass& rinfo, Unsign
 		m_pointGroup->Set_Arrays(m_posBuffer, m_RGBABuffer, nullptr, m_sizeBuffer, m_angleBuffer, nullptr, pointCount);
 		m_pointGroup->Set_Billboard(m_batchBillboard);
 		m_pointGroup->Set_Point_Frame(0);
-		m_pointGroup->Set_Effects(m_batchEffects, m_batchTuning);
+		m_pointGroup->Set_Effects(m_batchEffects, m_batchEffectData);
 		m_pointGroup->Render(rinfo);
 		m_pointGroup->Set_Effects(0, nullptr);
 
@@ -683,5 +766,5 @@ void W3DParticleSystemManager::flushParticleBatch(RenderInfoClass& rinfo, Unsign
 	m_batchBillboard = false;
 	m_batchShaderType = ParticleSystemInfo::INVALID_SHADER;
 	m_batchEffects = 0;
-	m_batchTuning = nullptr;
+	m_batchEffectData = nullptr;
 }

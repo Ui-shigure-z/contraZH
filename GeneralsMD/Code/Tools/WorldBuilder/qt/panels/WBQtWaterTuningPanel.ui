@@ -15,25 +15,39 @@
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <item>
-    <widget class="QCheckBox" name="advancedCheck">
-     <property name="toolTip">
-      <string>Show every water key, not only the main ones</string>
+    <widget class="QTabWidget" name="tabs">
+     <property name="currentIndex">
+      <number>0</number>
      </property>
-     <property name="text">
-      <string>Advanced keys</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QScrollArea" name="scroll">
-     <property name="frameShape">
-      <enum>QFrame::NoFrame</enum>
-     </property>
-     <property name="widgetResizable">
-      <bool>true</bool>
-     </property>
-     <widget class="QWidget" name="rowsHost">
-      <layout class="QGridLayout" name="rowsGrid" columnstretch="1,0,0,0,0"/>
+     <widget class="QWidget" name="waterPage">
+      <attribute name="title">
+       <string>Water</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="waterLayout">
+       <item>
+        <widget class="QCheckBox" name="advancedCheck">
+         <property name="toolTip">
+          <string>Show every water key, not only the main ones</string>
+         </property>
+         <property name="text">
+          <string>Advanced keys</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QScrollArea" name="scroll">
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="rowsHost">
+          <layout class="QGridLayout" name="rowsGrid" columnstretch="1,0,0,0,0"/>
+         </widget>
+        </widget>
+       </item>
+      </layout>
      </widget>
     </widget>
    </item>

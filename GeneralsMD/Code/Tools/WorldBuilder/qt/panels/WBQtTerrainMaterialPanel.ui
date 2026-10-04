@@ -5,7 +5,7 @@
   <property name="windowTitle">
    <string>Terrain Material Options</string>
   </property>
-  <layout class="QVBoxLayout" name="rootLayout" stretch="0,3,0,0,0,0,0,0,0,0,0">
+  <layout class="QVBoxLayout" name="rootLayout" stretch="0,3,0,0,0,0,0,0,0,0,0,0">
    <item>
     <layout class="QHBoxLayout" name="searchRow" stretch="1,0,0">
      <item>
@@ -359,6 +359,16 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="paintWaterOnly">
+     <property name="text">
+      <string>Paint only under water</string>
+     </property>
+     <property name="toolTip">
+      <string>Paint only cells inside a water area that lie below its surface, up to the shoreline.</string>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QFrame" name="copySep">

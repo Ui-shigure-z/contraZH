@@ -35,6 +35,9 @@
 #include "Common/GameMemory.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/Color.h"
+#include "GameClient/DisruptionShader.h"
+#include "GameClient/StormShader.h"
+#include "GameClient/HeadlightShader.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Money.h"
 
@@ -558,6 +561,9 @@ public:
   Real m_cryoGlintSize;
   Real m_cryoGlintRate;
   Real m_cryoParticleScale;       ///< how much larger or smaller cryo-shaded particles draw, 1 unchanged
+  DisruptionShaderTuning m_disruptionTuning;  ///< disruption shader defaults
+  HeadlightShaderTuning m_headlightTuning;  ///< headlights drawn in place of HEADLIGHT meshes
+  StormShaderInfo m_stormTuning[StormShaderInfo::TYPE_COUNT];  ///< what each storm type takes where its entry sets nothing
   Bool m_useAmbientOcclusion;     ///< Options.ini AmbientOcclusion: creases and the ground beneath objects darken where the hardware allows
   Bool m_useHeightBlend;          ///< Options.ini HeightBlend: terrain textures blend by height where the hardware allows
   Bool m_useHQSky;                ///< Options.ini HQSky: cloud shadows drift softly and change shape where the hardware allows
@@ -581,6 +587,25 @@ public:
   Real m_skyCloudChurn;
   Real m_skyCloudBillow;
   Real m_skyCloudDetail;
+  AsciiString m_colorLut;         ///< the colour grade over the 3D scene, see W3DColorLut
+  Real m_colorLutStrength;
+  Real m_colorLutBrightness;
+  Real m_colorLutContrast;
+  Real m_colorLutSaturation;
+  RGBColor m_colorLutTint;
+  Real m_colorLutChroma;
+  Real m_colorLutLuma;
+  Real m_colorLutVibrance;
+  Real m_colorLutTechnicolor;
+  Real m_colorLutBlackPoint;
+  Real m_colorLutWhitePoint;
+  Real m_colorLutGamma;
+  Real m_colorLutOutputBlack;
+  Real m_colorLutOutputWhite;
+  Real m_colorLutVignette;
+  Real m_colorLutVignetteRadius;
+  Real m_colorLutGrain;
+  Real m_colorLutDither;
   Int m_vsync;                    ///< Options.ini VSync: 1 on, 0 off, -1 on in fullscreen and off in a window
   Bool m_lowLatency;              ///< Options.ini LowLatency: at most one frame queued ahead of the GPU
   Int m_alliedDecalMode;          ///< Options.ini AlliedDecalMode: how allied power decals are drawn

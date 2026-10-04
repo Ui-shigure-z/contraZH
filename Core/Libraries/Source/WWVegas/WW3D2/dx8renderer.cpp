@@ -507,13 +507,11 @@ void DX8FVFCategoryContainer::Render_Material_Pass_Window()
 			}
 		}
 
+		// The window's passes take no lighting, and setting a mesh's light environment here would mark the
+		// material changed when its ambient differs, which reapplies it and drops the pass's texgen.
 		for (size_t i=0;i<fixed.size();++i)
 		{
 			MeshClass * mesh = fixed[i].first;
-			if (mesh->Get_Lighting_Environment() != nullptr)
-			{
-				DX8Wrapper::Set_Light_Environment(mesh->Get_Lighting_Environment());
-			}
 			DX8Wrapper::Set_Transform(D3DTS_WORLD,mesh->Get_Transform());
 			pass->Install_Polygon_Materials(fixed[i].second);
 			fixed[i].second->Render(mesh->Get_Base_Vertex_Offset());
@@ -2814,8 +2812,17 @@ void DX8TextureCategoryClass::Render_Task(PolyRenderTaskClass * prt, VertexMater
 	if (!DX8RendererDebugger::Is_Enabled() || !mesh->Is_Disabled_By_Debugger()) {
 
 	if (!replay && (!!mesh->Peek_Model()->Get_Flag(MeshGeometryClass::SORT)) && WW3D::Is_Sorting_Enabled()) {
-		renderer->Render_Sorted(mesh->Get_Base_Vertex_Offset(),mesh->Get_Bounding_Sphere());
-	} else {
+		if (mesh->Peek_Disruption() != nullptr) {
+			SortingRendererClass::Set_Insert_Effects(SoftParticleHookClass::EFFECT_DISRUPT,mesh->Peek_Disruption(),mesh->Get_Alpha_Override());
+			renderer->Render_Sorted(mesh->Get_Base_Vertex_Offset(),mesh->Get_Bounding_Sphere());
+			SortingRendererClass::Set_Insert_Effects(0,nullptr);
+		}
+		if (!mesh->Is_Disruption_Only() || !SortingRendererClass::Can_Disrupt()) {
+			SortingRendererClass::Set_Insert_Effects(mesh->Get_Shader_Effects(),mesh->Peek_Shader_Effect_Data());
+			renderer->Render_Sorted(mesh->Get_Base_Vertex_Offset(),mesh->Get_Bounding_Sphere());
+			SortingRendererClass::Set_Insert_Effects(0,nullptr);
+		}
+	} else if (!mesh->Is_Disruption_Only() || !SortingRendererClass::Can_Disrupt()) {
 		//non-transparent mesh that will be rendered immediately.  Okay to adjust the shader/material
 		//if necessary
 		if (mesh->Get_Alpha_Override() != 1.0 || (mesh->Get_User_Data() && *(int *)mesh->Get_User_Data() == RenderObjClass::USER_DATA_MATERIAL_OVERRIDE))

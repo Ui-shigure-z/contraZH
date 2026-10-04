@@ -74,11 +74,13 @@
 #include "qt/panels/WBQtMapIniEditorBridge.h"
 #include "qt/panels/WBQtMapGenBridge.h"
 #include "qt/panels/WBQtWaterTuningBridge.h"
+#include "qt/panels/WBQtHQPreviewBridge.h"
 #endif
 #include "SaveMap.h"
 #include "ScriptDialog.h"
 #include "TerrainMaterial.h"
 #include "W3DDevice/GameClient/HeightMap.h"
+#include "W3DDevice/GameClient/W3DWater.h"
 #include "wbview3d.h"
 #include "wbview.h"
 #include "WHeightMapEdit.h"
@@ -156,6 +158,11 @@ Bool WBMapIni_IsPhantomTemplate(const AsciiString &name)
 // their reset would either do nothing or destroy non-override state.
 static void unloadMapIniOverrides(void)
 {
+#ifdef RTS_HAS_QT
+	// Tuning can change these with no map.ini loaded, so they go back ahead of the check below.
+	WBQtWaterTuning_RestoreGameData();
+#endif
+
 	if (!g_mapiniloaded)
 		return;
 
@@ -168,6 +175,12 @@ static void unloadMapIniOverrides(void)
 	// upgrade/module references) -- the same call the WB loader makes after parsing.
 	if (TheThingFactory)
 		TheThingFactory->postProcessLoad();
+
+	// The water object outlives the map, so it drops the map's standing water texture here.
+	if (TheWaterRenderObj != nullptr)
+	{
+		TheWaterRenderObj->updateMapOverrides();
+	}
 }
 
 // Shutdown-only teardown, called from ExitInstance BEFORE Qt is destroyed.
@@ -797,6 +810,10 @@ static void appendIniObjectSection(CString &msg, const char *header,
 static void refreshMapIniViewport(void)
 {
 	ObjectOptions::reprocessObjectList();
+	if (TheWaterRenderObj != nullptr)
+	{
+		TheWaterRenderObj->updateMapOverrides();
+	}
 	WbView3d *p3d = CWorldBuilderDoc::GetActive3DView();
 	if (p3d != NULL) {
 		// A map.ini can change what a model NAME means (editing an object's Draw module), and
@@ -939,6 +956,9 @@ static bool doLoadMapIni(const AsciiString &iniPath, MapIniLoadMode mode, CStrin
 			{
 				g_mapIniPhantomTemplates.insert(scan.newNames[i]);
 			}
+#ifdef RTS_HAS_QT
+			WBQtWaterTuning_ApplyGameData(iniPath.str());
+#endif
 		}
 
 		if (mode == MAPINI_INSTALL) {
@@ -1164,6 +1184,7 @@ BEGIN_MESSAGE_MAP(CWorldBuilderDoc, CDocument)
 	ON_COMMAND(ID_FILE_OPEN_MAPINI, OnOpenMapIni)
 	ON_COMMAND(ID_FILE_EDIT_MAPINI, OnEditMapIni)
 	ON_COMMAND(ID_FILE_WATERTUNING_MAPINI, OnWaterTuningMapIni)
+	ON_COMMAND(ID_FILE_HQPREVIEW_MAPINI, OnGenerateHQPreview)
 	ON_COMMAND(ID_FILE_RELOAD_MAPINI, OnReloadMapIni)
 	ON_COMMAND(ID_FILE_CHECK_MAPINI, OnCheckMapIni)
 	ON_COMMAND(ID_FILE_WATCH_MAPINI, OnToggleWatchMapIni)
@@ -2072,6 +2093,27 @@ void CWorldBuilderDoc::OnWaterTuningMapIni()
 	WBQtWaterTuning_Open(::AfxGetMainWnd() ? ::AfxGetMainWnd()->GetSafeHwnd() : NULL, iniPath.str());
 #else
 	AfxMessageBox("Water tuning needs the Qt build of WorldBuilder.", MB_ICONINFORMATION | MB_OK);
+#endif
+}
+
+// File > Map.ini > Generate HQ tga: renders the lobby preview from the 3D view.
+void CWorldBuilderDoc::OnGenerateHQPreview()
+{
+	if (m_strPathName.IsEmpty()) {
+		AfxMessageBox("Save the map first.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	WbView3d *view = Get3DView();
+	if (view == NULL) {
+		AfxMessageBox("The 3D view is not open.", MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+#ifdef RTS_HAS_QT
+	if (WBQtHQPreview_Run(view, m_strPathName) < 0) {
+		AfxMessageBox("Couldn't render the map from the 3D view.", MB_ICONEXCLAMATION | MB_OK);
+	}
+#else
+	AfxMessageBox("The HQ preview needs the Qt build of WorldBuilder.", MB_ICONINFORMATION | MB_OK);
 #endif
 }
 

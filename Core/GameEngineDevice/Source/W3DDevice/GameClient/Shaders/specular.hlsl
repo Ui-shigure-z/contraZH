@@ -15,7 +15,8 @@
 // map, contiguous because texcoord sets are handed out in stage order.
 //
 // BUMP picks the surface detail. 0 is none, 1 treats the texture's brightness as height,
-// and 2 reads a tangent-space normal map from stage 4 on the mesh's own UVs. Both bumped
+// through the slope map W3DSlopeMap builds from it, and 2 reads a tangent-space normal map.
+// Either map sits on stage 4 and is read with the mesh's own UVs. Both bumped
 // variants build their frame from screen-space derivatives, because meshes carry no
 // tangents, so they need ps_2_a.
 //
@@ -34,7 +35,9 @@ sampler2D ShadowMap : register(s3);
 #include "shadowreceive.hlsli"
 #endif
 
-#if BUMP == 2
+#if BUMP == 1
+sampler2D SlopeMap : register(s4);
+#elif BUMP == 2
 sampler2D NormalMap : register(s4);
 #endif
 
@@ -45,7 +48,7 @@ float4 SunColor     : register(c2);   // sun colour times specular intensity
 float4 Gloss        : register(c3);   // x = specular power, y = 1 for the debug view
 float4 Bump         : register(c6);   // x = height of full brightness, y = normal map strength, z = ambient brightness
 float4 SunDiffuse   : register(c5);   // sun colour the mesh was lit with
-float4 TextureInfo  : register(c7);   // x = glow mask intensity, 0 without a mask; yz = one texel of the mesh texture in uv
+float4 TextureInfo  : register(c7);   // x = glow mask intensity, 0 without a mask; yz = the slope map's stored texel to height per uv
 
 #if LIGHTS
 // Eight fill c8 to c25, and fxc needs the rest for literals, so W3DShaderManager::MAX_UNIT_PIXEL_LIGHTS must match.
@@ -77,27 +80,7 @@ float3 NormalizeOr(float3 v, float3 fallback)
 
 #if BUMP == 1
 
-// Brightness as height, from one mip blurrier than the pixel needs, so fine texture noise does not sparkle.
-float Height(float2 uv)
-{
-    return Brightness(tex2Dbias(MeshTexture, float4(uv, 0.0f, 1.0f)).rgb);
-}
-
-// Height change per pixel along one screen axis. The samples sit at least a texel apart on either side,
-// so a magnified texture gives smooth slopes rather than one flat facet per texel.
-float HeightSlope(float2 uv, float2 step)
-{
-    float2 texels = step / TextureInfo.yz;
-    float stretch = max(1.0f, rsqrt(max(dot(texels, texels), 1e-8f)));
-    float2 reach = step * stretch;
-    float change = (Height(uv + reach) - Height(uv - reach)) * 0.5f;
-
-    // Paint lines and team colour edges jump far more than surface grain, so large jumps are softened.
-    change /= 1.0f + abs(change) * 6.0f;
-    return change / stretch;
-}
-
-// Mikkelsen's surface gradient.
+// Mikkelsen's surface gradient, with the height change per pixel from the slope map's change per uv.
 float3 BumpNormal(float3 normal, float3 position, float2 uv)
 {
     float3 dpdx = ddx(position);
@@ -107,8 +90,9 @@ float3 BumpNormal(float3 normal, float3 position, float2 uv)
     float3 r2 = cross(normal, dpdx);
     float det = dot(dpdx, r1);
 
-    float dhdx = HeightSlope(uv, ddx(uv));
-    float dhdy = HeightSlope(uv, ddy(uv));
+    float2 slope = (tex2D(SlopeMap, uv).rg - 128.0f / 255.0f) * TextureInfo.yz;
+    float dhdx = dot(slope, ddx(uv));
+    float dhdy = dot(slope, ddy(uv));
 
     float3 gradient = sign(det) * (dhdx * r1 + dhdy * r2) * Bump.x;
     return NormalizeOr(abs(det) * normal - gradient, normal);

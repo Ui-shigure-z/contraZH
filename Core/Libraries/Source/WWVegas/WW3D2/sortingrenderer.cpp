@@ -60,6 +60,9 @@ bool SortingRendererClass::_EnableTriangleDraw=true;
 static SoftParticleHookClass *SoftHook = nullptr;
 static unsigned InsertEffects = 0;
 static const void *InsertEffectData = nullptr;
+static float InsertDisruptionStrength = 1.0f;
+static const Vector3 *DisruptionCenter = nullptr;
+static float DisruptionStrength = 1.0f;
 
 void SortingRendererClass::Set_Soft_Particle_Hook(SoftParticleHookClass *hook)
 {
@@ -71,10 +74,38 @@ SoftParticleHookClass *SortingRendererClass::Peek_Soft_Particle_Hook()
 	return SoftHook;
 }
 
-void SortingRendererClass::Set_Insert_Effects(unsigned effects, const void *effectData)
+void SortingRendererClass::Set_Insert_Effects(unsigned effects, const void *effectData, float disruptionStrength)
 {
 	InsertEffects = effects;
 	InsertEffectData = effectData;
+	InsertDisruptionStrength = disruptionStrength;
+}
+
+bool SortingRendererClass::Can_Disrupt()
+{
+	return SoftHook != nullptr && WW3D::Is_Sorting_Enabled() && SoftHook->Can_Disrupt();
+}
+
+const Vector3 *SortingRendererClass::Peek_Disruption_Center()
+{
+	return DisruptionCenter;
+}
+
+float SortingRendererClass::Get_Disruption_Strength()
+{
+	return DisruptionStrength;
+}
+
+static bool Is_Identity(const D3DMATRIX& m)
+{
+	for (int row=0;row<4;++row) {
+		for (int column=0;column<4;++column) {
+			if (m.m[row][column] != ((row == column) ? 1.0f : 0.0f)) {
+				return false;
+			}
+		}
+	}
+	return true;
 }
 static unsigned DEFAULT_SORTING_POLY_COUNT = 21844;	// (count * 3) must be less than 65536
 static unsigned DEFAULT_SORTING_VERTEX_COUNT = 32768;	// count must be less than 65536
@@ -208,7 +239,10 @@ public:
 	RenderStateStruct sorting_state;
 
 	float depth;								// View space depth of the bounding sphere center, for object nodes
-	unsigned char effects;					// Particle effects drawn through the soft particle hook, 0 for none
+	unsigned short effects;					// Particle effects drawn through the soft particle hook, 0 for none
+	bool placed;								// A disruption node whose vertices are already in world space, so center says where it is
+	Vector3 center;
+	float disruption_strength;				// How much of its mask a disruption node keeps
 	const void* effect_data;				// Handed back to the hook with the effects
 	unsigned short start_index;			// First index used in the ib
 	unsigned short polygon_count;			// Polygon count to process (3 indices = one polygon)
@@ -220,6 +254,7 @@ typedef std::vector<SortingNodeStruct*> SortingNodeStructList;
 static SortingNodeStructList additive_list;
 static SortingNodeStructList object_list;
 static SortingNodeStructList additive_object_list;
+static SortingNodeStructList disrupt_list;
 static SortingNodeStructList clean_list;
 static unsigned total_sorting_vertices;
 
@@ -277,7 +312,9 @@ static void End_Soft(bool soft)
 static void Draw_Object_Node(SortingNodeStruct* state)
 {
 	DX8Wrapper::Set_Render_State(state->sorting_state);
+	const bool soft = Begin_Soft(state);
 	DX8Wrapper::Draw_Triangles(state->start_index,state->polygon_count,state->min_vertex_index,state->vertex_count);
+	End_Soft(soft);
 }
 
 // Object nodes are sorted far to near and drawn between the pool's triangles as the depths pass them.
@@ -418,6 +455,12 @@ void SortingRendererClass::Insert_Triangles(
 	unsigned short min_vertex_index,
 	unsigned short vertex_count)
 {
+	// A disruption draw has no look of its own, so without the hook or the sorter there is nothing to show.
+	const bool disrupts=(InsertEffects & SoftParticleHookClass::EFFECT_DISRUPT) != 0;
+	if (disrupts && (SoftHook == nullptr || !WW3D::Is_Sorting_Enabled())) {
+		return;
+	}
+
 	if (!WW3D::Is_Sorting_Enabled()) {
 		DX8Wrapper::Draw_Triangles(start_index,polygon_count,min_vertex_index,vertex_count);
 		return;
@@ -438,8 +481,17 @@ void SortingRendererClass::Insert_Triangles(
 	state->min_vertex_index=min_vertex_index;
 	state->vertex_count=vertex_count;
 	state->depth=0.0f;
-	state->effects=(SoftHook != nullptr) ? (unsigned char)InsertEffects : 0;
+	state->effects=(SoftHook != nullptr) ? (unsigned short)InsertEffects : 0;
 	state->effect_data=(state->effects != 0) ? InsertEffectData : nullptr;
+
+	if (disrupts) {
+		// Skins and lines leave the world transform at identity, so only the bounding sphere says where they are.
+		state->placed=bounding_sphere.Is_Valid() && Is_Identity(state->sorting_state.world);
+		state->center=bounding_sphere.Center;
+		state->disruption_strength=InsertDisruptionStrength;
+		disrupt_list.push_back(state);
+		return;
+	}
 
 	const bool additive=BlendBatching && Is_Order_Independent(state->sorting_state.shader);
 
@@ -903,6 +955,80 @@ void SortingRendererClass::Flush_Additive_Pool()
 
 // ----------------------------------------------------------------------------
 
+bool SortingRendererClass::Has_Disruption()
+{
+	return !disrupt_list.empty();
+}
+
+// ----------------------------------------------------------------------------
+//
+// Draws the disruption nodes through the hook, each on its own. A node the hook turns down stays undrawn.
+//
+// ----------------------------------------------------------------------------
+
+void SortingRendererClass::Flush_Disruption()
+{
+	if (disrupt_list.empty()) {
+		return;
+	}
+
+	Matrix4x4 old_view;
+	Matrix4x4 old_world;
+	DX8Wrapper::Get_Transform(D3DTS_VIEW,old_view);
+	DX8Wrapper::Get_Transform(D3DTS_WORLD,old_world);
+
+	for (size_t i=0;i<disrupt_list.size();++i) {
+		SortingNodeStruct* state=disrupt_list[i];
+		DisruptionCenter=state->placed ? &state->center : nullptr;
+		DisruptionStrength=state->disruption_strength;
+
+		if (!Uses_Sorting_Buffers(state->sorting_state)) {
+			DX8Wrapper::Set_Render_State(state->sorting_state);
+			const bool soft=Begin_Soft(state);
+			if (soft) {
+				DX8Wrapper::Draw_Triangles(state->start_index,state->polygon_count,state->min_vertex_index,state->vertex_count);
+			}
+			End_Soft(soft);
+			continue;
+		}
+
+		const unsigned index_count=state->polygon_count*3;
+		DynamicVBAccessClass dyn_vb_access(BUFFER_TYPE_DYNAMIC_DX8,dynamic_fvf_type,state->vertex_count);
+		DynamicIBAccessClass dyn_ib_access(BUFFER_TYPE_DYNAMIC_DX8,index_count);
+		{
+			DynamicVBAccessClass::WriteLockClass vb_lock(&dyn_vb_access);
+			DynamicIBAccessClass::WriteLockClass ib_lock(&dyn_ib_access);
+			memcpy(vb_lock.Get_Formatted_Vertex_Array(), Source_Vertices(state), sizeof(VertexFormatXYZNDUV2)*state->vertex_count);
+
+			const unsigned short* src_indices=Source_Indices(state);
+			unsigned short* dest_indices=ib_lock.Get_Index_Array();
+			for (unsigned j=0;j<index_count;++j) {
+				dest_indices[j]=(unsigned short)(src_indices[j]-state->min_vertex_index);
+			}
+		}
+
+		DX8Wrapper::Set_Index_Buffer(dyn_ib_access,0);
+		DX8Wrapper::Set_Vertex_Buffer(dyn_vb_access);
+		Apply_Render_State(state->sorting_state);
+		const bool soft=Begin_Soft(state);
+		if (soft) {
+			DX8Wrapper::Draw_Triangles(0,state->polygon_count,0,state->vertex_count);
+		}
+		End_Soft(soft);
+	}
+
+	DisruptionCenter=nullptr;
+	DisruptionStrength=1.0f;
+	Recycle_Nodes(disrupt_list);
+
+	DX8Wrapper::Set_Index_Buffer(nullptr,0);
+	DX8Wrapper::Set_Vertex_Buffer(nullptr);
+	DX8Wrapper::Set_Transform(D3DTS_VIEW,old_view);
+	DX8Wrapper::Set_Transform(D3DTS_WORLD,old_world);
+}
+
+// ----------------------------------------------------------------------------
+
 void SortingRendererClass::Flush()
 {
 	WWPROFILE("SortingRenderer::Flush");
@@ -910,6 +1036,9 @@ void SortingRendererClass::Flush()
 	Matrix4x4 old_world;
 	DX8Wrapper::Get_Transform(D3DTS_VIEW,old_view);
 	DX8Wrapper::Get_Transform(D3DTS_WORLD,old_world);
+
+	// Only a pass that takes a scene copy draws these, and it has had its turn.
+	Recycle_Nodes(disrupt_list);
 
 	std::stable_sort(object_list.begin(), object_list.end(), Object_Depth_Order);
 	next_object=0;
@@ -959,6 +1088,7 @@ void SortingRendererClass::Deinit()
 	Delete_Nodes(additive_list);
 	Delete_Nodes(object_list);
 	Delete_Nodes(additive_object_list);
+	Delete_Nodes(disrupt_list);
 	Delete_Nodes(clean_list);
 
 	delete[] temp_index_array;

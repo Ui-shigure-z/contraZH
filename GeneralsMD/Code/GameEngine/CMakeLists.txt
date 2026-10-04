@@ -328,6 +328,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/Module/GenerateMinefieldBehavior.h
     Include/GameLogic/Module/GrantScienceUpgrade.h
     Include/GameLogic/Module/GrantStealthBehavior.h
+    Include/GameLogic/Module/GrantTemporaryStealthBehavior.h
     Include/GameLogic/Module/GrantUpgradeCreate.h
     Include/GameLogic/Module/HackInternetAIUpdate.h
     Include/GameLogic/Module/HealContain.h
@@ -855,6 +856,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/Object/Behavior/FlightDeckBehavior.cpp
     Source/GameLogic/Object/Behavior/GenerateMinefieldBehavior.cpp
     Source/GameLogic/Object/Behavior/GrantStealthBehavior.cpp
+    Source/GameLogic/Object/Behavior/GrantTemporaryStealthBehavior.cpp
     Source/GameLogic/Object/Behavior/InstantDeathBehavior.cpp
     Source/GameLogic/Object/Behavior/JetSlowDeathBehavior.cpp
     Source/GameLogic/Object/Behavior/MinefieldBehavior.cpp

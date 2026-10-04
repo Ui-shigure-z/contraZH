@@ -27,6 +27,7 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/Module/W3DSupplyDraw.h
     Include/W3DDevice/GameClient/Module/W3DTankDraw.h
     Include/W3DDevice/GameClient/Module/W3DTankTruckDraw.h
+    Include/W3DDevice/GameClient/Module/W3DStormDraw.h
     Include/W3DDevice/GameClient/Module/W3DTracerDraw.h
     Include/W3DDevice/GameClient/Module/W3DTreeDraw.h
     Include/W3DDevice/GameClient/Module/W3DTruckDraw.h
@@ -72,11 +73,17 @@ set(GAMEENGINEDEVICE_SRC
     Include/W3DDevice/GameClient/W3DSnow.h
     Include/W3DDevice/GameClient/W3DSoftParticles.h
     Include/W3DDevice/GameClient/W3DShockwave.h
+    Include/W3DDevice/GameClient/W3DDisruption.h
+    Include/W3DDevice/GameClient/W3DStorm.h
+    Include/W3DDevice/GameClient/W3DColorLut.h
+    Include/W3DDevice/GameClient/W3DHeadlight.h
     Include/W3DDevice/GameClient/W3DLaserGlow.h
     Include/W3DDevice/GameClient/W3DAmbientOcclusion.h
     Include/W3DDevice/GameClient/W3DGroundNoise.h
+    Include/W3DDevice/GameClient/W3DEmbeddedShaders.h
     Include/W3DDevice/GameClient/W3DNoiseTexture.h
     Include/W3DDevice/GameClient/W3DSkyClouds.h
+    Include/W3DDevice/GameClient/W3DSlopeMap.h
 #    Include/W3DDevice/GameClient/W3DStatusCircle.h
     Include/W3DDevice/GameClient/W3DTerrainBackground.h
     Include/W3DDevice/GameClient/W3DTerrainTracks.h
@@ -128,6 +135,7 @@ set(GAMEENGINEDEVICE_SRC
     Source/W3DDevice/GameClient/Drawable/Draw/W3DSupplyDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTankDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTankTruckDraw.cpp
+    Source/W3DDevice/GameClient/Drawable/Draw/W3DStormDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTracerDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTreeDraw.cpp
     Source/W3DDevice/GameClient/Drawable/Draw/W3DTruckDraw.cpp
@@ -180,17 +188,23 @@ set(GAMEENGINEDEVICE_SRC
 #    Source/W3DDevice/GameClient/W3DScene.cpp
     Source/W3DDevice/GameClient/W3DBloom.cpp
     Source/W3DDevice/GameClient/W3DShaderManager.cpp
+    Source/W3DDevice/GameClient/W3DEmbeddedShaders.cpp
 #    Source/W3DDevice/GameClient/W3DShroud.cpp
     Source/W3DDevice/GameClient/W3DShadowMap.cpp
     Source/W3DDevice/GameClient/W3DSmudge.cpp
     Source/W3DDevice/GameClient/W3DSnow.cpp
     Source/W3DDevice/GameClient/W3DSoftParticles.cpp
     Source/W3DDevice/GameClient/W3DShockwave.cpp
+    Source/W3DDevice/GameClient/W3DDisruption.cpp
+    Source/W3DDevice/GameClient/W3DStorm.cpp
+    Source/W3DDevice/GameClient/W3DColorLut.cpp
+    Source/W3DDevice/GameClient/W3DHeadlight.cpp
     Source/W3DDevice/GameClient/W3DLaserGlow.cpp
     Source/W3DDevice/GameClient/W3DAmbientOcclusion.cpp
     Source/W3DDevice/GameClient/W3DGroundNoise.cpp
     Source/W3DDevice/GameClient/W3DNoiseTexture.cpp
     Source/W3DDevice/GameClient/W3DSkyClouds.cpp
+    Source/W3DDevice/GameClient/W3DSlopeMap.cpp
 #    Source/W3DDevice/GameClient/W3DStatusCircle.cpp
     Source/W3DDevice/GameClient/W3DTerrainBackground.cpp
     Source/W3DDevice/GameClient/W3DTerrainTracks.cpp
@@ -237,6 +251,12 @@ add_library(corei_gameenginedevice_private INTERFACE)
 add_library(corei_gameenginedevice_public INTERFACE)
 
 target_sources(corei_gameenginedevice_private INTERFACE ${GAMEENGINEDEVICE_SRC})
+
+# The shader table travels with W3DShaderManager, so the game and every tool that links it carry the shaders.
+target_sources(corei_gameenginedevice_private INTERFACE "${RTS_EMBEDDED_SHADERS_SOURCE}")
+if(TARGET rts_shaders)
+    add_dependencies(corei_gameenginedevice_private rts_shaders)
+endif()
 
 target_include_directories(corei_gameenginedevice_public INTERFACE
     Include

@@ -42,6 +42,7 @@
 #include "WBFontAtlas.h"
 
 #include <map>
+#include <vector>
 
 //#include "GameLogic/Module/BodyModule.h" -- Yikes... not necessary to include this! (KM)
 enum BodyDamageType CPP_11(: Int); //Ahhhh much better!
@@ -359,6 +360,7 @@ private:
 	Int											m_time;
 	LONGLONG										m_lastAnimTick;	///< QPC tick of the last animation advance, 0 before the first
 	Int											m_updateCount;
+	const char									*m_topViewError;
 	UINT										m_timer;
 	DrawObject							*m_drawObject;
 	RefRenderObjListClass		m_lightList;
@@ -759,6 +761,70 @@ public:
 
 //	void init(CWorldBuilderView *pMainView, HINSTANCE hInstance, CWnd* parent);
 	void redraw();
+	/// Moves WW3D's clock on by the time since the last call.
+	void advanceAnimation();
+
+	enum
+	{
+		TOP_VIEW_WATER_NONE = 0,
+		TOP_VIEW_WATER_FLAT,
+		TOP_VIEW_WATER_SHADER,
+	};
+	/// What captureTopView draws. The rectangle is in border-relative world units.
+	struct TopViewCapture
+	{
+		Real x0, y0, x1, y1;
+		Bool objects;
+		Bool trees;
+		Bool roads;
+		Bool colorGrade;
+		Int timeOfDay;	///< TIME_OF_DAY_INVALID keeps the current one
+		Int water;		///< TOP_VIEW_WATER_*
+		Bool clouds;
+		Bool macroTexture;
+		Bool stochastic;	///< paints stochastic terrain over all the ground for the capture
+	};
+	/// Renders the rectangle straight down into size*size BGRA pixels, top row north. Without aboveGround only terrain draws.
+	Bool captureTopView(Int size, const TopViewCapture &capture, Bool aboveGround, UnsignedByte *bgra);
+	/// Sets the scene up for a run of renderTopView frames, holding the editor view still until endTopView.
+	Bool beginTopView(const TopViewCapture &capture, Bool aboveGround);
+	Bool renderTopView(Int size, UnsignedByte *bgra);
+	/// Draws a frame and shows the area, given as fractions of the square with the top row first, in the window.
+	Bool presentTopView(Int size, void *window, const Real area[4]);
+	void endTopView();
+	Bool isTopViewActive() const { return m_topView.active; }
+private:
+	Bool drawTopView(Int size);
+	/// What beginTopView changed, for endTopView to put back.
+	struct TopViewSession
+	{
+		TopViewSession() : active(false), aboveGround(false), camZ(0.0f), camera(NULL), target(NULL), depth(NULL), targetSize(0),
+			oldTimeOfDay(TIME_OF_DAY_INVALID), removedTrees(false), wantShadowVolumes(false), wantClouds(false), wantMacroTexture(false), paint(NULL),
+			swapChain(NULL), swapWindow(NULL) {}
+		Bool active;
+		TopViewCapture capture;
+		Bool aboveGround;
+		Real camZ;
+		CameraClass *camera;
+		TextureClass *target;
+		ZTextureClass *depth;
+		Int targetSize;
+		TimeOfDay oldTimeOfDay;
+		Bool removedTrees;
+		std::vector<RenderObjClass *> objects;
+		std::vector<Bool> wasHidden;
+		Bool wantShadowVolumes;
+		Bool wantClouds;
+		Bool wantMacroTexture;
+		std::vector<UnsignedByte> paintEverywhere;
+		UnsignedByte *paint;
+		IDirect3DSwapChain8 *swapChain;	///< presents into the live preview's window
+		void *swapWindow;
+	};
+	TopViewSession								m_topView;
+public:
+	/// Why the last captureTopView failed.
+	const char *getTopViewError() const { return m_topViewError; }
 
 	virtual void setCenterInView(Real x, Real y) override;
 
