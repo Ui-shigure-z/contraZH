@@ -1133,8 +1133,8 @@ GameMessage::Type CommandTranslator::issueMoveToLocationCommand( const Coord3D *
 			}
 			else
 			{
-				movemsg->appendBooleanArgument(TheInGameUI->isInWaypointMode());
 				movemsg->appendLocationArgument(*pos);
+				movemsg->appendBooleanArgument(TheInGameUI->isInWaypointMode());
 			}
 
 		}

@@ -2332,31 +2332,31 @@ bool GameLogic::onMoveUpgradeEarlier(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &
 	return true;
 }
 
-bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelectedGroup)
+bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& currentlySelectedGroup)
 {
-	const ThingTemplate *place;
+	const ThingTemplate* place;
 	Coord3D loc;
 	Real angle;
 
 	// TheSuperHackers @feature The first of the group builds and any dozer behind it is sent to
 	// help, so a smart selection focus can lead the rest of the selected dozers to one site.
 #if RETAIL_COMPATIBLE_AIGROUP
-	const AIGroup *group = currentlySelectedGroup;
+	const AIGroup* group = currentlySelectedGroup;
 #else
-	const AIGroup *group = currentlySelectedGroup.Peek();
+	const AIGroup* group = currentlySelectedGroup.Peek();
 #endif
-	if( group == nullptr || group->isEmpty() )
+	if (group == nullptr || group->isEmpty())
 		return false;
-	const VecObjectID &groupIDs = group->getAllIDs();
-	Object *constructorObject = findObjectByID( groupIDs.front() );
-	place = TheThingFactory->findByTemplateID( msg->getArgument( 0 )->integer );
-	loc = msg->getArgument( 1 )->location;
-	angle = msg->getArgument( 2 )->real;
+	const VecObjectID& groupIDs = group->getAllIDs();
+	Object* constructorObject = findObjectByID(groupIDs.front());
+	place = TheThingFactory->findByTemplateID(msg->getArgument(0)->integer);
+	loc = msg->getArgument(1)->location;
+	angle = msg->getArgument(2)->real;
 
 	Bool isWaypoint = msg->getArgument(3)->boolean;
 	UnsignedInt cmdNode;
 
-	if( place == nullptr || constructorObject == nullptr )
+	if (place == nullptr || constructorObject == nullptr)
 		return false;  //These are not crashes, as the object may have died before this message came in
 
 	if (!isWaypoint)
@@ -2364,13 +2364,14 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 		TheCommandSequence->clearObjectCommand(constructorObject);
 	}
 
-	if (!TheCommandSequence->hasAnyCommand(constructorObject))
+	if (msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT)
 	{
-
-		if (msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT)
+		if (!TheCommandSequence->hasAnyCommand(constructorObject))
 		{
-			Object* building = TheBuildAssistant->buildObjectNow(constructorObject, place, &loc, angle,
+			//Object* building =
+			TheBuildAssistant->buildObjectNow(constructorObject, place, &loc, angle,
 				constructorObject->getControllingPlayer());
+			/*
 			for (size_t i = 1; building && i < groupIDs.size(); i++)
 			{
 				Object* helper = findObjectByID(groupIDs[i]);
@@ -2379,22 +2380,27 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 				{
 					helper->getAIUpdateInterface()->aiResumeConstruction(building, CMD_FROM_PLAYER);
 				}
-			}
-
-			cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+			}*/
 		}
-		else
+
+		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+	}
+	else
+	{
+		Coord3D locEnd;
+
+		// get the end of the line location in the world
+		locEnd = msg->getArgument(4)->location;
+
+		if (!TheCommandSequence->hasAnyCommand(constructorObject))
 		{
-			Coord3D locEnd;
-
-			// get the end of the line location in the world
-			locEnd = msg->getArgument(4)->location;
-
 			// place the line of structures, the end location being present will make it happen
 			TheBuildAssistant->buildObjectLineNow(constructorObject, place, &loc, &locEnd, angle,
 				constructorObject->getControllingPlayer());
+		}
 
-			cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
+		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
+		{
 		}
 	}
 

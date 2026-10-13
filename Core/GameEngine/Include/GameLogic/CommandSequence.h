@@ -138,7 +138,9 @@ protected:
 	UnsignedInt getLastCommand(Object *obj);
 	UnsignedInt getCurrentCommand(Object *obj);
 	UnsignedInt removeCurrentCommand(Object *obj);
-	void setObjectCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID);
+	void setObjectCurrentCommand(Object *obj, UnsignedInt curCmdID);
+	void setObjectLastCommand(Object *obj, UnsignedInt lastCmdID);
+	void setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID);
 };
 
 extern CommandSequence* TheCommandSequence;

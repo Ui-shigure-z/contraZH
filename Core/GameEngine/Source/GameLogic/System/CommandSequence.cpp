@@ -460,9 +460,9 @@ UnsignedInt CommandSequence::newDozerConstructCommand(CommandType commandType, c
 	CommandNode* commandNode = newCommandNode(commandType);
 	commandNode->m_loc = *loc1;
 	commandNode->m_templateID = thing->getTemplateID();
-	commandNode->m_angle;
+	commandNode->m_angle = angle;
 	if (commandType == COMMAND_DOZER_CONSTRUCT_LINE)
-		commandNode->m_loc2;
+		commandNode->m_loc2 = *loc2;
 	return commandNode->m_nodeID;
 }
 
@@ -555,11 +555,11 @@ Bool CommandSequence::includeUnitInCommand(UnsignedInt commandNodeID, Object *ob
 			return false;
 		it->second = commandNodeID;
 
-		setObjectCommand(obj, 0, commandNodeID);
+		setObjectLastCommand(obj, commandNodeID);
 	}
 	else
 	{
-		setObjectCommand(obj, commandNodeID, commandNodeID);
+		setObjectCurNLastCommand(obj, commandNodeID, commandNodeID);
 	}
 
 	return true;
@@ -774,6 +774,9 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 {
 	CommandNode *node = findCommandByID(getCurrentCommand(obj));
 
+	if (node == nullptr)
+		return 0;
+
 	ObjectToNodeMap::iterator it = node->m_nextCommand.find(obj->getID());
 
 	if (it == node->m_nextCommand.end())
@@ -781,30 +784,63 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 
 	UnsignedInt ret = it->second;
 
-	if (it->second)
+	if (ret)
+		setObjectCurrentCommand(obj, it->second);
+	else
+		setObjectCurNLastCommand(obj, 0, 0);
+
+	node->m_nextCommand.erase(it);
+
+	if (isTypicalMovingCommand(node->m_commandType))
 	{
-		setObjectCommand(obj, it->second, 0);
-		node->m_nextCommand.erase(it);
+		ObjectToLocMap::iterator lit = node->m_allocatedDest.find(obj->getID());
+		node->m_allocatedDest.erase(lit);
+	}
 
-		if (isTypicalMovingCommand(node->m_commandType))
-		{
-			ObjectToLocMap::iterator lit = node->m_allocatedDest.find(obj->getID());
-			node->m_allocatedDest.erase(lit);
-		}
-
-		if (node->m_nextCommand.empty())
-		{
-			IDToNodeMap::iterator iit = m_allNodes.find(node->m_nodeID);
-			if (iit != m_allNodes.end())
-				m_allNodes.erase(iit);
-			delete node;
-		}
+	if (node->m_nextCommand.empty())
+	{
+		IDToNodeMap::iterator iit = m_allNodes.find(node->m_nodeID);
+		if (iit != m_allNodes.end())
+			m_allNodes.erase(iit);
+		delete node;
 	}
 
 	return ret;
 }
 
-void CommandSequence::setObjectCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID)
+void CommandSequence::setObjectCurrentCommand(Object* obj, UnsignedInt curCmdID)
+{
+	if (!obj)
+		return;
+
+	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
+
+	if (it == m_objectCurNLastCommand.end())
+		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(curCmdID, 0)));
+	else
+	{
+		it->second.first = curCmdID;
+	}
+}
+
+
+void CommandSequence::setObjectLastCommand(Object* obj, UnsignedInt lastCmdID)
+{
+	if (!obj)
+		return;
+
+	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
+
+	if (it == m_objectCurNLastCommand.end())
+		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(0, lastCmdID)));
+	else
+	{
+		it->second.second = lastCmdID;
+	}
+}
+
+
+void CommandSequence::setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID)
 {
 	if (!obj)
 		return;
@@ -813,11 +849,13 @@ void CommandSequence::setObjectCommand(Object *obj, UnsignedInt curCmdID, Unsign
 
 	if (it == m_objectCurNLastCommand.end())
 		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(curCmdID, lastCmdID)));
+	else if (!curCmdID && !lastCmdID)
+	{
+		m_objectCurNLastCommand.erase(it);
+	}
 	else
 	{
-		if (curCmdID)
-			it->second.first = curCmdID;
-		if (lastCmdID)
-			it->second.second = lastCmdID;
+		it->second.first = curCmdID;
+		it->second.second = lastCmdID;
 	}
 }
