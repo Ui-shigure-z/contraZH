@@ -539,8 +539,8 @@ Bool CommandSequence::includeUnitInCommand(UnsignedInt commandNodeID, Object *ob
 	if (!obj)
 		return false;
 
-	CommandNode *commandNode = getCommandNode(commandNodeID);
-	CommandNode *lastCommandNode = getCommandNode(getLastCommand(obj));
+	CommandNode *commandNode = findCommandByID(commandNodeID);
+	CommandNode *lastCommandNode = findCommandByID(getLastCommand(obj));
 
 	if (lastCommandNode && isEndCommand(lastCommandNode->m_commandType))
 		return false;
@@ -570,7 +570,7 @@ Bool CommandSequence::includeUnitInTypicalMovingCommand(UnsignedInt commandNodeI
 	if (!includeUnitInCommand(commandNodeID, obj))
 		return false;
 
-	CommandNode *commandNode = getCommandNode(commandNodeID);
+	CommandNode *commandNode = findCommandByID(commandNodeID);
 
 	if (isTypicalMovingCommand(commandNode->m_commandType))
 		commandNode->m_allocatedDest.insert(std::make_pair(obj->getID(), objDest));
@@ -604,15 +604,38 @@ inline Bool CommandSequence::isEndCommand(CommandType commandType)
 
 inline Bool CommandSequence::hasEndCommand(Object *obj)
 {
-	CommandNode *cmdNode = getCommandNode(getLastCommand(obj));
+	CommandNode *cmdNode = findCommandByID(getLastCommand(obj));
 	if (isEndCommand(cmdNode->m_commandType))
 		return true;
 	return false;
 }
 
+inline Bool CommandSequence::isLocatableCommand(UnsignedInt commandNodeID)
+{
+	CommandNode *cmdNode = findCommandByID(commandNodeID);
+	if (cmdNode == nullptr)
+		return false;
+
+	switch (cmdNode->m_commandType)
+	{
+		case COMMAND_NONE:
+		case COMMAND_DO_WEAPON:
+		case COMMAND_DO_SPECIAL_POWER:
+		case COMMAND_DO_EXIT:
+		case COMMAND_DO_EVACUATE:
+		case COMMAND_INTERNET_HACK:
+		case COMMAND_SWITCH_WEAPON:
+		case COMMAND_TOGGLE_HOLD_FIRE:
+		case COMMAND_TOGGLE_DEPLOY:
+			return false;
+		default:
+			return true;
+	}
+}
+
 void CommandSequence::cleanUpEmptyCommand(UnsignedInt commandNodeID)
 {
-	CommandNode *cmdNode = getCommandNode(commandNodeID);
+	CommandNode *cmdNode = findCommandByID(commandNodeID);
 
 	if (cmdNode->m_nextCommand.empty())
 	{
@@ -621,7 +644,94 @@ void CommandSequence::cleanUpEmptyCommand(UnsignedInt commandNodeID)
 	}
 }
 
-CommandSequence::CommandNode *CommandSequence::getCommandNode(UnsignedInt commandNodeID)
+UnsignedInt CommandSequence::getFirstLocatableCommand(Object *obj)
+{
+	if (!obj)
+		return 0;
+
+	ObjectID objID = obj->getID();
+	UnsignedInt curCmdID = getCurrentCommand(obj);
+	while (curCmdID && !isLocatableCommand(curCmdID))
+	{
+		curCmdID = findCommandByID(curCmdID)->m_nextCommand.find(objID)->second;
+	}
+
+	return curCmdID;
+}
+
+UnsignedInt CommandSequence::getNextLocatableCommand(Object* obj, UnsignedInt commandNodeID)
+{
+	if (!obj)
+		return 0;
+
+	ObjectID objID = obj->getID();
+	UnsignedInt curCmdID = commandNodeID;
+	do
+	{
+		curCmdID = findCommandByID(curCmdID)->m_nextCommand.find(objID)->second;
+	}
+	while (curCmdID && !isLocatableCommand(curCmdID));
+
+	return curCmdID;
+}
+
+Bool CommandSequence::getCommandLoc(UnsignedInt commandNodeID, Coord3D &loc)
+{
+	if (!isLocatableCommand(commandNodeID))
+		return false;
+
+	CommandNode *cmdNode = findCommandByID(commandNodeID);
+
+	Object* obj = nullptr;
+
+	switch (cmdNode->m_commandType)
+	{
+		case COMMAND_DO_MOVETO:
+		case COMMAND_DO_REVERSE_MOVETO:
+		case COMMAND_DO_ATTACK_MOVETO:
+		case COMMAND_DO_GUARD_POSITION:
+		case COMMAND_DO_WEAPON_AT_LOCATION:
+		case COMMAND_DO_SPECIAL_POWER_AT_POSITION:
+		case COMMAND_DO_MOVING_SPECIAL_POWER_AT_POSITION:
+		case COMMAND_DOZER_CONSTRUCT:
+		case COMMAND_DOZER_CONSTRUCT_LINE:
+			loc = cmdNode->m_loc;
+			break;
+		case COMMAND_DO_GUARD_OBJECT:
+		case COMMAND_DO_ATTACK_OBJECT:
+		case COMMAND_DO_FORCE_ATTACK_OBJECT:
+		case COMMAND_DO_SPECIAL_POWER_AT_OBJECT:
+		case COMMAND_GET_REPAIRED:
+		case COMMAND_GET_HEALED:
+		case COMMAND_DO_REPAIR:
+		case COMMAND_RESUME_CONSTRUCTION:
+		case COMMAND_ENTER:
+		case COMMAND_DOCK:
+			obj = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (obj == nullptr)
+				return false;
+			loc = *obj->getPosition();
+			break;
+		case COMMAND_DO_COMBATDROP:
+			if (cmdNode->m_targetID == INVALID_ID)
+			{
+				loc = cmdNode->m_loc;
+			}
+			else
+			{
+				obj = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+				if (obj == nullptr)
+					return false;
+				loc = *obj->getPosition();
+			}
+			break;
+		default:
+			return false;
+	}
+	return true;
+}
+
+CommandSequence::CommandNode *CommandSequence::findCommandByID(UnsignedInt commandNodeID)
 {
 	//if (m_prevNodeID == commandNodeID)
 	//	return m_prevNode;
@@ -662,7 +772,7 @@ UnsignedInt CommandSequence::getCurrentCommand(Object *obj)
 
 UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 {
-	CommandNode *node = getCommandNode(getCurrentCommand(obj));
+	CommandNode *node = findCommandByID(getCurrentCommand(obj));
 
 	ObjectToNodeMap::iterator it = node->m_nextCommand.find(obj->getID());
 
