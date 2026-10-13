@@ -2635,6 +2635,8 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 		return GameMessage::MSG_INVALID;
 	}
 
+	// ShigureUi 13/10/2026 comment it out for new waypoint system
+	/*
 	// TheSuperHackers @feature Smart Garrison: holding ALT while hovering a transport the selection
 	// can enter overrides waypoint mode and distributes the units across the target plus nearby
 	// transports.
@@ -2649,7 +2651,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 		const GameMessage::Type msgType = GameMessage::MSG_SMART_GARRISON_HINT;
 		TheMessageStream->appendMessage( msgType );
 		return msgType;
-	}
+	}*/
 
 	//ShigureUi 08/10/2026 no more handle waypoint mode
 	//if( TheInGameUI->isInWaypointMode() )
