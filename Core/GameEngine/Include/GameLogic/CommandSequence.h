@@ -126,15 +126,21 @@ public:
 	inline Bool isTypicalMovingCommand(CommandType commandType);
 	inline Bool isEndCommand(CommandType commandType);
 	inline Bool hasEndCommand(Object *obj);
+	inline Bool isLocatableCommand(UnsignedInt commandNodeID);
 	void cleanUpEmptyCommand(UnsignedInt commandNodeID);
+	UnsignedInt getFirstLocatableCommand(Object *obj);
+	UnsignedInt getNextLocatableCommand(Object *obj, UnsignedInt commandNodeID);
+	Bool getCommandLoc(UnsignedInt commandNodeID, Coord3D &loc);
 
 protected:
 	CommandNode *newCommandNode(CommandType commandType);
-	CommandNode *getCommandNode(UnsignedInt commandNodeID);
+	CommandNode *findCommandByID(UnsignedInt commandNodeID);
 	UnsignedInt getLastCommand(Object *obj);
 	UnsignedInt getCurrentCommand(Object *obj);
 	UnsignedInt removeCurrentCommand(Object *obj);
-	void setObjectCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID);
+	void setObjectCurrentCommand(Object *obj, UnsignedInt curCmdID);
+	void setObjectLastCommand(Object *obj, UnsignedInt lastCmdID);
+	void setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID);
 };
 
 extern CommandSequence* TheCommandSequence;
