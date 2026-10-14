@@ -1042,15 +1042,15 @@ public:
 	void setWeaponSetFlag( WeaponSetType wst );
 
 	Bool groupHasWeaponSlot( WeaponSlotType weaponSlot );
-	void setWeaponLockInWaypointModeForGroup(WeaponSlotType weaponSlot, WeaponLockType lockType);
+	void setWeaponLockInWaypointModeForGroup(WeaponSlotType weaponSlot);
 
 protected:
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( AIGroup, "AIGroupPool" );		///< @todo Set real numbers for mem alloc
 
 	ListObjectPtrIt internalRemove(ListObjectPtrIt iterToRemove);
 
-	Bool friend_moveInfantryToPos( const Coord3D *pos, CommandSourceType cmdSource );
-	Bool friend_moveVehicleToPos( const Coord3D *pos, CommandSourceType cmdSource );
+	Bool friend_moveInfantryToPos( const Coord3D *pos, UnsignedInt cmdNode, CommandSourceType cmdSource );
+	Bool friend_moveVehicleToPos( const Coord3D *pos, UnsignedInt cmdNode, CommandSourceType cmdSource );
 	void friend_moveFormationToPos( const Coord3D *pos, CommandSourceType cmdSource );
 	Bool friend_computeGroundPath( const Coord3D *pos, CommandSourceType cmdSource );
 

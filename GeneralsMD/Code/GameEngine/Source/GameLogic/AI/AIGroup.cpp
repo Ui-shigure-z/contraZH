@@ -737,7 +737,7 @@ static void clampToMap(Coord3D *dest, PlayerType pt)
 /**
  * Move to given position(s)
  */
-Bool AIGroup::friend_moveInfantryToPos( const Coord3D *pos, CommandSourceType cmdSource )
+Bool AIGroup::friend_moveInfantryToPos( const Coord3D *pos, UnsignedInt cmdNode, CommandSourceType cmdSource )
 
 {
 	if (m_groundPath==nullptr) return false;
@@ -1090,7 +1090,9 @@ Bool AIGroup::friend_moveInfantryToPos( const Coord3D *pos, CommandSourceType cm
 		TheAI->pathfinder()->adjustDestination(theUnit, ai->getLocomotorSet(), &dest, nullptr);
 		TheAI->pathfinder()->updateGoal(theUnit, &dest, LAYER_GROUND);
 		path.push_back(dest);
+		TheCommandSequence->clearObjectCommand(theUnit);
 		ai->aiFollowPath( &path, nullptr, cmdSource );
+		TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
 	}
 	return true;
 }
@@ -1207,7 +1209,7 @@ void AIGroup::friend_moveFormationToPos( const Coord3D *pos, CommandSourceType c
 /**
  * Move to given position(s)
  */
-Bool AIGroup::friend_moveVehicleToPos( const Coord3D *pos, CommandSourceType cmdSource )
+Bool AIGroup::friend_moveVehicleToPos( const Coord3D *pos, UnsignedInt cmdNode, CommandSourceType cmdSource )
 
 {
 
@@ -1574,7 +1576,9 @@ Bool AIGroup::friend_moveVehicleToPos( const Coord3D *pos, CommandSourceType cmd
 		TheAI->pathfinder()->adjustDestination(theUnit, ai->getLocomotorSet(), &dest, nullptr);
 		TheAI->pathfinder()->updateGoal(theUnit, &dest, LAYER_GROUND);
 		path.push_back(dest);
-		ai->aiFollowPath( &path, nullptr, cmdSource );
+		TheCommandSequence->clearObjectCommand(theUnit);
+		ai->aiFollowPath(&path, nullptr, cmdSource);
+		TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
 	}
 	return true;
 }
@@ -1637,11 +1641,17 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
     isFormation = false;
   }
 
+	UnsignedInt cmdNode;
+	if (reverse)
+		cmdNode = TheCommandSequence->newSinglePosCommand(CommandSequence::COMMAND_DO_REVERSE_MOVETO, pos);
+	else
+		cmdNode = TheCommandSequence->newSinglePosCommand(CommandSequence::COMMAND_DO_MOVETO, pos);
+
 
 	if (!addWaypoint && !isFormation) {
 		friend_computeGroundPath(pos, cmdSource);
-		didInfantry = friend_moveInfantryToPos(pos, cmdSource);
-		didVehicles = friend_moveVehicleToPos(pos, cmdSource);
+		didInfantry = friend_moveInfantryToPos(pos, cmdNode, cmdSource);
+		didVehicles = friend_moveVehicleToPos(pos, cmdNode, cmdSource);
 	}
 	if (m_dirty)
 		recompute();
@@ -1767,12 +1777,6 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 	// Move the ones nearest the goal first.  Reduces collision problems later.
 	Object *theUnit;
 	Bool firstUnit = true;
-
-	UnsignedInt cmdNode;
-	if (reverse)
-		cmdNode = TheCommandSequence->newSinglePosCommand(CommandSequence::COMMAND_DO_REVERSE_MOVETO, pos);
-	else
-		cmdNode = TheCommandSequence->newSinglePosCommand(CommandSequence::COMMAND_DO_MOVETO, pos);
 
 	for (theUnit = iter->first(); theUnit; theUnit = iter->next())
 	{
@@ -2554,7 +2558,7 @@ void AIGroup::groupGetHealed( Object *healDepot, Bool isWaypoint, CommandSourceT
  */
 void AIGroup::groupGetRepaired( Object *repairDepot, Bool isWaypoint, CommandSourceType cmdSource )
 {
-	UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_GET_HEALED, repairDepot);
+	UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_GET_REPAIRED, repairDepot);
 
 	Bool canRepair, hasCommand;
 
@@ -3079,7 +3083,7 @@ void AIGroup::groupGuardPosition( const Coord3D *pos, GuardMode guardMode, Bool 
 		return;
 	}
 
-	UnsignedInt cmdNode = TheCommandSequence->newSinglePosCommand(CommandSequence::COMMAND_DO_GUARD_POSITION, pos);
+	UnsignedInt cmdNode = TheCommandSequence->newGuardCommand(CommandSequence::COMMAND_DO_GUARD_POSITION, pos, nullptr, guardMode);
 
 	std::list<Object *>::iterator i;
 	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
@@ -3111,7 +3115,7 @@ void AIGroup::groupGuardObject( Object *objToGuard, GuardMode guardMode, Bool is
 		return;
 	}
 
-	UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_DO_GUARD_OBJECT, objToGuard);
+	UnsignedInt cmdNode = TheCommandSequence->newGuardCommand(CommandSequence::COMMAND_DO_GUARD_OBJECT, nullptr, objToGuard, guardMode);
 
 	std::list<Object *>::iterator i;
 	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
@@ -3836,7 +3840,7 @@ void AIGroup::groupCombatDrop( Object *target, const Coord3D &pos, Bool isWaypoi
 	std::list<Object *>::iterator i;
 	Object *obj;
 
-	UnsignedInt cmdNode = TheCommandSequence->newTargetNPosCommand(CommandSequence::COMMAND_DO_MOVETO, target, &pos);
+	UnsignedInt cmdNode = TheCommandSequence->newTargetNPosCommand(CommandSequence::COMMAND_DO_COMBATDROP, target, &pos);
 
 	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
 	{
@@ -3992,7 +3996,7 @@ Bool AIGroup::setWeaponLockForGroup( WeaponSlotType weaponSlot, WeaponLockType l
 	return any;
 }
 
-void AIGroup::setWeaponLockInWaypointModeForGroup(WeaponSlotType weaponSlot, WeaponLockType lockType)
+void AIGroup::setWeaponLockInWaypointModeForGroup(WeaponSlotType weaponSlot)
 {
 	UnsignedInt cmdNode = TheCommandSequence->newSwitchWeaponCommand(CommandSequence::COMMAND_SWITCH_WEAPON, weaponSlot);
 
@@ -4000,7 +4004,7 @@ void AIGroup::setWeaponLockInWaypointModeForGroup(WeaponSlotType weaponSlot, Wea
 	for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
 	{
 		if (!TheCommandSequence->hasAnyCommand(*i))
-			(*i)->setWeaponLock(weaponSlot, lockType);
+			(*i)->setWeaponLock(weaponSlot, LOCKED_PERMANENTLY);
 		else
 			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 	}

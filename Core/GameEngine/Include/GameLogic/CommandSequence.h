@@ -72,6 +72,7 @@ protected:
 		ObjectToNodeMap m_nextCommand;
 		ObjectToLocMap m_allocatedDest;
 		Bool m_releaseAfter; // For onDoForceAttackGround() weird release
+		GuardMode m_guardMode;
 	};
 
 private:
@@ -82,8 +83,6 @@ private:
 
 	Int m_commandNodeCount;
 	UnsignedInt m_uniqueID;
-	//UnsignedInt m_prevNodeID;
-	//CommandNode *m_prevNode;
 
 public:
 
@@ -112,6 +111,7 @@ public:
 	UnsignedInt newSingleTargetCommand(CommandType commandType, Object *obj);
 	UnsignedInt newTargetNPosCommand(CommandType commandType, Object* obj, const Coord3D* pos);
 	UnsignedInt newPosNMaxShotsCommand(CommandType commandType, const Coord3D *pos, Int maxShotsToFire);
+	UnsignedInt newGuardCommand(CommandType commandType, const Coord3D *pos, Object *obj, GuardMode guardMode);
 	UnsignedInt newDoWeaponAtLocCommand(CommandType commandType, WeaponSlotType weaponSlot, const Coord3D *pos, Int maxShotsToFire, Bool releaseAfter);
 	UnsignedInt newDoWeaponAtObjCommand(CommandType commandType, WeaponSlotType weaponSlot, Object* obj, Int maxShotsToFire);
 	UnsignedInt newDozerConstructCommand(CommandType commandType, const ThingTemplate *thing, const Coord3D *pos1, const Coord3D *pos2, Real angle);
@@ -131,6 +131,7 @@ public:
 	UnsignedInt getFirstLocatableCommand(Object *obj);
 	UnsignedInt getNextLocatableCommand(Object *obj, UnsignedInt commandNodeID);
 	Bool getCommandLoc(UnsignedInt commandNodeID, Coord3D &loc);
+	Bool doCurrentCommand(Object *obj);
 
 protected:
 	CommandNode *newCommandNode(CommandType commandType);
