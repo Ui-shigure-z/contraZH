@@ -1257,7 +1257,7 @@ bool GameLogic::onDoSwitchWeapons(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &cur
 		if (!isWaypoint)
 			currentlySelectedGroup->setWeaponLockForGroup(weaponSlot, LOCKED_PERMANENTLY);
 		else
-			currentlySelectedGroup->setWeaponLockInWaypointModeForGroup(weaponSlot, LOCKED_PERMANENTLY);
+			currentlySelectedGroup->setWeaponLockInWaypointModeForGroup(weaponSlot);
 	}
 
 	return true;
@@ -2400,8 +2400,6 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 		}
 
 		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
-		{
-		}
 	}
 
 	TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);

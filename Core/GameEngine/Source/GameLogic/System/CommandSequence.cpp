@@ -3,7 +3,18 @@
 // Desc:   Advanced waypoint system
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+#include "Common/ActionManager.h"
+#include "Common/BuildAssistant.h"
+#include "Common/SpecialPower.h"
+#include "Common/ThingFactory.h"
+
 #include "GameLogic/CommandSequence.h"
+#include "GameLogic/Module/AIUpdate.h"
+#include "GameLogic/Module/ContainModule.h"
+#include "GameLogic/Module/DeployStyleAIUpdate.h"
+#include "GameLogic/Module/OverchargeBehavior.h"
+#include "GameLogic/Module/SpawnBehavior.h"
+#include "GameLogic/Module/SpecialPowerModule.h"
 
 //-----------------------------------------------------------------------------
 //         Public Data
@@ -129,13 +140,11 @@ void CommandSequence::xferCommandNode(Xfer* xfer, CommandNode* cmdNode)
 		// single pos
 	case COMMAND_DO_MOVETO:
 	case COMMAND_DO_REVERSE_MOVETO:
-	case COMMAND_DO_GUARD_POSITION:
 	{
 		xfer->xferCoord3D(&cmdNode->m_loc);
 		break;
 	}
 	// single target
-	case COMMAND_DO_GUARD_OBJECT:
 	case COMMAND_GET_REPAIRED:
 	case COMMAND_GET_HEALED:
 	case COMMAND_ENTER:
@@ -144,6 +153,20 @@ void CommandSequence::xferCommandNode(Xfer* xfer, CommandNode* cmdNode)
 	case COMMAND_DOCK:
 	{
 		xfer->xferObjectID(&cmdNode->m_targetID);
+		break;
+	}
+	// guard pos
+	case COMMAND_DO_GUARD_POSITION:
+	{
+		xfer->xferCoord3D(&cmdNode->m_loc);
+		xfer->xferInt((Int*) & cmdNode->m_guardMode);
+		break;
+	}
+	// guard target
+	case COMMAND_DO_GUARD_OBJECT:
+	{
+		xfer->xferObjectID(&cmdNode->m_targetID);
+		xfer->xferInt((Int*)&cmdNode->m_guardMode);
 		break;
 	}
 	// pos and target
@@ -329,7 +352,6 @@ UnsignedInt CommandSequence::newSinglePosCommand(CommandType commandType, const 
 	{
 	case COMMAND_DO_MOVETO:
 	case COMMAND_DO_REVERSE_MOVETO:
-	case COMMAND_DO_GUARD_POSITION:
 		break;
 	default:
 		return 0;
@@ -343,7 +365,6 @@ UnsignedInt CommandSequence::newSingleTargetCommand(CommandType commandType, Obj
 {
 	switch (commandType)
 	{
-	case COMMAND_DO_GUARD_OBJECT:
 	case COMMAND_GET_REPAIRED:
 	case COMMAND_GET_HEALED:
 	case COMMAND_ENTER:
@@ -392,6 +413,29 @@ UnsignedInt CommandSequence::newPosNMaxShotsCommand(CommandType commandType, con
 	CommandNode* commandNode = newCommandNode(commandType);
 	commandNode->m_loc = *pos;
 	commandNode->m_maxShotsToFire = maxShotsToFire;
+	return commandNode->m_nodeID;
+}
+
+UnsignedInt CommandSequence::newGuardCommand(CommandType commandType, const Coord3D *pos, Object *obj, GuardMode guardMode)
+{
+	if (!pos)
+		return 0;
+
+	switch (commandType)
+	{
+	case COMMAND_DO_GUARD_POSITION:
+	case COMMAND_DO_GUARD_OBJECT:
+		break;
+	default:
+		return 0;
+	}
+
+	CommandNode* commandNode = newCommandNode(commandType);
+	if (commandNode->m_commandType == COMMAND_DO_GUARD_POSITION)
+		commandNode->m_loc = *pos;
+	else
+		commandNode->m_targetID = obj->getID();
+	commandNode->m_guardMode = guardMode;
 	return commandNode->m_nodeID;
 }
 
@@ -857,5 +901,495 @@ void CommandSequence::setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID
 	{
 		it->second.first = curCmdID;
 		it->second.second = lastCmdID;
+	}
+}
+
+Bool CommandSequence::doCurrentCommand(Object *obj)
+{
+	CommandNode *cmdNode = findCommandByID(getCurrentCommand(obj));
+	if (!cmdNode)
+		return false;
+	CommandType cmdType = cmdNode->m_commandType;
+	const CommandSourceType cmdSource = CMD_FROM_PLAYER;
+
+	AIUpdateInterface *ai = obj->getAIUpdateInterface();
+
+	Object *target;
+
+	Bool ret = false;
+
+	switch (cmdType)
+	{
+		case COMMAND_DO_MOVETO:
+		{
+			if (ai)
+			{
+				ai->handleStealthCombatUnitMove();
+				ai->aiMoveToPosition(&cmdNode->m_loc, cmdSource);
+				ret = true;
+			}
+			break;
+		}
+		case COMMAND_DO_REVERSE_MOVETO:
+		{
+			if (ai)
+			{
+				ai->handleStealthCombatUnitMove();
+				ai->aiReverseMoveToPosition(&cmdNode->m_loc, cmdSource);
+				ret = true;
+			}
+			break;
+		}
+		case COMMAND_DO_ATTACK_MOVETO:
+		{
+			obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+
+			if (ai)
+			{
+				if (obj->isAbleToAttack())
+					ai->aiAttackMoveToPosition(&cmdNode->m_loc, cmdNode->m_maxShotsToFire, cmdSource);
+				else
+					ai->aiMoveToPosition(&cmdNode->m_loc, cmdSource);
+				ret = true;
+			}
+			break;
+		}
+		case COMMAND_DO_GUARD_POSITION:
+		{
+			if (ai)
+			{
+				ai->aiGuardPosition(&cmdNode->m_loc, cmdNode->m_guardMode, cmdSource);
+				ret = true;
+			}
+			break;
+		}
+		case COMMAND_DO_GUARD_OBJECT:
+		{
+			target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (ai && target)
+			{
+				ai->aiGuardObject(target, cmdNode->m_guardMode, cmdSource);
+				ret = true;
+			}
+			break;
+		}
+		case COMMAND_DO_WEAPON:
+		case COMMAND_DO_WEAPON_AT_LOCATION:
+		{
+			Coord3D attackPos = cmdType == COMMAND_DO_WEAPON ? *obj->getPosition() : cmdNode->m_loc;
+			if (cmdNode->m_weaponSlot == WEAPON_NONE)
+			{
+				obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+			}
+			else
+			{
+				obj->setWeaponLock(cmdNode->m_weaponSlot, LOCKED_TEMPORARILY);
+			}
+
+			//This code allows garrisoned buildings to force attack a ground position
+			//-----------------------------------------------------------------------
+			//Determine if this object is a garrisoned container capable of firing!
+			//If so, order everyone inside to attack as well!
+			ContainModuleInterface* contain = obj->getContain();
+			if (contain && contain->isPassengerAllowedToFire())
+			{
+				//Loop through each member and order them to attack the same target (if possible)
+				const ContainedItemsList* items = contain->getContainedItemsList();
+				if (items)
+				{
+					for (ContainedItemsList::const_iterator it = items->begin(); it != items->end(); ++it)
+					{
+						Object* garrisonedMember = *it;
+
+						if (!contain->isPassengerAllowedToFire(garrisonedMember->getID())) continue;
+
+						CanAttackResult result = garrisonedMember->getAbleToUseWeaponAgainstTarget(ATTACK_NEW_TARGET, nullptr, &attackPos, cmdSource);
+						if (result == ATTACKRESULT_POSSIBLE || result == ATTACKRESULT_POSSIBLE_AFTER_MOVING)
+						{
+							AIUpdateInterface* memberAI = garrisonedMember->getAI();
+							if (memberAI)
+							{
+								memberAI->aiAttackPosition(&attackPos, cmdNode->m_maxShotsToFire, cmdSource);
+							}
+						}
+					}
+				}
+			}
+
+			//Also handle slaves. If we have slaves, then order them to stop too!
+			SpawnBehaviorInterface* spawnInterface = obj->getSpawnBehaviorInterface();
+			if (spawnInterface && !spawnInterface->doSlavesHaveFreedom())
+			{
+				spawnInterface->orderSlavesToAttackPosition(&attackPos, cmdNode->m_maxShotsToFire, cmdSource);
+			}
+
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (ai)
+			{
+				ai->aiAttackPosition(&attackPos, cmdNode->m_maxShotsToFire, cmdSource);
+			}
+
+			if (cmdNode->m_releaseAfter)
+			{
+				obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+			}
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_ATTACK_OBJECT:
+		case COMMAND_DO_FORCE_ATTACK_OBJECT:
+		{
+			Bool forced = cmdType == COMMAND_DO_FORCE_ATTACK_OBJECT;
+
+			target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!target)
+				break;
+
+			if (cmdNode->m_weaponSlot == WEAPON_NONE)
+			{
+				obj->releaseWeaponLock(LOCKED_TEMPORARILY);
+			}
+			else
+			{
+				obj->setWeaponLock(cmdNode->m_weaponSlot, LOCKED_TEMPORARILY);
+			}
+
+			//Determine if this object is a garrisoned container capable of firing!
+			//If so, order everyone inside to attack as well!
+			ContainModuleInterface* contain = obj->getContain();
+			if (contain && contain->isPassengerAllowedToFire())
+			{
+				//Loop through each member and order them to attack the same target (if possible)
+				const ContainedItemsList* items = contain->getContainedItemsList();
+				if (items)
+				{
+					for (ContainedItemsList::const_iterator it = items->begin(); it != items->end(); ++it)
+					{
+						Object* garrisonedMember = *it;
+
+						if (!contain->isPassengerAllowedToFire(garrisonedMember->getID())) continue;
+
+						CanAttackResult result = garrisonedMember->getAbleToAttackSpecificObject(forced ? ATTACK_NEW_TARGET_FORCED : ATTACK_NEW_TARGET, target, cmdSource);
+						if (result == ATTACKRESULT_POSSIBLE || result == ATTACKRESULT_POSSIBLE_AFTER_MOVING)
+						{
+							AIUpdateInterface* memberAI = garrisonedMember->getAI();
+							if (memberAI)
+							{
+								if (forced)
+									memberAI->aiForceAttackObject(target, cmdNode->m_maxShotsToFire, cmdSource);
+								else
+									memberAI->aiAttackObject(target, cmdNode->m_maxShotsToFire, cmdSource);
+							}
+						}
+					}
+				}
+			}
+
+			//Do a check to see if we have a hive object that has slaved objects.
+			SpawnBehaviorInterface* spawnInterface = obj->getSpawnBehaviorInterface();
+			if (spawnInterface && !spawnInterface->doSlavesHaveFreedom())
+			{
+				spawnInterface->orderSlavesToAttackTarget(target, cmdNode->m_maxShotsToFire, cmdSource);
+			}
+
+			//Order the specific group object to attack!
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (ai && obj != target)
+			{
+				if (forced)
+					ai->aiForceAttackObject(target, cmdNode->m_maxShotsToFire, cmdSource);
+				else
+					ai->aiAttackObject(target, cmdNode->m_maxShotsToFire, cmdSource);
+			}
+			ret = true;
+			break;
+		}
+		case COMMAND_DOZER_CONSTRUCT:
+		{
+			const ThingTemplate* thing = TheThingFactory->findByTemplateID(cmdNode->m_templateID);
+			if (!thing)
+				break;
+			TheBuildAssistant->buildObjectNow(obj, thing, &cmdNode->m_loc, cmdNode->m_angle,
+				obj->getControllingPlayer());
+			ret = true;
+			break;
+		}
+		case COMMAND_DOZER_CONSTRUCT_LINE:
+		{
+			const ThingTemplate* thing = TheThingFactory->findByTemplateID(cmdNode->m_templateID);
+			if (!thing)
+				break;
+			TheBuildAssistant->buildObjectLineNow(obj, thing, &cmdNode->m_loc, &cmdNode->m_loc2, cmdNode->m_angle,
+				obj->getControllingPlayer());
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_SPECIAL_POWER:
+		{
+			const SpecialPowerTemplate *spTemplate = TheSpecialPowerStore->findSpecialPowerTemplateByID(cmdNode->m_specialPowerID);
+			SpecialPowerModuleInterface* mod = obj->getSpecialPowerModule(spTemplate);
+			if (!mod)
+				break;
+
+			mod->doSpecialPower(cmdNode->m_specialOptions);
+			obj->friend_setUndetectedDefector(FALSE);// My secret is out
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_SPECIAL_POWER_AT_POSITION:
+		case COMMAND_DO_MOVING_SPECIAL_POWER_AT_POSITION:
+		{
+			const SpecialPowerTemplate *spTemplate = TheSpecialPowerStore->findSpecialPowerTemplateByID(cmdNode->m_specialPowerID);
+			SpecialPowerModuleInterface *mod = obj->getSpecialPowerModule(spTemplate);
+			if (!mod)
+				break;
+
+			Coord3D unitLoc = cmdNode->m_loc;
+
+			if (cmdType == COMMAND_DO_MOVING_SPECIAL_POWER_AT_POSITION)
+			{
+				ObjectToLocMap::iterator it = cmdNode->m_allocatedDest.find(obj->getID());
+				if (it == cmdNode->m_allocatedDest.end())
+					break;
+
+				unitLoc = it->second;
+			}
+
+			mod->doSpecialPowerAtLocation(&unitLoc, cmdNode->m_angle, cmdNode->m_specialOptions);
+
+			obj->friend_setUndetectedDefector(FALSE);// My secret is out
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_SPECIAL_POWER_AT_OBJECT:
+		{
+			Object *target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!target)
+				break;
+
+			const SpecialPowerTemplate* spTemplate = TheSpecialPowerStore->findSpecialPowerTemplateByID(cmdNode->m_specialPowerID);
+			SpecialPowerModuleInterface* mod = obj->getSpecialPowerModule(spTemplate);
+			if (!mod)
+				break;
+
+			mod->doSpecialPowerAtObject(target, cmdNode->m_specialOptions);
+			obj->friend_setUndetectedDefector(FALSE);// My secret is out
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_EXIT:
+		{
+			Object *objWantToExit = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!objWantToExit)
+				break;
+
+			objWantToExit->releaseWeaponLock(LOCKED_TEMPORARILY);	// release any temporary locks.
+
+			if (objWantToExit->getControllingPlayer() != obj->getControllingPlayer())
+				break;
+
+			// exit whatever objectWantingToExit is INSIDE of
+			AIUpdateInterface* ai = objWantToExit->getAIUpdateInterface();
+			if (ai)
+				ai->aiExit(obj, CMD_FROM_PLAYER);
+			else
+				break;
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_EVACUATE:
+		{
+			if (obj->isKindOf(KINDOF_AIRCRAFT) && obj->isAirborneTarget())
+			{
+				//Calculate the highest point on the ground to drop off troops (chinook or other air transports)
+				Coord3D pos = *(obj->getPosition());
+				PathfindLayerEnum layerAtDest = TheTerrainLogic->getHighestLayerForDestination(&pos);
+				pos.z = TheTerrainLogic->getLayerHeight(pos.x, pos.y, layerAtDest);
+				ai->aiMoveToAndEvacuate(&pos, cmdSource);
+			}
+			else
+			{
+				ai->aiEvacuate(FALSE, cmdSource);
+			}
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_COMBATDROP:
+		{
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			if (cmdNode->m_targetID == INVALID_ID)
+				ai->aiCombatDrop(nullptr, cmdNode->m_loc, cmdSource);
+			else
+			{
+				Object *target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+				if (!target)
+					break;
+
+				ai->aiCombatDrop(target, *target->getPosition(), cmdSource);
+			}
+
+			ret = true;
+			break;
+		}
+
+		case COMMAND_GET_REPAIRED:
+		{
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			Object *repairDepot = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!repairDepot)
+				break;
+
+			if (TheActionManager->canGetRepairedAt(obj, repairDepot, cmdSource))
+				ai->aiGetRepaired(repairDepot, cmdSource);
+			else
+				break;
+
+			ret = true;
+			break;
+		}
+
+		case COMMAND_GET_HEALED:
+		{
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			Object* healDepot = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!healDepot)
+				break;
+
+			if (TheActionManager->canGetHealedAt(obj, healDepot, cmdSource))
+				ai->aiGetRepaired(healDepot, cmdSource);
+			else
+				break;
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DO_REPAIR:
+		{
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			Object *target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+
+			if (!target)
+				break;
+
+			ai->aiRepair(target, cmdSource);
+
+			ret = true;
+			break;
+		}
+		case COMMAND_RESUME_CONSTRUCTION:
+			break;
+		case COMMAND_ENTER:
+		{
+			AIUpdateInterface *ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			Object *target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!target)
+				break;
+
+			if (TheActionManager->canEnterObject(obj, target, cmdSource, DONT_CHECK_CAPACITY))
+				ai->aiEnter(target, cmdSource);
+			else
+				break;
+
+			ret = true;
+			break;
+		}
+		case COMMAND_DOCK:
+		{
+			AIUpdateInterface* ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			Object* target = TheGameLogic->findObjectByID(cmdNode->m_targetID);
+			if (!target)
+				break;
+
+			ai->aiDock(target, cmdSource);
+
+			ret = true;
+			break;
+		}
+		case COMMAND_INTERNET_HACK:
+		{
+			AIUpdateInterface *ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			ai->aiDock(target, cmdSource);
+
+			ret = true;
+			break;
+		}
+		case COMMAND_TOGGLE_OVERCHARGE:
+		{
+			OverchargeBehaviorInterface* obi;
+			for (BehaviorModule** bmi = obj->getBehaviorModules(); *bmi; ++bmi)
+			{
+				obi = (*bmi)->getOverchargeBehaviorInterface();
+				if (obi)
+				{
+					obi->toggle();
+					ret = true;
+				}
+			}
+
+			break;
+		}
+		case COMMAND_SWITCH_WEAPON:
+		{
+			obj->setWeaponLock(cmdNode->m_weaponSlot, LOCKED_PERMANENTLY);
+
+			ret = true;
+			break;
+		}
+		case COMMAND_TOGGLE_HOLD_FIRE:
+		{
+			AIUpdateInterface *ai = obj->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			ai->setHoldingFire(!ai->isHoldingFire());
+
+			ret = true;
+			break;
+		}
+		case COMMAND_TOGGLE_DEPLOY:
+		{
+			AIUpdateInterface* ai = obj->getAI();
+			DeployStyleAIUpdate* deployAI = ai ? ai->getDeployStyleAIUpdate() : nullptr;
+			if (deployAI == nullptr)
+				break;
+
+			if (!deployAI->isDeployedOrDeploying())
+				deployAI->toggleManualDeploy();
+			else
+				break;
+
+			ret = true;
+			break;
+		}
+		default:
+			// shouldn't happen
+			break;
 	}
 }
