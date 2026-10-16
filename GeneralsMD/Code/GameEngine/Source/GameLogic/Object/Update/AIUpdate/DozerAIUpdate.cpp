@@ -46,6 +46,7 @@
 #include "GameClient/Drawable.h"
 #include "GameClient/GameText.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/BodyModule.h"
@@ -1236,6 +1237,8 @@ StateReturnType DozerActionState::onEnter()
 	DozerAIInterface *dozerAI = dozer->getAIUpdateInterface()->getDozerAIInterface();
 	dozerAI->setCurrentTask( m_task );
 
+	TheCommandSequence->verifyObjectCommand(dozer);
+
 	//
 	// we have a machine within this state all it's own ...
 	// note that during an onEnter, since the action machine is persistent, anytime we transition
@@ -1262,6 +1265,7 @@ void DozerActionState::onExit( StateExitType status )
 	DozerAIInterface *dozerAI = dozer->getAIUpdateInterface()->getDozerAIInterface();
 	dozerAI->setCurrentTask( DOZER_TASK_INVALID );
 
+	TheCommandSequence->terminateVerifiedCommand(dozer);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2115,6 +2119,8 @@ void DozerAIUpdate::newTask( DozerTask task, Object *target )
 	// reset the dozer behavior so that it can re-evaluate which task to continue working on
 	m_dozerMachine->resetToDefaultState();
 
+	TheCommandSequence->dozerPendingTask(getObject());
+
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2247,6 +2253,8 @@ void DozerAIUpdate::internalTaskComplete( DozerTask task )
 	m_task[ task ].m_targetObjectID = INVALID_ID;
 	m_task[ task ].m_taskOrderFrame = 0;
 
+	TheCommandSequence->terminateDozerPending(getObject());
+
 	clearPreviousTask();
 
 	// remove dock point info for this task
@@ -2274,6 +2282,8 @@ void DozerAIUpdate::internalCancelTask( DozerTask task )
 	// remove the info for this task
 	m_task[ task ].m_targetObjectID = INVALID_ID;
 	m_task[ task ].m_taskOrderFrame = 0;
+
+	TheCommandSequence->terminateDozerPending(getObject());
 
 	// remove dock point info for this task
 	for( Int i = 0; i < DOZER_NUM_DOCK_POINTS; i++ )

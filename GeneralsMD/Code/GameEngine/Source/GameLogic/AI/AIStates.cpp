@@ -54,6 +54,7 @@
 #include "GameLogic/AITNGuard.h"
 #include "GameLogic/AIStateMachine.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/PolygonTrigger.h"
@@ -2162,12 +2163,21 @@ StateReturnType AIMoveToState::onEnter()
 			ai->setDesiredSpeed(speed);
 		}
 	}
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+	{
+		TheCommandSequence->verifyObjectCommand(getMachineOwner());
+	}
+
 	return ret;
 }
 
 //----------------------------------------------------------------------------------------------------------
 void AIMoveToState::onExit( StateExitType status )
 {
+	AIUpdateInterface* ai = getMachineOwner()->getAI();
+	if (ai && ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 	AIInternalMoveToState::onExit( status );
 }
 
@@ -3430,6 +3440,12 @@ StateReturnType AIFollowPathState::onEnter()
 				ai->getCurLocomotor()->setUsePreciseZPos(true);
 		}
 	}
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+	{
+		TheCommandSequence->verifyObjectCommand(getMachineOwner());
+	}
+
 	return ret;
 }
 
@@ -3448,6 +3464,9 @@ void AIFollowPathState::onExit( StateExitType status )
 	//Assign this value to the AIUpdateInterface so object's can access this value while
 	//determine which waypoints to plot in the waypoint renderer.
 	ai->friend_setCurrentGoalPathIndex( -1 );
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 }
 
 //----------------------------------------------------------------------------------------------------------
@@ -5893,6 +5912,12 @@ StateReturnType AIAttackState::onEnter()
 	//CRCDEBUG_LOG(("AIAttackState::onEnter() - start for object %d", getMachineOwner()->getID()));
 	Object* source = getMachineOwner();
 	AIUpdateInterface *ai = source->getAI();
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+	{
+		TheCommandSequence->verifyObjectCommand(getMachineOwner());
+	}
+
 	// if we are in sleep mode, we will not attack
 	if ((ai->getMoodMatrixActionAdjustment(MM_Action_Attack) & MAA_Action_Ok) == 0)
 		return STATE_SUCCESS;
@@ -6135,6 +6160,9 @@ void AIAttackState::onExit( StateExitType status )
 			ai->setTurretTargetObject((WhichTurretType)i, nullptr, FALSE);
 		ai->friend_setGoalObject(nullptr);
 	}
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -7148,6 +7176,9 @@ StateReturnType AIGuardState::onEnter()
 	return m_guardMachine->setState(AI_GUARD_RETURN);
 
 	obj->getControllingPlayer()->getAcademyStats()->recordGuardAbilityUsed();
+
+	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->verifyObjectCommand(obj);
 }
 
 //----------------------------------------------------------------------------------------------------------
@@ -7156,8 +7187,12 @@ void AIGuardState::onExit( StateExitType status )
 	deleteInstance(m_guardMachine);
 	m_guardMachine = nullptr;
 
-	Object *obj = getMachineOwner();
-	obj->getAI()->clearGuardTargetType();
+	AIUpdateInterface *ai = getMachineOwner()->getAI();
+	if (ai)
+		ai->clearGuardTargetType();
+
+	if (ai && ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 }
 
 //----------------------------------------------------------------------------------------------------------

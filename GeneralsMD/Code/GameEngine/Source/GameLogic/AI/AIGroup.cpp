@@ -1091,8 +1091,11 @@ Bool AIGroup::friend_moveInfantryToPos( const Coord3D *pos, UnsignedInt cmdNode,
 		TheAI->pathfinder()->updateGoal(theUnit, &dest, LAYER_GROUND);
 		path.push_back(dest);
 		TheCommandSequence->clearObjectCommand(theUnit);
-		ai->aiFollowPath( &path, nullptr, cmdSource );
 		TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
+		TheCommandSequence->prepareCommandForVerification(theUnit);
+		ai->aiFollowPath( &path, nullptr, cmdSource );
+		if (TheCommandSequence->isStillAwaiting(theUnit))
+			TheCommandSequence->removeCurrentCommand(theUnit);
 	}
 	return true;
 }
@@ -1577,8 +1580,12 @@ Bool AIGroup::friend_moveVehicleToPos( const Coord3D *pos, UnsignedInt cmdNode, 
 		TheAI->pathfinder()->updateGoal(theUnit, &dest, LAYER_GROUND);
 		path.push_back(dest);
 		TheCommandSequence->clearObjectCommand(theUnit);
-		ai->aiFollowPath(&path, nullptr, cmdSource);
 		TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
+		TheCommandSequence->prepareCommandForVerification(theUnit);
+		ai->aiFollowPath(&path, nullptr, cmdSource);
+		if (TheCommandSequence->isStillAwaiting(theUnit))
+			TheCommandSequence->removeCurrentCommand(theUnit);
+		
 	}
 	return true;
 }
@@ -1798,8 +1805,12 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 		if (!addWaypoint)
 			TheCommandSequence->clearObjectCommand(theUnit);
 
+		
+
 		if (!TheCommandSequence->hasAnyCommand(theUnit))
 		{
+			TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
+
 			theUnit->releaseWeaponLock(LOCKED_TEMPORARILY);
 
 			if (cmdSource == CMD_FROM_PLAYER)
@@ -1807,13 +1818,20 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 				ai->handleStealthCombatUnitMove();
 			}
 
+			TheCommandSequence->prepareCommandForVerification(theUnit);
+
 			if (reverse)
 				ai->aiReverseMoveToPosition(&dest, cmdSource);
 			else
 				ai->aiMoveToPosition(&dest, cmdSource);
-		}
 
-		TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
+			if (TheCommandSequence->isStillAwaiting(theUnit))
+				TheCommandSequence->removeCurrentCommand(theUnit);
+		}
+		else
+		{
+			TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, theUnit, dest);
+		}
 	}
 
 	TheCommandSequence->cleanUpEmptyCommand(cmdNode);
@@ -2291,14 +2309,18 @@ void AIGroup::groupAttackObjectPrivate( Bool forced, WeaponSlotType weaponSlot, 
 			AIUpdateInterface* ai = theUnit->getAIUpdateInterface();
 			if (ai && theUnit != victim)
 			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, theUnit);
+				TheCommandSequence->prepareCommandForVerification(theUnit);
 				if (forced)
 					ai->aiForceAttackObject(victim, maxShotsToFire, cmdSource);
 				else
 					ai->aiAttackObject(victim, maxShotsToFire, cmdSource);
+				if (TheCommandSequence->isStillAwaiting(theUnit))
+					TheCommandSequence->clearObjectCommand(theUnit);
 			}
 		}
-
-		TheCommandSequence->includeUnitInCommand(cmdNode, theUnit);
+		else
+			TheCommandSequence->includeUnitInCommand(cmdNode, theUnit);
 	}
 
 	TheCommandSequence->cleanUpEmptyCommand(cmdNode);
@@ -2403,7 +2425,11 @@ void AIGroup::groupAttackPosition( WeaponSlotType weaponSlot, const Coord3D *pos
 			AIUpdateInterface* ai = (*i)->getAIUpdateInterface();
 			if (ai)
 			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 				ai->aiAttackPosition(&attackPos, maxShotsToFire, cmdSource);
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i);
 			}
 
 			if (releaseAfter)
@@ -2411,8 +2437,8 @@ void AIGroup::groupAttackPosition( WeaponSlotType weaponSlot, const Coord3D *pos
 				(*i)->releaseWeaponLock(LOCKED_TEMPORARILY);
 			}
 		}
-
-		TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+		else
+			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 	}
 
 	TheCommandSequence->cleanUpEmptyCommand(cmdNode);
@@ -2437,14 +2463,19 @@ void AIGroup::groupAttackMoveToPosition( const Coord3D *pos, Int maxShotsToFire,
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
 				(*i)->releaseWeaponLock(LOCKED_TEMPORARILY);
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
 				if ((*i)->isAbleToAttack())
 					ai->aiAttackMoveToPosition(pos, maxShotsToFire, cmdSource);
 				else
 					ai->aiMoveToPosition(pos, cmdSource);
 
-				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i);
 			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 	}
 

@@ -706,6 +706,8 @@ protected:
 
 public:
 
+	Bool isSameMachine(AIStateMachine* stateMachine) { return stateMachine == m_stateMachine; }
+
 	StateID getCurrentStateID() const { return getStateMachine()->getCurrentStateID(); }	///< return the id of the current state of the machine
 /// @ todo -- srj sez: JBA NUKE THIS CODE, IT IS EVIL
 	void friend_addToWaypointGoalPath( const Coord3D *pathPoint ) { getStateMachine()->addToGoalPath(pathPoint); }

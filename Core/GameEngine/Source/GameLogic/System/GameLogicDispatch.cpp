@@ -2366,11 +2366,20 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 
 	if (msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT)
 	{
+		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+
 		if (!TheCommandSequence->hasAnyCommand(constructorObject))
 		{
+
+			TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
+			TheCommandSequence->prepareCommandForVerification(constructorObject);
+
 			//Object* building =
 			TheBuildAssistant->buildObjectNow(constructorObject, place, &loc, angle,
 				constructorObject->getControllingPlayer());
+
+			if (TheCommandSequence->isStillAwaiting(constructorObject))
+				TheCommandSequence->removeCurrentCommand(constructorObject);
 			/*
 			for (size_t i = 1; building && i < groupIDs.size(); i++)
 			{
@@ -2382,8 +2391,8 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 				}
 			}*/
 		}
-
-		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+		else
+			TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
 	}
 	else
 	{
@@ -2392,17 +2401,15 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 		// get the end of the line location in the world
 		locEnd = msg->getArgument(4)->location;
 
-		if (!TheCommandSequence->hasAnyCommand(constructorObject))
-		{
+		//if (!TheCommandSequence->hasAnyCommand(constructorObject))
+		//{
 			// place the line of structures, the end location being present will make it happen
 			TheBuildAssistant->buildObjectLineNow(constructorObject, place, &loc, &locEnd, angle,
 				constructorObject->getControllingPlayer());
-		}
-
-		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
+		//}
+	
+		//cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
 	}
-
-	TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
 
 	// place the sound for putting a building down
 

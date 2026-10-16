@@ -44,14 +44,32 @@ void CommandSequence::reset()
 	{
 		delete it->second;
 	}
+
 	m_allNodes.clear();
-	m_objectCurNLastCommand.clear();
 	m_uniqueID = 0;
 	m_commandNodeCount = 0;
+	m_todoNextCommandList.clear();
 }
 
 void CommandSequence::update()
 {
+	ObjectIDVectorIterator it;
+	if (!m_todoNextCommandList.empty())
+	{
+		for (it = m_todoNextCommandList.begin(); it != m_todoNextCommandList.end(); it++)
+		{
+			Object* obj = TheGameLogic->findObjectByID(*it);
+			if (!obj)
+				continue;
+
+			if (obj->getCommandVerifyStatus() == STATUS_COMPLETE)
+				removeCurrentCommand(obj);
+
+			if (obj->getCommandVerifyStatus() == STATUS_FRESH)
+				proceedNextCommand(obj);
+		}
+		m_todoNextCommandList.clear();
+	}
 }
 
 void CommandSequence::crc(Xfer* xfer)
@@ -80,20 +98,6 @@ void CommandSequence::xfer(Xfer* xfer)
 
 			xferCommandNode(xfer, cmdNode);
 		}
-
-		Int cnt;
-		ObjectID objID;
-		UnsignedInt curCmd, lastCmd;
-
-		xfer->xferInt(&cnt);
-
-		for (Int i = 0; i < cnt; i++)
-		{
-			xfer->xferObjectID(&objID);
-			xfer->xferUnsignedInt(&curCmd);
-			xfer->xferUnsignedInt(&lastCmd);
-			m_objectCurNLastCommand.insert(std::make_pair(objID, std::make_pair(curCmd, lastCmd)));
-		}
 	}
 	else
 	{
@@ -105,19 +109,9 @@ void CommandSequence::xfer(Xfer* xfer)
 			xferCommandNode(xfer, cmdNode);
 		}
 
-		Int cnt;
-		ObjectID objID;
-
-		xfer->xferInt(&cnt);
-
-		for (ObjectCommandMap::iterator it = m_objectCurNLastCommand.begin(); it != m_objectCurNLastCommand.end(); it++)
-		{
-			objID = it->first;
-			xfer->xferObjectID(&objID);
-			xfer->xferUnsignedInt(&it->second.first);
-			xfer->xferUnsignedInt(&it->second.second);
-		}
 	}
+
+	xfer->xferSTLObjectIDVector(&m_todoNextCommandList);
 }
 
 void CommandSequence::loadPostProcess()
@@ -305,7 +299,7 @@ void CommandSequence::xferCommandNode(Xfer* xfer, CommandNode* cmdNode)
 
 Bool CommandSequence::hasAnyCommand(Object *obj)
 {
-	return getCurrentCommand(obj);
+	return obj->getCurrentCommand();
 }
 
 void CommandSequence::clearObjectCommand(Object *obj)
@@ -584,7 +578,7 @@ Bool CommandSequence::includeUnitInCommand(UnsignedInt commandNodeID, Object *ob
 		return false;
 
 	CommandNode *commandNode = findCommandByID(commandNodeID);
-	CommandNode *lastCommandNode = findCommandByID(getLastCommand(obj));
+	CommandNode *lastCommandNode = findCommandByID(obj->getLastCommand());
 
 	if (lastCommandNode && isEndCommand(lastCommandNode->m_commandType))
 		return false;
@@ -599,11 +593,13 @@ Bool CommandSequence::includeUnitInCommand(UnsignedInt commandNodeID, Object *ob
 			return false;
 		it->second = commandNodeID;
 
-		setObjectLastCommand(obj, commandNodeID);
+		obj->setLastCommand(commandNodeID);
 	}
 	else
 	{
-		setObjectCurNLastCommand(obj, commandNodeID, commandNodeID);
+		obj->setCurrentCommand(commandNodeID);
+		obj->setLastCommand(commandNodeID);
+		obj->setCommandVerifyStatus(STATUS_FRESH);
 	}
 
 	return true;
@@ -648,7 +644,7 @@ inline Bool CommandSequence::isEndCommand(CommandType commandType)
 
 inline Bool CommandSequence::hasEndCommand(Object *obj)
 {
-	CommandNode *cmdNode = findCommandByID(getLastCommand(obj));
+	CommandNode *cmdNode = findCommandByID(obj->getLastCommand());
 	if (isEndCommand(cmdNode->m_commandType))
 		return true;
 	return false;
@@ -694,7 +690,7 @@ UnsignedInt CommandSequence::getFirstLocatableCommand(Object *obj)
 		return 0;
 
 	ObjectID objID = obj->getID();
-	UnsignedInt curCmdID = getCurrentCommand(obj);
+	UnsignedInt curCmdID = obj->getCurrentCommand();
 	while (curCmdID && !isLocatableCommand(curCmdID))
 	{
 		curCmdID = findCommandByID(curCmdID)->m_nextCommand.find(objID)->second;
@@ -788,35 +784,9 @@ CommandSequence::CommandNode *CommandSequence::findCommandByID(UnsignedInt comma
 	return it->second;
 }
 
-UnsignedInt CommandSequence::getLastCommand(Object *obj)
-{
-	if (!obj)
-		return 0;
-	
-	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
-
-	if (it == m_objectCurNLastCommand.end())
-		return 0;
-	else
-		return it->second.second;
-}
-
-UnsignedInt CommandSequence::getCurrentCommand(Object *obj)
-{
-	if (!obj)
-		return 0;
-
-	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
-
-	if (it == m_objectCurNLastCommand.end())
-		return 0;
-	else
-		return it->second.first;
-}
-
 UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 {
-	CommandNode *node = findCommandByID(getCurrentCommand(obj));
+	CommandNode *node = findCommandByID(obj->getCurrentCommand());
 
 	if (node == nullptr)
 		return 0;
@@ -829,9 +799,16 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 	UnsignedInt ret = it->second;
 
 	if (ret)
-		setObjectCurrentCommand(obj, it->second);
+	{
+		obj->setCurrentCommand(it->second);
+		obj->setCommandVerifyStatus(STATUS_FRESH);
+	}
 	else
-		setObjectCurNLastCommand(obj, 0, 0);
+	{
+		obj->setCurrentCommand(0);
+		obj->setLastCommand(0);
+		obj->setCommandVerifyStatus(STATUS_NONE);
+	}
 
 	node->m_nextCommand.erase(it);
 
@@ -852,63 +829,18 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj)
 	return ret;
 }
 
-void CommandSequence::setObjectCurrentCommand(Object* obj, UnsignedInt curCmdID)
+
+void CommandSequence::doCurrentCommand(Object *obj)
 {
-	if (!obj)
-		return;
-
-	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
-
-	if (it == m_objectCurNLastCommand.end())
-		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(curCmdID, 0)));
-	else
-	{
-		it->second.first = curCmdID;
-	}
-}
-
-
-void CommandSequence::setObjectLastCommand(Object* obj, UnsignedInt lastCmdID)
-{
-	if (!obj)
-		return;
-
-	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
-
-	if (it == m_objectCurNLastCommand.end())
-		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(0, lastCmdID)));
-	else
-	{
-		it->second.second = lastCmdID;
-	}
-}
-
-
-void CommandSequence::setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID)
-{
-	if (!obj)
-		return;
-
-	ObjectCommandMap::iterator it = m_objectCurNLastCommand.find(obj->getID());
-
-	if (it == m_objectCurNLastCommand.end())
-		m_objectCurNLastCommand.insert(std::make_pair(obj->getID(), std::make_pair(curCmdID, lastCmdID)));
-	else if (!curCmdID && !lastCmdID)
-	{
-		m_objectCurNLastCommand.erase(it);
-	}
-	else
-	{
-		it->second.first = curCmdID;
-		it->second.second = lastCmdID;
-	}
-}
-
-Bool CommandSequence::doCurrentCommand(Object *obj)
-{
-	CommandNode *cmdNode = findCommandByID(getCurrentCommand(obj));
+	CommandNode *cmdNode = findCommandByID(obj->getCurrentCommand());
 	if (!cmdNode)
-		return false;
+		return;
+
+	if (obj->getCommandVerifyStatus() != STATUS_FRESH)
+		return;
+
+	prepareCommandForVerification(obj);
+
 	CommandType cmdType = cmdNode->m_commandType;
 	const CommandSourceType cmdSource = CMD_FROM_PLAYER;
 
@@ -916,27 +848,24 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 	Object *target;
 
-	Bool ret = false;
-
 	switch (cmdType)
 	{
 		case COMMAND_DO_MOVETO:
-		{
-			if (ai)
-			{
-				ai->handleStealthCombatUnitMove();
-				ai->aiMoveToPosition(&cmdNode->m_loc, cmdSource);
-				ret = true;
-			}
-			break;
-		}
 		case COMMAND_DO_REVERSE_MOVETO:
 		{
+			Coord3D unitLoc;
+			ObjectToLocMap::iterator it = cmdNode->m_allocatedDest.find(obj->getID());
+			if (it == cmdNode->m_allocatedDest.end())
+				break;
+			unitLoc = it->second;
+
 			if (ai)
 			{
 				ai->handleStealthCombatUnitMove();
-				ai->aiReverseMoveToPosition(&cmdNode->m_loc, cmdSource);
-				ret = true;
+				if (cmdType == COMMAND_DO_MOVETO)
+					ai->aiMoveToPosition(&unitLoc, cmdSource);
+				else
+					ai->aiReverseMoveToPosition(&unitLoc, cmdSource);
 			}
 			break;
 		}
@@ -950,7 +879,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 					ai->aiAttackMoveToPosition(&cmdNode->m_loc, cmdNode->m_maxShotsToFire, cmdSource);
 				else
 					ai->aiMoveToPosition(&cmdNode->m_loc, cmdSource);
-				ret = true;
 			}
 			break;
 		}
@@ -959,7 +887,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			if (ai)
 			{
 				ai->aiGuardPosition(&cmdNode->m_loc, cmdNode->m_guardMode, cmdSource);
-				ret = true;
 			}
 			break;
 		}
@@ -969,7 +896,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			if (ai && target)
 			{
 				ai->aiGuardObject(target, cmdNode->m_guardMode, cmdSource);
-				ret = true;
 			}
 			break;
 		}
@@ -1034,7 +960,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				obj->releaseWeaponLock(LOCKED_TEMPORARILY);
 			}
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_ATTACK_OBJECT:
@@ -1102,7 +1027,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				else
 					ai->aiAttackObject(target, cmdNode->m_maxShotsToFire, cmdSource);
 			}
-			ret = true;
 			break;
 		}
 		case COMMAND_DOZER_CONSTRUCT:
@@ -1112,9 +1036,9 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				break;
 			TheBuildAssistant->buildObjectNow(obj, thing, &cmdNode->m_loc, cmdNode->m_angle,
 				obj->getControllingPlayer());
-			ret = true;
 			break;
 		}
+		// unused
 		case COMMAND_DOZER_CONSTRUCT_LINE:
 		{
 			const ThingTemplate* thing = TheThingFactory->findByTemplateID(cmdNode->m_templateID);
@@ -1122,7 +1046,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				break;
 			TheBuildAssistant->buildObjectLineNow(obj, thing, &cmdNode->m_loc, &cmdNode->m_loc2, cmdNode->m_angle,
 				obj->getControllingPlayer());
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_SPECIAL_POWER:
@@ -1135,7 +1058,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			mod->doSpecialPower(cmdNode->m_specialOptions);
 			obj->friend_setUndetectedDefector(FALSE);// My secret is out
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_SPECIAL_POWER_AT_POSITION:
@@ -1161,7 +1083,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 			obj->friend_setUndetectedDefector(FALSE);// My secret is out
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_SPECIAL_POWER_AT_OBJECT:
@@ -1178,7 +1099,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			mod->doSpecialPowerAtObject(target, cmdNode->m_specialOptions);
 			obj->friend_setUndetectedDefector(FALSE);// My secret is out
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_EXIT:
@@ -1199,7 +1119,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			else
 				break;
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_EVACUATE:
@@ -1217,7 +1136,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				ai->aiEvacuate(FALSE, cmdSource);
 			}
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_COMBATDROP:
@@ -1237,7 +1155,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				ai->aiCombatDrop(target, *target->getPosition(), cmdSource);
 			}
 
-			ret = true;
 			break;
 		}
 
@@ -1256,7 +1173,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			else
 				break;
 
-			ret = true;
 			break;
 		}
 
@@ -1275,7 +1191,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			else
 				break;
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DO_REPAIR:
@@ -1291,7 +1206,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 			ai->aiRepair(target, cmdSource);
 
-			ret = true;
 			break;
 		}
 		case COMMAND_RESUME_CONSTRUCTION:
@@ -1311,7 +1225,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			else
 				break;
 
-			ret = true;
 			break;
 		}
 		case COMMAND_DOCK:
@@ -1326,7 +1239,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 			ai->aiDock(target, cmdSource);
 
-			ret = true;
 			break;
 		}
 		case COMMAND_INTERNET_HACK:
@@ -1337,7 +1249,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 			ai->aiDock(target, cmdSource);
 
-			ret = true;
 			break;
 		}
 		case COMMAND_TOGGLE_OVERCHARGE:
@@ -1349,7 +1260,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 				if (obi)
 				{
 					obi->toggle();
-					ret = true;
 				}
 			}
 
@@ -1359,7 +1269,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 		{
 			obj->setWeaponLock(cmdNode->m_weaponSlot, LOCKED_PERMANENTLY);
 
-			ret = true;
 			break;
 		}
 		case COMMAND_TOGGLE_HOLD_FIRE:
@@ -1370,7 +1279,6 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 
 			ai->setHoldingFire(!ai->isHoldingFire());
 
-			ret = true;
 			break;
 		}
 		case COMMAND_TOGGLE_DEPLOY:
@@ -1385,11 +1293,81 @@ Bool CommandSequence::doCurrentCommand(Object *obj)
 			else
 				break;
 
-			ret = true;
 			break;
 		}
 		default:
 			// shouldn't happen
 			break;
 	}
+
+	if (obj->getCommandVerifyStatus() == STATUS_AWAITING)
+		removeCurrentCommand(obj);
+}
+
+inline void CommandSequence::proceedNextCommand(Object *obj)
+{
+	while (obj->getCommandVerifyStatus() == STATUS_FRESH)
+		doCurrentCommand(obj);
+}
+
+inline void CommandSequence::prepareCommandForVerification(Object *obj)
+{
+	if (obj->getCommandVerifyStatus() == STATUS_FRESH)
+	{
+		obj->setCommandVerifyStatus(STATUS_AWAITING);
+	}
+}
+
+Bool CommandSequence::isStillAwaiting(Object* obj)
+{
+	return obj->getCommandVerifyStatus() == STATUS_AWAITING;
+}
+
+Bool CommandSequence::dozerPendingTask(Object* obj)
+{
+	if (obj->getCommandVerifyStatus() == STATUS_AWAITING)
+	{
+		obj->setCommandVerifyStatus(STATUS_DOZER_PENDING);
+		return true;
+	}
+
+	return false;
+}
+
+Bool CommandSequence::verifyObjectCommand(Object *obj)
+{
+	CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+	if (cvs == STATUS_AWAITING || cvs == STATUS_DOZER_PENDING)
+	{
+		obj->setCommandVerifyStatus(STATUS_VERIFIED);
+		return true;
+	}
+
+	return false;
+}
+
+Bool CommandSequence::terminateDozerPending(Object *obj)
+{
+	CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+	if (cvs == STATUS_DOZER_PENDING)
+	{
+		obj->setCommandVerifyStatus(STATUS_COMPLETE);
+		m_todoNextCommandList.push_back(obj->getID());
+		return true;
+	}
+
+	return false;
+}
+
+Bool CommandSequence::terminateVerifiedCommand(Object *obj)
+{
+	CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+	if (cvs == STATUS_VERIFIED)
+	{
+		obj->setCommandVerifyStatus(STATUS_COMPLETE);
+		m_todoNextCommandList.push_back(obj->getID());
+		return true;
+	}
+
+	return false;
 }
