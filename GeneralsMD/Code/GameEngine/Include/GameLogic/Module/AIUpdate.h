@@ -396,6 +396,8 @@ public:
 														 Player *owningPlayer,
 														 Bool isRebuild ) { return nullptr; }///< construct a building
 
+	virtual void proceedNextCommand();
+
 
 	void ignoreObstacle( const Object *obj );			///< tell the pathfinder to ignore the given object as an obstacle
 	void ignoreObstacleID( ObjectID id );			///< tell the pathfinder to ignore the given object as an obstacle

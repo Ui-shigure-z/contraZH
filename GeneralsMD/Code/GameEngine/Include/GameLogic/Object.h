@@ -168,6 +168,12 @@ enum CommandVerifyStatus
 	STATUS_FRESH,
 	STATUS_AWAITING,
 	STATUS_DOZER_PENDING,
+	STATUS_OCL_PENDING,
+	STATUS_OCL_VERIFIED,
+	STATUS_OCL_COMPLETE,
+	STATUS_UNIT_PENDING,
+	STATUS_EXIT_VERIFIED,
+	STATUS_ON_HELD,
 	STATUS_VERIFIED,
 	STATUS_COMPLETE
 };
@@ -713,6 +719,10 @@ public:
 	UnsignedInt getLastCommand() { return m_lastCommand; }
 	void setCurrentCommand(UnsignedInt curCmdID) { m_currentCommand = curCmdID; }
 	void setLastCommand(UnsignedInt lastCmdID) { m_lastCommand = lastCmdID; }
+	void addToPendingExitList(Object *obj) { if (obj)  m_pendingExitList.push_back(obj->getID()); }
+	void removeFromPendingExitList(Object *obj);
+	Bool isPendingExitListEmpty() { return m_pendingExitList.empty(); }
+	void clearPendingExitList() { m_pendingExitList.clear(); }
 
 protected:
 
@@ -893,6 +903,7 @@ private:
 	UnsignedInt										m_currentCommand;
 	UnsignedInt										m_lastCommand;
 	CommandVerifyStatus						m_commandVerifyStatus;
+	ObjectIDVector								m_pendingExitList;
 
 	// --------- BYTE-SIZED THINGS GO HERE
 	Bool													m_isSelectable;

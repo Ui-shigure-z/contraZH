@@ -34,6 +34,7 @@
 #include "Common/RandomValue.h"
 #include "Common/ThingFactory.h"
 #include "Common/Xfer.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/ObjectCreationList.h"
 #include "GameLogic/PartitionManager.h"
@@ -188,6 +189,8 @@ void OCLSpecialPower::doSpecialPowerAtLocation( const Coord3D *loc, Real angle, 
 		return;
 #endif
 
+	TheCommandSequence->oclPending(getObject());
+
 	const ObjectCreationList* ocl = findOCL();
 
 	// at what point will the "deliverer" come in
@@ -226,6 +229,8 @@ void OCLSpecialPower::doSpecialPowerAtLocation( const Coord3D *loc, Real angle, 
 			createdObject = ObjectCreationList::create( ocl, getObject(), &creationCoord, &targetCoord, angle );
 			break;
 	}
+
+	TheCommandSequence->terminateOCLPending(getObject());
 
 	if (createdObject != NULL && modData->m_selectObject && createdObject->isLocallyControlled()) {
 		Drawable* draw = createdObject->getDrawable();
@@ -301,8 +306,12 @@ void OCLSpecialPower::doSpecialPower( UnsignedInt commandOptions )
 	// call the base class action cause we are *EXTENDING* functionality
 	SpecialPowerModule::doSpecialPowerAtLocation( &creationCoord, INVALID_ANGLE, commandOptions );
 
+	TheCommandSequence->oclPending(getObject());
+
 	const ObjectCreationList* ocl = findOCL();
 	Object* createdObject = ObjectCreationList::create( ocl, getObject(), &creationCoord, &creationCoord, false );
+
+	TheCommandSequence->terminateOCLPending(getObject());
 
 	if (createdObject != NULL && getOCLSpecialPowerModuleData()->m_selectObject
 		&& createdObject->isLocallyControlled()) {

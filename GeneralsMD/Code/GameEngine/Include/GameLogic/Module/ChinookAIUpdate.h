@@ -123,6 +123,8 @@ protected:
 
   virtual void privateIdle(CommandSourceType cmdSource) override;
 
+	virtual void proceedNextCommand() override;
+
   void private___TellPortableStructureToAttackWithMe( Object *victim, Int maxShotsToFire, CommandSourceType cmdSource );
 
 

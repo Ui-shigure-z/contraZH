@@ -135,19 +135,32 @@ public:
 	Bool getCommandLoc(UnsignedInt commandNodeID, Coord3D &loc);
 
 	Bool isStillAwaiting(Object *obj);
-	inline void proceedNextCommand(Object *obj);
+	void proceedNextCommand(Object *obj);
 	inline void prepareCommandForVerification(Object *obj);
 	Bool dozerPendingTask(Object *obj);
+	Bool oclPending(Object *obj);
 	Bool terminateDozerPending(Object *obj);
+	Bool terminateOCLPending(Object *obj);
+	Bool verifyOCLPendingCommand(Object *obj);
 	Bool verifyObjectCommand(Object *obj);
+	Bool unitPendingCommand(Object *obj);
+	Bool unitOnHeld(Object *obj);
+	Bool moveToAndEvacPending(Object *obj);
+	Bool verifyExitCommand(Object *objWantToExit, Object *objectContainingExiter);
 	Bool terminateVerifiedCommand(Object *obj);
-	UnsignedInt removeCurrentCommand(Object *obj);
+	Bool confirmExitCommand(Object *objWantToExit, Object *objectContainingExiter);
+	Bool terminateOCLVerifiedCommand(Object *obj);
+
+	UnsignedInt removeCurrentCommand(Object *obj, Bool doCleanUp = true);
+
+	Bool isCurrentExitCommand(Object *obj);
+	Bool isExitCommandComplete(Object *obj);
 
 protected:
 	CommandNode *newCommandNode(CommandType commandType);
 	CommandNode *findCommandByID(UnsignedInt commandNodeID);
 
-	void doCurrentCommand(Object *obj);
+	void doCurrentCommand(Object *obj, CommandVerifyStatus cvs);
 };
 
 extern CommandSequence* TheCommandSequence;

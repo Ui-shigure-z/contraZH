@@ -65,6 +65,7 @@
 
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/BodyModule.h"
+#include "GameLogic/Module/ChinookAIUpdate.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/JetAIUpdate.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
@@ -2164,7 +2165,8 @@ StateReturnType AIMoveToState::onEnter()
 		}
 	}
 
-	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+	if ((ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		|| (ai->getLastCommandSource() == CMD_FROM_AI && getID() == 1004)) //Chinook MOVE_TO_AND_EVAC
 	{
 		TheCommandSequence->verifyObjectCommand(getMachineOwner());
 	}
@@ -2177,6 +2179,9 @@ void AIMoveToState::onExit( StateExitType status )
 {
 	AIUpdateInterface* ai = getMachineOwner()->getAI();
 	if (ai && ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
+		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
+
+	if (ai->getLastCommandSource() == CMD_FROM_AI && getID() == 1004 && status == STATE_FAILURE)
 		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 	AIInternalMoveToState::onExit( status );
 }
@@ -5918,6 +5923,11 @@ StateReturnType AIAttackState::onEnter()
 		TheCommandSequence->verifyObjectCommand(getMachineOwner());
 	}
 
+	if (ai->getLastCommandSource() == CMD_FROM_AI)
+	{
+		TheCommandSequence->verifyOCLPendingCommand(getMachineOwner());
+	}
+
 	// if we are in sleep mode, we will not attack
 	if ((ai->getMoodMatrixActionAdjustment(MM_Action_Attack) & MAA_Action_Ok) == 0)
 		return STATE_SUCCESS;
@@ -6163,6 +6173,9 @@ void AIAttackState::onExit( StateExitType status )
 
 	if (ai->getLastCommandSource() == CMD_FROM_PLAYER && ai->isSameMachine((AIStateMachine*)getMachine()))
 		TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
+
+	if (ai->getLastCommandSource() == CMD_FROM_AI)
+		TheCommandSequence->terminateOCLVerifiedCommand(getMachineOwner());
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -6533,6 +6546,9 @@ StateReturnType AIDockState::onEnter()
 {
 	// who are we docking with?
 	Object *dockWithMe = getMachineGoalObject();
+
+	TheCommandSequence->verifyObjectCommand(getMachineOwner());
+
 	if (dockWithMe == nullptr)
 	{
 		// we have nothing to dock with!
@@ -6587,6 +6603,7 @@ void AIDockState::onExit( StateExitType status )
 		ai->ignoreObstacle( nullptr );
 	}
 
+	TheCommandSequence->terminateVerifiedCommand(getMachineOwner());
 }
 
 /**
@@ -6660,8 +6677,11 @@ StateReturnType AIEnterState::onEnter()
 {
 	m_entryToClear = INVALID_ID;
 
-	Object* obj = getMachineOwner();
-	Object* goal = getMachineGoalObject();
+	Object *obj = getMachineOwner();
+	Object *goal = getMachineGoalObject();
+
+	TheCommandSequence->verifyObjectCommand(obj);
+
 	if (goal)
 	{
 		if( !TheActionManager->canEnterObject( obj, goal, obj->getAI()->getLastCommandSource(), CHECK_CAPACITY ) )
@@ -6695,14 +6715,13 @@ StateReturnType AIEnterState::onEnter()
 //----------------------------------------------------------------------------------------------------------
 void AIEnterState::onExit( StateExitType status )
 {
-	Object* obj = getMachineOwner();
+	Object *obj = getMachineOwner();
 	AIInternalMoveToState::onExit( status );
 
 	// tell the pathfinder to stop ignoring the object
 	AIUpdateInterface *ai = obj->getAI();
 	if (ai)
 	{
-
 		ai->ignoreObstacle( nullptr );
 		if (ai->getCurLocomotor())
 		{
@@ -6720,10 +6739,14 @@ void AIEnterState::onExit( StateExitType status )
 			ContainModuleInterface* contain = goal->getContain();
 			if (contain)
 			{
+				if (contain->isContained(obj))
+					TheCommandSequence->unitOnHeld(obj);
 				contain->onObjectWantsToEnterOrExit(obj, WANTS_NEITHER);
 			}
 		}
 	}
+
+	TheCommandSequence->terminateVerifiedCommand(obj);
 }
 
 static bool hasVerticalOverlap(const Object* a, const Object* b)
@@ -6883,6 +6906,10 @@ StateReturnType AIExitState::onEnter()
 
 	Object* obj = getMachineOwner();
 	Object* goal = getMachineGoalObject();
+
+	//if (obj->getAI() && obj->getAI()->getLastCommandSource() == CMD_FROM_PLAYER)
+		TheCommandSequence->verifyExitCommand(obj, goal);
+
 	if (goal)
 	{
 		ContainModuleInterface* contain = goal->getContain();
@@ -6964,6 +6991,9 @@ void AIExitState::onExit( StateExitType status )
 			}
 		}
 	}
+
+	//if (obj->getAI() && obj->getAI()->getLastCommandSource() == CMD_FROM_PLAYER)
+		TheCommandSequence->confirmExitCommand(obj, getMachineGoalObject());
 }
 
 //----------------------------------------------------------------------------------------------------------

@@ -54,6 +54,7 @@
 
 #include "GameLogic/AI.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/BodyModule.h"
@@ -1250,6 +1251,8 @@ UpdateSleepTime AIUpdateInterface::update()
 	}
 
 	m_completedWaypoint = nullptr; // Reset so state machine update can set it if we just completed the path.
+
+	proceedNextCommand();
 
 	// assume we can sleep forever, unless the state machine (or turret, etc) demand otherwise
 	UpdateSleepTime subMachineSleep = UPDATE_SLEEP_FOREVER;
@@ -5959,4 +5962,32 @@ Bool AIUpdateInterface::arePathLayersStillValid() {
 		}
 	}
 	return true;
+}
+
+void AIUpdateInterface::proceedNextCommand()
+{
+	Object *obj = getObject();
+	CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+
+	if (cvs == STATUS_ON_HELD && obj->getContainedBy() == nullptr)
+		cvs = STATUS_COMPLETE;
+
+	if (cvs == STATUS_COMPLETE || cvs == STATUS_OCL_COMPLETE)
+	{
+		TheCommandSequence->removeCurrentCommand(obj);
+		TheCommandSequence->proceedNextCommand(obj);
+	}
+	else if (cvs == STATUS_EXIT_VERIFIED && obj->isPendingExitListEmpty())
+	{
+		if (TheCommandSequence->hasAnyCommand(obj))
+			obj->setCommandVerifyStatus(STATUS_FRESH);
+		else
+			obj->setCommandVerifyStatus(STATUS_NONE);
+
+		TheCommandSequence->proceedNextCommand(obj);
+	}
+	else if (cvs == STATUS_EXIT_VERIFIED && TheCommandSequence->isCurrentExitCommand(obj))
+	{
+		TheCommandSequence->proceedNextCommand(obj);
+	}
 }

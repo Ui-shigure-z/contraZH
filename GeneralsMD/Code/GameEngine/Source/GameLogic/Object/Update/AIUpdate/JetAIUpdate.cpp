@@ -35,6 +35,7 @@
 #include "Common/ThingTemplate.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/GameClient.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/ExperienceTracker.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/BodyModule.h"
@@ -2533,7 +2534,24 @@ UpdateSleepTime JetAIUpdate::update()
 			m_mostRecentCommand.reconstitute(parms);
 			setFlag(HAS_PENDING_COMMAND, false);
 
- 			aiDoCommand(&parms);
+			Object* obj = getObject();
+			CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+			if (cvs == STATUS_UNIT_PENDING)
+			{
+				TheCommandSequence->prepareCommandForVerification(obj);
+
+				aiDoCommand(&parms);
+
+				cvs = obj->getCommandVerifyStatus();
+
+				if (cvs == STATUS_AWAITING || cvs == STATUS_EXIT_VERIFIED)
+					TheCommandSequence->removeCurrentCommand(obj);
+
+				if (cvs == STATUS_EXIT_VERIFIED)
+					obj->setCommandVerifyStatus(cvs);
+			}
+			else
+				aiDoCommand(&parms);
 		}
 		else if (m_returnToBaseFrame != 0 && now >= m_returnToBaseFrame && getFlag(ALLOW_AIR_LOCO))
 		{
@@ -3131,6 +3149,8 @@ void JetAIUpdate::aiDoCommand(const AICommandParms* parms)
 				m_mostRecentCommand.store(*parms);
 				setFlag(HAS_PENDING_COMMAND, true);
 
+				TheCommandSequence->unitPendingCommand(getObject());
+				
 				getStateMachine()->clear();
 				setLastCommandSource( CMD_FROM_AI );
 				getStateMachine()->setState( TAKING_OFF_AWAIT_CLEARANCE );

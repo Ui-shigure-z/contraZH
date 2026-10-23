@@ -44,6 +44,7 @@
 #include "GameClient/GameClient.h"
 #include "GameClient/ParticleSys.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/ChinookAIUpdate.h"
@@ -59,26 +60,25 @@ enum ChinookAIStateType CPP_11(: Int)
 	// note that these must be distinct (numerically) from AIStateType. ick.
 	ChinookAIStateType_FIRST = 1000,
 
-	TAKING_OFF,
-	LANDING,
+		TAKING_OFF,
+		LANDING,
 
-	MOVE_TO_AND_LAND,
+		MOVE_TO_AND_LAND,
 
-	MOVE_TO_AND_EVAC,
-	LAND_AND_EVAC,
-	EVAC_AND_TAKEOFF,
+		MOVE_TO_AND_EVAC,
+		LAND_AND_EVAC,
+		EVAC_AND_TAKEOFF,
 
-	MOVE_TO_AND_EVAC_AND_EXIT,
-	LAND_AND_EVAC_AND_EXIT,
-	EVAC_AND_EXIT,
-	TAKEOFF_AND_EXIT,
-	HEAD_OFF_MAP,
+		MOVE_TO_AND_EVAC_AND_EXIT,
+		LAND_AND_EVAC_AND_EXIT,
+		EVAC_AND_EXIT,
+		TAKEOFF_AND_EXIT,
+		HEAD_OFF_MAP,
 
-	MOVE_TO_COMBAT_DROP,
-	DO_COMBAT_DROP,
-	MOVE_TO_AND_EVAC_AND_EXIT_INIT
+		MOVE_TO_COMBAT_DROP,
+		DO_COMBAT_DROP,
+		MOVE_TO_AND_EVAC_AND_EXIT_INIT
 };
-
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -128,6 +128,9 @@ public:
 			obj->getContain()->removeAllContained(FALSE);
 		}
 		obj->getTeam()->setActive();	// why? I don't know.
+
+		TheCommandSequence->terminateVerifiedCommand(obj);
+
 		return STATE_SUCCESS;
 	}
 
@@ -329,6 +332,8 @@ public:
 			obj->setLayer(LAYER_GROUND);
 		}
 
+		if (getID() == 1005 && status == STATE_FAILURE)
+			TheCommandSequence->verifyObjectCommand(obj);
 
 	}
 
@@ -1127,18 +1132,38 @@ UpdateSleepTime ChinookAIUpdate::update()
 	{
 	  if (SupplyTruckAIUpdate::isIdle())
 		{
+			Object* obj = getObject();
+			CommandVerifyStatus cvs = obj->getCommandVerifyStatus();
+
 			if (m_hasPendingCommand)
 			{
 				AICommandParms parms(AICMD_MOVE_TO_POSITION, CMD_FROM_AI);	// values don't matter, will be wiped by next line
 				m_pendingCommand.reconstitute(parms);
 				m_hasPendingCommand = false;
-				aiDoCommand(&parms);
+
+				if (cvs == STATUS_UNIT_PENDING)
+				{
+					TheCommandSequence->prepareCommandForVerification(obj);
+
+					aiDoCommand(&parms);
+
+					cvs = obj->getCommandVerifyStatus();
+
+					if (cvs == STATUS_AWAITING || cvs == STATUS_EXIT_VERIFIED)
+						TheCommandSequence->removeCurrentCommand(obj);
+
+					if (cvs == STATUS_EXIT_VERIFIED)
+						obj->setCommandVerifyStatus(cvs);
+				}
+				else
+					aiDoCommand(&parms);
 			}
 			else if (waitingToEnterOrExit && m_flightStatus != CHINOOK_LANDED)
 			{
-				setMyState(LANDING, nullptr, nullptr, CMD_FROM_AI);
+				if (cvs != STATUS_COMPLETE && cvs != STATUS_OCL_COMPLETE)
+					setMyState(LANDING, nullptr, nullptr, CMD_FROM_AI);
 			}
-			else if (!waitingToEnterOrExit && m_flightStatus == CHINOOK_LANDED && m_airfieldForHealing == INVALID_ID)
+			else if (!waitingToEnterOrExit && m_flightStatus == CHINOOK_LANDED && m_airfieldForHealing == INVALID_ID && cvs != STATUS_EXIT_VERIFIED)
 			{
 				setMyState(TAKING_OFF, nullptr, nullptr, CMD_FROM_AI);
 			}
@@ -1306,6 +1331,9 @@ void ChinookAIUpdate::aiDoCommand(const AICommandParms* parms)
 		// have to wait for takeoff or landing (or rappel) to complete, just store the sucker.
 		m_pendingCommand.store(*parms);
 		m_hasPendingCommand = true;
+
+		TheCommandSequence->unitPendingCommand(getObject());
+
 		return;
 	}
 
@@ -1354,6 +1382,8 @@ void ChinookAIUpdate::aiDoCommand(const AICommandParms* parms)
 				m_pendingCommand.store(*parms);
 				m_hasPendingCommand = true;
 
+				TheCommandSequence->unitPendingCommand(getObject());
+
 				setMyState(TAKING_OFF, nullptr, nullptr, CMD_FROM_AI);
 				passItThru = false;
 			}
@@ -1377,6 +1407,8 @@ void ChinookAIUpdate::aiDoCommand(const AICommandParms* parms)
 				m_pendingCommand.store(*parms);
 				m_hasPendingCommand = true;
 
+				TheCommandSequence->unitPendingCommand(getObject());
+
 				setMyState(LANDING, nullptr, nullptr, CMD_FROM_AI);
 				passItThru = false;
 			}
@@ -1390,6 +1422,8 @@ void ChinookAIUpdate::aiDoCommand(const AICommandParms* parms)
 				// gotta take off first!
 				m_pendingCommand.store(*parms);
 				m_hasPendingCommand = true;
+
+				TheCommandSequence->unitPendingCommand(getObject());
 
 				setMyState(TAKING_OFF, nullptr, nullptr, CMD_FROM_AI);
 				passItThru = false;
@@ -1451,7 +1485,11 @@ void ChinookAIUpdate::loadPostProcess()
 }
 
 
-
+void ChinookAIUpdate::proceedNextCommand()
+{
+	if ((m_flightStatus == CHINOOK_FLYING || m_flightStatus == CHINOOK_LANDED) && !m_hasPendingCommand)
+		AIUpdateInterface::proceedNextCommand();
+}
 
 
 //----------------------------------------------------------------------------------------

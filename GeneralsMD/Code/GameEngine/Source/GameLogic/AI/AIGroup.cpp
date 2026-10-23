@@ -1095,7 +1095,7 @@ Bool AIGroup::friend_moveInfantryToPos( const Coord3D *pos, UnsignedInt cmdNode,
 		TheCommandSequence->prepareCommandForVerification(theUnit);
 		ai->aiFollowPath( &path, nullptr, cmdSource );
 		if (TheCommandSequence->isStillAwaiting(theUnit))
-			TheCommandSequence->removeCurrentCommand(theUnit);
+			TheCommandSequence->removeCurrentCommand(theUnit, false);
 	}
 	return true;
 }
@@ -1584,7 +1584,7 @@ Bool AIGroup::friend_moveVehicleToPos( const Coord3D *pos, UnsignedInt cmdNode, 
 		TheCommandSequence->prepareCommandForVerification(theUnit);
 		ai->aiFollowPath(&path, nullptr, cmdSource);
 		if (TheCommandSequence->isStillAwaiting(theUnit))
-			TheCommandSequence->removeCurrentCommand(theUnit);
+			TheCommandSequence->removeCurrentCommand(theUnit, false);
 		
 	}
 	return true;
@@ -1826,7 +1826,7 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 				ai->aiMoveToPosition(&dest, cmdSource);
 
 			if (TheCommandSequence->isStillAwaiting(theUnit))
-				TheCommandSequence->removeCurrentCommand(theUnit);
+				TheCommandSequence->removeCurrentCommand(theUnit, false);
 		}
 		else
 		{
@@ -2429,7 +2429,7 @@ void AIGroup::groupAttackPosition( WeaponSlotType weaponSlot, const Coord3D *pos
 				TheCommandSequence->prepareCommandForVerification(*i);
 				ai->aiAttackPosition(&attackPos, maxShotsToFire, cmdSource);
 				if (TheCommandSequence->isStillAwaiting(*i))
-					TheCommandSequence->removeCurrentCommand(*i);
+					TheCommandSequence->removeCurrentCommand(*i, false);
 			}
 
 			if (releaseAfter)
@@ -2472,7 +2472,7 @@ void AIGroup::groupAttackMoveToPosition( const Coord3D *pos, Int maxShotsToFire,
 					ai->aiMoveToPosition(pos, cmdSource);
 
 				if (TheCommandSequence->isStillAwaiting(*i))
-					TheCommandSequence->removeCurrentCommand(*i);
+					TheCommandSequence->removeCurrentCommand(*i, false);
 			}
 			else
 				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
@@ -2514,15 +2514,21 @@ void AIGroup::groupRepair( Object *obj, Bool isWaypoint, CommandSourceType cmdSo
 		{
 			if (!isWaypoint)
 			{
-				TheCommandSequence->clearObjectCommand(obj);
+				TheCommandSequence->clearObjectCommand(*i);
 			}
 
-			if (!TheCommandSequence->hasAnyCommand(obj))
+			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
-				ai->aiRepair( obj, cmdSource );
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			TheCommandSequence->includeUnitInCommand(cmdNode, obj);
+				ai->aiRepair( obj, cmdSource );
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 	}
 
@@ -2571,10 +2577,15 @@ void AIGroup::groupGetHealed( Object *healDepot, Bool isWaypoint, CommandSourceT
 
 			if (!hasCommand && canHeal)
 			{
-				ai->aiGetHealed(healDepot, cmdSource);
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			if ((isWaypoint && hasCommand) || canHeal)
+				ai->aiGetHealed(healDepot, cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else if ((isWaypoint && hasCommand) || canHeal)
 			{
 				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 			}
@@ -2610,10 +2621,15 @@ void AIGroup::groupGetRepaired( Object *repairDepot, Bool isWaypoint, CommandSou
 
 			if (!hasCommand && canRepair)
 			{
-				ai->aiGetRepaired(repairDepot, cmdSource);
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			if ((isWaypoint && hasCommand) || canRepair)
+				ai->aiGetRepaired(repairDepot, cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else if ((isWaypoint && hasCommand) || canRepair)
 			{
 				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 			}
@@ -2646,11 +2662,16 @@ void AIGroup::groupEnter( Object *obj, Bool isWaypoint, CommandSourceType cmdSou
 
 			if (!hasCommand && canEnter)
 			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
+
 				(*i)->releaseWeaponLock(LOCKED_TEMPORARILY);
 				ai->aiEnter( obj, cmdSource );
-			}
 
-			if ((isWaypoint && hasCommand) || canEnter)
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else if ((isWaypoint && hasCommand) || canEnter)
 			{
 				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 			}
@@ -2948,10 +2969,16 @@ void AIGroup::groupDock( Object *obj, Bool isWaypoint, CommandSourceType cmdSour
 
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
-				ai->aiDock( obj, cmdSource );
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				ai->aiDock( obj, cmdSource );
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 	}
 
@@ -2996,14 +3023,20 @@ void AIGroup::groupEvacuate( Bool isWaypoint, CommandSourceType cmdSource )
 
 				if (!TheCommandSequence->hasAnyCommand(*i))
 				{
+					TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+					TheCommandSequence->prepareCommandForVerification(*i);
+
 					//Calculate the highest point on the ground to drop off troops (chinook or other air transports)
 					Coord3D pos = *((*i)->getPosition());
 					PathfindLayerEnum layerAtDest = TheTerrainLogic->getHighestLayerForDestination(&pos);
 					pos.z = TheTerrainLogic->getLayerHeight(pos.x, pos.y, layerAtDest);
 					ai->aiMoveToAndEvacuate(&pos, cmdSource);
-				}
 
-				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+					if (TheCommandSequence->isStillAwaiting(*i))
+						TheCommandSequence->removeCurrentCommand(*i, false);
+				}
+				else
+					TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 			}
 			else
 			{
@@ -3013,7 +3046,23 @@ void AIGroup::groupEvacuate( Bool isWaypoint, CommandSourceType cmdSource )
 				}
 				else
 				{
-					TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+					if (!TheCommandSequence->hasAnyCommand(*i))
+					{
+						TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+						TheCommandSequence->prepareCommandForVerification(*i);
+
+						ai->aiEvacuate(FALSE, cmdSource);
+
+						if (TheCommandSequence->isStillAwaiting(*i))
+							TheCommandSequence->removeCurrentCommand(*i, false);
+						else if ((*i)->getCommandVerifyStatus() == STATUS_EXIT_VERIFIED)
+						{
+							TheCommandSequence->removeCurrentCommand(*i, false);
+							(*i)->setCommandVerifyStatus(STATUS_EXIT_VERIFIED);
+						}
+					}
+					else
+						TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 				}
 			}
 		}
@@ -3127,10 +3176,16 @@ void AIGroup::groupGuardPosition( const Coord3D *pos, GuardMode guardMode, Bool 
 
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
-				ai->aiGuardPosition(pos, guardMode, cmdSource);
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				ai->aiGuardPosition(pos, guardMode, cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 	}
 
@@ -3159,7 +3214,13 @@ void AIGroup::groupGuardObject( Object *objToGuard, GuardMode guardMode, Bool is
 
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
+
 				ai->aiGuardObject(objToGuard, guardMode, cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
 			}
 
 			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
@@ -3226,10 +3287,16 @@ void AIGroup::groupHackInternet( Bool isWaypoint, CommandSourceType cmdSource )	
 
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
-				ai->aiHackInternet( cmdSource );
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				ai->aiHackInternet(cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 	}
 
@@ -3319,12 +3386,18 @@ void AIGroup::groupDoSpecialPower( UnsignedInt specialPowerID, UnsignedInt comma
 
 					if (!TheCommandSequence->hasAnyCommand(object))
 					{
+						TheCommandSequence->includeUnitInCommand(cmdNode, object);
+						TheCommandSequence->prepareCommandForVerification(object);
+
 						mod->doSpecialPower(commandOptions);
 
 						object->friend_setUndetectedDefector(FALSE);// My secret is out
-					}
 
-					TheCommandSequence->includeUnitInCommand(cmdNode, object);
+						if (TheCommandSequence->isStillAwaiting(object))
+							TheCommandSequence->removeCurrentCommand(object, false);
+					}
+					else
+						TheCommandSequence->includeUnitInCommand(cmdNode, object);
 				}
 			}
 		}
@@ -3403,16 +3476,26 @@ void AIGroup::groupDoSpecialPowerAtLocation( UnsignedInt specialPowerID, const C
 
 					if (!TheCommandSequence->hasAnyCommand(object))
 					{
+						if (isMovingSpecial)
+							TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, object, unitLoc);
+						else
+							TheCommandSequence->includeUnitInCommand(cmdNode, object);
+						TheCommandSequence->prepareCommandForVerification(object);
 
 						mod->doSpecialPowerAtLocation(&unitLoc, angle, opts);
 
 						object->friend_setUndetectedDefector(FALSE);// My secret is out
-					}
 
-					if (isMovingSpecial)
-						TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, object, unitLoc);
+						if (TheCommandSequence->isStillAwaiting(object))
+							TheCommandSequence->removeCurrentCommand(object, false);
+					}
 					else
-						TheCommandSequence->includeUnitInCommand(cmdNode, object);
+					{
+						if (isMovingSpecial)
+							TheCommandSequence->includeUnitInTypicalMovingCommand(cmdNode, object, unitLoc);
+						else
+							TheCommandSequence->includeUnitInCommand(cmdNode, object);
+					}
 				}
 			}
 		}
@@ -3506,12 +3589,18 @@ void AIGroup::groupDoSpecialPowerAtObject( UnsignedInt specialPowerID, Object *t
 
 					if (!TheCommandSequence->hasAnyCommand(object))
 					{
+						TheCommandSequence->includeUnitInCommand(cmdNode, object);
+						TheCommandSequence->prepareCommandForVerification(object);
+
 						mod->doSpecialPowerAtObject(target, commandOptions);
 
 						object->friend_setUndetectedDefector(FALSE);// My secret is out
-					}
 
-					TheCommandSequence->includeUnitInCommand(cmdNode, object);
+						if (TheCommandSequence->isStillAwaiting(object))
+							TheCommandSequence->removeCurrentCommand(object, false);
+					}
+					else
+						TheCommandSequence->includeUnitInCommand(cmdNode, object);
 				}
 			}
 		}
@@ -3890,10 +3979,16 @@ void AIGroup::groupCombatDrop( Object *target, const Coord3D &pos, Bool isWaypoi
 
 			if (!TheCommandSequence->hasAnyCommand(*i))
 			{
-				ai->aiCombatDrop(target, pos, cmdSource);
-			}
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				TheCommandSequence->prepareCommandForVerification(*i);
 
-			TheCommandSequence->includeUnitInCommand(cmdNode, *i);
+				ai->aiCombatDrop(target, pos, cmdSource);
+
+				if (TheCommandSequence->isStillAwaiting(*i))
+					TheCommandSequence->removeCurrentCommand(*i, false);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, *i);
 		}
 
 	}

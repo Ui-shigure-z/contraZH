@@ -1740,7 +1740,7 @@ bool GameLogic::onExit(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelec
 	if( objectWantingToExit->getControllingPlayer() != msgPlayer )
 		return false;
 
-	if (!isWaypoint || !TheCommandSequence->hasAnyCommand(objectContainingExiter))
+	if (!isWaypoint)
 	{
 		objectWantingToExit->releaseWeaponLock(LOCKED_TEMPORARILY);	// release any temporary locks.
 
@@ -1754,9 +1754,25 @@ bool GameLogic::onExit(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelec
 	}
 	else
 	{
-		UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_DO_EXIT, objectWantingToExit);
+		AIUpdateInterface* ai = objectWantingToExit->getAIUpdateInterface();
+		if (ai)
+		{
+			UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_DO_EXIT, objectWantingToExit);
 
-		TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+			if (!TheCommandSequence->hasAnyCommand(objectContainingExiter))
+			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+				TheCommandSequence->prepareCommandForVerification(objectContainingExiter);
+
+				ai->aiExit(objectContainingExiter, CMD_FROM_PLAYER);
+
+				if (TheCommandSequence->isStillAwaiting(objectContainingExiter))
+					TheCommandSequence->removeCurrentCommand(objectContainingExiter);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+		}
+
 	}
 
 	return true;
@@ -1772,7 +1788,7 @@ bool GameLogic::onEvacuate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlyS
 	if (msg->getArgumentCount() > 1)
 		isWaypoint = msg->getArgument(1)->boolean;
 	else
-		isWaypoint = msg->getArgument(0);
+		isWaypoint = msg->getArgument(0)->boolean;
 
 	if( currentlySelectedGroup )
 	{

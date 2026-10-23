@@ -347,6 +347,7 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 	//ShigureUi 16/10/2026 for advanced waypoint system (class CommandSequence)
 	m_currentCommand = m_lastCommand = 0;
 	m_commandVerifyStatus = STATUS_NONE;
+	m_pendingExitList.clear();
 
 	// assign unique object id
 	setID( TheGameLogic->allocateObjectID() );
@@ -4970,6 +4971,7 @@ void Object::onCapture( Player *oldOwner, Player *newOwner )
 	TheCommandSequence->clearObjectCommand(this);
 	m_currentCommand = m_lastCommand = 0;
 	m_commandVerifyStatus = STATUS_NONE;
+	m_pendingExitList.clear();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -7105,5 +7107,16 @@ Short Object::getRequiredBridgeHeight() const {
 	else {
 		Real geometryHeight = getGeometryInfo().getMaxHeightAbovePosition();
 		return std::clamp(static_cast<Short>(geometryHeight / 10.0f), static_cast<Short>(1), static_cast<Short>(15));
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Object::removeFromPendingExitList(Object* obj)
+{
+	if (obj)
+	{
+		ObjectIDVectorIterator it = std::find(m_pendingExitList.begin(), m_pendingExitList.end(), obj->getID());
+		if (it != m_pendingExitList.end())
+			m_pendingExitList.erase(it);
 	}
 }
