@@ -160,6 +160,24 @@ enum CrushSquishTestType CPP_11(: Int)
 	TEST_CRUSH_OR_SQUISH
 };
 
+//----------------------------------------------------
+
+enum CommandVerifyStatus
+{
+	STATUS_NONE = 0,
+	STATUS_FRESH,
+	STATUS_AWAITING,
+	STATUS_DOZER_PENDING,
+	STATUS_OCL_PENDING,
+	STATUS_OCL_VERIFIED,
+	STATUS_OCL_COMPLETE,
+	STATUS_UNIT_PENDING,
+	STATUS_EXIT_VERIFIED,
+	STATUS_ON_HELD,
+	STATUS_VERIFIED,
+	STATUS_COMPLETE
+};
+
 
 // ---------------------------------------------------
 /**
@@ -693,6 +711,19 @@ public:
 
 	// When moving below a bridge, how high does it need to be, simplified to 0-15, where 1 is 10.0 height
 	Short getRequiredBridgeHeight() const;
+
+	CommandVerifyStatus getCommandVerifyStatus() { return m_commandVerifyStatus; }
+	void setCommandVerifyStatus(CommandVerifyStatus status) { m_commandVerifyStatus = status; }
+
+	UnsignedInt getCurrentCommand() { return m_currentCommand; }
+	UnsignedInt getLastCommand() { return m_lastCommand; }
+	void setCurrentCommand(UnsignedInt curCmdID) { m_currentCommand = curCmdID; }
+	void setLastCommand(UnsignedInt lastCmdID) { m_lastCommand = lastCmdID; }
+	void addToPendingExitList(Object *obj) { if (obj)  m_pendingExitList.push_back(obj->getID()); }
+	void removeFromPendingExitList(Object *obj);
+	Bool isPendingExitListEmpty() { return m_pendingExitList.empty(); }
+	void clearPendingExitList() { m_pendingExitList.clear(); }
+
 protected:
 
 	void setOrRestoreTeam( Team* team, Bool restoring );
@@ -867,6 +898,12 @@ private:
 	AsciiString										m_commandSetStringOverride;///< To allow specific object to switch command sets
 
 	UnsignedInt										m_safeOcclusionFrame;	///<flag used by occlusion renderer so it knows when objects have exited their production building.
+
+	/// ShigureUi 16/10/2026 used by advanced waypoint system(class CommandSequence)
+	UnsignedInt										m_currentCommand;
+	UnsignedInt										m_lastCommand;
+	CommandVerifyStatus						m_commandVerifyStatus;
+	ObjectIDVector								m_pendingExitList;
 
 	// --------- BYTE-SIZED THINGS GO HERE
 	Bool													m_isSelectable;

@@ -3982,6 +3982,11 @@ void GameLogic::update()
 		TheStatsCollector->update();
 	}
 
+	// Update the CommandSequence
+	{
+		TheCommandSequence->update();
+	}
+
 	// Update the Recorder
 	{
 		TheRecorder->UPDATE();

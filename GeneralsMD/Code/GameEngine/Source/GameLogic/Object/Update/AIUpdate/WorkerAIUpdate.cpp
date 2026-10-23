@@ -50,6 +50,7 @@
 #include "GameClient/InGameUI.h"
 
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/Module/BodyModule.h"
@@ -685,6 +686,8 @@ void WorkerAIUpdate::newTask( DozerTask task, Object* target )
 	// reset the dozer behavior so that it can re-evaluate which task to continue working on
 	m_dozerMachine->resetToDefaultState();
 
+	TheCommandSequence->dozerPendingTask(getObject());
+
 	// reset the workermachine, if we've been acting like a supply truck
 	if( m_workerMachine->getCurrentStateID() == AS_SUPPLY_TRUCK )
 	{
@@ -833,6 +836,8 @@ void WorkerAIUpdate::internalTaskComplete( DozerTask task )
 	m_task[ task ].m_targetObjectID = INVALID_ID;
 	m_task[ task ].m_taskOrderFrame = 0;
 
+	TheCommandSequence->terminateDozerPending(getObject());
+
 	clearPreviousTask();
 
 	// remove dock point info for this task
@@ -860,6 +865,8 @@ void WorkerAIUpdate::internalCancelTask( DozerTask task )
 	// remove the info for this task
 	m_task[ task ].m_targetObjectID = INVALID_ID;
 	m_task[ task ].m_taskOrderFrame = 0;
+
+	TheCommandSequence->terminateDozerPending(getObject());
 
 	// remove dock point info for this task
 	for( Int i = 0; i < DOZER_NUM_DOCK_POINTS; i++ )

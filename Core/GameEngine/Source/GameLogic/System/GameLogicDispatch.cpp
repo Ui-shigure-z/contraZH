@@ -1740,7 +1740,7 @@ bool GameLogic::onExit(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelec
 	if( objectWantingToExit->getControllingPlayer() != msgPlayer )
 		return false;
 
-	if (!isWaypoint || !TheCommandSequence->hasAnyCommand(objectContainingExiter))
+	if (!isWaypoint)
 	{
 		objectWantingToExit->releaseWeaponLock(LOCKED_TEMPORARILY);	// release any temporary locks.
 
@@ -1754,9 +1754,25 @@ bool GameLogic::onExit(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlySelec
 	}
 	else
 	{
-		UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_DO_EXIT, objectWantingToExit);
+		AIUpdateInterface* ai = objectWantingToExit->getAIUpdateInterface();
+		if (ai)
+		{
+			UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_DO_EXIT, objectWantingToExit);
 
-		TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+			if (!TheCommandSequence->hasAnyCommand(objectContainingExiter))
+			{
+				TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+				TheCommandSequence->prepareCommandForVerification(objectContainingExiter);
+
+				ai->aiExit(objectContainingExiter, CMD_FROM_PLAYER);
+
+				if (TheCommandSequence->isStillAwaiting(objectContainingExiter))
+					TheCommandSequence->removeCurrentCommand(objectContainingExiter);
+			}
+			else
+				TheCommandSequence->includeUnitInCommand(cmdNode, objectContainingExiter);
+		}
+
 	}
 
 	return true;
@@ -1772,7 +1788,7 @@ bool GameLogic::onEvacuate(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlyS
 	if (msg->getArgumentCount() > 1)
 		isWaypoint = msg->getArgument(1)->boolean;
 	else
-		isWaypoint = msg->getArgument(0);
+		isWaypoint = msg->getArgument(0)->boolean;
 
 	if( currentlySelectedGroup )
 	{
@@ -2366,11 +2382,20 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 
 	if (msg->getType() == GameMessage::MSG_DOZER_CONSTRUCT)
 	{
+		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+
 		if (!TheCommandSequence->hasAnyCommand(constructorObject))
 		{
+
+			TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
+			TheCommandSequence->prepareCommandForVerification(constructorObject);
+
 			//Object* building =
 			TheBuildAssistant->buildObjectNow(constructorObject, place, &loc, angle,
 				constructorObject->getControllingPlayer());
+
+			if (TheCommandSequence->isStillAwaiting(constructorObject))
+				TheCommandSequence->removeCurrentCommand(constructorObject);
 			/*
 			for (size_t i = 1; building && i < groupIDs.size(); i++)
 			{
@@ -2382,8 +2407,8 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 				}
 			}*/
 		}
-
-		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT, place, &loc, nullptr, angle);
+		else
+			TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
 	}
 	else
 	{
@@ -2392,17 +2417,15 @@ bool GameLogic::onDozerConstruct(MAYBE_UNUSED GameMessage* msg, AIGroupPtr& curr
 		// get the end of the line location in the world
 		locEnd = msg->getArgument(4)->location;
 
-		if (!TheCommandSequence->hasAnyCommand(constructorObject))
-		{
+		//if (!TheCommandSequence->hasAnyCommand(constructorObject))
+		//{
 			// place the line of structures, the end location being present will make it happen
 			TheBuildAssistant->buildObjectLineNow(constructorObject, place, &loc, &locEnd, angle,
 				constructorObject->getControllingPlayer());
-		}
-
-		cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
+		//}
+	
+		//cmdNode = TheCommandSequence->newDozerConstructCommand(CommandSequence::COMMAND_DOZER_CONSTRUCT_LINE, place, &loc, &locEnd, angle);
 	}
-
-	TheCommandSequence->includeUnitInCommand(cmdNode, constructorObject);
 
 	// place the sound for putting a building down
 

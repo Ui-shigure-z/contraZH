@@ -54,7 +54,6 @@ protected:
 
 	typedef std::map<ObjectID, UnsignedInt> ObjectToNodeMap;
 	typedef std::map<ObjectID, Coord3D> ObjectToLocMap;
-	typedef std::map<ObjectID, std::pair<UnsignedInt, UnsignedInt>> ObjectCommandMap;
 
 	struct CommandNode
 	{
@@ -79,10 +78,10 @@ private:
 	typedef std::map<UnsignedInt, CommandNode*> IDToNodeMap;
 	IDToNodeMap m_allNodes;
 
-	ObjectCommandMap m_objectCurNLastCommand;
-
 	Int m_commandNodeCount;
 	UnsignedInt m_uniqueID;
+
+	ObjectIDVector m_todoNextCommandList;
 
 public:
 
@@ -119,29 +118,49 @@ public:
 	UnsignedInt newDoSpecialAtLocCommand(CommandType commandType, UnsignedInt specialPowerID, const Coord3D *location, Real angle, const Object *objectInWay, UnsignedInt commandOptions);
 	UnsignedInt newDoSpecialAtObjCommand(CommandType commandType, UnsignedInt specialPowerID, Object *target, UnsignedInt commandOptions);
 	UnsignedInt newSwitchWeaponCommand(CommandType commandType, WeaponSlotType weaponSlot);
+
 	// ShigreUi 01/10/2026 only do it on newly created command
 	Bool includeUnitInCommand(UnsignedInt commandNodeID, Object *obj);
 	// ShigreUi 01/10/2026 Moving comand include reverse move/attack move/etc, only do it on newly created command
 	Bool includeUnitInTypicalMovingCommand(UnsignedInt commandNodeID, Object* obj, Coord3D objDest);
+
 	inline Bool isTypicalMovingCommand(CommandType commandType);
 	inline Bool isEndCommand(CommandType commandType);
 	inline Bool hasEndCommand(Object *obj);
 	inline Bool isLocatableCommand(UnsignedInt commandNodeID);
+
 	void cleanUpEmptyCommand(UnsignedInt commandNodeID);
 	UnsignedInt getFirstLocatableCommand(Object *obj);
 	UnsignedInt getNextLocatableCommand(Object *obj, UnsignedInt commandNodeID);
 	Bool getCommandLoc(UnsignedInt commandNodeID, Coord3D &loc);
-	Bool doCurrentCommand(Object *obj);
+
+	Bool isStillAwaiting(Object *obj);
+	void proceedNextCommand(Object *obj);
+	inline void prepareCommandForVerification(Object *obj);
+	Bool dozerPendingTask(Object *obj);
+	Bool oclPending(Object *obj);
+	Bool terminateDozerPending(Object *obj);
+	Bool terminateOCLPending(Object *obj);
+	Bool verifyOCLPendingCommand(Object *obj);
+	Bool verifyObjectCommand(Object *obj);
+	Bool unitPendingCommand(Object *obj);
+	Bool unitOnHeld(Object *obj);
+	Bool moveToAndEvacPending(Object *obj);
+	Bool verifyExitCommand(Object *objWantToExit, Object *objectContainingExiter);
+	Bool terminateVerifiedCommand(Object *obj);
+	Bool confirmExitCommand(Object *objWantToExit, Object *objectContainingExiter);
+	Bool terminateOCLVerifiedCommand(Object *obj);
+
+	UnsignedInt removeCurrentCommand(Object *obj, Bool doCleanUp = true);
+
+	Bool isCurrentExitCommand(Object *obj);
+	Bool isExitCommandComplete(Object *obj);
 
 protected:
 	CommandNode *newCommandNode(CommandType commandType);
 	CommandNode *findCommandByID(UnsignedInt commandNodeID);
-	UnsignedInt getLastCommand(Object *obj);
-	UnsignedInt getCurrentCommand(Object *obj);
-	UnsignedInt removeCurrentCommand(Object *obj);
-	void setObjectCurrentCommand(Object *obj, UnsignedInt curCmdID);
-	void setObjectLastCommand(Object *obj, UnsignedInt lastCmdID);
-	void setObjectCurNLastCommand(Object *obj, UnsignedInt curCmdID, UnsignedInt lastCmdID);
+
+	void doCurrentCommand(Object *obj, CommandVerifyStatus cvs);
 };
 
 extern CommandSequence* TheCommandSequence;

@@ -396,6 +396,8 @@ public:
 														 Player *owningPlayer,
 														 Bool isRebuild ) { return nullptr; }///< construct a building
 
+	virtual void proceedNextCommand();
+
 
 	void ignoreObstacle( const Object *obj );			///< tell the pathfinder to ignore the given object as an obstacle
 	void ignoreObstacleID( ObjectID id );			///< tell the pathfinder to ignore the given object as an obstacle
@@ -705,6 +707,8 @@ protected:
 	void wakeUpNow();
 
 public:
+
+	Bool isSameMachine(AIStateMachine* stateMachine) { return stateMachine == m_stateMachine; }
 
 	StateID getCurrentStateID() const { return getStateMachine()->getCurrentStateID(); }	///< return the id of the current state of the machine
 /// @ todo -- srj sez: JBA NUKE THIS CODE, IT IS EVIL

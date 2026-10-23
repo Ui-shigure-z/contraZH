@@ -1384,7 +1384,7 @@ GameMessage::Type CommandTranslator::issueSpecialPowerCommand( const CommandButt
 			msg->appendObjectIDArgument( targetID );
 			msg->appendIntegerArgument( command->getOptions() );
 			msg->appendObjectIDArgument( specificSource );
-			msg->appendBooleanArgument(specificSource == INVALID_ID ? false : TheInGameUI->isInWaypointMode());
+			msg->appendBooleanArgument(specificSource ? false : TheInGameUI->isInWaypointMode());
 
 			// say   something like " I think I'll put a timed charge on the ground, here."
 			PickAndPlayInfo info;
@@ -1405,10 +1405,7 @@ GameMessage::Type CommandTranslator::issueSpecialPowerCommand( const CommandButt
 			msg->appendIntegerArgument( command->getSpecialPowerTemplate()->getID() );
 			msg->appendIntegerArgument( command->getOptions() );
 			msg->appendObjectIDArgument( specificSource );
-			if (specificSource)
-				msg->appendBooleanArgument(false);
-			else
-				msg->appendBooleanArgument(TheInGameUI->isInWaypointMode());
+			msg->appendBooleanArgument(specificSource ? false : TheInGameUI->isInWaypointMode());
 
 			// say   something like " I think I'll set down my laptop and hack some cash from a bank in the Cayman Islands."
 			PickAndPlayInfo info;

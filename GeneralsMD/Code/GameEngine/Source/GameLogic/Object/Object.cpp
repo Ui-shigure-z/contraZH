@@ -60,6 +60,7 @@
 
 #include "GameLogic/AI.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/CommandSequence.h"
 #include "GameLogic/ExperienceTracker.h"
 #include "GameLogic/FiringTracker.h"
 #include "GameLogic/GameLogic.h"
@@ -342,6 +343,11 @@ Object::Object( const ThingTemplate *tt, const ObjectStatusMaskType &objectStatu
 	m_shroudRange = 0.0f;
 
 	m_singleUseCommandUsed = false;
+
+	//ShigureUi 16/10/2026 for advanced waypoint system (class CommandSequence)
+	m_currentCommand = m_lastCommand = 0;
+	m_commandVerifyStatus = STATUS_NONE;
+	m_pendingExitList.clear();
 
 	// assign unique object id
 	setID( TheGameLogic->allocateObjectID() );
@@ -4397,7 +4403,7 @@ void Object::xfer( Xfer *xfer )
 {
 
 	// version
-	const XferVersion currentVersion = 9;
+	const XferVersion currentVersion = 10;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -4803,6 +4809,13 @@ void Object::xfer( Xfer *xfer )
 	else
 		m_isReceivingDifficultyBonus = FALSE;
 
+	if (version >= 10)
+	{
+		xfer->xferUnsignedInt(&m_currentCommand);
+		xfer->xferUnsignedInt(&m_lastCommand);
+		xfer->xferInt((Int*)&m_commandVerifyStatus);
+	}
+
 	m_weaponBonusConditionAgainst.xfer(xfer);
 
 }  // end xfer
@@ -4955,7 +4968,10 @@ void Object::onCapture( Player *oldOwner, Player *newOwner )
 			TheBuildAssistant->sellObject( this );
 		}
 	}
-
+	TheCommandSequence->clearObjectCommand(this);
+	m_currentCommand = m_lastCommand = 0;
+	m_commandVerifyStatus = STATUS_NONE;
+	m_pendingExitList.clear();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -7091,5 +7107,16 @@ Short Object::getRequiredBridgeHeight() const {
 	else {
 		Real geometryHeight = getGeometryInfo().getMaxHeightAbovePosition();
 		return std::clamp(static_cast<Short>(geometryHeight / 10.0f), static_cast<Short>(1), static_cast<Short>(15));
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void Object::removeFromPendingExitList(Object* obj)
+{
+	if (obj)
+	{
+		ObjectIDVectorIterator it = std::find(m_pendingExitList.begin(), m_pendingExitList.end(), obj->getID());
+		if (it != m_pendingExitList.end())
+			m_pendingExitList.erase(it);
 	}
 }
