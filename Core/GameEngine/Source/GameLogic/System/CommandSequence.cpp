@@ -5,6 +5,7 @@
 
 #include "Common/ActionManager.h"
 #include "Common/BuildAssistant.h"
+#include "Common/GameState.h"
 #include "Common/SpecialPower.h"
 #include "Common/ThingFactory.h"
 
@@ -48,6 +49,7 @@ void CommandSequence::reset()
 	}
 
 	m_allNodes.clear();
+	m_constructionCount.clear();
 	m_uniqueID = 0;
 	m_commandNodeCount = 0;
 }
@@ -83,6 +85,20 @@ void CommandSequence::xfer(Xfer* xfer)
 
 			xferCommandNode(xfer, cmdNode);
 		}
+
+		Int cnt;
+		xfer->xferInt(&cnt);
+		if (cnt < 0)
+			throw SC_INVALID_DATA;
+
+		for (Int i = 0; i < cnt; i++)
+		{
+			ObjectID objID;
+			Int constructionCount;
+			xfer->xferObjectID(&objID);
+			xfer->xferInt(&constructionCount);
+			m_constructionCount.insert(std::make_pair(objID, constructionCount));
+		}
 	}
 	else
 	{
@@ -92,6 +108,15 @@ void CommandSequence::xfer(Xfer* xfer)
 			xfer->xferUnsignedInt(&cmdNode->m_nodeID);
 
 			xferCommandNode(xfer, cmdNode);
+		}
+
+		Int cnt = m_constructionCount.size();
+		xfer->xferInt(&cnt);
+		for (std::map<ObjectID, Int>::iterator it = m_constructionCount.begin(); it != m_constructionCount.end(); it++)
+		{
+			ObjectID objID = it->first;
+			xfer->xferObjectID(&objID);
+			xfer->xferInt(&it->second);
 		}
 	}
 }
@@ -346,6 +371,7 @@ UnsignedInt CommandSequence::newSingleTargetCommand(CommandType commandType, Obj
 	case COMMAND_DO_EXIT:
 	case COMMAND_DO_REPAIR:
 	case COMMAND_DOCK:
+	case COMMAND_RESUME_CONSTRUCTION:
 		break;
 	default:
 		return 0;
@@ -567,6 +593,9 @@ Bool CommandSequence::includeUnitInCommand(UnsignedInt commandNodeID, Object *ob
 		obj->setLastCommand(commandNodeID);
 		obj->setCommandVerifyStatus(STATUS_FRESH);
 	}
+
+	if (commandNode->m_commandType == COMMAND_DOZER_CONSTRUCT || commandNode->m_commandType == COMMAND_RESUME_CONSTRUCTION)
+		updateConstructionCount(obj, 1);
 
 	return true;
 }
@@ -804,6 +833,9 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj, Bool doCleanUp)
 		ObjectToLocMap::iterator lit = node->m_allocatedDest.find(obj->getID());
 		node->m_allocatedDest.erase(lit);
 	}
+
+	if (node->m_commandType == COMMAND_DOZER_CONSTRUCT || node->m_commandType == COMMAND_RESUME_CONSTRUCTION)
+		updateConstructionCount(obj, -1);
 
 	if (doCleanUp && node->m_nextCommand.empty())
 	{
@@ -1488,4 +1520,37 @@ Bool CommandSequence::isExitCommandComplete(Object *obj)
 	if (cvs == STATUS_EXIT_VERIFIED && obj->isPendingExitListEmpty())
 		return true;
 	return false;
+}
+
+void CommandSequence::updateConstructionCount(Object *obj, Int delta)
+{
+	ObjectID objID = obj->getID();
+	std::map<ObjectID, Int>::iterator it = m_constructionCount.find(objID);
+
+	if (it == m_constructionCount.end())
+	{
+		if (delta > 0)
+			m_constructionCount.insert(std::make_pair(objID, delta));
+	}
+	else
+	{
+		it->second += delta;
+		if (it->second <= 0)
+			m_constructionCount.erase(it);
+	}
+}
+
+Int CommandSequence::getConstructionCount(Object *obj)
+{
+	ObjectID objID = obj->getID();
+	std::map<ObjectID, Int>::iterator it = m_constructionCount.find(objID);
+
+	if (it == m_constructionCount.end())
+	{
+		return 0;
+	}
+	else
+	{
+		return it->second;
+	}
 }

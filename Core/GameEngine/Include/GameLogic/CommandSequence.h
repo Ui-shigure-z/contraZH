@@ -78,6 +78,8 @@ private:
 	typedef std::map<UnsignedInt, CommandNode*> IDToNodeMap;
 	IDToNodeMap m_allNodes;
 
+	std::map<ObjectID, Int> m_constructionCount;
+
 	Int m_commandNodeCount;
 	UnsignedInt m_uniqueID;
 
@@ -150,6 +152,8 @@ public:
 	Bool terminateOCLVerifiedCommand(Object *obj);
 
 	UnsignedInt removeCurrentCommand(Object *obj, Bool doCleanUp = true);
+	void updateConstructionCount(Object *obj, Int delta);
+	Int getConstructionCount(Object *obj);
 
 	Bool isCurrentExitCommand(Object *obj);
 	Bool isExitCommandComplete(Object *obj);

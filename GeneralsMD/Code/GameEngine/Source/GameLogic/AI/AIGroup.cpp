@@ -52,6 +52,7 @@
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/DeployStyleAIUpdate.h"
+#include "GameLogic/Module/DozerAIUpdate.h"
 #include "GameLogic/Module/OverchargeBehavior.h"
 #include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Module/SpawnBehavior.h"
@@ -2540,14 +2541,74 @@ void AIGroup::groupRepair( Object *obj, Bool isWaypoint, CommandSourceType cmdSo
 	*/
 void AIGroup::groupResumeConstruction( Object *obj, Bool isWaypoint, CommandSourceType cmdSource )
 {
-	std::list<Object *>::iterator i;
-	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
+	Int minConstructionCount = INT_MAX, cnt;
+	Object *bestBuilder = nullptr;
+	std::list<Object*>::iterator i;
+	Real bestDist = 1e9, curDist;
+	const Coord3D *targetPos = obj->getPosition(), *builderPos;
+
+	UnsignedInt cmdNode = TheCommandSequence->newSingleTargetCommand(CommandSequence::COMMAND_RESUME_CONSTRUCTION, obj);
+
+	if (!isWaypoint)
 	{
-		AIUpdateInterface *ai = (*i)->getAIUpdateInterface();
-		if (ai)
+		for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
 		{
-			ai->aiResumeConstruction( obj, cmdSource );
+			AIUpdateInterface *ai = bestBuilder->getAIUpdateInterface();
+			if (!ai)
+				break;
+
+			DozerAIInterface *dozerAi = ai->getDozerAIInterface();
+			if (!dozerAi)
+				break;
+
+			if (!dozerAi->isAnyTaskPending())
+			{
+				builderPos = (*i)->getPosition();
+				curDist = sqr(builderPos->x - targetPos->x) + sqr(builderPos->y - targetPos->y);
+				if (curDist < bestDist)
+				{
+					bestDist = curDist;
+					bestBuilder = *i;
+				}
+			}
 		}
+	}
+	else
+	{
+		for (i = m_memberList.begin(); i != m_memberList.end(); ++i)
+		{
+			cnt = TheCommandSequence->getConstructionCount(*i);
+
+			builderPos = (*i)->getPosition();
+			curDist = sqr(builderPos->x - targetPos->x) + sqr(builderPos->y - targetPos->y);
+
+			if (cnt < minConstructionCount || (cnt == minConstructionCount && curDist < bestDist))
+			{
+				bestBuilder = *i;
+				minConstructionCount = cnt;
+				bestDist = curDist;
+			}
+		}
+	}
+
+	AIUpdateInterface *ai = bestBuilder->getAIUpdateInterface();
+	if (ai)
+	{
+		if (!isWaypoint)
+			TheCommandSequence->clearObjectCommand(bestBuilder);
+
+		if (!TheCommandSequence->hasAnyCommand(bestBuilder))
+		{
+			TheCommandSequence->includeUnitInCommand(cmdNode, bestBuilder);
+			TheCommandSequence->prepareCommandForVerification(bestBuilder);
+
+			ai->aiResumeConstruction(obj, cmdSource);
+
+			if (TheCommandSequence->isStillAwaiting(bestBuilder))
+				TheCommandSequence->removeCurrentCommand(bestBuilder);
+		}
+		else
+			TheCommandSequence->includeUnitInCommand(cmdNode, bestBuilder);
 	}
 }
 
