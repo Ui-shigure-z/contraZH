@@ -4814,6 +4814,7 @@ void Object::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_currentCommand);
 		xfer->xferUnsignedInt(&m_lastCommand);
 		xfer->xferInt((Int*)&m_commandVerifyStatus);
+		xfer->xferSTLObjectIDVector(&m_pendingExitList);
 	}
 
 	m_weaponBonusConditionAgainst.xfer(xfer);

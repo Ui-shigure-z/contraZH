@@ -81,8 +81,6 @@ private:
 	Int m_commandNodeCount;
 	UnsignedInt m_uniqueID;
 
-	ObjectIDVector m_todoNextCommandList;
-
 public:
 
 	CommandSequence();

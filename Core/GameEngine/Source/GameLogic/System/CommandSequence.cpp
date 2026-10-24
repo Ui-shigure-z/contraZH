@@ -35,6 +35,8 @@ CommandSequence::~CommandSequence()
 
 void CommandSequence::init()
 {
+	m_uniqueID = 0;
+	m_commandNodeCount = 0;
 }
 
 void CommandSequence::reset()
@@ -48,7 +50,6 @@ void CommandSequence::reset()
 	m_allNodes.clear();
 	m_uniqueID = 0;
 	m_commandNodeCount = 0;
-	m_todoNextCommandList.clear();
 }
 
 void CommandSequence::update()
@@ -69,7 +70,7 @@ void CommandSequence::xfer(Xfer* xfer)
 
 	xfer->xferUnsignedInt(&m_uniqueID);
 	xfer->xferInt(&m_commandNodeCount);
-
+	
 	if (xfer->getXferMode() == XFER_LOAD)
 	{
 		for (Int i = 0; i < m_commandNodeCount; i++)
@@ -92,137 +93,134 @@ void CommandSequence::xfer(Xfer* xfer)
 
 			xferCommandNode(xfer, cmdNode);
 		}
-
 	}
-
-	//xfer->xferSTLObjectIDVector(&m_todoNextCommandList);
 }
 
 void CommandSequence::loadPostProcess()
 {
 }
 
-void CommandSequence::xferCommandNode(Xfer* xfer, CommandNode* cmdNode)
+void CommandSequence::xferCommandNode(Xfer *xfer, CommandNode *cmdNode)
 {
 	xfer->xferInt((Int*)&cmdNode->m_commandType);
 
 	switch (cmdNode->m_commandType)
 	{
-		// no argument
-	case COMMAND_DO_EVACUATE:
-	case COMMAND_INTERNET_HACK:
-	case COMMAND_TOGGLE_OVERCHARGE:
-	case COMMAND_TOGGLE_HOLD_FIRE:
-	case COMMAND_TOGGLE_DEPLOY:
-		break;
-		// single pos
-	case COMMAND_DO_MOVETO:
-	case COMMAND_DO_REVERSE_MOVETO:
-	{
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		break;
-	}
-	// single target
-	case COMMAND_GET_REPAIRED:
-	case COMMAND_GET_HEALED:
-	case COMMAND_ENTER:
-	case COMMAND_DO_EXIT:
-	case COMMAND_DO_REPAIR:
-	case COMMAND_DOCK:
-	{
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		break;
-	}
-	// guard pos
-	case COMMAND_DO_GUARD_POSITION:
-	{
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferInt((Int*) & cmdNode->m_guardMode);
-		break;
-	}
-	// guard target
-	case COMMAND_DO_GUARD_OBJECT:
-	{
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		xfer->xferInt((Int*)&cmdNode->m_guardMode);
-		break;
-	}
-	// pos and target
-	case COMMAND_DO_COMBATDROP:
-	{
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		break;
-	}
-	// pos and maxshots
-	case COMMAND_DO_ATTACK_MOVETO:
-	{
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferInt(&cmdNode->m_maxShotsToFire);
-		break;
-	}
-	// do weapon at location
-	case COMMAND_DO_WEAPON:
-	case COMMAND_DO_WEAPON_AT_LOCATION:
-	{
-		xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferInt(&cmdNode->m_maxShotsToFire);
-		xfer->xferBool(&cmdNode->m_releaseAfter);
-		break;
-	}
-	// do attack object including do weapon at object
-	case COMMAND_DO_ATTACK_OBJECT:
-	case COMMAND_DO_FORCE_ATTACK_OBJECT:
-	{
-		xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		xfer->xferInt(&cmdNode->m_maxShotsToFire);
-		break;
-	}
-	// dozer construct
-	case COMMAND_DOZER_CONSTRUCT:
-	case COMMAND_DOZER_CONSTRUCT_LINE:
-	{
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferUnsignedShort(&cmdNode->m_templateID);
-		xfer->xferReal(&cmdNode->m_angle);
-		if (cmdNode->m_commandType == COMMAND_DOZER_CONSTRUCT_LINE)
-			xfer->xferCoord3D(&cmdNode->m_loc2);
-		break;
-	}
-	// do special
-	case COMMAND_DO_SPECIAL_POWER:
-	{
-		xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
-		xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
-		break;
-	}
-	// do special at location
-	case COMMAND_DO_SPECIAL_POWER_AT_POSITION:
-	case COMMAND_DO_MOVING_SPECIAL_POWER_AT_POSITION:
-	{
-		xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
-		xfer->xferCoord3D(&cmdNode->m_loc);
-		xfer->xferReal(&cmdNode->m_angle);
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
-		break;
-	}
-	// do special at object
-	case COMMAND_DO_SPECIAL_POWER_AT_OBJECT:
-	{
-		xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
-		xfer->xferObjectID(&cmdNode->m_targetID);
-		xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
-		break;
-	}
-	// switch weapon
-	case COMMAND_SWITCH_WEAPON:
-	{
-		xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
-		break;
-	}
+			// no argument
+		case COMMAND_DO_EVACUATE:
+		case COMMAND_INTERNET_HACK:
+		case COMMAND_TOGGLE_OVERCHARGE:
+		case COMMAND_TOGGLE_HOLD_FIRE:
+		case COMMAND_TOGGLE_DEPLOY:
+			break;
+			// single pos
+		case COMMAND_DO_MOVETO:
+		case COMMAND_DO_REVERSE_MOVETO:
+		{
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			break;
+		}
+		// single target
+		case COMMAND_GET_REPAIRED:
+		case COMMAND_GET_HEALED:
+		case COMMAND_ENTER:
+		case COMMAND_DO_EXIT:
+		case COMMAND_DO_REPAIR:
+		case COMMAND_DOCK:
+		{
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			break;
+		}
+		// guard pos
+		case COMMAND_DO_GUARD_POSITION:
+		{
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferInt((Int*) & cmdNode->m_guardMode);
+			break;
+		}
+		// guard target
+		case COMMAND_DO_GUARD_OBJECT:
+		{
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			xfer->xferInt((Int*)&cmdNode->m_guardMode);
+			break;
+		}
+		// pos and target
+		case COMMAND_DO_COMBATDROP:
+		{
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			break;
+		}
+		// pos and maxshots
+		case COMMAND_DO_ATTACK_MOVETO:
+		{
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferInt(&cmdNode->m_maxShotsToFire);
+			break;
+		}
+		// do weapon at location
+		case COMMAND_DO_WEAPON:
+		case COMMAND_DO_WEAPON_AT_LOCATION:
+		{
+			xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferInt(&cmdNode->m_maxShotsToFire);
+			xfer->xferBool(&cmdNode->m_releaseAfter);
+			break;
+		}
+		// do attack object including do weapon at object
+		case COMMAND_DO_ATTACK_OBJECT:
+		case COMMAND_DO_FORCE_ATTACK_OBJECT:
+		{
+			xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			xfer->xferInt(&cmdNode->m_maxShotsToFire);
+			break;
+		}
+		// dozer construct
+		case COMMAND_DOZER_CONSTRUCT:
+		case COMMAND_DOZER_CONSTRUCT_LINE:
+		{
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferUnsignedShort(&cmdNode->m_templateID);
+			xfer->xferReal(&cmdNode->m_angle);
+			if (cmdNode->m_commandType == COMMAND_DOZER_CONSTRUCT_LINE)
+				xfer->xferCoord3D(&cmdNode->m_loc2);
+			break;
+		}
+		// do special
+		case COMMAND_DO_SPECIAL_POWER:
+		{
+			xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
+			xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
+			break;
+		}
+		// do special at location
+		case COMMAND_DO_SPECIAL_POWER_AT_POSITION:
+		case COMMAND_DO_MOVING_SPECIAL_POWER_AT_POSITION:
+		{
+			xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
+			xfer->xferCoord3D(&cmdNode->m_loc);
+			xfer->xferReal(&cmdNode->m_angle);
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
+			break;
+		}
+		// do special at object
+		case COMMAND_DO_SPECIAL_POWER_AT_OBJECT:
+		{
+			xfer->xferUnsignedInt(&cmdNode->m_specialPowerID);
+			xfer->xferObjectID(&cmdNode->m_targetID);
+			xfer->xferUnsignedInt(&cmdNode->m_specialOptions);
+			break;
+		}
+		// switch weapon
+		case COMMAND_SWITCH_WEAPON:
+		{
+			xfer->xferInt((Int*)&cmdNode->m_weaponSlot);
+			break;
+		}
 	}
 
 	if (xfer->getXferMode() == XFER_LOAD)
@@ -813,6 +811,7 @@ UnsignedInt CommandSequence::removeCurrentCommand(Object *obj, Bool doCleanUp)
 		if (iit != m_allNodes.end())
 			m_allNodes.erase(iit);
 		delete node;
+		m_commandNodeCount--;
 	}
 
 	return ret;
